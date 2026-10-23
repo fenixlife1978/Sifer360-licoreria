@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-windows:
@@ -37,10 +37,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publicar artefacto descargable (.exe)
-        uses: actions/upload-artifact@v4
-        with:
-          name: pos-el-piston-windows-portable-exe
-          path: dist-exe/*.exe
-          if-no-files-found: error
-          retention-days: 1
+      - name: Publicar ejecutable descargable en GitHub Releases
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "windows-portable-latest"
+          $existing = gh release view $tag --json tagName 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release delete $tag --yes
+            if ($LASTEXITCODE -ne 0) { throw "No se pudo reemplazar el release anterior." }
+            gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" 2>$null
+          }
+          $exe = Get-ChildItem -Path "dist-exe" -Filter "*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "No se encontró el .exe compilado en dist-exe." }
+          $notes = "Ejecutable portable de SIFER360 Licorería. Commit fuente: $env:GITHUB_SHA. Construido desde la rama adaptacion-licoreria. Publicado directamente en Releases para no depender de la cuota de Actions Artifacts."
+          gh release create $tag $exe.FullName --target $env:GITHUB_SHA --title "SIFER360 Licorería · Windows portable (último build)" --notes $notes --latest
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo publicar el .exe en GitHub Releases." }
