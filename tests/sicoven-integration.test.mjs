@@ -440,7 +440,7 @@ test('Sicoven revierte también los cobros cuando se elimina la CxC al anular un
     ]
   }];
   const first = accounting.syncFromPOS(s);
-  assert.equal(first.created, 3);
+  assert.equal(first.created, 4); // venta, costo, compra de la fixture y cobro posterior
   assert.ok(s.sicoven.entries.some(e => e.type === 'COBRO'));
   s.sales[0].void = true;
   s.cxc = [];
