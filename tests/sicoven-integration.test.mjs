@@ -61,3 +61,29 @@ test('Sicoven genera reversos auditables al anular una venta contabilizada', () 
   assert.equal(s.sicoven.entries.filter(e => e.type === 'REVERSO').length, 2);
   assert.equal(s.sicoven.entries.length, 5);
 });
+
+
+test('Sicoven contabiliza IVA adicional del 31% y ajustes de inventario', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.sales[0].total = 131;
+  s.sales[0].pays[0].amount = 131;
+  s.sales[0].lines = [{ code: 'BEB-31', desc: 'Bebida gravada adicional', qty: 1, net: 100, iva: 31, taxRate: 31 }];
+  s.purchases[0].base = 50;
+  s.purchases[0].iva = 15.5;
+  s.purchases[0].total = 65.5;
+  s.purchases[0].paid = 65.5;
+  s.purchases[0].lines = [{ code: 'BEB-31', qty: 1, cost: 50, sub: 50, iva: 15.5, taxRate: 31 }];
+  s.kardex.push({ id: 2, doc: 'AJ-2', type: 'AJUSTE', dir: 'OUT', qty: 1, cost: 2, ts: 1790000002000 });
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 4);
+  const sale = s.sicoven.entries.find(e => e.type === 'VENTA');
+  const purchase = s.sicoven.entries.find(e => e.type === 'COMPRA');
+  const adjustment = s.sicoven.entries.find(e => e.type === 'INVENTARIO');
+  assert.ok(sale.lines.some(l => l.accountCode === '2.1.2.08'));
+  assert.ok(purchase.lines.some(l => l.accountCode === '1.1.3.07'));
+  assert.ok(adjustment);
+  for (const entry of s.sicoven.entries) {
+    assert.ok(Math.abs(entry.totals.debitUsd - entry.totals.creditUsd) <= 0.02, entry.id);
+  }
+});
