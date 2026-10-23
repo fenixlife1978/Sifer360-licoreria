@@ -84,7 +84,7 @@ test('crear asiento bancario exige clasificación fiscal explícita y genera dob
   const s = { cfg: { rate: 40 }, sicoven: { config: {}, entries: [], errors: [], bankMovements: [] } };
   const movement = { id: 'BANK-TEST-1', date: '2026-10-01', accountCode: '1.1.1.06', direction: 'OUT', currency: 'USD', amount: 20, rate: 40, reference: 'FEE-1', description: 'Comisión bancaria', status: 'PENDIENTE' };
   const missingFiscal = accounting.createBankMovementEntry(s, movement, '6.1.1.07', '', '');
-  assert.match(missingFiscal.error, /Clasifique el tratamiento fiscal/);
+  assert.match(missingFiscal.error, /Clasifique el movimiento/);
   const created = accounting.createBankMovementEntry(s, movement, '6.1.1.07', 'NO_APLICA', '', 'Comisión bancaria según estado de cuenta');
   assert.ok(created.entry);
   assert.equal(created.entry.lines.length, 2);
