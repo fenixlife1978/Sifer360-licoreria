@@ -193,3 +193,20 @@ test('Sicoven contabiliza retenciones ISLR y conserva el comprobante para export
   assert.ok(entry.lines.some(l => l.accountCode === '2.1.1.01' && l.debitUsd === 3));
   assert.ok(entry.lines.some(l => l.accountCode === '2.1.2.04' && l.creditUsd === 3));
 });
+
+
+test('El módulo Sicoven está conectado a la navegación y a la persistencia SQLite del POS', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const main = fs.readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
+  const chart = fs.readFileSync(new URL('../public/sicoven-chart.js', import.meta.url), 'utf8');
+  const moduleSource = fs.readFileSync(new URL('../public/sicoven.js', import.meta.url), 'utf8');
+  assert.ok(html.includes('id="btnSicovenTop"'));
+  assert.ok(html.indexOf('src="/sicoven-chart.js"') < html.indexOf('src="/sicoven.js"'));
+  assert.ok(main.includes('window.SIFERAccountingBridge'));
+  assert.ok(main.includes('sicoven:S.sicoven||null'));
+  assert.ok(main.includes('window.SIFERSicoven.syncFromPOS(S)'));
+  assert.ok(chart.includes('window.SICOVEN_CHART'));
+  assert.ok((chart.match(/"code":/g) || []).length >= 80);
+  assert.doesNotThrow(() => new vm.Script(main, { filename: 'public/main.js' }));
+  assert.doesNotThrow(() => new vm.Script(moduleSource, { filename: 'public/sicoven.js' }));
+});
