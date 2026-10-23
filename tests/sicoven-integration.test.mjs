@@ -241,3 +241,36 @@ test('Sicoven contabiliza movimientos de caja y diferencias del Corte Z con la t
   assert.ok(cut.lines.some(l => l.accountCode === '4.2.1.02' && l.creditUsd === 2));
   assert.equal(accounting.syncFromPOS(s).created, 0);
 });
+
+
+test('Sicoven evita duplicar la retención IVA que ya está incluida en el asiento de compra', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.purchases[0].retIva = 2;
+  s.retencionesIva = [{
+    id: 'RET-IVA-COMPRA-1', purchaseNo: 1, docProv: 'F-1', ts: 1790000009000,
+    supplier: { rif: 'J-12345678-9', name: 'Proveedor de prueba' },
+    retainedUsd: 2, retainedBs: 80, rate: 40
+  }];
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 3);
+  assert.equal(result.errors, 0);
+  const purchase = s.sicoven.entries.find(e => e.type === 'COMPRA');
+  assert.ok(purchase.lines.some(l => l.accountCode === '2.1.2.03' && l.creditUsd === 2));
+  assert.equal(s.sicoven.entries.filter(e => e.type === 'RETENCION_IVA').length, 0);
+});
+
+test('Sicoven marca para revisión las retenciones IVA que no tienen compra o CxP vinculada', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.retencionesIva = [{
+    id: 'RET-IVA-SIN-COMPRA', docProv: 'FACTURA-SIN-REGISTRO', ts: 1790000009000,
+    supplier: { rif: 'J-99999999-9', name: 'Proveedor no asociado' },
+    retainedUsd: 3, retainedBs: 120, rate: 40
+  }];
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 3);
+  assert.equal(result.errors, 1);
+  assert.ok(s.sicoven.errors.some(e => e.origin === 'RETIVA-RET-IVA-SIN-COMPRA'));
+  assert.equal(s.sicoven.entries.filter(e => e.type === 'RETENCION_IVA').length, 0);
+});
