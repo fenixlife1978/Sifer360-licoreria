@@ -394,3 +394,25 @@ test('Sicoven impide conciliar dos movimientos bancarios contra el mismo asiento
   assert.match(source, /ya está conciliado con otro movimiento bancario/);
   assert.match(source, /m\.status='CONCILIADO';m\.matchedEntryId=entry\.id/);
 });
+
+
+test('Sicoven migra las cuentas predeterminadas antiguas y preserva cuentas personalizadas', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.sicoven.config = {
+    bankBs: '1.1.1.03',
+    bankUsd: '1.1.1.05',
+    cashea: '1.1.2.02',
+    adjustmentGain: '4.2.1.02',
+    sales8: '4.1.1.01',
+    payable: '2.1.1.01'
+  };
+  accounting.syncFromPOS(s);
+  assert.equal(s.sicoven.config.bankBs, '1.1.1.06');
+  assert.equal(s.sicoven.config.bankUsd, '1.1.1.07');
+  assert.equal(s.sicoven.config.cashea, '1.1.2.03');
+  assert.equal(s.sicoven.config.adjustmentGain, '4.2.1.03');
+  assert.equal(s.sicoven.config.sales8, '4.1.1.01');
+  assert.equal(s.sicoven.config.payable, '2.1.1.01');
+  assert.equal(s.sicoven.config.mappingVersion, 2);
+});
