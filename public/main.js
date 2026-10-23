@@ -2337,18 +2337,18 @@ function comprasDlg(initialTab){
       const base=r8(pLines.reduce((a,l)=>a+r8(l.qty*l.cost),0));
       const iva=r8(pLines.reduce((a,l)=>a+r8(l.qty*l.cost*(Number(l.taxRate===undefined?16:l.taxRate)||0)/100),0));
       const tot=r8(base+iva);
-      const effPaid=cond==='Contado'?tot:Math.min(tot,paidInit);
+      const effPaid=cond==='Contado'?tot:Math.min(tot,r8(paidInit));
       const pend=r8(Math.max(0,tot-effPaid));
       $('#cpTotals',v).innerHTML=
         '<table class="sumt"><thead><tr><th>Resumen de Compra</th><th class="r">US$</th><th class="r">Bs. (Tasa '+nf(S.cfg.rate)+')</th></tr></thead><tbody>'+
-          '<tr><td>Base imponible (Costo mercancía)</td><td class="r">'+nf(base)+'</td><td class="r">'+nf(base*S.cfg.rate)+'</td></tr>'+
-          '<tr><td>IVA total según alícuotas indicadas</td><td class="r">'+nf(iva)+'</td><td class="r">'+nf(iva*S.cfg.rate)+'</td></tr>'+
-          '<tr class="tot"><td>Total Factura de Compra</td><td class="r">'+nf(tot)+'</td><td class="r">'+nf(tot*S.cfg.rate)+'</td></tr>'+
+          '<tr><td>Base imponible (Costo mercancía)</td><td class="r">'+nf8(base)+'</td><td class="r">'+nf8(r8(base*S.cfg.rate))+'</td></tr>'+
+          '<tr><td>IVA total según alícuotas indicadas</td><td class="r">'+nf8(iva)+'</td><td class="r">'+nf8(r8(iva*S.cfg.rate))+'</td></tr>'+
+          '<tr class="tot"><td>Total Factura de Compra</td><td class="r">'+nf8(tot)+'</td><td class="r">'+nf8(r8(tot*S.cfg.rate))+'</td></tr>'+
         '</tbody></table>'+
         '<table class="sumt"><thead><tr><th>Condición Financiera</th><th class="r">US$</th><th class="r">Bs.</th></tr></thead><tbody>'+
           '<tr><td>Modalidad</td><td colspan="2" class="r"><b>'+esc(cond)+(cond==='Crédito'?' ('+creditDays+' días)':'')+'</b></td></tr>'+
-          '<tr class="good"><td>Monto Pagado / Abonado</td><td class="r">'+nf(effPaid)+'</td><td class="r">'+nf(effPaid*S.cfg.rate)+'</td></tr>'+
-          '<tr class="'+(pend>0?'warn':'')+'"><td>Saldo a Cuentas por Pagar (CxP)</td><td class="r">'+nf(pend)+'</td><td class="r">'+nf(pend*S.cfg.rate)+'</td></tr>'+
+          '<tr class="good"><td>Monto Pagado / Abonado</td><td class="r">'+nf8(effPaid)+'</td><td class="r">'+nf8(r8(effPaid*S.cfg.rate))+'</td></tr>'+
+          '<tr class="'+(pend>0?'warn':'')+'"><td>Saldo a Cuentas por Pagar (CxP)</td><td class="r">'+nf8(pend)+'</td><td class="r">'+nf8(r8(pend*S.cfg.rate))+'</td></tr>'+
         '</tbody></table>';
     };
 
@@ -2357,7 +2357,7 @@ function comprasDlg(initialTab){
       if(t.id==='cpSup'){supIdx=+t.value;return;}
       if(t.id==='cpCond'){cond=t.value;drawLines();return;}
       if(t.id==='cpDays'){creditDays=Math.max(1,Math.round(pn(t.value)||15));drawLines();return;}
-      if(t.id==='cpInit'){paidInit=pn(t.value);t.value=nf(paidInit);drawLines();return;}
+      if(t.id==='cpInit'){paidInit=r8(pn(t.value));t.value=nf8(paidInit);drawLines();return;}
       if(t.id==='cpMethod'){payMethod=t.value;return;}
       if(t.dataset.cpf){
         const tr=t.closest('tr'), idx=+tr.dataset.pi, l=pLines[idx];
