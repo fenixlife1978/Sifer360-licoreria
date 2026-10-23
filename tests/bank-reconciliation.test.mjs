@@ -121,6 +121,8 @@ test('las operaciones no gravables quedan enlazadas entre Sicoven y el módulo F
   const fiscal = fs.readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
   assert.match(fiscal, /data-tab="bancarias">Operaciones no gravables/);
   assert.match(fiscal, /S\.fiscalBankOperations/);
+  assert.match(fiscal, /else if\(activeTab==='bancarias'\)content\.innerHTML=drawBankOps\(\)/);
+  assert.match(fiscal, /esc\(x\.fiscalReason\|\|/);
   assert.match(fiscal, /no se incorporan al Libro de Ventas ni al Libro de Compras/);
 });
 
