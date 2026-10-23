@@ -1384,7 +1384,7 @@ function productFormDlg(editCode,initialTab){
 
   /* Estado editable del producto */
   const D=existing?JSON.parse(JSON.stringify(existing)):{
-    code:'750'+pad(S.products.length+101,4),
+    code:'LIC'+pad(S.products.length+1,5),
     sku:'',
     desc:'',
     brand:'PDV',
