@@ -1,5 +1,5 @@
 
-/* POS El Pistón — piel nueva.
+/* SIFER 360 Licorería — interfaz administrativa y punto de venta.
    Concepto: mostrador de taller. Concreto frío de fondo, tinta petróleo, cobalto para acciones.
    Lo único audaz: el total, en una placa amarillo señal como el precio de un surtidor. */
 @font-face{font-family:"Barlow";font-weight:400;font-display:swap;src:local("Barlow"),local("Barlow Regular"),url("fonts/Barlow-Regular.woff2") format("woff2")}
@@ -226,25 +226,6 @@ button.sp:hover{background:var(--sel)}
 .cambio-tag.usd-efe{background:#EDF7F0;border:1px solid #BEE7C8;color:#1D6F39}
 .cambio-tag.zel-own{background:#F4EFFE;border:1px solid #DDD0FC;color:#6B21A8}
 .cambio-tag.vta{background:#FFF6E5;border:1px solid #F5DEB0;color:#945D08}
-
-/* Catálogo Maestro Automotriz (+2.500.000 repuestos indexados) */
-.master-bar{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#10222B;color:#fff;border-radius:6px;margin-bottom:8px;position:relative;flex-wrap:wrap}
-.master-bar label{font-size:12px;font-weight:700;letter-spacing:.03em;color:#EFE3AB;display:flex;align-items:center;gap:6px;white-space:nowrap}
-.master-bar .master-inp-wrap{flex:1;min-width:260px;position:relative}
-.master-bar input{width:100%;background:#fff;color:#10222B;border:1px solid #BAC7CE;border-radius:4px;padding:6px 12px;font-size:13px}
-.master-pop{position:absolute;top:calc(100% + 4px);left:0;right:0;max-height:320px;background:#fff;border:2px solid #1F4FD8;box-shadow:0 12px 28px rgba(16,34,43,.3);border-radius:6px;overflow-y:auto;z-index:9999;color:var(--ink)}
-.master-item{padding:8px 12px;border-bottom:1px solid var(--line-2);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;transition:background .1s}
-.master-item:hover{background:#EDF3FF}
-.master-item-main{flex:1;min-width:0}
-.master-item-title{font-weight:700;font-size:13px;color:#10222B}
-.master-item-meta{font-size:11.5px;color:var(--ink-2);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.master-oem-tag{display:inline-block;padding:1px 6px;background:#EBF3FA;border:1px solid #BFD5E7;border-radius:3px;font-family:var(--mono);font-size:11px;color:#144A75;font-weight:700}
-.master-oem-none{font-size:11px;color:#8A98A0;font-style:italic}
-.master-badge-25m{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;background:#2B3F4B;color:#EFE3AB;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.02em}
-.motor-box{padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;margin-bottom:10px}
-.motor-choice{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px}
-.motor-choice label{display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;font-weight:600}
-.brecha-alert{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:4px;background:#FFF0C9;border:1px solid #E8CD82;font-size:11.5px;color:#8A5200;font-weight:600}
 
 /* Habladores y etiquetas SKU */
 .hablador-wrap{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;padding:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;max-height:min(340px,calc(100dvh - 230px));overflow:auto}

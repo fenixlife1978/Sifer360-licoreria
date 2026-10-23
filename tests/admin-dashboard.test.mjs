@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 
 const main = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
 const access = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
@@ -59,9 +60,22 @@ test('every user can end the session from the shared top header', () => {
 });
 
 test('dashboard and management layouts are responsive', () => {
-  assert.doesNotMatch(css, /\.main\.dashboard-mode \.left\{display:none!important\}/);
-  assert.match(main, /if\(left\)left\.hidden=false; \/\/ Mantener la toolbar completa visible también en el dashboard administrativo/);
+  assert.match(css, /\.main\.dashboard-mode\{display:block;overflow:auto/);
+  assert.match(css, /@media\(max-width:900px\)\{\.dash-kpis/);
   assert.match(css, /@media\(max-width:560px\)\{\.dash-pie-layout/);
+  assert.match(main, /function showDashboardScreen\(\)/);
+});
+
+test('the liquor-store build contains no automotive master catalog or OEM form fields', () => {
+  assert.doesNotMatch(main, /CATÁLOGO MAESTRO AUTOMOTRIZ|MASTER_CURATED_CATALOG|AUTO_MODELS_MATRIX|VERIFIED_OEM_MAP|masterCatalogBrowserDlg|btnMasterCat|pfOem|Código OEM/);
+  assert.match(main, /products:\[\]/);
+  assert.match(main, /sales:\[\],held:\[\],purchases:\[\],cxc:\[\],cxp:\[\]/);
+  assert.match(main, /Bebidas alcohólicas/);
+  assert.match(main, /Botella 750 ml/);
+  assert.match(main, /Contenido neto \(ml\)/);
+  assert.match(main, /Graduación alcohólica \(% vol\.\)/);
+  assert.match(main, /SKU Automático/);
+  assert.doesNotMatch(main, /seedSalesSpec|p1Lines|CXC-0001|LIC00001|7501001/);
 });
 
 
@@ -99,4 +113,88 @@ test('finalizar venta muestra un modal centrado con vuelto o VENTA FINALIZADA y 
   assert.match(fn, /Ver \/ imprimir ticket/);
   assert.match(main, /save\(\);renderAll\(\);[\s\S]{0,400}showSaleCompletion\(sale\);/);
   assert.match(css, /\.sale-completion\{display:flex;flex-direction:column;align-items:center;text-align:center/);
+});
+
+
+test('fiscal purchase book records real supplier documents, invoice date and line-level VAT rates without fabricated fields', () => {
+  assert.match(main, /let pLines=\[\];/);
+  assert.match(main, /Nº de factura del proveedor \*/);
+  assert.match(main, /id="cpCtrl"/);
+  assert.match(main, /id="cpDate" type="date"/);
+  assert.match(main, /const docDateTs=docDate\?parseIsoD\(docDate\):0/);
+  assert.match(main, /data-cpf="taxRate"/);
+  assert.match(main, /Numero_Control_Proveedor/);
+  assert.match(main, /Credito_Fiscal_8_Bs/);
+  assert.match(main, /Credito_Fiscal_16_Bs/);
+  assert.match(main, /Credito_Fiscal_31_Bs/);
+  assert.doesNotMatch(main, /p\.ctrlProv\|\|\('00-'\+pad\(p\.no\+4400,8\)\)/);
+  assert.doesNotMatch(main, /p\.retIvaDoc\|\|\('202610'\+pad\(idx\+41,8\)\)/);
+  assert.doesNotMatch(main, /esc\(r\.estado\|\|'Registro histórico: revisar'\)/);
+});
+
+test('fiscal module includes a current inventory book with valuation, Kardex, print and CSV export', () => {
+  assert.match(main, /data-tab="inventario">Libro de Inventario/);
+  assert.match(main, /const drawInventario=\(\)=>/);
+  assert.match(main, /Valor de inventario US\$/);
+  assert.match(main, /Libro de movimientos \(Kardex\)/);
+  assert.match(main, /id==='btnExpInv'/);
+  assert.match(main, /id==='btnPrintInv'/);
+  assert.match(main, /Libro_Inventario_SIFER_/);
+  assert.match(main, /No inventa movimientos ni existencias de apertura/);
+});
+
+test('main POS script parses and no longer references removed purchase IVA toggle state', () => {
+  assert.doesNotThrow(() => new vm.Script(main));
+  assert.doesNotMatch(main, /applyIva/);
+});
+
+test('inventario integra el costo promedio ponderado y valoriza las existencias con CPP', () => {
+  const inventory = main.slice(main.indexOf('function inventoryDlg(){'), main.indexOf('/* ---------- MÓDULO DE COMPRAS', main.indexOf('function inventoryDlg(){')));
+  assert.match(inventory, /CPP unit\. US\$/);
+  assert.match(inventory, /Valor inventario US\$/);
+  assert.match(inventory, /Valor inventario a CPP/);
+  assert.match(inventory, /Math\.max\(0,p\.stock\)\*Math\.max\(0,p\.cost\)/);
+  assert.doesNotMatch(inventory, /data-f="cost"/);
+  assert.match(main, /const prevVal=Math\.max\(0,p\.stock\)\*p\.cost/);
+  assert.match(main, /const nextCost=nextStock>0\?r8\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
+});
+
+test('compras acepta y conserva hasta ocho decimales en costos, precios, subtotales, IVA, total y CPP', () => {
+  assert.match(main, /const r8=n=>Math\.round\(\(n\+Number\.EPSILON\)\*1e8\)\/1e8/);
+  assert.match(main, /const nf8=n=>[\s\S]*?toFixed\(8\)/);
+  const comprasStart = main.indexOf('function comprasDlg(initialTab)');
+  const compras = main.slice(comprasStart, main.indexOf('\nfunction cxcDlg', comprasStart));
+  assert.match(compras, /data-cpf="cost" value="\'\+nf8\(l\.cost\)/);
+  assert.match(compras, /data-cpf="price" value="\'\+nf8\(l\.price\)/);
+  assert.match(compras, /const base=r8\(pLines\.reduce/);
+  assert.match(compras, /const iva=r8\(pLines\.reduce/);
+  assert.match(compras, /const tot=r8\(base\+iva\)/);
+  assert.match(compras, /if\(t\.dataset\.cpf==='cost'\)l\.cost=r8\(val\)/);
+  assert.match(compras, /const nextCost=nextStock>0\?r8\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
+  assert.match(main, /nf8\(p\.cost\)/);
+});
+
+
+test('CxP de compras conserva ocho decimales en saldos y pagos y mantiene el historial al anular', () => {
+  const purchaseStart = main.indexOf('const renderPurchaseHist=v=>{');
+  const purchaseEnd = main.indexOf('const renderSuppliersTab=v=>', purchaseStart);
+  const purchaseHistory = main.slice(purchaseStart, purchaseEnd);
+  assert.match(purchaseHistory, /const payable=r8\(c\.payableTotal===undefined/);
+  assert.match(purchaseHistory, /const paidTotal=r8\(Number\(c\.paid\|\|0\)\+Number\(c\.withheldIslrPaid\|\|0\)\)/);
+  assert.match(purchaseHistory, /Pagado \/ Retenido US\$/);
+  assert.match(purchaseHistory, /nf8\(c\.total\)/);
+  assert.match(purchaseHistory, /nf8\(pend\)/);
+  assert.match(purchaseHistory, /x\.void=true;x\.voidedAt=Date\.now\(\)/);
+  assert.match(purchaseHistory, /Anulada junto con compra COM-/);
+  assert.match(purchaseHistory, /S\.sicoven\.islrVouchers/);
+  assert.match(purchaseHistory, /x\.status='ANULADO JUNTO CON COMPRA COM-'/);
+
+  const cxpStart = main.indexOf('function cxpDlg(selId){');
+  const cxpEnd = main.indexOf('function newCxpManualDlg(){', cxpStart);
+  const cxp = main.slice(cxpStart, cxpEnd);
+  assert.match(cxp, /const bal=r8\(Math\.max\(0,Number\(item\.total\|\|0\)-Number\(item\.paid\|\|0\)\)\)/);
+  assert.match(cxp, /item\.paid=r8\(Math\.min\(Number\(item\.total\)\|\|0/);
+  assert.match(cxp, /nf8\(p\.amountUsd\)/);
+  assert.match(cxp, /if\(rawAmt-bal>0\.00000001\)/);
+  assert.match(cxp, /mixState\[mid\]\.usd=r8\(b\/rate\)/);
 });

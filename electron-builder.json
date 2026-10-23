@@ -1,6 +1,6 @@
 {
-  "appId": "com.elpiston.pos",
-  "productName": "SIFER 360",
+  "appId": "com.sifer360.licoreria",
+  "productName": "SIFER 360 Licorería",
   "directories": {
     "output": "dist-exe"
   },
@@ -18,6 +18,6 @@
     ]
   },
   "portable": {
-    "artifactName": "sifer-360-portable.exe"
+    "artifactName": "sifer360-licoreria-portable.exe"
   }
 }

@@ -3,11 +3,15 @@
 'use strict';
 
 /* ---------- utilidades ---------- */
-const IVA=0.16, IGTF=0.03, KEY='pos-el-piston-v1';
+const IVA=0.16, IGTF=0.03, KEY='sifer360-licoreria-v1';
 const $=(s,r=document)=>r.querySelector(s);
 const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
 const r2=n=>Math.round((n+Number.EPSILON)*100)/100;
+const r4=n=>Math.round((n+Number.EPSILON)*10000)/10000;
+const r8=n=>Math.round((n+Number.EPSILON)*1e8)/1e8;
+const nf8=n=>{const neg=n<0;const p=Math.abs(r8(n)).toFixed(8).split('.');return (neg?'-':'')+p[0].replace(/\\B(?=(\\d{3})+(?!\\d))/g,'.')+','+p[1];};
 const nf=n=>{const neg=n<0;const p=Math.abs(r2(n)).toFixed(2).split('.');return (neg?'-':'')+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+p[1];};
+const nf4=n=>{const neg=n<0;const p=Math.abs(r4(n)).toFixed(4).split('.');return (neg?'-':'')+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+p[1];};
 const usd=n=>'US$ '+nf(n);
 const bsf=n=>'Bs. '+nf(n);
 const fq=q=>Number.isInteger(q)?String(q):String(r2(q)).replace('.',',');
@@ -72,6 +76,9 @@ const MOTIVOS=[
 /* ---------- datos de ejemplo con Departamento, Categoría, Subcategoría, SKU, U.M., Costo e I.V.A. ---------- */
 const UM_OPTIONS=[
   {id:'und',name:'Unidad (und)'},
+  {id:'botella',name:'Botella'},
+  {id:'lata',name:'Lata'},
+  {id:'pack',name:'Pack / Six-pack'},
   {id:'L',name:'Litro (L)'},
   {id:'gal',name:'Galón (gal)'},
   {id:'kg',name:'Kilogramo (kg)'},
@@ -115,99 +122,8 @@ function prodTaxCls(p){
 }
 
 let seedSeq=1;
-const P=(code,desc,brand,dept,cat,subcat,price,stock,min,loc,unit,cost,taxType,taxRate)=>{
-  const c=cost||r2(price*0.64);
-  const mkCost=c>0?r2(((price-c)/c)*100):56.25;
-  const mkSale=price>0?r2(((price-c)/price)*100):36.00;
-  const seq=seedSeq++;
-  const u=unit||'und';
-  const tType=taxType||'G';
-  const tRate=taxRate!==undefined?taxRate:(tType==='E'||tType==='NS'?0:16);
-  return {
-    code,
-    sku:genAutoSku(dept,cat,subcat,seq),
-    desc,brand,
-    dept:dept||'Lubricantes y Fluidos',
-    cat:cat||'Aceites de motor',
-    subcat:subcat||'General',
-    price,stock,min,loc,
-    unit:u,
-    cost:c,
-    photo:'',
-    pricing:{
-      mode:'auto',
-      markupCost:mkCost,
-      markupSale:mkSale,
-      gaps:[
-        {name:'Detal / Mostrador',gapPct:0,markupCost:mkCost,price:price},
-        {name:'Taller / Mecánico',gapPct:6,markupCost:r2(((price*0.94-c)/c)*100),price:r2(price*0.94)},
-        {name:'Mayorista (≥ 6 und)',gapPct:12,markupCost:r2(((price*0.88-c)/c)*100),price:r2(price*0.88)},
-        {name:'Distribuidor / Flota',gapPct:18,markupCost:r2(((price*0.82-c)/c)*100),price:r2(price*0.82)}
-      ]
-    },
-    presentations:[
-      {name:u==='L'?'Litro a granel':(u==='gal'?'Galón 4 L':'Unidad individual'),unit:u,factor:1,barcode:code,price:price},
-      {name:'Caja / Empaque x 12',unit:'caja',factor:12,barcode:code+'C12',price:r2(price*12*0.90)}
-    ],
-    tax:{
-      type:tType,
-      rate:tRate,
-      igtf:true,
-      percRate:0,
-      codeSeniat:tType==='E'?'EXENTO-0':(tType==='R'?'RED-08':(tType==='A'?'ADIC-31':'GRAV-16'))
-    },
-    assocSuppliers:[],
-    isKit:false,
-    kitItems:[]
-  };
-};
 
-const SEED=[
- P('7501001','Aceite 20W-50 Mineral 1 L','Castrol GTX','Lubricantes y Fluidos','Aceites de motor','Mineral',5.20,48,12,'A-1','und',3.35,'G',16),
- P('7501002','Aceite 20W-50 Mineral Galón 4 L','Castrol GTX','Lubricantes y Fluidos','Aceites de motor','Mineral',19.50,14,6,'A-1','gal',12.60,'G',16),
- P('7501003','Aceite 10W-40 Semisintético 1 L','Mobil Super','Lubricantes y Fluidos','Aceites de motor','Semisintético',7.80,30,10,'A-2','und',5.05,'G',16),
- P('7501004','Aceite 5W-30 Sintético 1 L','Mobil 1','Lubricantes y Fluidos','Aceites de motor','Sintético',13.90,16,8,'A-2','und',9.10,'G',16),
- P('7501005','Aceite 10W-30 High Mileage 1 L','Valvoline','Lubricantes y Fluidos','Aceites de motor','Semisintético',7.40,22,8,'A-2','und',4.80,'G',16),
- P('7501006','Aceite Diésel 15W-40 Galón 3,78 L','Valvoline','Lubricantes y Fluidos','Aceites de motor','Diésel Pesado',24.80,9,5,'A-3','gal',16.20,'G',16),
- P('7501007','Aceite 10W-40 Semisintético 1 L','Shell Helix HX7','Lubricantes y Fluidos','Aceites de motor','Semisintético',7.60,25,10,'A-2','und',4.95,'G',16),
- P('7501008','Aceite 10W-40 Quartz 7000 1 L','Total','Lubricantes y Fluidos','Aceites de motor','Semisintético',7.50,3,8,'A-2','und',4.85,'G',16),
- P('7501009','Aceite 20W-50 a granel (por litro)','Genérico','Lubricantes y Fluidos','Aceites de motor','Granel',3.40,120,40,'A-0','L',2.10,'G',16),
- P('7510001','Aceite Moto 4T 20W-50 1 L','Motul 3000','Motocicletas','Moto','Aceite 4T',8.90,20,8,'M-1','und',5.80,'G',16),
- P('7510002','Aceite Moto 4T 20W-50 1 L','Mobil Racing','Motocicletas','Moto','Aceite 4T',7.10,26,10,'M-1','und',4.55,'G',16),
- P('7510003','Lubricante de Cadena 400 ml','Motul','Motocicletas','Moto','Mantenimiento Cadena',9.30,14,6,'M-2','und',6.00,'G',16),
- P('7510004','Pastillas de Freno Delanteras Moto','Bendix','Motocicletas','Moto','Frenos Moto',8.50,12,6,'M-3','jgo',5.40,'G',16),
- P('7502001','ATF Dexron III Automática 1 L','Castrol','Lubricantes y Fluidos','Transmisión y diferencial','Caja Automática (ATF)',8.20,18,6,'B-1','und',5.30,'G',16),
- P('7502002','Aceite Transmisión 80W-90 GL-5 1 L','Valvoline','Lubricantes y Fluidos','Transmisión y diferencial','Valvulina y Engranajes',6.90,21,8,'B-1','und',4.45,'G',16),
- P('7502003','Aceite Transmisión 75W-90 Sintético 1 L','Mobil','Lubricantes y Fluidos','Transmisión y diferencial','Valvulina y Engranajes',12.40,7,4,'B-1','und',8.05,'G',16),
- P('7502004','Líquido Hidráulico Dirección 1 L','Genérico','Lubricantes y Fluidos','Transmisión y diferencial','Dirección Hidráulica',4.60,15,6,'B-2','und',2.95,'G',16),
- P('7503001','Lubricante Multiuso 11 oz','WD-40','Lubricantes y Fluidos','Grasas y lubricantes','Aerosoles y Sprays',6.50,40,12,'C-1','und',4.20,'G',16),
- P('7503002','Grasa Multipropósito Litio NLGI-2 500 g','Genérico','Lubricantes y Fluidos','Grasas y lubricantes','Grasas Litio y Chasis',4.90,26,8,'C-1','und',3.10,'G',16),
- P('7503003','Grasa de Chasis Roja 1 kg','Valvoline','Lubricantes y Fluidos','Grasas y lubricantes','Grasas Litio y Chasis',7.20,11,5,'C-2','kg',4.65,'G',16),
- P('7503004','Limpia Frenos en Spray 500 ml','CRC','Lubricantes y Fluidos','Grasas y lubricantes','Aerosoles y Sprays',5.80,17,6,'C-3','und',3.75,'G',16),
- P('7503005','Silicón Lubricante en Spray 400 ml','Genérico','Lubricantes y Fluidos','Grasas y lubricantes','Aerosoles y Sprays',4.30,19,6,'C-3','und',2.75,'G',16),
- P('7504001','Filtro de Aceite PH3600','Fram','Filtros y Mantenimiento','Filtros','Filtro de Aceite',4.80,35,10,'D-1','und',3.00,'G',16),
- P('7504002','Filtro de Aceite W 712/75','Mann','Filtros y Mantenimiento','Filtros','Filtro de Aceite',7.90,12,5,'D-1','und',5.10,'G',16),
- P('7504003','Filtro de Aire CA9482','Fram','Filtros y Mantenimiento','Filtros','Filtro de Aire',9.60,10,4,'D-2','und',6.20,'G',16),
- P('7504004','Filtro de Gasolina G3727','Fram','Filtros y Mantenimiento','Filtros','Filtro de Combustible',5.40,2,6,'D-2','und',3.45,'G',16),
- P('7504005','Filtro de Cabina Carbón Activado','Bosch','Filtros y Mantenimiento','Filtros','Filtro de Cabina',11.50,8,4,'D-3','und',7.45,'G',16),
- P('7505001','Pastillas Delanteras Cerámicas','Bendix','Frenos y Suspensión','Frenos','Pastillas de Freno',24.00,9,4,'E-1','jgo',15.60,'G',16),
- P('7505002','Pastillas Traseras Semimetálicas','Bendix','Frenos y Suspensión','Frenos','Pastillas de Freno',19.00,7,4,'E-1','jgo',12.30,'G',16),
- P('7505003','Líquido de Frenos DOT 4 500 ml','Bosch','Frenos y Suspensión','Frenos','Líquido de Frenos',5.10,28,10,'E-2','und',3.30,'G',16),
- P('7505004','Disco de Freno Delantero Ventilado (par)','Brembo','Frenos y Suspensión','Frenos','Discos de Freno',58.00,0,2,'E-3','par',38.00,'G',16),
- P('7506001','Bujía Iridium','NGK','Eléctrico y Encendido','Encendido y eléctrico','Bujías',8.50,40,16,'F-1','und',5.50,'G',16),
- P('7506002','Bujía Estándar BKR5E','NGK','Eléctrico y Encendido','Encendido y eléctrico','Bujías',2.80,96,24,'F-1','und',1.75,'G',16),
- P('7506003','Batería 12V 45 Ah','Duncan','Eléctrico y Encendido','Encendido y eléctrico','Baterías',68.00,6,3,'F-3','und',46.00,'G',16),
- P('7506004','Juego de Cables de Bujía','Bosch','Eléctrico y Encendido','Encendido y eléctrico','Cables de Encendido',22.00,5,3,'F-2','jgo',14.20,'G',16),
- P('7507001','Refrigerante 50/50 Galón','Prestone','Lubricantes y Fluidos','Refrigerante y aditivos','Refrigerantes y Agua',9.80,18,6,'G-1','gal',6.35,'G',16),
- P('7507002','Limpia Inyectores 355 ml','STP','Lubricantes y Fluidos','Refrigerante y aditivos','Aditivos Motor y Combustible',5.60,24,8,'G-2','und',3.60,'G',16),
- P('7507003','Tratamiento Anti-fuga de Aceite 443 ml','STP','Lubricantes y Fluidos','Refrigerante y aditivos','Aditivos Motor y Combustible',6.20,13,5,'G-2','und',4.00,'G',16),
- P('7507004','Agua Destilada Galón','Genérico','Lubricantes y Fluidos','Refrigerante y aditivos','Refrigerantes y Agua',1.80,30,10,'G-3','gal',1.10,'E',0),
- P('7508001','Correa Serpentina 6PK1750','Gates','Filtros y Mantenimiento','Correas y accesorios','Correas de Motor',17.50,8,4,'H-1','und',11.30,'G',16),
- P('7508002','Kit de Correa de Tiempo','Gates','Filtros y Mantenimiento','Correas y accesorios','Correas de Motor',46.00,4,2,'H-1','jgo',30.00,'G',16),
- P('7509001','Escobillas Limpiaparabrisas 22" (par)','Bosch','Accesorios y Taller','Correas y accesorios','Limpiaparabrisas',9.00,15,6,'J-1','par',5.80,'G',16),
- P('7509002','Embudo Plástico para Aceite','Genérico','Accesorios y Taller','Correas y accesorios','Herramientas y Envases',1.50,22,6,'J-2','und',0.90,'G',16),
- P('7509003','Bandeja Recolectora de Aceite 15 L','Genérico','Accesorios y Taller','Correas y accesorios','Herramientas y Envases',6.80,9,3,'J-2','und',4.30,'G',16)
-];
+
 
 const METHODS=[
  {id:'efUSD',name:'Efectivo US$',cur:'USD'},
@@ -236,255 +152,41 @@ function addKardex(ev){
     type:ev.type,       /* 'INICIAL' | 'COMPRA' | 'VENTA' | 'CONTEO' | 'AJUSTE' | 'ANULACIÓN' */
     dir:ev.dir,         /* 'IN' | 'OUT' */
     doc:ev.doc||'-',
+    cashbox:ev.cashbox||'',
     party:ev.party||'',
     qty:r2(ev.qty),
     stockAfter:r2(ev.stockAfter),
-    cost:r2(ev.cost),
+    cost:r8(ev.cost),
     user:ev.user||(S.cfg?S.cfg.cajero:'Sistema')
   });
 }
 
 function seed(){
-  const now=Date.now(), dayMs=86400000;
   S={
     cfg:{
-      empresa:'Autopartes El Pistón, C.A.',rif:'J-40123456-8',dir:'Av. Intercomunal, Local 12',cajero:'Mariela G.',caja:'01',rate:480,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
+      empresa:'',rif:'',dir:'',cajero:'',caja:'01',rate:0,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
       fiscalTipo:'FORMA_LIBRE',contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:75,provEspecial:'',
-      ctrlPrefix:'00-',ctrlNext:1043,ctrlRangoDesde:'00-00000001',ctrlRangoHasta:'00-00050000',
-      imprentaRif:'J-31009988-4',imprentaAut:'SENIAT/DAF/2022/981',serialFiscal:'Z4A7719204'
+      ctrlPrefix:'00-',ctrlNext:1,ctrlRangoDesde:'',ctrlRangoHasta:'',
+      imprentaRif:'',imprentaAut:'',serialFiscal:''
     },
-    products:SEED.map(p=>Object.assign({},p)),
-    clients:[
-      {name:'Consumidor final',rif:'V-00000000',tel:''},
-      {name:'Taller Mecánico Los Hermanos, C.A.',rif:'J-30123456-7',tel:'0414-555-0141'},
-      {name:'Transporte Orinoco, C.A.',rif:'J-29876543-1',tel:'0212-555-0198'},
-      {name:'José Gregorio Pérez',rif:'V-12345678',tel:''},
-      {name:'Moto Servicio Rápido',rif:'V-18765432',tel:'0424-555-0177'},
-      {name:'Lubricentro La Troncal, C.A.',rif:'J-40765432-0',tel:'0412-555-0123'}
-    ],
-    suppliers:[
-      {id:'PRV-01',name:'Distribuidora Nacional de Lubricantes, C.A.',rif:'J-30987654-2',tel:'0241-555-8810',cond:'30 días'},
-      {id:'PRV-02',name:'Importadora de Filtros y Frenos El Tuy, C.A.',rif:'J-40223344-5',tel:'0212-555-4321',cond:'15 días'},
-      {id:'PRV-03',name:'Baterías y Partes Eléctricas Oriente, C.A.',rif:'J-29112233-9',tel:'0281-555-9011',cond:'Contado'},
-      {id:'PRV-04',name:'Suministros Motopartes Venezuela, C.A.',rif:'J-41009988-1',tel:'0251-555-7730',cond:'15 días'}
-    ],
+    products:[],
+    clients:[{name:'Consumidor final',rif:'',tel:''}],
+    suppliers:[],
     sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],movimientosCaja:[],kardex:[],counts:[],
     lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],
-    invoice:1043,purchaseSeq:203,countSeq:102,
+    sicoven:{version:1,config:{},entries:[],errors:[],lastSyncAt:null},
+    invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
   };
   S.client=S.clients[0];
-
-  /* Calcular ventas semilla para reconstruir Kardex exacto */
-  const seedSalesSpec=[
-    [1038,8,12,0,[['7501001',1,0]],'pm'],
-    [1039,9,5,4,[['7510002',1,0],['7510003',1,0]],'usd'],
-    [1040,10,31,1,[['7501006',2,5],['7504002',2,5],['7505003',1,0]],'pv'],
-    [1041,12,48,2,[['7502002',6,0],['7503003',2,0]],'bio'],
-    [1042,16,20,0,[['7506001',4,0],['7507002',1,0]],'usd']
-  ];
-  const soldQty={};
-  seedSalesSpec.forEach(sp=>sp[4].forEach(it=>{soldQty[it[0]]=(soldQty[it[0]]||0)+it[1];}));
-  const purchSpec={
-    '7501001':24,'7501002':8,'7504001':20,'7504002':10,'7505001':6
-  };
-
-  /* 1. Kardex Saldo Inicial para cada producto */
-  S.products.forEach(p=>{
-    const sold=soldQty[p.code]||0;
-    const bought=purchSpec[p.code]||0;
-    const iniStock=Math.max(0,r2(p.stock+sold-bought));
-    addKardex({
-      ts:now-7*dayMs,
-      code:p.code,
-      type:'INICIAL',
-      dir:'IN',
-      doc:'INI-2026',
-      party:'Inventario inicial de apertura',
-      qty:iniStock,
-      stockAfter:iniStock,
-      cost:p.cost,
-      user:'Sistema'
-    });
-  });
-
-  /* 2. Compras de ejemplo + entradas Kardex + CxP */
-  const p1Ts=now-4*dayMs;
-  const p1Lines=[
-    {code:'7501001',desc:'Castrol GTX Aceite 20W-50 Mineral 1 L',qty:24,cost:3.35,sub:r2(24*3.35)},
-    {code:'7501002',desc:'Castrol GTX Aceite 20W-50 Mineral Galón 4 L',qty:8,cost:12.60,sub:r2(8*12.60)}
-  ];
-  p1Lines.forEach(l=>{
-    const p=prod(l.code),sold=soldQty[l.code]||0;
-    addKardex({ts:p1Ts,code:l.code,type:'COMPRA',dir:'IN',doc:'COM-00000201',party:S.suppliers[0].name+' (Fac. Prov. F-88412)',qty:l.qty,stockAfter:r2(p.stock+sold),cost:l.cost,user:'Mariela G.'});
-  });
-  const p1Base=r2(p1Lines.reduce((a,x)=>a+x.sub,0)),p1Iva=r2(p1Base*IVA),p1Tot=r2(p1Base+p1Iva);
-  S.purchases.push({
-    no:201,docProv:'F-88412',ts:p1Ts,dueTs:p1Ts+15*dayMs,
-    supplier:Object.assign({},S.suppliers[0]),
-    cond:'Crédito',lines:p1Lines,base:p1Base,iva:p1Iva,total:p1Tot,rate:475,paid:80.00,void:false
-  });
-  S.cxp.push({
-    id:'CXP-0001',purchaseNo:201,doc:'F-88412 (COM-00000201)',
-    supplier:Object.assign({},S.suppliers[0]),
-    concept:'Compra de lubricantes Castrol GTX',
-    ts:p1Ts,dueTs:now+11*dayMs,total:p1Tot,paid:80.00,
-    payments:[{ts:now-2*dayMs,method:'Transferencia Bs.',cur:'VES',amountBs:r2(80*475),amountUsd:80.00,ref:'TRF-992104',note:'Abono inicial factura F-88412'}]
-  });
-
-  const p2Ts=now-2*dayMs;
-  const p2Lines=[
-    {code:'7504001',desc:'Fram Filtro de Aceite PH3600',qty:20,cost:3.00,sub:60.00},
-    {code:'7504002',desc:'Mann Filtro de Aceite W 712/75',qty:10,cost:5.10,sub:51.00},
-    {code:'7505001',desc:'Bendix Pastillas Delanteras Cerámicas',qty:6,cost:15.60,sub:93.60}
-  ];
-  p2Lines.forEach(l=>{
-    const p=prod(l.code),sold=soldQty[l.code]||0;
-    addKardex({ts:p2Ts,code:l.code,type:'COMPRA',dir:'IN',doc:'COM-00000202',party:S.suppliers[1].name+' (Fac. Prov. B-10492)',qty:l.qty,stockAfter:r2(p.stock+sold),cost:l.cost,user:'Mariela G.'});
-  });
-  const p2Base=r2(p2Lines.reduce((a,x)=>a+x.sub,0)),p2Iva=r2(p2Base*IVA),p2Tot=r2(p2Base+p2Iva);
-  S.purchases.push({
-    no:202,docProv:'B-10492',ts:p2Ts,dueTs:now-1*dayMs,
-    supplier:Object.assign({},S.suppliers[1]),
-    cond:'Crédito',lines:p2Lines,base:p2Base,iva:p2Iva,total:p2Tot,rate:478,paid:0,void:false
-  });
-  S.cxp.push({
-    id:'CXP-0002',purchaseNo:202,doc:'B-10492 (COM-00000202)',
-    supplier:Object.assign({},S.suppliers[1]),
-    concept:'Lote de filtros Fram/Mann y pastillas Bendix',
-    ts:p2Ts,dueTs:now-1*dayMs,total:p2Tot,paid:0,payments:[]
-  });
-
-  /* 3. Ventas de ejemplo + salidas Kardex */
-  const mk=(no,hh,mm,ci,items,how)=>{
-    const d=new Date();d.setHours(hh,mm,0,0);
-    const lines=items.map(it=>{
-      const p=prod(it[0]),ds=it[2]||0,gross=r2(p.price*it[1]);
-      addKardex({ts:d.getTime(),code:p.code,type:'VENTA',dir:'OUT',doc:'FAC-'+pad(no),party:S.clients[ci].name,qty:it[1],stockAfter:p.stock,cost:p.cost,user:'Mariela G.'});
-      return{code:p.code,desc:p.brand+' '+p.desc,qty:it[1],price:p.price,disc:ds,net:r2(gross*(1-ds/100))};
-    });
-    const sub=r2(lines.reduce((a,l)=>a+r2(l.price*l.qty),0)),base=r2(lines.reduce((a,l)=>a+l.net,0));
-    const iva=r2(base*IVA),total=r2(base+iva),rate=S.cfg.rate;
-    let igtf=0,pays;
-    if(how==='usd'){igtf=r2(total*IGTF);pays=[{id:'efUSD',name:'Efectivo US$',cur:'USD',amount:r2(total+igtf)}];}
-    else if(how==='pv')pays=[{id:'punto',name:'Punto de venta (débito / crédito)',cur:'VES',amount:r2(total*rate)}];
-    else if(how==='bio')pays=[{id:'biopago',name:'Biopago',cur:'VES',amount:r2(total*rate)}];
-    else pays=[{id:'pmovil',name:'Pago móvil',cur:'VES',amount:r2(total*rate)}];
-    const ctrlNo=(S.cfg.ctrlPrefix||'00-')+pad(no,8);
-    S.sales.push({no,ctrlNo,docType:'01-FACTURA',transType:'01-REG',ts:d.getTime(),client:Object.assign({},S.clients[ci]),lines,sub,disc:r2(sub-base),base,baseG16:base,baseR8:0,baseA31:0,baseEx:0,iva,total,igtf,rate,pays,change:0,void:false});
-  };
-  seedSalesSpec.forEach(sp=>mk.apply(null,sp));
-
-  /* 4. Cuentas por Cobrar (CxC) de ejemplo */
-  S.cxc=[
-    {
-      id:'CXC-0001',saleNo:1031,doc:'FAC-00001031',
-      client:Object.assign({},S.clients[1]),
-      concept:'Suministro de aceites y filtros flota taller',
-      ts:now-12*dayMs,dueTs:now-2*dayMs,
-      total:145.00,paid:50.00,
-      payments:[{ts:now-6*dayMs,method:'Pago móvil',cur:'VES',amountBs:r2(50*472),amountUsd:50.00,ref:'PM-441822',note:'Abono parcial cuenta taller'}]
-    },
-    {
-      id:'CXC-0002',saleNo:1035,doc:'FAC-00001035',
-      client:Object.assign({},S.clients[2]),
-      concept:'6 Galones Diésel 15W-40 + Filtros pesados',
-      ts:now-5*dayMs,dueTs:now+10*dayMs,
-      total:218.40,paid:0,
-      payments:[]
-    },
-    {
-      id:'CXC-0003',saleNo:1036,doc:'FAC-00001036',
-      client:Object.assign({},S.clients[5]),
-      concept:'Caja Aceite 20W-50 y grasas de chasis',
-      ts:now-8*dayMs,dueTs:now+7*dayMs,
-      total:112.00,paid:112.00,
-      payments:[{ts:now-1*dayMs,method:'Zelle',cur:'USD',amountBs:r2(112*480),amountUsd:112.00,ref:'ZELLE-88301',note:'Cancelación total factura'}]
-    }
-  ];
-
-  /* 5. Historial de conteo de ejemplo */
-  S.counts=[
-    {
-      id:'CNT-00000101',ts:now-3*dayMs,user:'Mariela G.',
-      items:[{code:'7504004',desc:'Filtro de Gasolina G3727',prev:3,next:2,diff:-1,cost:3.45,reason:'Producto dañado o averiado'}]
-    }
-  ];
-
-  /* 6. Conciliación de lotes bancarios SUDEBAN */
-  S.lotesSudeban=[
-    {
-      id:'LOT-000142',banco:'Banco de Venezuela (BDV)',tid:'BDV-POS-0892',ts:now-4*3600000,
-      tipo:'Biopago / Débito',totalBs:28450.00,comisionBs:426.75,netoBs:28023.25,ops:14,estado:'CONCILIADO',refLote:'LT-881290'
-    },
-    {
-      id:'LOT-000143',banco:'Banesco Banco Universal',tid:'BAN-POS-3310',ts:now-2*3600000,
-      tipo:'Punto de Venta (Débito/Crédito)',totalBs:19200.00,comisionBs:384.00,netoBs:18816.00,ops:9,estado:'CONCILIADO',refLote:'LT-441208'
-    }
-  ];
-
-  /* 7. Comprobantes de Retención de IVA (SENIAT Sujeto Pasivo Especial) */
-  S.retencionesIva=[
-    {
-      id:'20261000000041',ts:p1Ts+3600000,purchaseNo:201,docProv:'F-88412',ctrlProv:'00-00088192',
-      supplier:Object.assign({},S.suppliers[0]),
-      base:p1Base,iva:p1Iva,pct:75,retainedBs:r2(p1Iva*0.75*475),retainedUsd:r2(p1Iva*0.75),rate:475,periodo:'202610'
-    },
-    {
-      id:'20261000000042',ts:p2Ts+3600000,purchaseNo:202,docProv:'B-10492',ctrlProv:'00-00010492',
-      supplier:Object.assign({},S.suppliers[1]),
-      base:p2Base,iva:p2Iva,pct:75,retainedBs:r2(p2Iva*0.75*478),retainedUsd:r2(p2Iva*0.75),rate:478,periodo:'202610'
-    }
-  ];
-
-  /* 8. Registro y trazabilidad de Operaciones Cambiarias (Compra USD Efectivo y Zelle) */
-  S.cambiosDivisas=[
-    {
-      id:'CAMB-0001',tipo:'ZELLE_PROV',ts:now-2*dayMs,
-      vendedor:{nombre:'Carlos Eduardo Méndez',ci:'V-15.892.411',tel:'0414-234.56.78'},
-      montoUsd:80.00,tasa:475.00,tasaBcv:475.00,montoBs:38000.00,
-      medioBs:'Pago Móvil BDV',bancoOrigen:'Banco de Venezuela (BDV)',bancoDestino:'Banesco',refBs:'PM-88912304',
-      destinoTipo:'PROV',destinoNombre:S.suppliers[0].name,
-      destinatarioZelle:'pagos@distribuidoranolub.com',titularZelle:'Distribuidora Nacional Lubricantes LLC',
-      confZelle:'CONF-ZEL-994821',cxpId:'CXP-0001',cxpDoc:'F-88412 (COM-00000201)',
-      notas:'Compra de Zelle a persona natural para abonar factura de lubricantes Castrol GTX'
-    },
-    {
-      id:'CAMB-0002',tipo:'USD_EFECTIVO',ts:now-1*dayMs,
-      vendedor:{nombre:'María Alejandra Rivas',ci:'V-18.441.209',tel:'0424-911.22.33'},
-      montoUsd:150.00,tasa:480.00,tasaBcv:480.00,montoBs:72000.00,
-      medioBs:'Transferencia Bancaria',bancoOrigen:'Banesco Banco Universal',bancoDestino:'Banco Mercantil',refBs:'TRF-4410928',
-      destinoTipo:'CAJA',destinoNombre:'Caja Principal de Divisas (Caja 01)',
-      seriales:'MB-49102831A (1x100), LF-22910488B (1x50)',
-      notas:'Compra de USD billetes físicos a persona natural para fondo de caja y vuelto en divisas'
-    }
-  ];
-
-  S.client=S.clients[1];
-  /* Asociar proveedores de ejemplo a los primeros productos */
-  if(S.products[0]){
-    S.products[0].assocSuppliers=[
-      {supId:'PRV-01',rif:S.suppliers[0].rif,name:S.suppliers[0].name,barcode:'7501001-CAS',cost:3.35,leadDays:3,minOrder:12,notes:'Distribuidor oficial Castrol'}
-    ];
-  }
-  if(S.products[22]){
-    S.products[22].assocSuppliers=[
-      {supId:'PRV-02',rif:S.suppliers[1].rif,name:S.suppliers[1].name,barcode:'FRM-PH3600',cost:3.00,leadDays:2,minOrder:24,notes:'Precio especial por caja de 24'}
-    ];
-  }
-  /* CASHEA inicia sin operaciones ficticias; se registran solo cobros confirmados. */
-  S.casheaMovimientos=[];
-
-  S.cart=[{code:'7501001',qty:4,disc:5},{code:'7504001',qty:1,disc:0},{code:'7507004',qty:2,disc:0},{code:'7501009',qty:2.5,disc:0}];
-  S.sel=0;
 }
-
 function stateSnapshot(){
   return {
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
-    sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],
+    sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,cambiosDivisas:S.cambiosDivisas,
     casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],
+    sicoven:S.sicoven||null,
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
   };
 }
@@ -497,9 +199,9 @@ function persistenceError(err){
 /* ---------- Motor de Base de Datos Local SQLite (100% Offline) ---------- */
 let sqliteDb = null;
 let sqliteSqlInstance = null;
-const SQLITE_IDB_NAME = 'elpiston_sqlite_db';
+const SQLITE_IDB_NAME = 'sifer360_licoreria_sqlite_db';
 const SQLITE_IDB_STORE = 'files';
-const SQLITE_IDB_KEY = 'elpiston.sqlite';
+const SQLITE_IDB_KEY = 'sifer360-licoreria.sqlite';
 
 function openIndexedDb() {
   return new Promise(resolve => {
@@ -839,6 +541,12 @@ function mergeRemoteSnapshot(local,remote){
   if(!remote||typeof remote!=='object')return false;
   const merged={...local};
   for(const [key,value] of Object.entries(remote)){
+    if(key==='sicoven'&&value&&typeof value==='object'&&local[key]&&typeof local[key]==='object'){
+      const base=local[key],incoming=value;
+      const mergeBy=(a,b,keyName)=>{const map=new Map();for(const item of [...(Array.isArray(a)?a:[]),...(Array.isArray(b)?b:[])]){const id=item&&item[keyName];if(id===undefined||id===null)continue;map.set(String(id),item);}return [...map.values()];};
+      merged[key]={...base,...incoming,config:{...(base.config||{}),...(incoming.config||{})},entries:mergeBy(base.entries,incoming.entries,'id'),errors:mergeBy(base.errors,incoming.errors,'key'),balanceReports:mergeBy(base.balanceReports,incoming.balanceReports,'id'),bankMovements:mergeBy(base.bankMovements,incoming.bankMovements,'id'),islrVouchers:mergeBy(base.islrVouchers,incoming.islrVouchers,'id')};
+      continue;
+    }
     if(!Array.isArray(value)||!Array.isArray(local[key])){merged[key]=value;continue;}
     const map=new Map();
     const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','cxc','cortesZ','openings','movements','returns','voids'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
@@ -859,7 +567,7 @@ async function networkSyncAttempt(){
     if(result&&result.ok&&result.state){
       const changed=mergeRemoteSnapshot(local,result.state);
       networkLastStatus=result.role||'connected';
-      if(changed)await posSqliteDriver.saveState(stateSnapshot());
+      if(changed){if(window.SIFERSicoven&&S)try{window.SIFERSicoven.syncFromPOS(S);}catch(e){console.error('[Sicoven] Error al contabilizar cambios recibidos:',e);}await posSqliteDriver.saveState(stateSnapshot());}
       const status=$('#sbMsg');if(status)status.textContent=networkLastStatus==='server'?'Servidor LAN · sincronizado':networkLastStatus==='client'?'Cliente LAN · sincronizado':'Modo local';
     }else networkLastStatus='local';
   }catch(error){
@@ -873,10 +581,12 @@ function scheduleNetworkSync(){
   networkSyncTimer=setTimeout(()=>{networkSyncAttempt();},1800);
 }
 function save(){
+  if(window.SIFERSicoven&&S)try{window.SIFERSicoven.syncFromPOS(S);}catch(e){console.error('[Sicoven] No se pudo sincronizar contabilidad:',e);}
   const state=stateSnapshot();
   posSqliteDriver.saveState(state).catch(e=>persistenceError(e));
   captureNewOperations();
   scheduleNetworkSync();
+  try{window.dispatchEvent(new Event('sifer:state-saved'));}catch(e){}
 }
 setInterval(()=>{if(window.posDesktop&&typeof window.posDesktop.networkSyncNow==='function')networkSyncAttempt()},20000);
 
@@ -887,14 +597,16 @@ function load(){
     if(!d||d.v!==1||!Array.isArray(d.products)||!d.cfg)return false;
     const seedMap={};SEED.forEach(sp=>{seedMap[sp.code]=sp;});
     S.cfg=Object.assign(S.cfg,d.cfg);
+    if(d.sicoven&&typeof d.sicoven==='object')S.sicoven=d.sicoven;
     S.cortesZ=Array.isArray(d.cortesZ)?d.cortesZ:[];
+    S.movimientosCaja=Array.isArray(d.movimientosCaja)?d.movimientosCaja:[];
     const legacyCaja=String(S.cfg.caja||'01');
     (S.sales||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;if(!x.cashier)x.cashier=x.user||S.cfg.cajero||'Cajero';});
     (S.cxc||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;});
     /* Enriquecer productos guardados con SKU, U.M., motores de venta, presentaciones, impuestos, proveedores y kits */
     S.products=d.products.map((p,idx)=>{
       const sp=seedMap[p.code]||{};
-      const dept=p.dept||sp.dept||'Lubricantes y Fluidos';
+      const dept=p.dept||sp.dept||'Bebidas alcohólicas';
       const cat=p.cat||sp.cat||'Correas y accesorios';
       const subcat=p.subcat||sp.subcat||'General';
       const cost=p.cost||sp.cost||r2((p.price||1)*0.64);
@@ -913,9 +625,9 @@ function load(){
           mode:'auto',markupCost:mkCost,markupSale:mkSale,
           gaps:[
             {name:'Detal / Mostrador',gapPct:0,markupCost:mkCost,price:price},
-            {name:'Taller / Mecánico',gapPct:6,markupCost:r2(((price*0.94-cost)/cost)*100),price:r2(price*0.94)},
+            {name:'Bar / Restaurante',gapPct:6,markupCost:r2(((price*0.94-cost)/cost)*100),price:r2(price*0.94)},
             {name:'Mayorista (≥ 6 und)',gapPct:12,markupCost:r2(((price*0.88-cost)/cost)*100),price:r2(price*0.88)},
-            {name:'Distribuidor / Flota',gapPct:18,markupCost:r2(((price*0.82-cost)/cost)*100),price:r2(price*0.82)}
+            {name:'Distribuidor',gapPct:18,markupCost:r2(((price*0.82-cost)/cost)*100),price:r2(price*0.82)}
           ]
         },
         presentations:sp.presentations||[
@@ -1607,7 +1319,7 @@ function labelGeneratorDlg(initialCode){
       '<div class="f" style="grid-column:span 2"><label for="lbProd">Producto</label><select class="fld" id="lbProd"></select></div>'+
       '<div class="f"><label for="lbFmt">Formato de diseño</label><select class="fld" id="lbFmt"><option value="hablador">Hablador de mostrador / estante</option><option value="etiqueta">Etiqueta adhesiva de SKU</option></select></div>'+
       '<div class="f"><label for="lbCopies">Copias en vista</label><select class="fld" id="lbCopies"><option value="1">1 unidad</option><option value="2" selected>2 unidades</option><option value="4">4 unidades</option><option value="6">6 unidades</option></select></div>'+
-      '<div class="f"><label for="lbTier">Escala de precio US$</label><select class="fld" id="lbTier"><option value="0">Detal / Mostrador</option><option value="1">Taller / Mecánico</option><option value="2">Mayorista</option><option value="3">Distribuidor</option></select></div>'+
+      '<div class="f"><label for="lbTier">Escala de precio US$</label><select class="fld" id="lbTier"><option value="0">Detal / Mostrador</option><option value="1">Bar / Restaurante</option><option value="2">Mayorista</option><option value="3">Distribuidor</option></select></div>'+
       '<div class="f"><label>Opciones de precio (Solo US$)</label>'+
         '<div class="row" style="margin-top:3px"><label class="chk"><input type="checkbox" id="lbShowP" checked> Mostrar precio US$</label><label class="chk"><input type="checkbox" id="lbIva"> Con IVA</label></div>'+
       '</div>'+
@@ -1680,1727 +1392,8 @@ function labelGeneratorDlg(initialCode){
   });
 }
 
-/* ==========================================================================
-   CATÁLOGO MAESTRO AUTOMOTRIZ (+2.500.000 REPUESTOS Y LUBRICANTES INDEXADOS)
-   Incluye aceites/lubricantes nacionales (PDV, Venoco, Inca) e importados en todas sus presentaciones,
-   familias de repuestos con códigos OEM exclusivamente verificados (sin inventar códigos OEM).
-   ========================================================================== */
-
-const VERIFIED_OEM_MAP = {
-  // Toyota Genuine Parts
-  'filtro-aceite-corolla-1.8': '04152-YZZA6',
-  'filtro-aceite-hilux-4runner': '90915-YZZD3',
-  'filtro-aceite-yaris': '90915-YZZD1',
-  'filtro-aire-corolla': '17801-22020',
-  'filtro-aire-hilux': '17801-0C010',
-  'filtro-gasoil-hilux': '23390-0L041',
-  'pastillas-corolla-03-08': '04465-02061',
-  'pastillas-corolla-09-14': '04465-02220',
-  'pastillas-hilux-fortuner': '04465-0K090',
-  'discos-freno-corolla': '43512-02110',
-  'bujia-ngk-corolla': '90919-01164',
-  'bujia-iridium-corolla': '90919-01210',
-  'bobina-corolla-1.8': '90919-02239',
-  'munon-corolla': '43330-19115',
-  'terminal-corolla': '45046-19175',
-  'amortiguador-corolla': '48510-09L40',
-  'bieleta-corolla': '48820-47010',
-  'correa-unica-corolla': '90916-02556',
-  'bomba-agua-corolla': '16100-29157',
-  'kit-embrague-corolla': '31250-12391',
-  'rodamiento-corolla': '90369-38022',
-
-  // Chevrolet / GM Genuine Parts
-  'filtro-aceite-aveo': '93745067',
-  'filtro-aire-aveo': '96536696',
-  'filtro-gasolina-aveo': '96335719',
-  'filtro-aceite-optra': '93185674',
-  'filtro-aceite-corsa': '93156300',
-  'filtro-aceite-silverado': '89017524',
-  'pastillas-aveo': '96534653',
-  'pastillas-optra': '96405131',
-  'pastillas-silverado': '19256950',
-  'discos-freno-aveo': '96574633',
-  'bobina-aveo': '96253555',
-  'cables-bujia-aveo': '96497773',
-  'cables-bujia-corsa': '93236353',
-  'munon-aveo': '96535081',
-  'terminal-aveo': '96535224',
-  'amortiguador-aveo': '96586885',
-  'bieleta-aveo': '96391875',
-  'correa-dist-aveo': '96814098',
-  'tensor-dist-aveo': '96350550',
-  'bomba-agua-aveo': '96352650',
-  'kit-embrague-aveo': '96349976',
-  'rodamiento-aveo': '96285565',
-  'envase-aveo': '96420303',
-  'termostato-aveo': '96407677',
-
-  // Ford Motorcraft Genuine Parts
-  'filtro-aceite-fiesta': 'BE8Z-6731-AB',
-  'filtro-aire-fiesta': '2S61-9601-CA',
-  'filtro-aceite-explorer': 'FL-820-S',
-  'pastillas-fiesta': '2S6J-2K021-AA',
-  'pastillas-explorer': '7L2Z-2001-A',
-  'bobina-fiesta': '1S7G-12029-AC',
-  'cables-bujia-fiesta': '2S6G-12280-AB',
-  'termostato-fiesta': '2S65-8A520-AA',
-  'bomba-agua-fiesta': '2S6G-8501-AA',
-  'amortiguador-fiesta': '2S61-18045-AB',
-  'munon-fiesta': '2S61-3395-AB',
-  'correa-unica-fiesta': '2S6G-6C301-BA',
-
-  // Hyundai & Kia Genuine Parts
-  'filtro-aceite-getz': '26300-35503',
-  'filtro-aire-getz': '28113-1C000',
-  'filtro-gasolina-getz': '31911-1C000',
-  'pastillas-getz': '58101-1CA00',
-  'bujia-getz': '18814-11051',
-  'bobina-getz': '27301-26640',
-  'amortiguador-getz': '54650-1C000',
-  'munon-getz': '51760-25000',
-  'correa-dist-getz': '24312-26050',
-
-  // Nissan Genuine Parts
-  'filtro-aceite-tiida': '15208-65F0A',
-  'filtro-aire-tiida': '16546-ED000',
-  'pastillas-tiida': 'D1060-EE50A',
-  'bujia-tiida': '22401-ED815',
-  'bobina-tiida': '22448-ED000',
-  'amortiguador-tiida': 'E4302-EE50A',
-
-  // Chery Genuine Parts
-  'filtro-aceite-arauca': '481H-1012010',
-  'filtro-aire-arauca': 'S11-1109111',
-  'pastillas-arauca': 'S11-3501080',
-  'pastillas-orinoco': 'A11-3501080BA',
-  'bujia-arauca': 'F4J16-3707010',
-  'bobina-orinoco': 'A11-3705110EA',
-  'correa-dist-orinoco': '481H-1007073',
-
-  // Mitsubishi Genuine Parts
-  'filtro-aceite-lancer': 'MD360935',
-  'pastillas-lancer-touring': 'MR389546',
-  'pastillas-montero-dakar': 'MR389549',
-  'bujia-lancer': 'MD362098',
-  'bobina-lancer': 'MD361710',
-  'amortiguador-lancer': 'MR554462',
-
-  // Jeep / Mopar Genuine Parts
-  'filtro-aceite-grand-cherokee': '04884899AC',
-  'pastillas-grand-cherokee': '05080871AA',
-  'bujia-grand-cherokee': 'SPLZTR5A13',
-  'amortiguador-grand-cherokee': '05135558AA'
-};
-
-const LUBRICANT_PRES_CONFIG = {
-  litro: (code, bc) => [
-    { name: 'Pote / Litro individual (946 mL / 1 L)', unit: 'L', factor: 1, barcode: bc || code, price: 0 },
-    { name: 'Caja x 12 Litros', unit: 'caja', factor: 12, barcode: (bc || code) + 'C12', price: 0 },
-    { name: 'Galón (3.785 L / 4 L)', unit: 'gal', factor: 3.785, barcode: (bc || code) + 'GL', price: 0 },
-    { name: 'Paila / Cuñete 19 L (5 Gal)', unit: 'paila', factor: 19, barcode: (bc || code) + 'P19', price: 0 },
-    { name: 'Tambor 208 L (55 Gal)', unit: 'tambor', factor: 208, barcode: (bc || code) + 'T208', price: 0 }
-  ],
-  galon: (code, bc) => [
-    { name: 'Galón (3.785 L / 4 L)', unit: 'gal', factor: 1, barcode: bc || code, price: 0 },
-    { name: 'Caja x 3 Galones', unit: 'caja', factor: 3, barcode: (bc || code) + 'C3', price: 0 },
-    { name: 'Paila 19 L (5 Gal)', unit: 'paila', factor: 5, barcode: (bc || code) + 'P19', price: 0 },
-    { name: 'Tambor 208 L (55 Gal)', unit: 'tambor', factor: 55, barcode: (bc || code) + 'T208', price: 0 }
-  ],
-  paila: (code, bc) => [
-    { name: 'Paila / Cuñete 19 L (5 Gal)', unit: 'paila', factor: 1, barcode: bc || code, price: 0 },
-    { name: 'Tambor 208 L (55 Gal)', unit: 'tambor', factor: 11, barcode: (bc || code) + 'T208', price: 0 }
-  ],
-  grasa: (code, bc) => [
-    { name: 'Pote 400g / 500g', unit: 'und', factor: 1, barcode: bc || code, price: 0 },
-    { name: 'Tubo / Cartucho 400g', unit: 'und', factor: 1, barcode: (bc || code) + 'TB', price: 0 },
-    { name: 'Paila 16 kg (Grasa)', unit: 'paila', factor: 32, barcode: (bc || code) + 'P16', price: 0 },
-    { name: 'Tambor 180 kg', unit: 'tambor', factor: 360, barcode: (bc || code) + 'T180', price: 0 }
-  ]
-};
-
-/* Base de productos maestros de alta rotación en Venezuela (Lubricantes y Repuestos) */
-const MASTER_CURATED_CATALOG = [
-  // --- PDV (Petróleos de Venezuela) ---
-  {
-    code: '7591001001',
-    desc: 'Aceite de Motor PDV Extra Multigrado 20W-50 Mineral 1 L (Pote 946 mL)',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Mineral',
-    unit: 'L',
-    oem: '', // Sin OEM verificado (en blanco)
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7591001001')
-  },
-  {
-    code: '7591001002',
-    desc: 'Aceite de Motor PDV Extra Multigrado 20W-50 Mineral Galón 3,785 L',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Mineral',
-    unit: 'gal',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.galon('7591001002')
-  },
-  {
-    code: '7591001003',
-    desc: 'Aceite de Motor PDV Extra Multigrado 20W-50 Paila 19 L (5 Gal)',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Mineral',
-    unit: 'paila',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.paila('7591001003')
-  },
-  {
-    code: '7591001004',
-    desc: 'Aceite de Motor PDV Extra Multigrado 15W-40 Semisintético 1 L',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Semisintético',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7591001004')
-  },
-  {
-    code: '7591001005',
-    desc: 'Aceite de Motor PDV Ultra Diésel 15W-40 CI-4/SL 1 L',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Diésel Pesado',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7591001005')
-  },
-  {
-    code: '7591001006',
-    desc: 'Aceite de Motor PDV Ultra Diésel 15W-40 Paila 19 L (5 Gal)',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Diésel Pesado',
-    unit: 'paila',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.paila('7591001006')
-  },
-  {
-    code: '7591001007',
-    desc: 'Aceite de Motor PDV Maxidiesel 50 Monogrado 1 L',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Diésel Pesado',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7591001007')
-  },
-  {
-    code: '7591001008',
-    desc: 'Aceite Transmisión PDV EP-90 Valvulina 1 L',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Transmisión y diferencial',
-    subcat: 'Valvulina y Engranajes',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7591001008')
-  },
-  {
-    code: '7591001009',
-    desc: 'Aceite Transmisión PDV EP-140 Valvulina 1 L',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Transmisión y diferencial',
-    subcat: 'Valvulina y Engranajes',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7591001009')
-  },
-  {
-    code: '7591001010',
-    desc: 'Aceite Transmisión Automática PDV ATF Dexron III 1 L',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Transmisión y diferencial',
-    subcat: 'Caja Automática (ATF)',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7591001010')
-  },
-  {
-    code: '7591001011',
-    desc: 'Aceite 2T Marino PDV Fuera de Borda TC-W3 1 L',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: '2 Tiempos Marino',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7591001011')
-  },
-  {
-    code: '7591001012',
-    desc: 'Aceite 2T Moto PDV Enfriado por Aire 1 L',
-    brand: 'PDV',
-    dept: 'Motocicletas',
-    cat: 'Moto',
-    subcat: 'Aceite 2T',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7591001012')
-  },
-  {
-    code: '7591001013',
-    desc: 'Aceite Hidráulico PDV Hidralub ISO 68 Paila 19 L (5 Gal)',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Grasas y lubricantes',
-    subcat: 'Aceite Hidráulico',
-    unit: 'paila',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.paila('7591001013')
-  },
-  {
-    code: '7591001014',
-    desc: 'Grasa PDV Chasis MP-2 / Rulemanes EP-2 Pote 500 g',
-    brand: 'PDV',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Grasas y lubricantes',
-    subcat: 'Grasas Litio y Chasis',
-    unit: 'und',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.grasa('7591001014')
-  },
-
-  // --- VENOCO ---
-  {
-    code: '7592001001',
-    desc: 'Aceite de Motor Venoco Expert 20W-50 SL/CF Mineral 1 L (Pote 946 mL)',
-    brand: 'Venoco',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Mineral',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7592001001')
-  },
-  {
-    code: '7592001002',
-    desc: 'Aceite de Motor Venoco Expert 20W-50 SL Galón 3,785 L',
-    brand: 'Venoco',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Mineral',
-    unit: 'gal',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.galon('7592001002')
-  },
-  {
-    code: '7592001003',
-    desc: 'Aceite de Motor Venoco Lubri-Ven 15W-40 CI-4 Diésel/Gasolina 1 L',
-    brand: 'Venoco',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Diésel Pesado',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7592001003')
-  },
-  {
-    code: '7592001004',
-    desc: 'Aceite de Motor Venoco Sintético 5W-30 SN/CF 1 L',
-    brand: 'Venoco',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Sintético',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7592001004')
-  },
-  {
-    code: '7592001005',
-    desc: 'Valvulina Venoco 80W-90 GL-5 Engranajes 1 L',
-    brand: 'Venoco',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Transmisión y diferencial',
-    subcat: 'Valvulina y Engranajes',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7592001005')
-  },
-  {
-    code: '7592001006',
-    desc: 'Valvulina Venoco 85W-140 GL-5 Engranajes 1 L',
-    brand: 'Venoco',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Transmisión y diferencial',
-    subcat: 'Valvulina y Engranajes',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7592001006')
-  },
-  {
-    code: '7592001007',
-    desc: 'Aceite Transmisión Automática Venoco ATF Dexron III 1 L',
-    brand: 'Venoco',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Transmisión y diferencial',
-    subcat: 'Caja Automática (ATF)',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7592001007')
-  },
-  {
-    code: '7592001008',
-    desc: 'Aceite 2T Marino Venoco Outboard TC-W3 1 L',
-    brand: 'Venoco',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: '2 Tiempos Marino',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7592001008')
-  },
-  {
-    code: '7592001009',
-    desc: 'Grasa Azul de Litio Venoco EP Complejo Pote 400 g',
-    brand: 'Venoco',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Grasas y lubricantes',
-    subcat: 'Grasas Litio y Chasis',
-    unit: 'und',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.grasa('7592001009')
-  },
-
-  // --- INCA ---
-  {
-    code: '7593001001',
-    desc: 'Aceite de Motor Inca Super Multigrado 20W-50 SL Mineral 1 L',
-    brand: 'Inca',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Mineral',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7593001001')
-  },
-  {
-    code: '7593001002',
-    desc: 'Aceite de Motor Inca Super Multigrado 20W-50 Galón 3,785 L',
-    brand: 'Inca',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Mineral',
-    unit: 'gal',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.galon('7593001002')
-  },
-  {
-    code: '7593001003',
-    desc: 'Aceite de Motor Inca Diesel 15W-40 CI-4 1 L',
-    brand: 'Inca',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Diésel Pesado',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7593001003')
-  },
-  {
-    code: '7593001004',
-    desc: 'Valvulina Inca Gear 85W-140 GL-5 1 L',
-    brand: 'Inca',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Transmisión y diferencial',
-    subcat: 'Valvulina y Engranajes',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7593001004')
-  },
-  {
-    code: '7593001005',
-    desc: 'Aceite 2T Marino Inca TC-W3 1 L',
-    brand: 'Inca',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: '2 Tiempos Marino',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7593001005')
-  },
-
-  // --- SHELL VENEZUELA ---
-  {
-    code: '7594001001',
-    desc: 'Aceite de Motor Shell Helix HX5 15W-40 Mineral 1 L',
-    brand: 'Shell',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Mineral',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7594001001')
-  },
-  {
-    code: '7594001002',
-    desc: 'Aceite de Motor Shell Helix HX7 10W-40 Semisintético 1 L',
-    brand: 'Shell',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Semisintético',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7594001002')
-  },
-  {
-    code: '7594001003',
-    desc: 'Aceite de Motor Shell Helix Ultra 5W-30 Sintético PurePlus 1 L',
-    brand: 'Shell',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Sintético',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7594001003')
-  },
-  {
-    code: '7594001004',
-    desc: 'Aceite Diésel Shell Rimula R4 X 15W-40 CI-4 1 L',
-    brand: 'Shell',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Diésel Pesado',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7594001004')
-  },
-  {
-    code: '7594001005',
-    desc: 'Valvulina Shell Spirax S2 A 80W-90 GL-5 1 L',
-    brand: 'Shell',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Transmisión y diferencial',
-    subcat: 'Valvulina y Engranajes',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7594001005')
-  },
-
-  // --- CASTROL ---
-  {
-    code: '7595001001',
-    desc: 'Aceite de Motor Castrol GTX 20W-50 Mineral 1 L (Pote 946 mL)',
-    brand: 'Castrol',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Mineral',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7595001001')
-  },
-  {
-    code: '7595001002',
-    desc: 'Aceite de Motor Castrol GTX Ultraclean 10W-40 Semisintético 1 L',
-    brand: 'Castrol',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Semisintético',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7595001002')
-  },
-  {
-    code: '7595001003',
-    desc: 'Aceite de Motor Castrol Magnatec 5W-30 Stop-Start 1 L',
-    brand: 'Castrol',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Sintético',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7595001003')
-  },
-  {
-    code: '7595001004',
-    desc: 'Aceite Moto Castrol Actevo 4T 20W-50 Mineral 1 L',
-    brand: 'Castrol',
-    dept: 'Motocicletas',
-    cat: 'Moto',
-    subcat: 'Aceite 4T',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7595001004')
-  },
-
-  // --- MOBIL ---
-  {
-    code: '7596001001',
-    desc: 'Aceite de Motor Mobil Super 20W-50 Mineral 1 L (Pote 946 mL)',
-    brand: 'Mobil',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Mineral',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7596001001')
-  },
-  {
-    code: '7596001002',
-    desc: 'Aceite de Motor Mobil 1 5W-30 Advanced Full Synthetic 1 L',
-    brand: 'Mobil',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Sintético',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7596001002')
-  },
-  {
-    code: '7596001003',
-    desc: 'Aceite Diésel Mobil Delvac 1300 Super 15W-40 1 L',
-    brand: 'Mobil',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Diésel Pesado',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7596001003')
-  },
-
-  // --- MOTUL ---
-  {
-    code: '7597001001',
-    desc: 'Aceite de Motor Motul 4000 Motion 15W-40 Mineral 1 L',
-    brand: 'Motul',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Mineral',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7597001001')
-  },
-  {
-    code: '7597001002',
-    desc: 'Aceite de Motor Motul 6100 Synergie+ 10W-40 Semisintético 1 L',
-    brand: 'Motul',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Semisintético',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7597001002')
-  },
-  {
-    code: '7597001003',
-    desc: 'Aceite Moto Motul 5100 4T 15W-50 Semisintético 1 L',
-    brand: 'Motul',
-    dept: 'Motocicletas',
-    cat: 'Moto',
-    subcat: 'Aceite 4T',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7597001003')
-  },
-  {
-    code: '7597001004',
-    desc: 'Refrigerante Motul Inugel Expert 50% Listo para Usar 1 L',
-    brand: 'Motul',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Refrigerante y aditivos',
-    subcat: 'Refrigerante 50%',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [
-      { name: 'Envase 1 Litro', unit: 'L', factor: 1, barcode: '7597001004', price: 0 },
-      { name: 'Garrafa 5 Litros', unit: 'gal', factor: 5, barcode: '7597001004G5', price: 0 }
-    ]
-  },
-
-  // --- VALVOLINE ---
-  {
-    code: '7598001001',
-    desc: 'Aceite de Motor Valvoline Daily Protection 20W-50 Mineral 1 L',
-    brand: 'Valvoline',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Mineral',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7598001001')
-  },
-  {
-    code: '7598001002',
-    desc: 'Aceite Diésel Valvoline All-Fleet Extra 15W-40 1 L',
-    brand: 'Valvoline',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Diésel Pesado',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7598001002')
-  },
-  {
-    code: '7598001003',
-    desc: 'Aceite de Motor Valvoline Advanced Full Synthetic 5W-30 1 L',
-    brand: 'Valvoline',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Aceites de motor',
-    subcat: 'Sintético',
-    unit: 'L',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: LUBRICANT_PRES_CONFIG.litro('7598001003')
-  },
-
-  // --- REPUESTOS AUTOMOTRICES CON CÓDIGOS OEM VERIFICADOS ---
-  // Toyota Corolla
-  {
-    code: '7504001001',
-    desc: 'Filtro de Aceite de Motor Toyota Corolla 1.8 (2003-2014) / Celica',
-    brand: 'Millard',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aceite',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aceite-corolla-1.8'], // 04152-YZZA6
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504001001', price: 0 }]
-  },
-  {
-    code: '7504001002',
-    desc: 'Filtro de Aire Motor Toyota Corolla 1.8 (2003-2008)',
-    brand: 'Web',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aire',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aire-corolla'], // 17801-22020
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504001002', price: 0 }]
-  },
-  {
-    code: '7504001003',
-    desc: 'Pastillas de Freno Delanteras Toyota Corolla 1.8 (2003-2008)',
-    brand: 'Bendix',
-    dept: 'Frenos y Suspensión',
-    cat: 'Frenos',
-    subcat: 'Pastillas de Freno',
-    unit: 'jgo',
-    oem: VERIFIED_OEM_MAP['pastillas-corolla-03-08'], // 04465-02061
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Juego Delantero (4 pastillas)', unit: 'jgo', factor: 1, barcode: '7504001003', price: 0 }]
-  },
-  {
-    code: '7504001004',
-    desc: 'Pastillas de Freno Delanteras Toyota Corolla New Sensation (2009-2014)',
-    brand: 'Bendix',
-    dept: 'Frenos y Suspensión',
-    cat: 'Frenos',
-    subcat: 'Pastillas de Freno',
-    unit: 'jgo',
-    oem: VERIFIED_OEM_MAP['pastillas-corolla-09-14'], // 04465-02220
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Juego Delantero (4 pastillas)', unit: 'jgo', factor: 1, barcode: '7504001004', price: 0 }]
-  },
-  {
-    code: '7504001005',
-    desc: 'Disco de Freno Delantero Ventilado Toyota Corolla (2003-2008)',
-    brand: 'Fremax',
-    dept: 'Frenos y Suspensión',
-    cat: 'Frenos',
-    subcat: 'Discos de Freno',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['discos-freno-corolla'], // 43512-02110
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad (Rueda)', unit: 'und', factor: 1, barcode: '7504001005', price: 0 }]
-  },
-  {
-    code: '7504001006',
-    desc: 'Bujía de Encendido Cobre Toyota Corolla / Aveo / Corsa (BKR6E-11)',
-    brand: 'NGK',
-    dept: 'Eléctrico y Encendido',
-    cat: 'Encendido y eléctrico',
-    subcat: 'Bujías',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['bujia-ngk-corolla'], // 90919-01164
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [
-      { name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504001006', price: 0 },
-      { name: 'Caja x 4 Bujías', unit: 'caja', factor: 4, barcode: '7504001006C4', price: 0 }
-    ]
-  },
-  {
-    code: '7504001007',
-    desc: 'Bujía de Iridium Toyota Corolla / Camry / RAV4 (SK20R11)',
-    brand: 'Denso',
-    dept: 'Eléctrico y Encendido',
-    cat: 'Encendido y eléctrico',
-    subcat: 'Bujías',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['bujia-iridium-corolla'], // 90919-01210
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [
-      { name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504001007', price: 0 },
-      { name: 'Caja x 4 Bujías', unit: 'caja', factor: 4, barcode: '7504001007C4', price: 0 }
-    ]
-  },
-  {
-    code: '7504001008',
-    desc: 'Bobina de Encendido Individual Toyota Corolla 1.8 1ZZ-FE (2003-2008)',
-    brand: 'Denso',
-    dept: 'Eléctrico y Encendido',
-    cat: 'Encendido y eléctrico',
-    subcat: 'Bobinas de Encendido',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['bobina-corolla-1.8'], // 90919-02239
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504001008', price: 0 }]
-  },
-  {
-    code: '7504001009',
-    desc: 'Muñón Inferior Delantero Toyota Corolla (SB-3642)',
-    brand: '555',
-    dept: 'Frenos y Suspensión',
-    cat: 'Suspensión y dirección',
-    subcat: 'Muñones y Rótulas',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['munon-corolla'], // 43330-19115
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504001009', price: 0 }]
-  },
-  {
-    code: '7504001010',
-    desc: 'Terminal de Dirección Externo Toyota Corolla (SE-3641)',
-    brand: '555',
-    dept: 'Frenos y Suspensión',
-    cat: 'Suspensión y dirección',
-    subcat: 'Terminales de Dirección',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['terminal-corolla'], // 45046-19175
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504001010', price: 0 }]
-  },
-  {
-    code: '7504001011',
-    desc: 'Amortiguador Delantero a Gas Toyota Corolla (334815)',
-    brand: 'KYB',
-    dept: 'Frenos y Suspensión',
-    cat: 'Suspensión y dirección',
-    subcat: 'Amortiguadores',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['amortiguador-corolla'], // 48510-09L40
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [
-      { name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504001011', price: 0 },
-      { name: 'Par Delantero (2 und)', unit: 'par', factor: 2, barcode: '7504001011P2', price: 0 }
-    ]
-  },
-  {
-    code: '7504001012',
-    desc: 'Bomba de Agua Toyota Corolla 1.8 (WPT-106)',
-    brand: 'Aisin',
-    dept: 'Accesorios y Taller',
-    cat: 'Bombas y partes de motor',
-    subcat: 'Bombas de Agua',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['bomba-agua-corolla'], // 16100-29157
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad con Empacadura', unit: 'und', factor: 1, barcode: '7504001012', price: 0 }]
-  },
-  {
-    code: '7504001013',
-    desc: 'Kit de Embrague (Plato, Disco y Collarín) Toyota Corolla 1.8 (KT-277)',
-    brand: 'Aisin',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Transmisión y diferencial',
-    subcat: 'Kits de Embrague',
-    unit: 'kit',
-    oem: VERIFIED_OEM_MAP['kit-embrague-corolla'], // 31250-12391
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Kit Completo 3 Piezas', unit: 'kit', factor: 1, barcode: '7504001013', price: 0 }]
-  },
-
-  // Toyota Hilux / 4Runner
-  {
-    code: '7504001020',
-    desc: 'Filtro de Aceite Toyota Hilux 2.7 / Fortuner 4.0 / 4Runner',
-    brand: 'Millard',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aceite',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aceite-hilux-4runner'], // 90915-YZZD3
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504001020', price: 0 }]
-  },
-  {
-    code: '7504001021',
-    desc: 'Filtro de Aire Toyota Hilux / Fortuner 2.7 y 4.0',
-    brand: 'WIX',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aire',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aire-hilux'], // 17801-0C010
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504001021', price: 0 }]
-  },
-  {
-    code: '7504001022',
-    desc: 'Filtro de Gasoil Trampa con Sensor Toyota Hilux 1KD / 2KD Diésel',
-    brand: 'Toyota Genuine',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Combustible',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-gasoil-hilux'], // 23390-0L041
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Elemento con O-ring', unit: 'und', factor: 1, barcode: '7504001022', price: 0 }]
-  },
-  {
-    code: '7504001023',
-    desc: 'Pastillas de Freno Delanteras Toyota Hilux Vigo / Fortuner / 4Runner',
-    brand: 'Bendix',
-    dept: 'Frenos y Suspensión',
-    cat: 'Frenos',
-    subcat: 'Pastillas de Freno',
-    unit: 'jgo',
-    oem: VERIFIED_OEM_MAP['pastillas-hilux-fortuner'], // 04465-0K090
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Juego Delantero (4 pastillas)', unit: 'jgo', factor: 1, barcode: '7504001023', price: 0 }]
-  },
-
-  // Chevrolet Aveo
-  {
-    code: '7504002001',
-    desc: 'Filtro de Aceite de Motor Chevrolet Aveo 1.6 / Daewoo Lanos',
-    brand: 'Millard',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aceite',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aceite-aveo'], // 93745067
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504002001', price: 0 }]
-  },
-  {
-    code: '7504002002',
-    desc: 'Filtro de Aire Motor Chevrolet Aveo 1.6 (Todos los años)',
-    brand: 'Web',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aire',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aire-aveo'], // 96536696
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504002002', price: 0 }]
-  },
-  {
-    code: '7504002003',
-    desc: 'Filtro de Gasolina Metálico Chevrolet Aveo / Corsa / Optra / Spark',
-    brand: 'AC Delco',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Combustible',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-gasolina-aveo'], // 96335719
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504002003', price: 0 }]
-  },
-  {
-    code: '7504002004',
-    desc: 'Pastillas de Freno Delanteras Chevrolet Aveo 1.6 (2005-2015)',
-    brand: 'Bendix',
-    dept: 'Frenos y Suspensión',
-    cat: 'Frenos',
-    subcat: 'Pastillas de Freno',
-    unit: 'jgo',
-    oem: VERIFIED_OEM_MAP['pastillas-aveo'], // 96534653
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Juego Delantero (4 pastillas)', unit: 'jgo', factor: 1, barcode: '7504002004', price: 0 }]
-  },
-  {
-    code: '7504002005',
-    desc: 'Disco de Freno Delantero Chevrolet Aveo 1.6',
-    brand: 'Fremax',
-    dept: 'Frenos y Suspensión',
-    cat: 'Frenos',
-    subcat: 'Discos de Freno',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['discos-freno-aveo'], // 96574633
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad (Rueda)', unit: 'und', factor: 1, barcode: '7504002005', price: 0 }]
-  },
-  {
-    code: '7504002006',
-    desc: 'Bobina de Encendido Chevrolet Aveo 1.6 (Módulo 3 Pines)',
-    brand: 'Delphi',
-    dept: 'Eléctrico y Encendido',
-    cat: 'Encendido y eléctrico',
-    subcat: 'Bobinas de Encendido',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['bobina-aveo'], // 96253555
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504002006', price: 0 }]
-  },
-  {
-    code: '7504002007',
-    desc: 'Juego de Cables de Bujía 7mm Chevrolet Aveo 1.6',
-    brand: 'AC Delco',
-    dept: 'Eléctrico y Encendido',
-    cat: 'Encendido y eléctrico',
-    subcat: 'Cables de Bujías',
-    unit: 'jgo',
-    oem: VERIFIED_OEM_MAP['cables-bujia-aveo'], // 96497773
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Juego 4 Cables', unit: 'jgo', factor: 1, barcode: '7504002007', price: 0 }]
-  },
-  {
-    code: '7504002008',
-    desc: 'Muñón Inferior Delantero Chevrolet Aveo (CBKD-11)',
-    brand: 'CTR',
-    dept: 'Frenos y Suspensión',
-    cat: 'Suspensión y dirección',
-    subcat: 'Muñones y Rótulas',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['munon-aveo'], // 96535081
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504002008', price: 0 }]
-  },
-  {
-    code: '7504002009',
-    desc: 'Terminal de Dirección Externo Chevrolet Aveo (CEKD-13)',
-    brand: 'CTR',
-    dept: 'Frenos y Suspensión',
-    cat: 'Suspensión y dirección',
-    subcat: 'Terminales de Dirección',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['terminal-aveo'], // 96535224
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504002009', price: 0 }]
-  },
-  {
-    code: '7504002010',
-    desc: 'Amortiguador Delantero Chevrolet Aveo a Gas (72288)',
-    brand: 'Monroe',
-    dept: 'Frenos y Suspensión',
-    cat: 'Suspensión y dirección',
-    subcat: 'Amortiguadores',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['amortiguador-aveo'], // 96586885
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [
-      { name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504002010', price: 0 },
-      { name: 'Par Delantero (2 und)', unit: 'par', factor: 2, barcode: '7504002010P2', price: 0 }
-    ]
-  },
-  {
-    code: '7504002011',
-    desc: 'Correa de Distribución Chevrolet Aveo 1.6 127 Dientes (T309)',
-    brand: 'Gates',
-    dept: 'Accesorios y Taller',
-    cat: 'Correas y accesorios',
-    subcat: 'Correas de Tiempo',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['correa-dist-aveo'], // 96814098
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504002011', price: 0 }]
-  },
-  {
-    code: '7504002012',
-    desc: 'Tensor de Distribución Chevrolet Aveo 1.6',
-    brand: 'GMB',
-    dept: 'Accesorios y Taller',
-    cat: 'Correas y accesorios',
-    subcat: 'Tensores de Tiempo',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['tensor-dist-aveo'], // 96350550
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504002012', price: 0 }]
-  },
-  {
-    code: '7504002013',
-    desc: 'Bomba de Agua Chevrolet Aveo 1.6 (GWO-14A)',
-    brand: 'GMB',
-    dept: 'Accesorios y Taller',
-    cat: 'Bombas y partes de motor',
-    subcat: 'Bombas de Agua',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['bomba-agua-aveo'], // 96352650
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad con Empacadura', unit: 'und', factor: 1, barcode: '7504002013', price: 0 }]
-  },
-  {
-    code: '7504002014',
-    desc: 'Kit de Embrague Chevrolet Aveo 1.6 (DWK-039)',
-    brand: 'Valeo',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Transmisión y diferencial',
-    subcat: 'Kits de Embrague',
-    unit: 'kit',
-    oem: VERIFIED_OEM_MAP['kit-embrague-aveo'], // 96349976
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Kit Completo 3 Piezas', unit: 'kit', factor: 1, barcode: '7504002014', price: 0 }]
-  },
-  {
-    code: '7504002015',
-    desc: 'Termostato Completo Carcasa de Aluminio Chevrolet Aveo 1.6',
-    brand: 'MotoRad',
-    dept: 'Accesorios y Taller',
-    cat: 'Bombas y partes de motor',
-    subcat: 'Termostatos',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['termostato-aveo'], // 96407677
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad con Termostato', unit: 'und', factor: 1, barcode: '7504002015', price: 0 }]
-  },
-
-  // Ford Fiesta
-  {
-    code: '7504003001',
-    desc: 'Filtro de Aceite Ford Fiesta Power / Move / Max 1.6 (FL-910S)',
-    brand: 'Motorcraft',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aceite',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aceite-fiesta'], // BE8Z-6731-AB
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504003001', price: 0 }]
-  },
-  {
-    code: '7504003002',
-    desc: 'Filtro de Aire Motor Ford Fiesta 1.6 Zetec Rocam',
-    brand: 'Motorcraft',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aire',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aire-fiesta'], // 2S61-9601-CA
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504003002', price: 0 }]
-  },
-  {
-    code: '7504003003',
-    desc: 'Pastillas de Freno Delanteras Ford Fiesta Power 1.6 (2004-2013)',
-    brand: 'Motorcraft',
-    dept: 'Frenos y Suspensión',
-    cat: 'Frenos',
-    subcat: 'Pastillas de Freno',
-    unit: 'jgo',
-    oem: VERIFIED_OEM_MAP['pastillas-fiesta'], // 2S6J-2K021-AA
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Juego Delantero (4 pastillas)', unit: 'jgo', factor: 1, barcode: '7504003003', price: 0 }]
-  },
-  {
-    code: '7504003004',
-    desc: 'Bobina de Encendido Ford Fiesta 1.6 Zetec Rocam / EcoSport 1.6',
-    brand: 'Bosch',
-    dept: 'Eléctrico y Encendido',
-    cat: 'Encendido y eléctrico',
-    subcat: 'Bobinas de Encendido',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['bobina-fiesta'], // 1S7G-12029-AC
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504003004', price: 0 }]
-  },
-  {
-    code: '7504003005',
-    desc: 'Termostato Carcasa de Aluminio Ford Fiesta Power 1.6',
-    brand: 'MotoRad',
-    dept: 'Accesorios y Taller',
-    cat: 'Bombas y partes de motor',
-    subcat: 'Termostatos',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['termostato-fiesta'], // 2S65-8A520-AA
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Carcasa Completa Aluminio', unit: 'und', factor: 1, barcode: '7504003005', price: 0 }]
-  },
-
-  // Hyundai Getz / Accent
-  {
-    code: '7504004001',
-    desc: 'Filtro de Aceite Hyundai Getz / Accent 1.3 - 1.6 / Tucson / Kia Rio',
-    brand: 'Millard',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aceite',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aceite-getz'], // 26300-35503
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504004001', price: 0 }]
-  },
-  {
-    code: '7504004002',
-    desc: 'Pastillas de Freno Delanteras Hyundai Getz (2006-2012)',
-    brand: 'Hi-Q Sangsin',
-    dept: 'Frenos y Suspensión',
-    cat: 'Frenos',
-    subcat: 'Pastillas de Freno',
-    unit: 'jgo',
-    oem: VERIFIED_OEM_MAP['pastillas-getz'], // 58101-1CA00
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Juego Delantero (4 pastillas)', unit: 'jgo', factor: 1, barcode: '7504004002', price: 0 }]
-  },
-
-  // Nissan Tiida / Sentra
-  {
-    code: '7504005001',
-    desc: 'Filtro de Aceite Nissan Tiida 1.8 / Sentra B16 / Versa / March',
-    brand: 'WIX',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aceite',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aceite-tiida'], // 15208-65F0A
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504005001', price: 0 }]
-  },
-  {
-    code: '7504005002',
-    desc: 'Pastillas de Freno Delanteras Nissan Tiida 1.8 (2007-2014)',
-    brand: 'Bendix',
-    dept: 'Frenos y Suspensión',
-    cat: 'Frenos',
-    subcat: 'Pastillas de Freno',
-    unit: 'jgo',
-    oem: VERIFIED_OEM_MAP['pastillas-tiida'], // D1060-EE50A
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Juego Delantero (4 pastillas)', unit: 'jgo', factor: 1, barcode: '7504005002', price: 0 }]
-  },
-
-  // Chery Arauca / Orinoco
-  {
-    code: '7504006001',
-    desc: 'Filtro de Aceite Chery Arauca 1.3 / Orinoco 1.8 / Tiggo',
-    brand: 'Millard',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aceite',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aceite-arauca'], // 481H-1012010
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504006001', price: 0 }]
-  },
-  {
-    code: '7504006002',
-    desc: 'Pastillas de Freno Delanteras Chery Orinoco 1.8',
-    brand: 'Bendix',
-    dept: 'Frenos y Suspensión',
-    cat: 'Frenos',
-    subcat: 'Pastillas de Freno',
-    unit: 'jgo',
-    oem: VERIFIED_OEM_MAP['pastillas-orinoco'], // A11-3501080BA
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Juego Delantero (4 pastillas)', unit: 'jgo', factor: 1, barcode: '7504006002', price: 0 }]
-  },
-
-  // Mitsubishi Lancer
-  {
-    code: '7504007001',
-    desc: 'Filtro de Aceite Mitsubishi Lancer 1.6 / 2.0 / Montero Sport / Dakar',
-    brand: 'WIX',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aceite',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aceite-lancer'], // MD360935
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504007001', price: 0 }]
-  },
-
-  // Jeep Grand Cherokee
-  {
-    code: '7504008001',
-    desc: 'Filtro de Aceite Jeep Grand Cherokee 4.7 V8 / Cherokee Liberty 3.7',
-    brand: 'WIX',
-    dept: 'Filtros y Mantenimiento',
-    cat: 'Filtros',
-    subcat: 'Filtro de Aceite',
-    unit: 'und',
-    oem: VERIFIED_OEM_MAP['filtro-aceite-grand-cherokee'], // 04884899AC
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Unidad individual', unit: 'und', factor: 1, barcode: '7504008001', price: 0 }]
-  },
-
-  // Químicos y Fluidos Universales
-  {
-    code: '7509001001',
-    desc: 'Líquido para Frenos DOT 3 Frasco 355 mL',
-    brand: 'Wagner',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Grasas y lubricantes',
-    subcat: 'Líquidos de Freno',
-    unit: 'und',
-    oem: '', // Sin OEM (universal)
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [
-      { name: 'Frasco 355 mL', unit: 'und', factor: 1, barcode: '7509001001', price: 0 },
-      { name: 'Envase 946 mL (1 Litro)', unit: 'und', factor: 2.66, barcode: '7509001001L', price: 0 }
-    ]
-  },
-  {
-    code: '7509001002',
-    desc: 'Refrigerante / Coolant Radiador 50/50 Listo para Usar 1 Galón (3,785 L)',
-    brand: 'Prestone',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Refrigerante y aditivos',
-    subcat: 'Refrigerante 50%',
-    unit: 'gal',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Galón individual', unit: 'gal', factor: 1, barcode: '7509001002', price: 0 }]
-  },
-  {
-    code: '7509001003',
-    desc: 'Agua Desmineralizada / Destilada para Baterías y Radiador 1 Galón (3,785 L)',
-    brand: 'Genérico',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Refrigerante y aditivos',
-    subcat: 'Agua Destilada',
-    unit: 'gal',
-    oem: '',
-    taxType: 'E', // Exento
-    taxRate: 0,
-    presentations: [{ name: 'Galón individual', unit: 'gal', factor: 1, barcode: '7509001003', price: 0 }]
-  },
-  {
-    code: '7509001004',
-    desc: 'Limpiador de Carburador y Cuerpos de Aceleración Carb Cleaner Spray 450 mL',
-    brand: 'ABRO',
-    dept: 'Lubricantes y Fluidos',
-    cat: 'Grasas y lubricantes',
-    subcat: 'Aerosoles y Sprays',
-    unit: 'und',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Lata Spray 450 mL', unit: 'und', factor: 1, barcode: '7509001004', price: 0 }]
-  },
-  {
-    code: '7509001005',
-    desc: 'Silicón Formador de Juntas Gris Mega Grey Alta Temperatura Tubo 85 g',
-    brand: 'VersaChem',
-    dept: 'Accesorios y Taller',
-    cat: 'Grasas y lubricantes',
-    subcat: 'Selladores y Silicones',
-    unit: 'und',
-    oem: '',
-    taxType: 'G',
-    taxRate: 16,
-    presentations: [{ name: 'Tubo 85 g', unit: 'und', factor: 1, barcode: '7509001005', price: 0 }]
-  }
-];
-
-/* Matriz combinatoria automotriz para consulta de los 2.500.000 repuestos indexados */
-const AUTO_MODELS_MATRIX = [
-  { make:'Toyota', model:'Corolla', years:'2003-2022', engines:['1.6','1.8','2.0'], oemKey:'corolla' },
-  { make:'Toyota', model:'Yaris', years:'2000-2021', engines:['1.3','1.5'], oemKey:'yaris' },
-  { make:'Toyota', model:'Hilux', years:'1998-2024', engines:['2.7 Gasolina','2.4 D4D','3.0 D4D 1KD'], oemKey:'hilux' },
-  { make:'Toyota', model:'Fortuner', years:'2006-2024', engines:['2.7','4.0 V6'], oemKey:'hilux-4runner' },
-  { make:'Toyota', model:'4Runner', years:'2003-2023', engines:['4.0 V6 1GR-FE','4.7 V8'], oemKey:'hilux-4runner' },
-  { make:'Toyota', model:'Land Cruiser Machito / Autana', years:'1992-2023', engines:['4.5 1FZ-FE','4.0 1GR'], oemKey:'hilux-4runner' },
-  { make:'Chevrolet', model:'Aveo', years:'2005-2015', engines:['1.6 16V E-TEC II'], oemKey:'aveo' },
-  { make:'Chevrolet', model:'Optra', years:'2004-2013', engines:['1.8 Limited','1.8 Design'], oemKey:'optra' },
-  { make:'Chevrolet', model:'Spark', years:'2006-2015', engines:['0.8','1.0'], oemKey:'aveo' },
-  { make:'Chevrolet', model:'Corsa', years:'1996-2007', engines:['1.3','1.4','1.6 MPFI'], oemKey:'corsa' },
-  { make:'Chevrolet', model:'Silverado 1500', years:'2000-2023', engines:['5.3 V8 Vortec'], oemKey:'silverado' },
-  { make:'Chevrolet', model:'Tahoe', years:'2000-2023', engines:['5.3 V8 Vortec'], oemKey:'silverado' },
-  { make:'Chevrolet', model:'Cruze', years:'2010-2017', engines:['1.8 Ecotec'], oemKey:'optra' },
-  { make:'Ford', model:'Fiesta Power / Move / Max', years:'2004-2014', engines:['1.6 Zetec Rocam'], oemKey:'fiesta' },
-  { make:'Ford', model:'EcoSport', years:'2004-2012', engines:['1.6 Rocam','2.0 Duratec'], oemKey:'fiesta' },
-  { make:'Ford', model:'Explorer', years:'1998-2020', engines:['4.0 V6','4.6 V8 Triton'], oemKey:'explorer' },
-  { make:'Ford', model:'F-150 / Fortaleza', years:'1998-2022', engines:['4.6 V8','5.4 V8 Triton'], oemKey:'explorer' },
-  { make:'Hyundai', model:'Getz', years:'2006-2012', engines:['1.3','1.6 Alpha'], oemKey:'getz' },
-  { make:'Hyundai', model:'Accent', years:'1998-2014', engines:['1.3','1.5','1.6'], oemKey:'getz' },
-  { make:'Hyundai', model:'Tucson', years:'2005-2018', engines:['2.0 Beta','2.7 V6'], oemKey:'getz' },
-  { make:'Hyundai', model:'Elantra', years:'2001-2016', engines:['1.6','1.8','2.0'], oemKey:'getz' },
-  { make:'Kia', model:'Rio Stylus / JB', years:'2002-2015', engines:['1.5','1.6'], oemKey:'getz' },
-  { make:'Kia', model:'Sportage', years:'2005-2018', engines:['2.0','2.7 V6'], oemKey:'getz' },
-  { make:'Nissan', model:'Tiida', years:'2007-2015', engines:['1.8 MR18DE'], oemKey:'tiida' },
-  { make:'Nissan', model:'Sentra B13 / B16', years:'1995-2015', engines:['1.6 GA16DE','2.0 MR20DE'], oemKey:'tiida' },
-  { make:'Nissan', model:'Frontier / D21 / D22', years:'1998-2018', engines:['2.4 KA24DE','2.5 Diésel'], oemKey:'tiida' },
-  { make:'Chery', model:'Arauca', years:'2012-2017', engines:['1.3 Acteco'], oemKey:'arauca' },
-  { make:'Chery', model:'Orinoco', years:'2012-2017', engines:['1.8 Acteco'], oemKey:'orinoco' },
-  { make:'Chery', model:'Tiggo', years:'2012-2018', engines:['2.0 Acteco'], oemKey:'arauca' },
-  { make:'Mitsubishi', model:'Lancer GLX / Touring', years:'1998-2015', engines:['1.6 4G18','2.0 4G94'], oemKey:'lancer' },
-  { make:'Mitsubishi', model:'Montero Sport / Dakar', years:'2000-2015', engines:['3.0 V6 6G72','3.5 V6'], oemKey:'lancer' },
-  { make:'Jeep', model:'Grand Cherokee WJ / WK', years:'1999-2016', engines:['4.0','4.7 V8','5.7 Hemi'], oemKey:'grand-cherokee' },
-  { make:'Jeep', model:'Cherokee XJ / Liberty KJ / KK', years:'1996-2014', engines:['4.0 High Output','3.7 V6'], oemKey:'grand-cherokee' }
-];
-
-const COMPONENT_TYPES = [
-  { name:'Filtro de Aceite de Motor', dept:'Filtros y Mantenimiento', cat:'Filtros', subcat:'Filtro de Aceite', unit:'und', oemSuffix:'filtro-aceite', brandPref:'Millard / WIX / Web' },
-  { name:'Filtro de Aire de Motor', dept:'Filtros y Mantenimiento', cat:'Filtros', subcat:'Filtro de Aire', unit:'und', oemSuffix:'filtro-aire', brandPref:'Web / WIX / Millard' },
-  { name:'Filtro de Combustible / Gasolina', dept:'Filtros y Mantenimiento', cat:'Filtros', subcat:'Filtro de Combustible', unit:'und', oemSuffix:'filtro-gasolina', brandPref:'AC Delco / WIX' },
-  { name:'Pastillas de Freno Delanteras', dept:'Frenos y Suspensión', cat:'Frenos', subcat:'Pastillas de Freno', unit:'jgo', oemSuffix:'pastillas', brandPref:'Bendix / Wagner / Hi-Q' },
-  { name:'Discos de Freno Delanteros Ventilados', dept:'Frenos y Suspensión', cat:'Frenos', subcat:'Discos de Freno', unit:'und', oemSuffix:'discos-freno', brandPref:'Fremax / Bendix' },
-  { name:'Bujías de Encendido (Cobre / Iridium)', dept:'Eléctrico y Encendido', cat:'Encendido y eléctrico', subcat:'Bujías', unit:'und', oemSuffix:'bujia', brandPref:'NGK / Denso / Bosch' },
-  { name:'Bobina de Encendido', dept:'Eléctrico y Encendido', cat:'Encendido y eléctrico', subcat:'Bobinas de Encendido', unit:'und', oemSuffix:'bobina', brandPref:'Denso / Delphi / Bosch' },
-  { name:'Muñón / Rótula Inferior de Suspensión', dept:'Frenos y Suspensión', cat:'Suspensión y dirección', subcat:'Muñones y Rótulas', unit:'und', oemSuffix:'munon', brandPref:'555 / CTR / Moog' },
-  { name:'Terminal de Dirección Externo', dept:'Frenos y Suspensión', cat:'Suspensión y dirección', subcat:'Terminales de Dirección', unit:'und', oemSuffix:'terminal', brandPref:'555 / CTR / 555 Sankei' },
-  { name:'Amortiguador Delantero a Gas', dept:'Frenos y Suspensión', cat:'Suspensión y dirección', subcat:'Amortiguadores', unit:'und', oemSuffix:'amortiguador', brandPref:'KYB / Monroe / Gabriel' },
-  { name:'Correa de Distribución / Tiempo', dept:'Accesorios y Taller', cat:'Correas y accesorios', subcat:'Correas de Tiempo', unit:'und', oemSuffix:'correa-dist', brandPref:'Gates / Dayco / Continental' },
-  { name:'Bomba de Agua con Empacadura', dept:'Accesorios y Taller', cat:'Bombas y partes de motor', subcat:'Bombas de Agua', unit:'und', oemSuffix:'bomba-agua', brandPref:'Aisin / GMB / Gates' },
-  { name:'Kit de Embrague (Plato, Disco y Collarín)', dept:'Lubricantes y Fluidos', cat:'Transmisión y diferencial', subcat:'Kits de Embrague', unit:'kit', oemSuffix:'kit-embrague', brandPref:'Aisin / Valeo / LuK' },
-  { name:'Termostato Completo con Empacadura', dept:'Accesorios y Taller', cat:'Bombas y partes de motor', subcat:'Termostatos', unit:'und', oemSuffix:'termostato', brandPref:'MotoRad / Tama' }
-];
-
-/* Buscador de Catálogo Maestro indexado (+2.500.000 repuestos) */
-function searchMasterCatalog(query, limit = 20) {
-  const q = (query || '').trim();
-  const qNorm = norm(q);
-  const qUpper = q.toUpperCase();
-  const results = [];
-
-  // 1. Coincidencias en catálogo curado directo (aceites PDV, Venoco, Inca, Shell, Castrol, Mobil, y repuestos clave)
-  if (qNorm) {
-    MASTER_CURATED_CATALOG.forEach(item => {
-      const txt = norm(item.desc + ' ' + item.brand + ' ' + (item.oem || '') + ' ' + item.cat + ' ' + item.subcat + ' ' + item.code);
-      if (txt.includes(qNorm) || (item.oem && item.oem.includes(qUpper)) || item.code.includes(q)) {
-        results.push(Object.assign({}, item));
-      }
-    });
-  } else {
-    // Si no hay búsqueda, retorna los aceites y fluidos más vendidos en Venezuela
-    return MASTER_CURATED_CATALOG.slice(0, limit);
-  }
-
-  // 2. Consulta a la matriz de 2.500.000 combinaciones automotrices
-  if (results.length < limit && qNorm.length >= 2) {
-    const tokens = qNorm.split(/\s+/).filter(Boolean);
-    for (const car of AUTO_MODELS_MATRIX) {
-      for (const comp of COMPONENT_TYPES) {
-        if (results.length >= limit) break;
-        const carStr = norm(car.make + ' ' + car.model + ' ' + car.years + ' ' + car.engines.join(' '));
-        const compStr = norm(comp.name + ' ' + comp.cat + ' ' + comp.subcat);
-        const fullApp = carStr + ' ' + compStr;
-
-        // Comprueba si los tokens de búsqueda coinciden con la aplicación
-        const allMatch = tokens.every(tok => fullApp.includes(tok));
-        if (allMatch) {
-          // Busca código OEM verificado si existe
-          const oemLookupKey = comp.oemSuffix + '-' + car.oemKey;
-          const verifiedOem = VERIFIED_OEM_MAP[oemLookupKey] || '';
-
-          // Si el usuario buscó específicamente un código OEM y no coincide, se omite
-          if (qUpper.length > 5 && qUpper.includes('-') && verifiedOem !== qUpper) {
-            continue;
-          }
-
-          const desc = comp.name + ' ' + car.make + ' ' + car.model + ' (' + car.years + ')';
-          const already = results.some(r => r.desc === desc);
-          if (!already) {
-            const brand = comp.brandPref.split(' / ')[0] || car.make;
-            const code = '75' + Math.abs(strHash(desc)).toString().slice(0, 8);
-            results.push({
-              code,
-              desc,
-              brand,
-              dept: comp.dept,
-              cat: comp.cat,
-              subcat: comp.subcat,
-              unit: comp.unit,
-              oem: verifiedOem, // Solo coloca el OEM verificado, de lo contrario deja '' en blanco
-              taxType: 'G',
-              taxRate: 16,
-              presentations: [
-                { name: 'Unidad individual', unit: comp.unit, factor: 1, barcode: code, price: 0 }
-              ]
-            });
-          }
-        }
-      }
-    }
-  }
-
-  return results.slice(0, limit);
-}
-
-function strHash(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-/* Modal explorador completo del Catálogo Maestro */
-function masterCatalogBrowserDlg(onSelectCallback) {
-  let q = '';
-  const el = h('<div class="form">' +
-    '<div class="master-bar" style="margin:0 0 10px 0">' +
-      '<label>Catálogo Maestro Automotriz (+2.500.000 referencias):</label>' +
-      '<div class="master-inp-wrap">' +
-        '<input id="dlgMasterQ" placeholder="Buscar por repuesto, lubricante (PDV, Venoco, Inca, Castrol, Mobil), vehículo (Aveo, Corolla, Hilux) o código OEM verificado..." autocomplete="off">' +
-      '</div>' +
-      '<span class="master-badge-25m">Base Nacional e Internacional</span>' +
-    '</div>' +
-    '<div class="fltgrid" style="margin-bottom:8px">' +
-      '<div class="f"><label>Filtrar por Familia / Categoría</label>' +
-        '<select class="fld" id="dlgMasterCat">' +
-          '<option value="">Todas las Familias</option>' +
-          '<option value="Aceites de motor">Aceites de Motor (PDV, Venoco, Inca, Shell, Mobil)</option>' +
-          '<option value="Transmisión y diferencial">Transmisión, Valvulinas y ATF</option>' +
-          '<option value="Grasas y lubricantes">Grasas de Litio y Chasis</option>' +
-          '<option value="Filtros">Filtros (Aceite, Aire, Combustible)</option>' +
-          '<option value="Frenos">Frenos (Pastillas y Discos)</option>' +
-          '<option value="Suspensión y dirección">Tren Delantero y Suspensión</option>' +
-          '<option value="Encendido y eléctrico">Bujías y Bobinas de Encendido</option>' +
-          '<option value="Bombas y partes de motor">Bombas de Agua y Motor</option>' +
-          '<option value="Correas y accesorios">Correas de Tiempo y Únicas</option>' +
-        '</select>' +
-      '</div>' +
-      '<div class="f"><label>Filtrar por Marca</label>' +
-        '<select class="fld" id="dlgMasterBrand">' +
-          '<option value="">Todas las Marcas</option>' +
-          '<option value="PDV">PDV (Petróleos de Venezuela)</option>' +
-          '<option value="Venoco">Venoco</option>' +
-          '<option value="Inca">Inca</option>' +
-          '<option value="Shell">Shell</option>' +
-          '<option value="Castrol">Castrol</option>' +
-          '<option value="Mobil">Mobil</option>' +
-          '<option value="Motul">Motul</option>' +
-          '<option value="Valvoline">Valvoline</option>' +
-          '<option value="Toyota">Toyota</option>' +
-          '<option value="Millard">Millard</option>' +
-          '<option value="Bendix">Bendix</option>' +
-          '<option value="NGK">NGK</option>' +
-          '<option value="555">555 (Three Five)</option>' +
-          '<option value="Gates">Gates</option>' +
-        '</select>' +
-      '</div>' +
-      '<div class="f"><label>Filtro OEM</label>' +
-        '<select class="fld" id="dlgMasterOemOnly">' +
-          '<option value="all">Todos los productos</option>' +
-          '<option value="with_oem">Solo con OEM Verificado</option>' +
-          '<option value="without_oem">Solo sin OEM (Lubricantes / Universales)</option>' +
-        '</select>' +
-      '</div>' +
-    '</div>' +
-    '<div class="dim" id="dlgMasterCount" style="margin-bottom:6px">Mostrando resultados del catálogo maestro...</div>' +
-    '<div class="gridwrap tallwrap"><table class="grid" style="min-width:960px"><thead><tr>' +
-      '<th>Código / Ref.</th>' +
-      '<th>Descripción del Producto</th>' +
-      '<th>Marca</th>' +
-      '<th>Depto. / Categoría</th>' +
-      '<th class="c" style="width:70px">U.M.</th>' +
-      '<th class="c" style="width:140px">OEM Verificado</th>' +
-      '<th class="c" style="width:130px">Acción</th>' +
-    '</tr></thead><tbody id="dlgMasterBody"></tbody></table></div>' +
-  '</div>');
-
-  const drawList = () => {
-    const rawQ = $('#dlgMasterQ', el).value;
-    const catF = $('#dlgMasterCat', el).value;
-    const brandF = $('#dlgMasterBrand', el).value;
-    const oemF = $('#dlgMasterOemOnly', el).value;
-
-    let items = searchMasterCatalog(rawQ, 80);
-    if (catF) items = items.filter(it => it.cat === catF || it.subcat === catF);
-    if (brandF) items = items.filter(it => it.brand.toLowerCase() === brandF.toLowerCase());
-    if (oemF === 'with_oem') items = items.filter(it => it.oem && it.oem.trim() !== '');
-    if (oemF === 'without_oem') items = items.filter(it => !it.oem || it.oem.trim() === '');
-
-    $('#dlgMasterCount', el).textContent = items.length + ' productos encontrados en el Catálogo Maestro (Mostrando coincidencias de +2.500.000 repuestos indexados).';
-
-    $('#dlgMasterBody', el).innerHTML = items.length ? items.map((it, idx) =>
-      '<tr>' +
-        '<td class="mono"><b>' + esc(it.code) + '</b></td>' +
-        '<td><b>' + esc(it.desc) + '</b><div class="sub">' + esc(it.subcat || '') + '</div></td>' +
-        '<td><span class="desc">' + esc(it.brand) + '</span></td>' +
-        '<td>' + esc(it.dept) + ' &rsaquo; ' + esc(it.cat) + '</td>' +
-        '<td class="c"><span class="um-tag">' + esc((it.unit || 'und').toUpperCase()) + '</span></td>' +
-        '<td class="c">' + (it.oem ? '<span class="master-oem-tag">' + esc(it.oem) + '</span>' : '<span class="master-oem-none">(Sin OEM)</span>') + '</td>' +
-        '<td class="c"><button class="btn primary mini2" data-pickmaster="' + idx + '">Seleccionar y Poblar</button></td>' +
-      '</tr>'
-    ).join('') : '<tr class="empty"><td colspan="7">No se encontraron productos en el Catálogo Maestro que coincidan con la búsqueda. Intente con otra marca o repuesto.</td></tr>';
-
-    // Guardar referencia en el contenedor
-    el._currentMasterItems = items;
-  };
-
-  el.addEventListener('input', e => {
-    if (e.target.id === 'dlgMasterQ') drawList();
-  });
-  el.addEventListener('change', e => {
-    if (e.target.id === 'dlgMasterCat' || e.target.id === 'dlgMasterBrand' || e.target.id === 'dlgMasterOemOnly') drawList();
-  });
-  el.addEventListener('click', e => {
-    const pickBtn = e.target.closest('[data-pickmaster]');
-    if (pickBtn) {
-      const idx = +pickBtn.dataset.pickmaster;
-      const item = el._currentMasterItems && el._currentMasterItems[idx];
-      if (item && onSelectCallback) {
-        closeWin();
-        onSelectCallback(item);
-      }
-    }
-  });
-
-  openWin({
-    title: 'Catálogo Maestro Automotriz (+2.500.000 Repuestos y Lubricantes Indexados)',
-    w: 1040,
-    body: el,
-    foot: [
-      { label: 'Cerrar', primary: true }
-    ],
-    onOpen: () => {
-      drawList();
-      setTimeout(() => { const inp = $('#dlgMasterQ', el); if (inp) inp.focus(); }, 100);
-    }
-  });
-}
-
 /* ---------- FORMULARIO INTEGRAL DE NUEVO / EDITAR PRODUCTO (6 PESTAÑAS) ---------- */
-function productFormDlg(editCode,initialTab,initialMasterItem){
+function productFormDlg(editCode,initialTab){
   const existing=editCode?prod(editCode):null;
   const nextSeq=existing?(S.products.indexOf(existing)+1):(S.products.length+1);
   let tab=initialTab||'gen';
@@ -3408,16 +1401,15 @@ function productFormDlg(editCode,initialTab,initialMasterItem){
 
   /* Estado editable del producto */
   const D=existing?JSON.parse(JSON.stringify(existing)):{
-    code:'750'+pad(S.products.length+101,4),
+    code:'LIC'+pad(S.products.length+1,5),
     sku:'',
-    oem:'', // Código OEM verificado (en blanco si no posee)
     desc:'',
-    brand:'PDV',
-    dept:'Lubricantes y Fluidos',
-    cat:'Aceites de motor',
-    subcat:'Mineral',
+    brand:'',
+    dept:'Bebidas alcohólicas',
+    cat:'Ron',
+    subcat:'Botella 750 ml',
     loc:'',
-    unit:'L',
+    unit:'und',
     stock:0,
     min:4,
     cost:0.00,
@@ -3433,22 +1425,23 @@ function productFormDlg(editCode,initialTab,initialMasterItem){
       markupSale:28.57,
       gaps:[
         {name:'Detal / Mostrador',gapPct:0,markupCost:40.00,price:0.00},
-        {name:'Taller / Mecánico',gapPct:6,markupCost:31.60,price:0.00},
+        {name:'Bar / Restaurante',gapPct:6,markupCost:31.60,price:0.00},
         {name:'Mayorista (≥ 6 und)',gapPct:12,markupCost:23.20,price:0.00},
-        {name:'Distribuidor / Flota',gapPct:18,markupCost:14.80,price:0.00}
+        {name:'Distribuidor',gapPct:18,markupCost:14.80,price:0.00}
       ]
     },
     presentations:[
-      {name:'Pote / Litro 946 mL',unit:'L',factor:1,barcode:'',price:0.00},
-      {name:'Caja x 12 Litros',unit:'caja',factor:12,barcode:'',price:0.00}
+      {name:'Botella 750 ml',unit:'und',factor:1,barcode:'',price:0.00},
+      {name:'Caja x 12 botellas',unit:'caja',factor:12,barcode:'',price:0.00}
     ],
     tax:{type:'G',rate:16,igtf:true,percRate:0,codeSeniat:'GRAV-16'},
     assocSuppliers:[],
     isKit:false,
     kitItems:[]
   };
-  if(D.oem===undefined)D.oem='';
   if(!D.freight)D.freight=0;
+  if(D.volumeMl===undefined)D.volumeMl='';
+  if(D.alcoholPct===undefined)D.alcoholPct='';
   if(!D.sku)D.sku=genAutoSku(D.dept,D.cat,D.subcat,nextSeq);
   if(!D.pricing)D.pricing={motor:'cost',mode:'auto',bcvRate:S.cfg.rate,parallelRate:r2(S.cfg.rate*1.22),markupCost:40,markupSale:28.57,gaps:[{name:'Detal / Mostrador',gapPct:0,markupCost:40,price:D.price}]};
   if(!D.pricing.motor)D.pricing.motor='cost';
@@ -3504,19 +1497,10 @@ function productFormDlg(editCode,initialTab,initialMasterItem){
   };
 
   const el=h('<div class="form">'+
-    '<div class="master-bar" id="pfMasterBar">'+
-      '<label>🔍 Catálogo Maestro (+2.500.000 repuestos indexados):</label>'+
-      '<div class="master-inp-wrap">'+
-        '<input id="masterQ" placeholder="Escriba repuesto, aceite nacional/importado, vehículo, marca o código OEM (ej: PDV 20W-50, Pastillas Aveo, Filtro Hilux, 04152-YZZA6, Venoco, Inca)..." autocomplete="off">'+
-        '<div id="masterPop" class="master-pop" hidden></div>'+
-      '</div>'+
-      '<button class="btn mini2" id="btnBrowseMaster" type="button">Explorar Catálogo (2.5M)</button>'+
-      '<span class="master-badge-25m">OEMs Verificados</span>'+
-    '</div>'+
     '<div class="khead" id="pfHeader"></div>'+
     '<div class="tabs">'+
       '<button class="tab" data-pftab="gen">1. Información General</button>'+
-      '<button class="tab" data-pftab="cost">2. Costos y Motores de Venta</button>'+
+      '<button class="tab" data-pftab="cost">2. Costos y precios</button>'+
       '<button class="tab" data-pftab="pres">3. Presentaciones</button>'+
       '<button class="tab" data-pftab="tax">4. Impuestos</button>'+
       '<button class="tab" data-pftab="sup">5. Proveedores Asociados</button>'+
@@ -3525,95 +1509,6 @@ function productFormDlg(editCode,initialTab,initialMasterItem){
     '<div id="pfBody"></div>'+
   '</div>');
 
-  /* Rellenar formulario desde Catálogo Maestro */
-  const applyMasterProduct=item=>{
-    D.desc=item.desc;
-    D.brand=item.brand;
-    D.dept=item.dept;
-    D.cat=item.cat;
-    D.subcat=item.subcat;
-    D.code=item.code||('750'+pad(S.products.length+101,4));
-    D.oem=item.oem||''; // Únicamente códigos verificados, de lo contrario en blanco
-    D.unit=item.unit||'und';
-    D.tax={
-      type:item.taxType||'G',
-      rate:item.taxRate!==undefined?item.taxRate:16,
-      igtf:true,
-      percRate:0,
-      codeSeniat:(item.taxType==='E'||item.taxType==='NS')?'EXENTO-0':'GRAV-16'
-    };
-    if(item.presentations&&item.presentations.length){
-      D.presentations=JSON.parse(JSON.stringify(item.presentations));
-    }else{
-      D.presentations=[{name:'Unidad individual',unit:D.unit,factor:1,barcode:D.code,price:0.00}];
-    }
-    D.sku=genAutoSku(D.dept,D.cat,D.subcat,nextSeq);
-
-    // Dejar vacíos únicamente los campos que debe rellenar el administrador:
-    D.cost=0.00;
-    D.freight=0.00;
-    D.stock=0;
-    D.loc='';
-    D.min=4;
-    D.price=0.00;
-
-    renderTab();
-    msg('Producto "'+D.desc+'" cargado desde el Catálogo Maestro. Ingrese su costo y existencia para completar.');
-  };
-
-  /* Eventos del buscador de Catálogo Maestro en cabecera */
-  const masterInp=$('#masterQ',el);
-  const masterPop=$('#masterPop',el);
-  if(masterInp&&masterPop){
-    const renderMasterPop=items=>{
-      if(!items.length){
-        masterPop.innerHTML='<div style="padding:10px;color:var(--ink-2);text-align:center">No se encontraron repuestos o lubricantes coincidentes en el Catálogo Maestro.</div>';
-        masterPop.hidden=false;
-        return;
-      }
-      masterPop.innerHTML=items.map((it,i)=>
-        '<div class="master-item" data-mpick="'+i+'">'+
-          '<div class="master-item-main">'+
-            '<div class="master-item-title">'+esc(it.desc)+'</div>'+
-            '<div class="master-item-meta">'+
-              '<b>'+esc(it.brand)+'</b> · '+esc(it.dept)+' &rsaquo; '+esc(it.cat)+' · '+
-              '<span class="um-tag">'+esc((it.unit||'und').toUpperCase())+'</span> '+
-              (it.oem?'<span class="master-oem-tag">OEM: '+esc(it.oem)+'</span>':'<span class="master-oem-none">(Sin OEM)</span>')+
-            '</div>'+
-          '</div>'+
-          '<button class="btn primary mini2" type="button">Seleccionar</button>'+
-        '</div>'
-      ).join('');
-      masterPop.hidden=false;
-      el._currentPopItems=items;
-    };
-
-    masterInp.addEventListener('input',()=>{
-      const q=masterInp.value.trim();
-      if(!q){masterPop.hidden=true;return;}
-      const items=searchMasterCatalog(q,15);
-      renderMasterPop(items);
-    });
-
-    masterPop.addEventListener('click',e=>{
-      const itemRow=e.target.closest('[data-mpick]');
-      if(itemRow){
-        const idx=+itemRow.dataset.mpick;
-        const item=el._currentPopItems&&el._currentPopItems[idx];
-        if(item){
-          masterPop.hidden=true;
-          masterInp.value=item.desc;
-          applyMasterProduct(item);
-        }
-      }
-    });
-
-    $('#btnBrowseMaster',el).addEventListener('click',()=>{
-      masterPop.hidden=true;
-      masterCatalogBrowserDlg(applyMasterProduct);
-    });
-  }
-
   const updateHeaderBar=()=>{
     if(autoSku)D.sku=genAutoSku(D.dept,D.cat,D.subcat,nextSeq);
     const taxRate=prodTaxRate(D);
@@ -3621,7 +1516,6 @@ function productFormDlg(editCode,initialTab,initialMasterItem){
     $('#pfHeader',el).innerHTML=
       '<div><span>SKU Automático</span><b class="mono" style="color:var(--title-a)">'+esc(D.sku)+'</b></div>'+
       '<div><span>Producto / Marca</span><b>'+esc(D.desc||'(Sin descripción)')+' · '+esc(D.brand||'-')+'</b></div>'+
-      '<div><span>OEM Verificado</span><b>'+(D.oem?'<span class="master-oem-tag">'+esc(D.oem)+'</span>':'<span class="master-oem-none">(Sin OEM)</span>')+'</b></div>'+
       '<div><span>U.M. / I.V.A.</span><b><span class="um-tag">'+esc((D.unit||'und').toUpperCase())+'</span> &nbsp;<span class="iva-tag '+prodTaxCls(D)+'">'+esc(prodTaxTag(D))+'</span></b></div>'+
       '<div><span>Costo Real / Precio Detal US$</span><b>'+usd(effCost())+' &rarr; '+usd(D.price)+' (Con imp: '+usd(r2(D.price*taxMult))+')</b></div>';
   };
@@ -3638,11 +1532,11 @@ function productFormDlg(editCode,initialTab,initialMasterItem){
     else if(tab==='kit')renderKitTab(box);
   };
 
-  /* 1. INFORMACIÓN GENERAL + FOTO + SKU COMPUESTO + OEM VERIFICADO */
+  /* 1. INFORMACIÓN GENERAL DEL PRODUCTO PARA LICORERÍA */
   const renderGenTab=box=>{
-    const depts=Array.from(new Set(['Lubricantes y Fluidos','Motocicletas','Filtros y Mantenimiento','Frenos y Suspensión','Eléctrico y Encendido','Accesorios y Taller'].concat(S.products.map(p=>p.dept))));
-    const cats=Array.from(new Set(['Aceites de motor','Moto','Transmisión y diferencial','Grasas y lubricantes','Filtros','Frenos','Encendido y eléctrico','Refrigerante y aditivos','Correas y accesorios','Bombas y partes de motor'].concat(S.products.map(p=>p.cat))));
-    const subs=Array.from(new Set(['Mineral','Semisintético','Sintético','Diésel Pesado','Granel','Aceite 4T','Filtro de Aceite','Filtro de Aire','Filtro de Combustible','Pastillas de Freno','Bujías','Baterías','Aceite y Bombas'].concat(S.products.map(p=>p.subcat))));
+    const depts=Array.from(new Set(['Bebidas alcohólicas','Cervezas','Vinos y espumantes','Whisky','Ron','Vodka','Ginebra','Tequila','Licores y aperitivos','Bebidas sin alcohol','Snacks y complementos','Hielo y mezcladores'].concat(S.products.map(p=>p.dept))));
+    const cats=Array.from(new Set(['Cerveza','Ron','Whisky','Vodka','Ginebra','Tequila','Vino tinto','Vino blanco','Espumantes','Licores','Aguardiente','Cócteles preparados','Refrescos','Agua','Energéticas','Snacks','Hielo','Mezcladores'].concat(S.products.map(p=>p.cat))));
+    const subs=Array.from(new Set(['Botella 750 ml','Botella 1 L','Botella 1,75 L','Lata 355 ml','Botella 330 ml','Botella 500 ml','Pack de 6','Caja de 12','Caja de 24','Miniatura','Reserva','Añejo','Blanco','Reposado','Extra añejo','Tinto','Rosado','Seco','Dulce','Sin alcohol','Unidad','Paquete','Bolsa'].concat(S.products.map(p=>p.subcat))));
     const umOpts=UM_OPTIONS.map(u=>'<option value="'+u.id+'"'+(D.unit===u.id?' selected':'')+'>'+esc(u.name)+'</option>').join('');
     const txOpts=TAX_OPTIONS.map(tx=>'<option value="'+tx.type+'"'+(D.tax.type===tx.type?' selected':'')+'>'+esc(tx.name)+'</option>').join('');
 
@@ -3660,8 +1554,9 @@ function productFormDlg(editCode,initialTab,initialMasterItem){
             '<div class="row"><input class="fld mono" id="pfSku" value="'+esc(D.sku)+'" '+(autoSku?'readonly':'')+'><label class="chk" style="font-size:11.5px"><input type="checkbox" id="pfAutoSku" '+(autoSku?'checked':'')+'> Automático</label><button class="btn mini2" id="pfRegenSku" title="Generar SKU compuesto">Generar</button></div>'+
           '</div>'+
           '<div class="f"><label for="pfCode">Código de Barras / EAN</label><input class="fld mono" id="pfCode" value="'+esc(D.code)+'" autocomplete="off"></div>'+
-          '<div class="f"><label for="pfOem">Código OEM Verificado (dejar en blanco si no posee)</label><input class="fld mono" id="pfOem" value="'+esc(D.oem||'')+'" placeholder="(Vacío si no tiene OEM verificado)" autocomplete="off"></div>'+
-          '<div class="f wide"><label for="pfDesc">Descripción del Producto</label><input class="fld" id="pfDesc" value="'+esc(D.desc)+'" placeholder="Ej: Aceite 20W-50 Mineral 1 L" autocomplete="off"></div>'+
+          '<div class="f wide"><label for="pfDesc">Descripción del Producto</label><input class="fld" id="pfDesc" value="'+esc(D.desc)+'" placeholder="Ej: Ron añejo botella 750 ml" autocomplete="off"></div>'+
+          '<div class="f"><label for="pfVolumeMl">Contenido neto (ml)</label><input class="fld r" id="pfVolumeMl" type="number" min="0" step="1" value="'+esc(D.volumeMl)+'" placeholder="750"></div>'+
+          '<div class="f"><label for="pfAlcoholPct">Graduación alcohólica (% vol.)</label><input class="fld r" id="pfAlcoholPct" type="number" min="0" max="100" step="0.1" value="'+esc(D.alcoholPct)+'" placeholder="40"></div>'+
           '<div class="f"><label for="pfBrand">Marca / Fabricante</label><input class="fld" id="pfBrand" value="'+esc(D.brand)+'" autocomplete="off"></div>'+
           '<div class="f"><label for="pfDept">Departamento</label><input class="fld" id="pfDept" list="dlDepts" value="'+esc(D.dept)+'" autocomplete="off"><datalist id="dlDepts">'+depts.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></div>'+
           '<div class="f"><label for="pfCat">Categoría (define prefijo SKU)</label><input class="fld" id="pfCat" list="dlCats" value="'+esc(D.cat)+'" autocomplete="off"><datalist id="dlCats">'+cats.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></div>'+
@@ -3674,14 +1569,15 @@ function productFormDlg(editCode,initialTab,initialMasterItem){
         '</div>'+
       '</div>'+
       '<div class="group" style="margin-top:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
-        '<div><b>Vista rápida:</b> U.M. <span class="um-tag">'+esc((D.unit||'und').toUpperCase())+'</span> · I.V.A. <span class="iva-tag '+prodTaxCls(D)+'">'+esc(prodTaxTag(D))+'</span> · OEM <span class="mono">'+(D.oem?esc(D.oem):'—')+'</span> · SKU <span class="mono">'+esc(D.sku)+'</span></div>'+
+         '<div><b>Vista rápida:</b> U.M. <span class="um-tag">'+esc((D.unit||'und').toUpperCase())+'</span> · I.V.A. <span class="iva-tag '+prodTaxCls(D)+'">'+esc(prodTaxTag(D))+'</span> · SKU <span class="mono">'+esc(D.sku)+'</span></div>'+
         '<button class="btn mini2" id="pfOpenLabel">Vista previa de Etiqueta / Hablador SKU (US$)</button>'+
       '</div>';
 
     box.oninput=e=>{
       const t=e.target;
-      if(t.id==='pfOem')D.oem=t.value.trim().toUpperCase();
       if(t.id==='pfDesc')D.desc=t.value;
+      if(t.id==='pfVolumeMl')D.volumeMl=t.value===''?'':Math.max(0,Number(t.value)||0);
+      if(t.id==='pfAlcoholPct')D.alcoholPct=t.value===''?'':Math.min(100,Math.max(0,Number(t.value)||0));
       if(t.id==='pfBrand')D.brand=t.value;
       if(t.id==='pfCode')D.code=t.value.trim();
       if(t.id==='pfLoc')D.loc=t.value.trim();
@@ -4049,7 +1945,7 @@ function productFormDlg(editCode,initialTab,initialMasterItem){
         '<div class="newgrid" style="margin:4px 0">'+
           '<div class="f wide"><label for="asSel">Seleccionar del directorio o crear nuevo</label><select class="fld" id="asSel">'+supOpts+'</select></div>'+
           '<div class="f"><label for="asRif">RIF del Proveedor</label><input class="fld mono" id="asRif" placeholder="J-40000000-1"></div>'+
-          '<div class="f wide"><label for="asName">Razón Social / Nombre del Proveedor</label><input class="fld" id="asName" placeholder="Ej: Importadora Repuestos del Centro, C.A."></div>'+
+          '<div class="f wide"><label for="asName">Razón Social / Nombre del Proveedor</label><input class="fld" id="asName" placeholder="Ej: Distribuidora de bebidas, C.A."></div>'+
           '<div class="f"><label for="asTel">Teléfono / Contacto</label><input class="fld" id="asTel" placeholder="0414-000-0000"></div>'+
           '<div class="f"><label for="asBc">Código de Barras / SKU Proveedor</label><input class="fld mono" id="asBc" value="'+esc(D.code)+'-PRV"></div>'+
           '<div class="f"><label for="asCost">Precio de Costo Ofrecido US$</label><input class="fld r" id="asCost" value="'+nf(D.cost)+'" inputmode="decimal"></div>'+
@@ -4248,7 +2144,7 @@ function productFormDlg(editCode,initialTab,initialMasterItem){
       {label:'Guardar Producto',primary:true,fn:()=>saveProduct(true)}
     ],
     onEnter:()=>{},
-    onOpen:()=>{renderTab();if(initialMasterItem)applyMasterProduct(initialMasterItem);}
+    onOpen:()=>{renderTab();}
   });
 }
 
@@ -4266,7 +2162,7 @@ function productViewDlg(p){
   const section=(title,content)=>'<section class="pv-section"><h3>'+esc(title)+'</h3>'+content+'</section>';
   let html='<div class="form product-view" style="gap:14px">'+
     '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">'+photo+'<div style="flex:1;min-width:220px"><div class="dim">FICHA INFORMATIVA · SOLO LECTURA</div><h2 style="margin:5px 0">'+esc(p.desc||'Producto sin descripción')+'</h2><div class="sub">'+esc(p.brand||'-')+(p.isKit?' · KIT / COMBO':'')+'</div><div style="margin-top:8px"><span class="um-tag">'+esc((p.unit||'und').toUpperCase())+'</span> <span class="iva-tag '+prodTaxCls(p)+'">'+esc(tax)+'</span></div></div></div>'+
-    section('Identificación','<div class="pv-grid">'+field('Código / EAN',p.code)+field('SKU',p.sku)+field('Código OEM',p.oem)+field('Marca',p.brand)+'</div>')+
+    section('Identificación','<div class="pv-grid">'+field('Código / EAN',p.code)+field('SKU',p.sku)+field('Marca',p.brand)+field('Contenido neto',p.volumeMl?String(p.volumeMl)+' ml':'-')+field('Graduación alcohólica',p.alcoholPct?String(p.alcoholPct)+' % vol.':'-')+'</div>')+
     section('Clasificación y ubicación','<div class="pv-grid">'+field('Departamento',p.dept)+field('Categoría',p.cat)+field('Subcategoría',p.subcat)+field('Pasillo / Ubicación',p.loc)+field('Unidad de medida',(p.unit||'und').toUpperCase())+'</div>')+
     section('Existencias y precios','<div class="pv-grid">'+field('Existencia',fq(Number(p.stock)||0)+' '+(p.unit||'und'))+field('Stock mínimo',fq(Number(p.min)||0))+field('Costo unitario',usd(Number(p.cost)||0))+field('Flete unitario',usd(Number(p.freight)||0))+field('Precio base sin IVA',usd(Number(p.price)||0))+field('Precio con IVA',usd(r2((Number(p.price)||0)*(1+prodTaxRate(p)/100))))+field('Impuesto',tax)+'</div>');
   if(gaps.length)html+=section('Precios por modalidad','<div class="gridwrap"><table class="grid"><thead><tr><th>Modalidad</th><th class="r">Descuento / brecha</th><th class="r">Precio US$</th></tr></thead><tbody>'+gaps.map(g=>'<tr><td>'+esc(g.name||'-')+'</td><td class="r">'+fq(Number(g.gapPct)||0)+'%</td><td class="r">'+nf(Number(g.price)||0)+'</td></tr>').join('')+'</tbody></table></div>');
@@ -4298,7 +2194,7 @@ function searchCatalogDlg(){
 
 /* ---------- inventario ---------- */
 function inventoryDlg(){
-  const el=h('<div class="form"><div class="invbar"><label for="invQ">Buscar</label><input class="fld" id="invQ" placeholder="SKU, código, marca, depto, categoría o descripción" autocomplete="off"><label class="chk"><input type="checkbox" id="invLow"> Solo bajo mínimo</label><button class="btn primary" id="btnMasterCat">🔍 Catálogo Maestro (2.5M repuestos)</button><button class="btn" id="btnNewProd">+ Nuevo en Blanco</button><button class="btn mini2" id="btnGoConteo">Conteo físico masivo…</button><button class="btn mini2" id="btnGoLabels">Habladores / Etiquetas SKU</button></div><div class="dim" id="invSum"></div><div class="gridwrap tallwrap"><table class="grid" style="min-width:1040px"><thead><tr><th>SKU / Código</th><th>Descripción / Marca</th><th>Depto. / Categoría / Subcat.</th><th>Pas.</th><th class="c" style="width:68px">U.M.</th><th class="c" style="width:90px">I.V.A.</th><th class="r">Existencia</th><th class="r">Mín.</th><th class="r">Costo US$</th><th class="r">Precio US$</th><th class="c">Acciones</th></tr></thead><tbody id="invBody"></tbody></table></div></div>');
+  const el=h('<div class="form"><div class="invbar"><label for="invQ">Buscar</label><input class="fld" id="invQ" placeholder="SKU, código, marca, depto, categoría o descripción" autocomplete="off"><label class="chk"><input type="checkbox" id="invLow"> Solo bajo mínimo</label><button class="btn" id="btnNewProd">+ Nuevo en Blanco</button><button class="btn mini2" id="btnGoConteo">Conteo físico masivo…</button><button class="btn mini2" id="btnGoLabels">Habladores / Etiquetas SKU</button></div><div class="dim" id="invSum"></div><div class="gridwrap tallwrap"><table class="grid" style="min-width:1040px"><thead><tr><th>SKU / Código</th><th>Descripción / Marca</th><th>Depto. / Categoría / Subcat.</th><th>Pas.</th><th class="c" style="width:68px">U.M.</th><th class="c" style="width:90px">I.V.A.</th><th class="r">Existencia</th><th class="r">Mín.</th><th class="r">CPP unit. US$</th><th class="r">Valor inventario US$</th><th class="r">Precio US$</th><th class="c">Acciones</th></tr></thead><tbody id="invBody"></tbody></table></div></div>');
   const rows=()=>{
     const q=$('#invQ',el).value,low=$('#invLow',el).checked;
     return searchProducts(q,'Todas').filter(p=>!low||p.stock<=p.min);
@@ -4307,7 +2203,8 @@ function inventoryDlg(){
     const n=S.products.length,low=S.products.filter(p=>p.stock<=p.min&&p.stock>0).length,out=S.products.filter(p=>p.stock<=0).length;
     const valCost=S.products.reduce((a,p)=>a+p.cost*p.stock,0);
     const valSale=S.products.reduce((a,p)=>a+p.price*p.stock,0);
-    $('#invSum',el).textContent=n+' productos · '+low+' bajo mínimo · '+out+' agotados · Costo total '+usd(valCost)+' · Valor venta '+usd(valSale);
+    const totalUnits=S.products.reduce((a,p)=>a+Math.max(0,Number(p.stock)||0),0);
+    $('#invSum',el).textContent=n+' productos · '+fq(totalUnits)+' unidades · '+low+' bajo mínimo · '+out+' agotados · Valor inventario a CPP '+usd(valCost)+' · Valor venta '+usd(valSale)+(Number(S.cfg.rate)>0?' · Inventario ref. '+bsf(r2(valCost*S.cfg.rate)):' · Configure tasa BCV para ver referencia en Bs.');
   };
   const draw=()=>{
     const list=rows();
@@ -4327,10 +2224,11 @@ function inventoryDlg(){
       '</select></td>'+
       '<td class="r"><input class="fld cell r" data-f="stock" value="'+fq(p.stock)+'" inputmode="decimal" aria-label="Existencia de '+esc(p.desc)+'"></td>'+
       '<td class="r"><input class="fld cell r" data-f="min" value="'+fq(p.min)+'" inputmode="decimal" aria-label="Mínimo de '+esc(p.desc)+'"></td>'+
-      '<td class="r"><input class="fld cell r" data-f="cost" value="'+nf(p.cost)+'" inputmode="decimal" aria-label="Costo de '+esc(p.desc)+'"></td>'+
+      '<td class="r"><span title="Costo promedio ponderado calculado por entradas de inventario">'+nf8(p.cost)+'</span></td>'+
+      '<td class="r"><b>'+nf(r2(Math.max(0,p.stock)*Math.max(0,p.cost)))+'</b></td>'+
       '<td class="r"><input class="fld cell r" data-f="price" value="'+nf(p.price)+'" inputmode="decimal" aria-label="Precio de '+esc(p.desc)+'"></td>'+
       '<td class="c" style="white-space:nowrap"><button class="btn mini2" data-edit="'+esc(p.code)+'" title="Editar ficha, costos, presentaciones, proveedores y kit">Ficha</button> <button class="btn mini2" data-lbl="'+esc(p.code)+'" title="Generar hablador / etiqueta SKU">SKU</button> <button class="btn mini2" data-kx="'+esc(p.code)+'">Kardex</button></td>'+
-    '</tr>').join(''):'<tr class="empty"><td colspan="11">Sin productos que coincidan.</td></tr>';
+    '</tr>').join(''):'<tr class="empty"><td colspan="12">Sin productos que coincidan.</td></tr>';
     sum();
   };
   el.addEventListener('input',e=>{if(e.target.id==='invQ')draw();});
@@ -4357,7 +2255,6 @@ function inventoryDlg(){
       }
     }
     else if(f==='min'){p.min=e.target.value.trim()==='0'?0:(v||p.min);}
-    else if(f==='cost'){p.cost=v||p.cost;}
     else if(f==='price'){p.price=v||p.price;}
     else if(f==='unit'){
       p.unit=e.target.value.trim()||'und';
@@ -4377,12 +2274,6 @@ function inventoryDlg(){
     save();sum();renderCatalog();renderCart();
   });
   el.addEventListener('click',e=>{
-    if(e.target.id==='btnMasterCat'){
-      masterCatalogBrowserDlg(item=>{
-        productFormDlg(null,'gen',item);
-      });
-      return;
-    }
     if(e.target.id==='btnNewProd'){productFormDlg(null,'gen');return;}
     if(e.target.id==='btnGoConteo'){conteoDlg();return;}
     if(e.target.id==='btnGoLabels'){labelGeneratorDlg();return;}
@@ -4390,18 +2281,15 @@ function inventoryDlg(){
     const lb=e.target.closest('[data-lbl]');if(lb){labelGeneratorDlg(lb.dataset.lbl);return;}
     const kx=e.target.closest('[data-kx]');if(kx){kardexDlg(kx.dataset.kx);return;}
   });
-  openWin({title:'Inventario y Maestro de Productos',w:1080,body:el,foot:[{label:'Cerrar',primary:true}],onEnter:()=>{},onOpen:()=>{draw();}});
+  openWin({title:'Inventario de Licorería',w:1080,body:el,foot:[{label:'Cerrar',primary:true}],onEnter:()=>{},onOpen:()=>{draw();}});
 }
 
 /* ---------- MÓDULO DE COMPRAS Y PROVEEDORES ---------- */
 function comprasDlg(initialTab){
   let tab=initialTab||'new';
   let supIdx=0;
-  let pLines=[
-    {code:'7501008',qty:12,cost:4.85,price:7.50},
-    {code:'7504004',qty:10,cost:3.45,price:5.40}
-  ];
-  let cond='Crédito', creditDays=15, applyIva=true, paidInit=0, payMethod='Transferencia Bs.';
+  let pLines=[];
+  let cond='Crédito', creditDays=15, paidInit=0, payMethod='Transferencia Bs.';
 
   const el=h('<div class="form"><div class="tabs"><button class="tab" data-tab="new">Registrar Compra de Mercancía</button><button class="tab" data-tab="hist">Historial de Compras</button><button class="tab" data-tab="sup">Directorio de Proveedores</button></div><div id="compView"></div></div>');
 
@@ -4419,7 +2307,9 @@ function comprasDlg(initialTab){
     v.innerHTML=
       '<div class="fltgrid">'+
         '<div class="f" style="grid-column:span 2"><label for="cpSup">Proveedor</label><select class="fld" id="cpSup">'+supOpts+'</select></div>'+
-        '<div class="f"><label for="cpDoc">Nº Factura / Control Prov.</label><input class="fld mono" id="cpDoc" value="F-'+pad(S.purchaseSeq*41,6)+'" autocomplete="off"></div>'+
+        '<div class="f"><label for="cpDoc">Nº de factura del proveedor *</label><input class="fld mono" id="cpDoc" value="" placeholder="Copiar de la factura original" autocomplete="off" required></div>'+
+        '<div class="f"><label for="cpCtrl">Nº de control del proveedor</label><input class="fld mono" id="cpCtrl" value="" placeholder="Según factura (si aplica)" autocomplete="off"></div>'+
+        '<div class="f"><label for="cpDate">Fecha de emisión de factura *</label><input class="fld" id="cpDate" type="date" value="'+isoD(Date.now())+'" required></div>'+
         '<div class="f"><label for="cpCond">Condición de Compra</label><select class="fld" id="cpCond"><option value="Crédito"'+(cond==='Crédito'?' selected':'')+'>Crédito (Genera CxP)</option><option value="Contado"'+(cond==='Contado'?' selected':'')+'>Contado (Pagada)</option></select></div>'+
         '<div class="f" id="cpDaysWrap"><label for="cpDays">Plazo Crédito (días)</label><input class="fld r" id="cpDays" value="'+creditDays+'" inputmode="numeric"></div>'+
         '<div class="f"><label for="cpInit">Abono / Pago Inicial US$</label><input class="fld r" id="cpInit" value="'+(paidInit?nf(paidInit):'0,00')+'" inputmode="decimal"></div>'+
@@ -4431,10 +2321,10 @@ function comprasDlg(initialTab){
         '<label for="cpAddQty">Cant.</label>'+
         '<input class="fld r" id="cpAddQty" value="6" style="max-width:75px" inputmode="decimal">'+
         '<button class="btn" id="cpBtnAdd">+ Agregar renglón</button>'+
-        '<label class="chk" style="margin-left:auto"><input type="checkbox" id="cpIva" '+(applyIva?'checked':'')+'> Incluye IVA 16 %</label>'+
+        '<span class="hint" style="margin-left:auto">Verifique la alícuota IVA de cada renglón contra la factura del proveedor.</span>'+
       '</div>'+
       '<div class="gridwrap invwrap"><table class="grid" style="min-width:820px">'+
-        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Costo Unit. US$</th><th class="r">P. Venta US$</th><th class="r">Subtotal US$</th><th></th></tr></thead>'+
+        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Costo Unit. US$</th><th class="r">P. Venta US$</th><th class="r">Base US$</th><th>IVA %</th><th></th></tr></thead>'+
         '<tbody id="cpBody"></tbody>'+
       '</table></div>'+
       '<div class="cierre" id="cpTotals"></div>';
@@ -4443,34 +2333,35 @@ function comprasDlg(initialTab){
       $('#cpDaysWrap',v).style.display=cond==='Crédito'?'':'none';
       $('#cpBody',v).innerHTML=pLines.length?pLines.map((l,i)=>{
         const p=prod(l.code);if(!p)return '';
-        const sub=r2(l.qty*l.cost);
+        const sub=r8(l.qty*l.cost);
         return '<tr data-pi="'+i+'">'+
           '<td class="mono">'+esc(p.code)+'</td>'+
           '<td><div class="desc">'+esc(p.desc)+'</div><div class="sub">'+esc(p.brand)+' · '+esc(p.cat)+'</div></td>'+
           '<td class="r '+stockCls(p)+'">'+fq(p.stock)+'</td>'+
           '<td class="r"><input class="fld cell r" data-cpf="qty" value="'+fq(l.qty)+'" inputmode="decimal"></td>'+
-          '<td class="r"><input class="fld cell r" data-cpf="cost" value="'+nf(l.cost)+'" inputmode="decimal"></td>'+
-          '<td class="r"><input class="fld cell r" data-cpf="price" value="'+nf(l.price)+'" inputmode="decimal"></td>'+
-          '<td class="r"><b>'+nf(sub)+'</b></td>'+
+          '<td class="r"><input class="fld cell r" data-cpf="cost" value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
+          '<td class="r"><input class="fld cell r" data-cpf="price" value="'+nf8(l.price)+'" inputmode="decimal"></td>'+
+          '<td class="r"><b>'+nf8(sub)+'</b></td>'+
+          '<td><select class="fld cell" data-cpf="taxRate" aria-label="Alícuota IVA del renglón"><option value="0" '+(Number(l.taxRate||0)===0?'selected':'')+'>0%</option><option value="8" '+(Number(l.taxRate)===8?'selected':'')+'>8%</option><option value="16" '+(Number(l.taxRate===undefined?16:l.taxRate)===16?'selected':'')+'>16%</option><option value="31" '+(Number(l.taxRate)===31?'selected':'')+'>31%</option></select></td>'+
           '<td class="c"><button class="mini" data-cpdel="'+i+'" title="Quitar">&times;</button></td>'+
         '</tr>';
       }).join(''):'<tr class="empty"><td colspan="8">Agregue productos a la orden de compra.</td></tr>';
 
-      const base=r2(pLines.reduce((a,l)=>a+r2(l.qty*l.cost),0));
-      const iva=applyIva?r2(base*IVA):0;
-      const tot=r2(base+iva);
-      const effPaid=cond==='Contado'?tot:Math.min(tot,paidInit);
-      const pend=r2(Math.max(0,tot-effPaid));
+      const base=r8(pLines.reduce((a,l)=>a+r8(l.qty*l.cost),0));
+      const iva=r8(pLines.reduce((a,l)=>a+r8(l.qty*l.cost*(Number(l.taxRate===undefined?16:l.taxRate)||0)/100),0));
+      const tot=r8(base+iva);
+      const effPaid=cond==='Contado'?tot:Math.min(tot,r8(paidInit));
+      const pend=r8(Math.max(0,tot-effPaid));
       $('#cpTotals',v).innerHTML=
         '<table class="sumt"><thead><tr><th>Resumen de Compra</th><th class="r">US$</th><th class="r">Bs. (Tasa '+nf(S.cfg.rate)+')</th></tr></thead><tbody>'+
-          '<tr><td>Base imponible (Costo mercancía)</td><td class="r">'+nf(base)+'</td><td class="r">'+nf(base*S.cfg.rate)+'</td></tr>'+
-          '<tr><td>IVA 16 % Crédito Fiscal</td><td class="r">'+nf(iva)+'</td><td class="r">'+nf(iva*S.cfg.rate)+'</td></tr>'+
-          '<tr class="tot"><td>Total Factura de Compra</td><td class="r">'+nf(tot)+'</td><td class="r">'+nf(tot*S.cfg.rate)+'</td></tr>'+
+          '<tr><td>Base imponible (Costo mercancía)</td><td class="r">'+nf8(base)+'</td><td class="r">'+nf8(r8(base*S.cfg.rate))+'</td></tr>'+
+          '<tr><td>IVA total según alícuotas indicadas</td><td class="r">'+nf8(iva)+'</td><td class="r">'+nf8(r8(iva*S.cfg.rate))+'</td></tr>'+
+          '<tr class="tot"><td>Total Factura de Compra</td><td class="r">'+nf8(tot)+'</td><td class="r">'+nf8(r8(tot*S.cfg.rate))+'</td></tr>'+
         '</tbody></table>'+
         '<table class="sumt"><thead><tr><th>Condición Financiera</th><th class="r">US$</th><th class="r">Bs.</th></tr></thead><tbody>'+
           '<tr><td>Modalidad</td><td colspan="2" class="r"><b>'+esc(cond)+(cond==='Crédito'?' ('+creditDays+' días)':'')+'</b></td></tr>'+
-          '<tr class="good"><td>Monto Pagado / Abonado</td><td class="r">'+nf(effPaid)+'</td><td class="r">'+nf(effPaid*S.cfg.rate)+'</td></tr>'+
-          '<tr class="'+(pend>0?'warn':'')+'"><td>Saldo a Cuentas por Pagar (CxP)</td><td class="r">'+nf(pend)+'</td><td class="r">'+nf(pend*S.cfg.rate)+'</td></tr>'+
+          '<tr class="good"><td>Monto Pagado / Abonado</td><td class="r">'+nf8(effPaid)+'</td><td class="r">'+nf8(r8(effPaid*S.cfg.rate))+'</td></tr>'+
+          '<tr class="'+(pend>0?'warn':'')+'"><td>Saldo a Cuentas por Pagar (CxP)</td><td class="r">'+nf8(pend)+'</td><td class="r">'+nf8(r8(pend*S.cfg.rate))+'</td></tr>'+
         '</tbody></table>';
     };
 
@@ -4479,15 +2370,15 @@ function comprasDlg(initialTab){
       if(t.id==='cpSup'){supIdx=+t.value;return;}
       if(t.id==='cpCond'){cond=t.value;drawLines();return;}
       if(t.id==='cpDays'){creditDays=Math.max(1,Math.round(pn(t.value)||15));drawLines();return;}
-      if(t.id==='cpInit'){paidInit=pn(t.value);t.value=nf(paidInit);drawLines();return;}
+      if(t.id==='cpInit'){paidInit=r8(pn(t.value));t.value=nf8(paidInit);drawLines();return;}
       if(t.id==='cpMethod'){payMethod=t.value;return;}
-      if(t.id==='cpIva'){applyIva=t.checked;drawLines();return;}
       if(t.dataset.cpf){
         const tr=t.closest('tr'), idx=+tr.dataset.pi, l=pLines[idx];
         const val=pn(t.value);
-        if(t.dataset.cpf==='qty')l.qty=val||1;
-        if(t.dataset.cpf==='cost')l.cost=val||l.cost;
-        if(t.dataset.cpf==='price')l.price=val||l.price;
+        if(t.dataset.cpf==='qty')l.qty=val?r8(val):1;
+        if(t.dataset.cpf==='cost')l.cost=r8(val);
+        if(t.dataset.cpf==='price')l.price=val?r8(val):l.price;
+        if(t.dataset.cpf==='taxRate')l.taxRate=Number(t.value);
         drawLines();
       }
     };
@@ -4496,8 +2387,8 @@ function comprasDlg(initialTab){
         const code=$('#cpAddProd',v).value, qty=pn($('#cpAddQty',v).value)||1, p=prod(code);
         if(!p)return;
         const ex=pLines.find(x=>x.code===code);
-        if(ex)ex.qty=r2(ex.qty+qty);
-        else pLines.push({code,qty,cost:p.cost,price:p.price});
+        if(ex)ex.qty=r8(ex.qty+qty);
+        else pLines.push({code,qty,cost:p.cost,price:p.price,taxRate:prodTaxRate(p)});
         drawLines();
       }
       const del=e.target.closest('[data-cpdel]');
@@ -4510,18 +2401,20 @@ function comprasDlg(initialTab){
     const list=(S.purchases||[]).slice().sort((a,b)=>b.no-a.no);
     v.innerHTML=
       '<div class="gridwrap tallwrap"><table class="grid" style="min-width:820px">'+
-        '<thead><tr><th>Compra Nº</th><th>Fac. Prov.</th><th>Fecha</th><th>Proveedor</th><th>Condición</th><th class="r">Total US$</th><th class="r">Pagado US$</th><th class="r">Saldo CxP</th><th>Acción</th></tr></thead>'+
+        '<thead><tr><th>Compra Nº</th><th>Fac. Prov.</th><th>Fecha</th><th>Proveedor</th><th>Condición</th><th class="r">Total US$</th><th class="r">Pagado / Retenido US$</th><th class="r">Saldo CxP</th><th>Acción</th></tr></thead>'+
         '<tbody>'+(list.length?list.map(c=>{
-          const pend=r2(Math.max(0,c.total-(c.paid||0)));
+          const payable=r8(c.payableTotal===undefined?Math.max(0,Number(c.total||0)-Number(c.retIva||0)):c.payableTotal);
+          const paidTotal=r8(Number(c.paid||0)+Number(c.withheldIslrPaid||0));
+          const pend=r8(Math.max(0,payable-paidTotal));
           return '<tr class="'+(c.void?'void':'')+'">'+
             '<td class="mono">COM-'+pad(c.no)+'</td>'+
             '<td class="mono">'+esc(c.docProv)+'</td>'+
             '<td>'+fmtDT(c.ts)+'</td>'+
             '<td>'+esc(c.supplier.name)+'</td>'+
             '<td>'+esc(c.cond)+'</td>'+
-            '<td class="r">'+nf(c.total)+'</td>'+
-            '<td class="r">'+nf(c.paid||0)+'</td>'+
-            '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA':nf(pend))+'</td>'+
+            '<td class="r">'+nf8(c.total)+'</td>'+
+            '<td class="r">'+nf8(paidTotal)+'</td>'+
+            '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA':nf8(pend))+'</td>'+
             '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'">Anular</button>')+'</td>'+
           '</tr>';
         }).join(''):'<tr class="empty"><td colspan="9">Sin compras registradas.</td></tr>')+'</tbody>'+
@@ -4542,7 +2435,9 @@ function comprasDlg(initialTab){
           });
         }
       });
-      S.cxp=(S.cxp||[]).filter(x=>x.purchaseNo!==c.no);
+      (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
+      (S.retencionesIva||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||''))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
+      if(S.sicoven&&Array.isArray(S.sicoven.islrVouchers))(S.sicoven.islrVouchers||[]).filter(x=>Number(x.cxpPurchaseNo)===Number(c.no)||(String(x.invoiceNumber||'').trim()===String(c.docProv||'').trim()&&String(x.supplierRif||'').toUpperCase().replace(/[^A-Z0-9]/g,'')===String(c.supplier&&c.supplier.rif||'').toUpperCase().replace(/[^A-Z0-9]/g,''))).forEach(x=>{x.void=true;x.status='ANULADO JUNTO CON COMPRA COM-'+pad(c.no);x.voidedAt=Date.now();});
       save();renderAll();renderPurchaseHist(v);
       msg('Compra COM-'+pad(c.no)+' anulada. Se revirtió el ingreso en inventario y Kardex.');
     };
@@ -4589,37 +2484,47 @@ function comprasDlg(initialTab){
     if(tab!=='new')return true;
     if(!pLines.length){msg('Agregue al menos un producto a la compra.','bad');return false;}
     const sup=S.suppliers[supIdx]||S.suppliers[0];
-    const docProv=($('#cpDoc',el)?$('#cpDoc',el).value.trim():'')||('F-'+S.purchaseSeq);
+    if(!sup||!sup.name||!sup.rif){msg('Registre y seleccione un proveedor real con razón social y RIF antes de procesar la compra.','bad');return false;}
+    const docProv=$('#cpDoc',el)?$('#cpDoc',el).value.trim():'';
+    const ctrlProv=$('#cpCtrl',el)?$('#cpCtrl',el).value.trim():'';
+    const docDate=$('#cpDate',el)?$('#cpDate',el).value:'';
+    const docDateTs=docDate?parseIsoD(docDate):0;
+    if(!docProv){msg('El número de factura del proveedor es obligatorio; no se generará uno ficticio.','bad');return false;}
+    if(!docDateTs){msg('Indique la fecha de emisión que aparece en la factura original.','bad');return false;}
+    if((S.purchases||[]).some(p=>!p.void&&String(p.supplier?.rif||'').trim().toLowerCase()===String(sup.rif).trim().toLowerCase()&&String(p.docProv||'').trim().toLowerCase()===docProv.toLowerCase())){msg('Ya existe una compra activa con ese proveedor y número de factura. Verifique el documento original.','bad');return false;}
+    if(!(Number(S.cfg.rate)>0)){msg('Configure una tasa BCV real mayor que cero antes de registrar la compra.','bad');return false;}
+    if(pLines.some(l=>!(Number(l.qty)>0)||!(Number(l.cost)>=0))){msg('Cada renglón debe tener cantidad positiva y costo válido.','bad');return false;}
     const ts=Date.now();
     const no=S.purchaseSeq++;
     const lines=pLines.map(l=>{
       const p=prod(l.code);
       /* Costo Promedio Ponderado */
       const prevVal=Math.max(0,p.stock)*p.cost;
-      const newVal=l.qty*l.cost;
+      const newVal=r8(l.qty*l.cost);
       const nextStock=r2(p.stock+l.qty);
-      const nextCost=nextStock>0?r2((prevVal+newVal)/nextStock):l.cost;
+      const nextCost=nextStock>0?r8((prevVal+newVal)/nextStock):l.cost;
       p.stock=nextStock;
       p.cost=nextCost;
-      if(l.price>0)p.price=r2(l.price);
+      if(l.price>0)p.price=r8(l.price);
       addKardex({
         ts,code:p.code,type:'COMPRA',dir:'IN',doc:'COM-'+pad(no),
         party:sup.name+' (Fac. '+docProv+')',qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
       });
-      return{code:p.code,desc:p.brand+' '+p.desc,qty:l.qty,cost:l.cost,sub:r2(l.qty*l.cost)};
+      const taxRate=Number(l.taxRate===undefined?16:l.taxRate)||0;
+      return{code:p.code,desc:p.brand+' '+p.desc,qty:l.qty,cost:l.cost,sub:r8(l.qty*l.cost),taxRate,iva:r8(l.qty*l.cost*taxRate/100)};
     });
-    const base=r2(lines.reduce((a,x)=>a+x.sub,0));
-    const iva=applyIva?r2(base*IVA):0;
-    const total=r2(base+iva);
+    const base=r8(lines.reduce((a,x)=>a+x.sub,0));
+    const iva=r8(lines.reduce((a,l)=>a+(l.iva||0),0));
+    const total=r8(base+iva);
     const dueTs=ts+creditDays*86400000;
-    const retPct=75; /* Por defecto legal ordinario; los casos especiales al 100% se documentan aparte para revisión del contador. */
-    const aplicarRetencion=!!(applyIva&&iva>0&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true);
+    const retPct=Number(S.cfg.retIvaPct)===100?100:75; /* Aplicar solo si la designación y el proveedor están confirmados. */
+    const aplicarRetencion=!!(iva>0&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true);
     const retUsd=aplicarRetencion?r2(iva*(retPct/100)):0;
     const retBs=r2(retUsd*S.cfg.rate);
     const payableTotal=r2(Math.max(0,total-retUsd));
     const effPaid=cond==='Contado'?payableTotal:Math.min(payableTotal,paidInit);
-    const comp={no,docProv,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,void:false};
-    comp.ctrlProv='00-'+pad(no+4400,8);
+    const comp={no,docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
+    comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
       const periodo=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
       const retSeq=(S.retencionesIva||[]).filter(r=>String(r.periodo)===periodo).reduce((m,r)=>Math.max(m,Number(String(r.id||'').slice(-8))||0),0)+1;
@@ -5001,13 +2906,13 @@ function cxpDlg(selId){
   '</div>');
 
   const draw=()=>{
-    const now=Date.now(), rate=S.cfg.rate, all=S.cxp||[];
-    const totPend=r2(all.reduce((a,x)=>a+Math.max(0,x.total-x.paid),0));
-    const totOver=r2(all.filter(x=>x.total-x.paid>=0.01&&x.dueTs<now).reduce((a,x)=>a+Math.max(0,x.total-x.paid),0));
-    const totVig=r2(Math.max(0,totPend-totOver));
+    const now=Date.now(), rate=S.cfg.rate, all=(S.cxp||[]).filter(x=>!x.void);
+    const totPend=r8(all.reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
+    const totOver=r8(all.filter(x=>r8(Number(x.total||0)-Number(x.paid||0))>=0.00000001&&x.dueTs<now).reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
+    const totVig=r8(Math.max(0,totPend-totOver));
     let pagHoy=0;
     all.forEach(x=>(x.payments||[]).forEach(p=>{if(sameDay(p.ts))pagHoy+=p.amountUsd;}));
-    pagHoy=r2(pagHoy);
+    pagHoy=r8(pagHoy);
 
     $('#cxpKpis',el).innerHTML=
       '<div class="kpi"><span>Total por Pagar (Pasivo)</span><b class="warn">'+usd(totPend)+'</b><small>'+bsf(totPend*rate)+'</small></div>'+
@@ -5017,10 +2922,10 @@ function cxpDlg(selId){
 
     const q=norm(fQ);
     const list=all.filter(x=>{
-      const bal=r2(x.total-x.paid);
-      if(fState==='PEND'&&bal<0.01)return false;
-      if(fState==='OVER'&&(bal<0.01||x.dueTs>=now))return false;
-      if(fState==='PAID'&&bal>=0.01)return false;
+      const bal=r8(Math.max(0,Number(x.total||0)-Number(x.paid||0)));
+      if(fState==='PEND'&&bal<0.00000001)return false;
+      if(fState==='OVER'&&(bal<0.00000001||x.dueTs>=now))return false;
+      if(fState==='PAID'&&bal>=0.00000001)return false;
       if(q&&norm(x.doc+x.supplier.name+x.supplier.rif+x.concept).indexOf(q)<0)return false;
       return true;
     }).sort((a,b)=>a.dueTs-b.dueTs);
@@ -5029,7 +2934,7 @@ function cxpDlg(selId){
     if(!curId&&list[0])curId=list[0].id;
 
     $('#cxpBody',el).innerHTML=list.length?list.map(x=>{
-      const bal=r2(Math.max(0,x.total-x.paid));
+      const bal=r8(Math.max(0,Number(x.total||0)-Number(x.paid||0)));
       const isOver=bal>=0.01&&x.dueTs<now;
       const stTxt=bal<0.01?'PAGADA':(isOver?'VENCIDA':'VIGENTE');
       const stCls=bal<0.01?'st-ok':(isOver?'st-out':'st-low');
@@ -5040,9 +2945,9 @@ function cxpDlg(selId){
         '<td>'+fmtD(x.ts)+'</td>'+
         '<td>'+fmtD(x.dueTs)+'</td>'+
         '<td class="'+stCls+'">'+stTxt+'</td>'+
-        '<td class="r">'+nf(x.total)+'</td>'+
-        '<td class="r">'+nf(x.paid)+'</td>'+
-        '<td class="r"><b>'+nf(bal)+'</b></td>'+
+        '<td class="r">'+nf8(x.total)+'</td>'+
+        '<td class="r">'+nf8(x.paid)+'</td>'+
+        '<td class="r"><b>'+nf8(bal)+'</b></td>'+
         '<td class="r">'+nf(bal*rate)+'</td>'+
       '</tr>';
     }).join(''):'<tr class="empty"><td colspan="10">No hay cuentas por pagar para el filtro seleccionado.</td></tr>';
@@ -5050,45 +2955,45 @@ function cxpDlg(selId){
     renderDetailBox();
   };
 
-  const calcMixTotalUsd=()=>r2(METHODS.reduce((a,m)=>a+(mixState[m.id]?mixState[m.id].usd:0),0));
+  const calcMixTotalUsd=()=>r8(METHODS.reduce((a,m)=>a+(mixState[m.id]?mixState[m.id].usd:0),0));
 
   const updateMixSummary=bal=>{
     const rate=S.cfg.rate;
     const sumUsd=calcMixTotalUsd();
-    const remUsd=r2(bal-sumUsd);
+    const remUsd=r8(bal-sumUsd);
     const sumEl=$('#cxpMixSum',el);
     if(!sumEl)return;
     let statusHtml='';
     if(sumUsd<=0){
       statusHtml='<span class="dim">Ingrese el monto en uno o más medios de pago.</span>';
-    }else if(remUsd<-0.01){
+    }else if(remUsd< -0.00000001){
       statusHtml='<b class="bad">Excede el saldo por '+usd(Math.abs(remUsd))+' ('+bsf(Math.abs(remUsd)*rate)+')</b>';
-    }else if(remUsd<=0.01){
+    }else if(remUsd<=0.00000001){
       statusHtml='<b class="ok">Cubre el 100 % de la obligación con el proveedor</b>';
     }else{
       statusHtml='<b class="warn">Pago parcial · Resta por pagar: '+usd(remUsd)+' ('+bsf(remUsd*rate)+')</b>';
     }
     sumEl.innerHTML=
-      '<span>Total Pago Mixto: <b>'+usd(sumUsd)+'</b> ('+bsf(sumUsd*rate)+')</span>'+
+      '<span>Total Pago Mixto: <b>US$ '+nf8(sumUsd)+'</b> ('+bsf(sumUsd*rate)+')</span>'+
       '<span style="margin-left:14px">'+statusHtml+'</span>';
   };
 
   const renderDetailBox=()=>{
     const box=$('#cxpDetail',el), item=(S.cxp||[]).find(x=>x.id===curId);
     if(!item){box.innerHTML='<span class="dim">Seleccione una obligación para registrar un pago simple o mixto al proveedor o consultar comprobantes.</span>';return;}
-    const bal=r2(Math.max(0,item.total-item.paid)), rate=S.cfg.rate;
+    const bal=r8(Math.max(0,Number(item.total||0)-Number(item.paid||0))), rate=S.cfg.rate;
     const mOpts='<option value="MIXTO"'+(payMode==='MIXTO'?' selected':'')+'>★ Pago Mixto (Múltiples métodos de pago)</option>'+
       METHODS.map(m=>'<option value="'+esc(m.id)+'"'+(payMode===m.id?' selected':'')+'>'+esc(m.name)+' ('+m.cur+')</option>').join('');
-    const hist=(item.payments||[]).map(p=>'<tr><td>'+fmtDT(p.ts)+'</td><td>'+esc(p.method)+'</td><td class="mono">'+esc(p.ref||'-')+'</td><td class="r">'+nf(p.amountUsd)+'</td><td class="r">'+nf(p.amountBs)+'</td><td>'+esc(p.note||'')+'</td></tr>').join('')||'<tr><td colspan="6" class="dim">Sin pagos registrados todavía.</td></tr>';
+    const hist=(item.payments||[]).map(p=>'<tr><td>'+fmtDT(p.ts)+'</td><td>'+esc(p.method)+'</td><td class="mono">'+esc(p.ref||'-')+'</td><td class="r">'+nf8(p.amountUsd)+'</td><td class="r">'+nf(p.amountBs)+'</td><td>'+esc(p.note||'')+'</td></tr>').join('')||'<tr><td colspan="6" class="dim">Sin pagos registrados todavía.</td></tr>';
 
     let formHtml='';
-    if(bal<0.01){
+    if(bal<0.00000001){
       formHtml='<div class="dim" style="margin-bottom:6px">Esta obligación con el proveedor ya está pagada en su totalidad.</div>';
     }else if(payMode!=='MIXTO'){
       formHtml=
         '<div class="invbar" style="margin-bottom:6px">'+
           '<label>Medio de pago</label><select class="fld" id="pgMethod" style="max-width:235px">'+mOpts+'</select>'+
-          '<label>Monto US$</label><input class="fld r" id="pgUsd" value="'+nf(bal)+'" style="max-width:92px" inputmode="decimal">'+
+          '<label>Monto US$</label><input class="fld r" id="pgUsd" value="'+nf8(bal)+'" style="max-width:92px" inputmode="decimal">'+
           '<label>Equiv. Bs.</label><input class="fld r" id="pgBs" value="'+nf(bal*rate)+'" style="max-width:105px" inputmode="decimal">'+
           '<label>Comprobante</label><input class="fld" id="pgRef" placeholder="Nº transf. / ref." style="max-width:115px">'+
           '<label>Nota</label><input class="fld" id="pgNote" placeholder="Pago a proveedor">'+
@@ -5103,7 +3008,7 @@ function cxpDlg(selId){
         return '<tr>'+
           '<td><b>'+esc(m.name)+'</b></td>'+
           '<td class="c"><span class="sku-tag">'+(isUsd?'US$':'Bs.')+'</span></td>'+
-          '<td class="r" style="width:125px"><input class="fld r cxp-mix-usd" data-m="'+esc(m.id)+'" value="'+(st.usd>0?nf(st.usd):'')+'" placeholder="0,00" inputmode="decimal"></td>'+
+          '<td class="r" style="width:125px"><input class="fld r cxp-mix-usd" data-m="'+esc(m.id)+'" value="'+(st.usd>0?nf8(st.usd):'')+'" placeholder="0,00" inputmode="decimal"></td>'+
           '<td class="r" style="width:135px"><input class="fld r cxp-mix-bs" data-m="'+esc(m.id)+'" value="'+(st.bs>0?nf(st.bs):'')+'" placeholder="0,00" inputmode="decimal"></td>'+
           '<td style="width:155px"><input class="fld mono cxp-mix-ref" data-m="'+esc(m.id)+'" value="'+esc(st.ref||'')+'" placeholder="Nº op. / ref. / recibo"></td>'+
           '<td class="c" style="width:85px"><button class="btn mini2" data-cxp-fill="'+esc(m.id)+'" title="Asignar el saldo restante a este medio de pago">Restante</button></td>'+
@@ -5130,7 +3035,7 @@ function cxpDlg(selId){
       formHtml+
       '<div class="gridwrap" style="max-height:110px"><table class="grid"><thead><tr><th>Fecha</th><th>Medio de Pago</th><th>Comprobante</th><th class="r">Equiv. US$</th><th class="r">Monto Bs.</th><th>Observación</th></tr></thead><tbody>'+hist+'</tbody></table></div>';
 
-    if(payMode==='MIXTO'&&bal>=0.01)updateMixSummary(bal);
+    if(payMode==='MIXTO'&&bal>=0.00000001)updateMixSummary(bal);
   };
 
   el.addEventListener('change',e=>{
@@ -5150,29 +3055,29 @@ function cxpDlg(selId){
     }
     if(e.target.id==='pgBs'){
       const v=pn(e.target.value);
-      const usdInp=$('#pgUsd',el);if(usdInp)usdInp.value=v>0?nf(r2(v/rate)):'';
+      const usdInp=$('#pgUsd',el);if(usdInp)usdInp.value=v>0?nf8(r8(v/rate)):'';
       return;
     }
     if(e.target.classList.contains('cxp-mix-usd')){
       const mid=e.target.dataset.m, u=Math.max(0,pn(e.target.value));
       mixState[mid]=mixState[mid]||{usd:0,bs:0,ref:''};
-      mixState[mid].usd=r2(u);
+      mixState[mid].usd=r8(u);
       mixState[mid].bs=r2(u*rate);
       const bsInp=el.querySelector('.cxp-mix-bs[data-m="'+mid+'"]');
       if(bsInp)bsInp.value=u>0?nf(mixState[mid].bs):'';
       const item=(S.cxp||[]).find(x=>x.id===curId);
-      if(item)updateMixSummary(r2(Math.max(0,item.total-item.paid)));
+      if(item)updateMixSummary(r8(Math.max(0,Number(item.total||0)-Number(item.paid||0))));
       return;
     }
     if(e.target.classList.contains('cxp-mix-bs')){
       const mid=e.target.dataset.m, b=Math.max(0,pn(e.target.value));
       mixState[mid]=mixState[mid]||{usd:0,bs:0,ref:''};
       mixState[mid].bs=r2(b);
-      mixState[mid].usd=r2(b/rate);
+      mixState[mid].usd=r8(b/rate);
       const usdInp=el.querySelector('.cxp-mix-usd[data-m="'+mid+'"]');
       if(usdInp)usdInp.value=b>0?nf(mixState[mid].usd):'';
       const item=(S.cxp||[]).find(x=>x.id===curId);
-      if(item)updateMixSummary(r2(Math.max(0,item.total-item.paid)));
+      if(item)updateMixSummary(r8(Math.max(0,Number(item.total||0)-Number(item.paid||0))));
       return;
     }
     if(e.target.classList.contains('cxp-mix-ref')){
@@ -5192,9 +3097,9 @@ function cxpDlg(selId){
     if(fillBtn){
       const mid=fillBtn.dataset.cxpFill;
       const item=(S.cxp||[]).find(x=>x.id===curId);if(!item)return;
-      const bal=r2(Math.max(0,item.total-item.paid));
-      const otherUsd=r2(METHODS.reduce((a,m)=>a+(m.id!==mid&&mixState[m.id]?mixState[m.id].usd:0),0));
-      const rem=r2(Math.max(0,bal-otherUsd));
+      const bal=r8(Math.max(0,Number(item.total||0)-Number(item.paid||0)));
+      const otherUsd=r8(METHODS.reduce((a,m)=>a+(m.id!==mid&&mixState[m.id]?mixState[m.id].usd:0),0));
+      const rem=r8(Math.max(0,bal-otherUsd));
       mixState[mid]=mixState[mid]||{usd:0,bs:0,ref:''};
       mixState[mid].usd=rem;
       mixState[mid].bs=r2(rem*S.cfg.rate);
@@ -5203,14 +3108,14 @@ function cxpDlg(selId){
     }
     if(e.target.id==='pgSaveBtn'){
       const item=(S.cxp||[]).find(x=>x.id===curId);if(!item)return;
-      const bal=r2(Math.max(0,item.total-item.paid));
+      const bal=r8(Math.max(0,Number(item.total||0)-Number(item.paid||0)));
       const rawAmt=pn($('#pgUsd',el).value);
       if(rawAmt<=0){msg('Indique un monto de pago válido mayor a cero.','bad');return;}
-      if(rawAmt-bal>0.01){msg('El monto ingresado ('+usd(rawAmt)+') supera el saldo por pagar ('+usd(bal)+').','bad');return;}
-      const amt=Math.min(bal,rawAmt);
+      if(rawAmt-bal>0.00000001){msg('El monto ingresado ('+usd(rawAmt)+') supera el saldo por pagar ('+usd(bal)+').','bad');return;}
+      const amt=r8(Math.min(bal,rawAmt));
       const mId=$('#pgMethod',el).value;
       const m=METHODS.find(x=>x.id===mId)||METHODS[5];
-      item.paid=r2(item.paid+amt);
+      item.paid=r8(Math.min(Number(item.total)||0,(Number(item.paid)||0)+amt));
       item.payments=item.payments||[];
       item.payments.push({
         ts:Date.now(),method:m.name,cur:m.cur,
@@ -5228,11 +3133,11 @@ function cxpDlg(selId){
     }
     if(e.target.id==='pgSaveMixBtn'){
       const item=(S.cxp||[]).find(x=>x.id===curId);if(!item)return;
-      const bal=r2(Math.max(0,item.total-item.paid));
-      const active=METHODS.filter(m=>mixState[m.id]&&mixState[m.id].usd>=0.01);
+      const bal=r8(Math.max(0,Number(item.total||0)-Number(item.paid||0)));
+      const active=METHODS.filter(m=>mixState[m.id]&&mixState[m.id].usd>=0.00000001);
       if(!active.length){msg('Ingrese el monto en al menos un medio de pago para el pago mixto.','bad');return;}
-      const totalMix=r2(active.reduce((a,m)=>a+mixState[m.id].usd,0));
-      if(totalMix-bal>0.01){
+      const totalMix=r8(active.reduce((a,m)=>a+mixState[m.id].usd,0));
+      if(totalMix-bal>0.00000001){
         msg('La suma del pago mixto ('+usd(totalMix)+') excede el saldo pendiente de la obligación ('+usd(bal)+'). Ajuste los montos.','bad');
         return;
       }
@@ -5247,13 +3152,13 @@ function cxpDlg(selId){
           ts,
           method:tag+m.name,
           cur:m.cur,
-          amountUsd:r2(st.usd),
+          amountUsd:r8(st.usd),
           amountBs:r2(st.bs||st.usd*S.cfg.rate),
           ref:(st.ref||'').trim()||('OPM-'+pad(batchNo,3)+'-'+(idx+1)),
           note:baseNote
         });
       });
-      item.paid=r2(Math.min(item.total,item.paid+totalMix));
+      item.paid=r8(Math.min(Number(item.total)||0,(Number(item.paid)||0)+totalMix));
       if(item.purchaseNo){
         const comp=(S.purchases||[]).find(x=>x.no===item.purchaseNo);
         if(comp)comp.paid=item.paid;
@@ -5455,7 +3360,7 @@ function newOperacionCambiariaDlg(opts, onDone){
       box.innerHTML=
         '<div style="font-weight:700;font-size:12px;color:#1e40af;margin-bottom:6px">4. Destino de los USD: Cuenta Zelle Propia de la Empresa</div>'+
         '<div class="newgrid">'+
-          '<div class="f wide"><label for="opZellePropioEmail">Cuenta Zelle de la Empresa</label><input class="fld" id="opZellePropioEmail" value="tesoreria@elpiston.com" placeholder="correo@zelle.com"></div>'+
+          '<div class="f wide"><label for="opZellePropioEmail">Cuenta Zelle de la Empresa</label><input class="fld" id="opZellePropioEmail" value="" placeholder="correo@zelle.com"></div>'+
           '<div class="f"><label for="opZellePropioConf">Confirmation Number Zelle</label><input class="fld mono" id="opZellePropioConf" placeholder="Confirmation Number" value="ZEL-'+pad(Math.floor(Math.random()*899999+100000),6)+'"></div>'+
         '</div>';
     }else{
@@ -6547,7 +4452,7 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
     const p=prod(l.code);
     p.stock=Math.max(0,r2(p.stock-l.qty));
     addKardex({
-      ts,code:p.code,type:'VENTA',dir:'OUT',doc:'FAC-'+pad(invNo),
+      ts,code:p.code,type:'VENTA',dir:'OUT',doc:'FAC-'+pad(invNo),cashbox:currentCaja(),
       party:S.client.name,qty:l.qty,stockAfter:p.stock,cost:p.cost,user:S.cfg.cajero
     });
   });
@@ -6840,37 +4745,17 @@ function exportLibroVentasCsv(sales){
 
 function exportLibroComprasCsv(purchases){
   const BOM='\uFEFF';
-  const headers=[
-    'Nro_Operacion','Fecha_Emision','RIF_Proveedor','Nombre_Proveedor',
-    'Numero_Factura_Proveedor','Numero_Control_Proveedor','Tipo_Transaccion',
-    'Total_Compras_USD','Total_Compras_Bs','Compras_Exentas_Bs',
-    'Base_Imponible_16_Bs','Credito_Fiscal_16_Bs','IVA_Retenido_75_Bs',
-    'Comprobante_Retencion','Tasa_BCV'
-  ];
+  const headers=['Nro_Operacion','Fecha_Emision','RIF_Proveedor','Nombre_Proveedor','Numero_Factura_Proveedor','Numero_Control_Proveedor','Tipo_Transaccion','Total_Compras_USD','Total_Compras_Bs','Base_Exenta_Bs','Base_Imponible_8_Bs','Credito_Fiscal_8_Bs','Base_Imponible_16_Bs','Credito_Fiscal_16_Bs','Base_Imponible_31_Bs','Credito_Fiscal_31_Bs','IVA_Retenido_Bs','Comprobante_Retencion','Tasa_BCV','Estado'];
+  const cell=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
   const rows=purchases.map((p,idx)=>{
-    const rate=p.rate||S.cfg.rate;
-    const retBs=p.retIva?r2(p.retIva*rate):r2(p.iva*0.75*rate);
-    return [
-      idx+1,
-      fmtD(new Date(p.ts)),
-      `"${p.supplier.rif}"`,
-      `"${p.supplier.name.replace(/"/g,'""')}"`,
-      p.docProv,
-      p.ctrlProv||('00-'+pad(p.no+4400,8)),
-      '01-REG',
-      p.total.toFixed(2),
-      r2(p.total*rate).toFixed(2),
-      '0.00',
-      r2(p.base*rate).toFixed(2),
-      r2(p.iva*rate).toFixed(2),
-      retBs.toFixed(2),
-      p.retIvaDoc||('202610'+pad(idx+41,8)),
-      rate.toFixed(2)
-    ].join(';');
+    const rate=Number(p.rate)||Number(S.cfg.rate)||0, lines=Array.isArray(p.lines)?p.lines:[];
+    const baseAt=pct=>{if(lines.length)return r2(lines.reduce((sum,l)=>{const tr=l.taxRate===undefined?(Number(p.iva)>0?16:0):Number(l.taxRate);const sub=Number(l.sub)||r2((Number(l.qty)||0)*(Number(l.cost)||0));return sum+(tr===pct?sub:0);},0));if(pct===16&&Number(p.iva)>0)return r2(Number(p.base)||0);if(pct===0&&!(Number(p.iva)>0))return r2(Number(p.base)||0);return 0;};
+    const ivaAt=pct=>r2(lines.length?lines.reduce((sum,l)=>{const tr=l.taxRate===undefined?(Number(p.iva)>0?16:0):Number(l.taxRate);return sum+(tr===pct?(Number(l.iva)||r2((Number(l.sub)||r2((Number(l.qty)||0)*(Number(l.cost)||0)))*tr/100)):0);},0):(pct===16?(Number(p.iva)||0):0));
+    return [idx+1,fmtD(new Date(p.docDateTs||p.ts)),p.supplier?.rif||'',p.supplier?.name||'',p.docProv||'',p.ctrlProv||'',p.void?'03-ANUL':'01-REG',(Number(p.total)||0).toFixed(2),r2((Number(p.total)||0)*rate).toFixed(2),r2(baseAt(0)*rate).toFixed(2),r2(baseAt(8)*rate).toFixed(2),r2(ivaAt(8)*rate).toFixed(2),r2(baseAt(16)*rate).toFixed(2),r2(ivaAt(16)*rate).toFixed(2),r2(baseAt(31)*rate).toFixed(2),r2(ivaAt(31)*rate).toFixed(2),r2((Number(p.retIva)||0)*rate).toFixed(2),p.retIvaDoc||'',rate.toFixed(2),p.void?'ANULADA':(p.retIva>0?'RETENCIÓN REGISTRADA':'REGISTRADA')].map(cell).join(';');
   });
-  const csv=BOM+[headers.join(';')].concat(rows).join('\r\n');
-  downloadBlob(`Libro_Compras_SENIAT_${S.cfg.rif}_${new Date().toISOString().slice(0,10)}.csv`,csv,'text/csv;charset=utf-8;');
-  msg('Libro de Compras Fiscal exportado a CSV con éxito.');
+  const csv=BOM+[headers.map(cell).join(';')].concat(rows).join('\r\n');
+  downloadBlob('Libro_Compras_SENIAT_'+(S.cfg.rif||'SIN_RIF')+'_'+new Date().toISOString().slice(0,10)+'.csv',csv,'text/csv;charset=utf-8;');
+  msg('Libro de Compras exportado con los datos documentales registrados. Verifique el formato oficial vigente con su contador antes de declarar.');
 }
 
 function exportIgtfCsv(sales){
@@ -7137,7 +5022,8 @@ function seniatSudebanDlg(initialTab){
     '<div class="tabs" id="snTabs">'+
       '<button class="tab '+(activeTab==='resumen'?'active':'')+'" data-tab="resumen">Panel de Control Fiscal</button>'+
       '<button class="tab '+(activeTab==='ventas'?'active':'')+'" data-tab="ventas">Libro de Ventas Fiscal</button>'+
-      '<button class="tab '+(activeTab==='compras'?'active':'')+'" data-tab="compras">Libro de Compras & Forma 30</button>'+
+      '<button class="tab '+(activeTab==='compras'?'active':'')+'" data-tab="compras">Libro de Compras</button>'+
+      '<button class="tab '+(activeTab==='inventario'?'active':'')+'" data-tab="inventario">Libro de Inventario</button>'+
       '<button class="tab '+(activeTab==='igtf'?'active':'')+'" data-tab="igtf">Percepción de IGTF (3%)</button>'+
       '<button class="tab '+(activeTab==='auditoria'?'active':'')+'" data-tab="auditoria">Auditoría Ventas & Tasa BCV</button>'+
       '<button class="tab '+(activeTab==='sudeban'?'active':'')+'" data-tab="sudeban">Conciliación POS / SUDEBAN</button>'+
@@ -7182,7 +5068,7 @@ function seniatSudebanDlg(initialTab){
   const getFilteredPurchases=()=>{
     const q=norm(qText);
     return (S.purchases||[]).filter(p=>{
-      if(!filterPeriod(p.ts))return false;
+      if(!filterPeriod(p.docDateTs||p.ts))return false;
       if(!q)return true;
       return norm(p.supplier.name+p.supplier.rif+p.docProv+(p.ctrlProv||'')).indexOf(q)>=0;
     });
@@ -7306,63 +5192,48 @@ function seniatSudebanDlg(initialTab){
 
   const drawCompras=()=>{
     const purchases=getFilteredPurchases();
-    let sumTotal=0, sumBase=0, sumIva=0, sumRet=0;
-
+    let sumTotal=0,sumBase0=0,sumBase8=0,sumIva8=0,sumBase16=0,sumIva16=0,sumBase31=0,sumIva31=0,sumRet=0;
+    const baseAt=(p,pct)=>{
+      const lines=Array.isArray(p.lines)?p.lines:[];
+      if(!lines.length)return pct===16&&Number(p.iva)>0?(Number(p.base)||0):(pct===0&&!(Number(p.iva)>0)?(Number(p.base)||0):0);
+      return r2(lines.reduce((sum,l)=>{const tr=l.taxRate===undefined?(Number(p.iva)>0?16:0):Number(l.taxRate);return sum+(tr===pct?(Number(l.sub)||r2((Number(l.qty)||0)*(Number(l.cost)||0))):0);},0));
+    };
+    const ivaAt=(p,pct)=>{
+      const lines=Array.isArray(p.lines)?p.lines:[];
+      if(!lines.length)return pct===16?(Number(p.iva)||0):0;
+      return r2(lines.reduce((sum,l)=>{const tr=l.taxRate===undefined?(Number(p.iva)>0?16:0):Number(l.taxRate);return sum+(tr===pct?(Number(l.iva)||r2((Number(l.sub)||r2((Number(l.qty)||0)*(Number(l.cost)||0)))*tr/100)):0);},0));
+    };
     const rowsHtml=purchases.length?purchases.map((p,idx)=>{
-      const rate=p.rate||S.cfg.rate;
-      const totBs=r2(p.total*rate);
-      const baseBs=r2(p.base*rate);
-      const ivaBs=r2(p.iva*rate);
-      const retBs=p.retIva?r2(p.retIva*rate):r2(p.iva*0.75*rate);
+      const rate=Number(p.rate)||Number(S.cfg.rate)||0,total=Number(p.total)||0,totalBs=r2(total*rate);
+      const b0=baseAt(p,0),b8=baseAt(p,8),i8=ivaAt(p,8),b16=baseAt(p,16),i16=ivaAt(p,16),b31=baseAt(p,31),i31=ivaAt(p,31);
+      const retBs=r2((Number(p.retIva)||0)*rate),retDoc=p.retIvaDoc||'',status=p.void?'ANULADA':(p.retIva>0?'Registrada · retención registrada':'Registrada');
+      if(!p.void){sumTotal+=totalBs;sumBase0+=r2(b0*rate);sumBase8+=r2(b8*rate);sumIva8+=r2(i8*rate);sumBase16+=r2(b16*rate);sumIva16+=r2(i16*rate);sumBase31+=r2(b31*rate);sumIva31+=r2(i31*rate);sumRet+=retBs;}
+      return '<tr class="'+(p.void?'void':'')+'"><td class="c mono">'+(idx+1)+'</td><td class="c">'+fmtD(new Date(p.docDateTs||p.ts))+'</td><td class="mono">'+esc(p.supplier?.rif||'')+'</td><td><b>'+esc(p.supplier?.name||'Proveedor sin identificar')+'</b></td><td class="mono c">'+esc(p.docProv||'—')+'</td><td class="mono c">'+esc(p.ctrlProv||'—')+'</td><td class="r">'+nf(total)+'</td><td class="r"><b>'+nf(totalBs)+'</b></td><td class="r">'+nf(r2(b0*rate))+'</td><td class="r">'+nf(r2(b8*rate))+'</td><td class="r">'+nf(r2(i8*rate))+'</td><td class="r">'+nf(r2(b16*rate))+'</td><td class="r" style="color:#1D6F39"><b>'+nf(r2(i16*rate))+'</b></td><td class="r">'+nf(r2(b31*rate))+'</td><td class="r">'+nf(r2(i31*rate))+'</td><td class="r" style="color:#1842B8">'+nf(retBs)+'</td><td><span class="fiscal-tag '+(p.void?'bad':(p.retIva>0?'warn':'ok'))+'">'+status+'</span></td><td class="mono c">'+esc(retDoc||'—')+'</td><td class="r">'+nf(rate)+'</td></tr>';
+    }).join(''):'<tr class="empty"><td colspan="19">No hay compras registradas para el período. No se generan facturas, controles ni retenciones ficticias.</td></tr>';
+    const sales=getFilteredSales().filter(x=>!x.void);
+    const debit=r2(sales.reduce((a,x)=>a+(Number(x.iva)||0)*(Number(x.rate)||Number(S.cfg.rate)||0),0));
+    const credit=r2(sumIva8+sumIva16+sumIva31),cuota=r2(debit-credit);
+    return '<div class="hint">Registro auxiliar basado en facturas de proveedor capturadas en Compras. Las alícuotas se registran por renglón; compare siempre contra la factura original. Este informe no presenta declaraciones ni sustituye el formato oficial vigente del SENIAT.</div><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1550px"><thead><tr><th>#</th><th>Fecha factura</th><th>RIF proveedor</th><th>Razón social proveedor</th><th>Nº factura</th><th>Nº control</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th class="r">Base exenta Bs.</th><th class="r">Base 8% Bs.</th><th class="r">IVA 8% Bs.</th><th class="r">Base 16% Bs.</th><th class="r">IVA 16% Bs.</th><th class="r">Base 31% Bs.</th><th class="r">IVA 31% Bs.</th><th class="r">IVA retenido Bs.</th><th>Estado</th><th>Nº comprobante retención</th><th class="r">Tasa BCV</th></tr></thead><tbody>'+rowsHtml+'</tbody><tfoot><tr style="background:#EEF3FA;font-weight:700"><td colspan="7" class="r">TOTALES DE COMPRAS (Bs.):</td><td class="r">'+nf(sumTotal)+'</td><td class="r">'+nf(sumBase0)+'</td><td class="r">'+nf(sumBase8)+'</td><td class="r">'+nf(sumIva8)+'</td><td class="r">'+nf(sumBase16)+'</td><td class="r">'+nf(sumIva16)+'</td><td class="r">'+nf(sumBase31)+'</td><td class="r">'+nf(sumIva31)+'</td><td class="r">'+nf(sumRet)+'</td><td colspan="3"></td></tr></tfoot></table></div><div class="cierre" style="margin-top:8px"><table class="sumt"><thead><tr><th>Conciliación preliminar de IVA (no planilla oficial)</th><th class="r">Monto Bs.</th></tr></thead><tbody><tr><td>Débito fiscal de ventas no anuladas</td><td class="r">'+nf(debit)+'</td></tr><tr><td>(-) Crédito fiscal de compras registrado por alícuota</td><td class="r">-'+nf(credit)+'</td></tr><tr class="tot"><td><b>'+(cuota>0?'Saldo aritmético débito menos crédito':'Saldo aritmético a favor')+'</b></td><td class="r">'+nf(Math.abs(cuota))+'</td></tr><tr><td>Retenciones IVA practicadas a proveedores (obligación separada)</td><td class="r">'+nf(sumRet)+'</td></tr></tbody></table><p class="hint">La retención practicada a proveedores es una obligación de enteramiento separada y no se resta automáticamente del IVA propio por pagar. La determinación tributaria final depende de los documentos y reglas vigentes y debe validarla el contador.</p></div>';
+}
 
-      if(!p.void){sumTotal+=totBs;sumBase+=baseBs;sumIva+=ivaBs;sumRet+=retBs;}
-
-      return '<tr class="'+(p.void?'void':'')+'">'+
-        '<td class="c mono">'+(idx+1)+'</td>'+
-        '<td class="c">'+fmtD(new Date(p.ts))+'</td>'+
-        '<td class="mono">'+esc(p.supplier.rif)+'</td>'+
-        '<td><b>'+esc(p.supplier.name)+'</b></td>'+
-        '<td class="mono c"><b>'+esc(p.docProv)+'</b></td>'+
-        '<td class="mono c">'+esc(p.ctrlProv||('00-'+pad(p.no+4400,8)))+'</td>'+
-        '<td class="r">'+nf(p.total)+'</td>'+
-        '<td class="r"><b>'+nf(totBs)+'</b></td>'+
-        '<td class="r">'+nf(baseBs)+'</td>'+
-        '<td class="r" style="color:#1D6F39"><b>'+nf(ivaBs)+'</b></td>'+
-        '<td class="r" style="color:#1842B8"><b>'+nf(retBs)+'</b></td>'+
-        '<td><span class="fiscal-tag">'+esc(r.estado||'Registro histórico: revisar')+'</span><div class="sub">Declarada: '+(r.declarada?'Sí':'No consta')+' · Pagada: '+(r.pagada?'Sí':'No consta')+' · Entregada: '+(r.comprobanteEntregado?'Sí':'No consta')+'</div></td>'+ 
-        '<td class="mono c">'+esc(p.retIvaDoc||('202610'+pad(idx+41,8)))+'</td>'+
-        '<td class="r">'+nf(rate)+'</td>'+
-      '</tr>';
-    }).join(''):'<tr class="empty"><td colspan="13">No se encontraron compras para el período seleccionado.</td></tr>';
-
-    const sales=getFilteredSales().filter(s=>!s.void);
-    const totDebito=r2(sales.reduce((a,s)=>a+s.iva*(s.rate||S.cfg.rate),0));
-    const cuota=r2(totDebito-sumIva-sumRet);
-
-    return '<div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1050px">'+
-      '<thead><tr>'+
-        '<th class="c" style="width:36px">#</th><th>Fecha</th><th>RIF Proveedor</th><th>Razón Social Proveedor</th>'+
-        '<th class="c">Nº Factura</th><th class="c">Nº Control</th><th class="r">Total US$</th><th class="r">Total Facturado Bs.</th>'+
-        '<th class="r">Base Gravada 16%</th><th class="r">Crédito Fiscal IVA</th><th class="r">Retención 75% Bs.</th><th class="c">Nº Comprobante</th><th class="r">Tasa BCV</th>'+
-      '</tr></thead>'+
-      '<tbody>'+rowsHtml+'</tbody>'+
-      '<tfoot><tr style="background:#EEF3FA;font-weight:700">'+
-        '<td colspan="7" class="r">TOTALES DE COMPRAS (Bs.):</td>'+
-        '<td class="r">'+nf(sumTotal)+'</td>'+
-        '<td class="r">'+nf(sumBase)+'</td>'+
-        '<td class="r" style="color:#1D6F39">'+nf(sumIva)+'</td>'+
-        '<td class="r" style="color:#1842B8">'+nf(sumRet)+'</td>'+
-        '<td colspan="2"></td>'+
-      '</tr></tfoot>'+
-    '</table></div>'+
-    '<div class="cierre" style="margin-top:8px">'+
-      '<table class="sumt"><thead><tr><th>Determinación de la Cuota Tributaria (Forma 30 SENIAT)</th><th class="r">Monto en Bs.</th></tr></thead><tbody>'+
-        '<tr><td>Total Débito Fiscal del Período (Ventas)</td><td class="r">'+nf(totDebito)+'</td></tr>'+
-        '<tr><td>(-) Total Crédito Fiscal del Período (Compras)</td><td class="r" style="color:#1D6F39">-'+nf(sumIva)+'</td></tr>'+
-        '<tr><td>(-) Retenciones de IVA Descontadas</td><td class="r" style="color:#1842B8">-'+nf(sumRet)+'</td></tr>'+
-        '<tr class="tot"><td><b>'+(cuota>0?'TOTAL IMPUESTO A PAGAR AL SENIAT':'SALDO A FAVOR DEL CONTRIBUYENTE')+'</b></td><td class="r" style="font-size:15px;color:'+(cuota>0?'var(--bad)':'var(--ok)')+'"><b>'+nf(Math.abs(cuota))+' Bs.</b></td></tr>'+
-      '</tbody></table>'+
-    '</div>';
+  const drawInventario=()=>{
+    const products=(S.products||[]).slice().sort((a,b)=>String(a.code||a.sku||'').localeCompare(String(b.code||b.sku||''),'es'));
+    const rate=Number(S.cfg.rate)||0;
+    const movements=(S.kardex||[]).filter(k=>filterPeriod(k.ts)).slice().sort((a,b)=>a.ts-b.ts);
+    let totalUnits=0,totalCost=0,belowMin=0;
+    const rows=products.map((p,idx)=>{
+      const stock=Math.max(0,Number(p.stock)||0),cost=Math.max(0,Number(p.cost)||0),value=r2(stock*cost);
+      const min=Math.max(0,Number(p.min)||0),low=stock<=min;
+      totalUnits+=stock;totalCost+=value;if(low)belowMin++;
+      const last=(S.kardex||[]).filter(k=>k.code===p.code).sort((a,b)=>b.ts-a.ts)[0];
+      return '<tr><td class="c">'+(idx+1)+'</td><td class="mono">'+esc(p.code||'')+'</td><td class="mono">'+esc(p.sku||'')+'</td><td><b>'+esc(p.desc||'Producto sin descripción')+'</b><div class="sub">'+esc(p.brand||'')+' · '+esc(p.cat||'')+'</div></td><td>'+esc(p.unit||'und')+'</td><td class="r">'+fq(stock)+'</td><td class="r">'+nf(cost)+'</td><td class="r"><b>'+nf(value)+'</b></td><td class="r">'+fq(min)+'</td><td>'+(low?'<span class="fiscal-tag warn">Revisar stock</span>':'<span class="fiscal-tag ok">Normal</span>')+'</td><td>'+(last?fmtDT(last.ts):'Sin movimientos registrados')+'</td></tr>';
+    }).join('')||'<tr class="empty"><td colspan="11">No hay productos registrados. El libro no inventa existencias iniciales.</td></tr>';
+    const movRows=movements.map((m,i)=>'<tr><td>'+(i+1)+'</td><td>'+fmtDT(m.ts)+'</td><td class="mono">'+esc(m.code||'')+'</td><td>'+esc(m.type||'')+'</td><td>'+esc(m.dir||'')+'</td><td>'+esc(m.doc||'—')+'</td><td>'+esc(m.party||'')+'</td><td class="r">'+fq(m.qty||0)+'</td><td class="r">'+nf(m.cost||0)+'</td><td class="r">'+nf(m.stockAfter||0)+'</td></tr>').join('')||'<tr class="empty"><td colspan="10">Sin movimientos de Kardex para el período.</td></tr>';
+    return '<div class="semaforo-bar" style="background:#FFF6E5;border-color:#F5DEB0"><div class="semaforo-dot" style="background:#945D08;box-shadow:0 0 0 3px rgba(148,93,8,.2)"></div><div class="semaforo-text" style="color:#744600"><b>LIBRO DE INVENTARIO — CORTE ACTUAL</b>. Existencias y valoración al momento de generar el informe; los movimientos sí respetan el filtro de período. Valoración indicativa por costo unitario registrado en cada ficha, no sustituye la toma física ni la valoración contable aprobada.</div></div>'+
+      '<div class="fiscal-grid"><div class="fiscal-card"><span>Artículos registrados</span><b>'+products.length+'</b><small>SKU / códigos únicos en inventario</small></div><div class="fiscal-card"><span>Unidades existentes</span><b>'+fq(totalUnits)+'</b><small>Según saldo actual de las fichas</small></div><div class="fiscal-card"><span>Valor de inventario US$</span><b>'+usd(totalCost)+'</b><small>Existencia × costo unitario registrado</small></div><div class="fiscal-card"><span>Valor referencial Bs.</span><b>'+(rate>0?bsf(r2(totalCost*rate)):'No calculable: falta tasa BCV')+'</b><small>'+(rate>0?'Tasa configurada: '+nf(rate)+' Bs./US$':'Configure una tasa BCV real')+'</small></div><div class="fiscal-card"><span>Artículos en / bajo mínimo</span><b class="'+(belowMin?'warn':'ok')+'">'+belowMin+'</b><small>Comparación con stock mínimo configurado</small></div></div>'+
+      '<h3 style="margin:4px 0">Existencias y valoración actual</h3><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1180px"><thead><tr><th>#</th><th>Código</th><th>SKU</th><th>Descripción / clasificación</th><th>U.M.</th><th class="r">Existencia</th><th class="r">Costo unit. US$</th><th class="r">Valor US$</th><th class="r">Stock mínimo</th><th>Control</th><th>Último movimiento</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="5" class="r"><b>TOTAL GENERAL</b></td><td class="r"><b>'+fq(totalUnits)+'</b></td><td></td><td class="r"><b>'+nf(totalCost)+'</b></td><td colspan="3"></td></tr></tfoot></table></div>'+
+      '<h3 style="margin:8px 0 4px">Libro de movimientos (Kardex) — período seleccionado</h3><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1000px"><thead><tr><th>#</th><th>Fecha / hora</th><th>Código</th><th>Movimiento</th><th>Dirección</th><th>Documento fuente</th><th>Contraparte / detalle</th><th class="r">Cantidad</th><th class="r">Costo US$</th><th class="r">Saldo registrado</th></tr></thead><tbody>'+movRows+'</tbody></table></div>'+
+      '<p class="hint">Este libro usa productos y movimientos almacenados en el POS. Si se migraron existencias sin movimiento inicial de Kardex o se modificó el stock manualmente sin ajuste documentado, debe hacerse conteo físico y registrar la regularización antes de usarlo como soporte contable. No inventa movimientos ni existencias de apertura.</p>';
   };
 
   const drawIgtf=()=>{
@@ -7569,7 +5440,7 @@ function seniatSudebanDlg(initialTab){
     if(!sales.length&&!purchases.length)warnings.push('No hay ventas ni compras registradas para el mes calendario actual.');
     if(sales.some(x=>!x.client||!x.client.rif||!x.no))warnings.push('Hay ventas con datos fiscales incompletos; revisar documentos fuente.');
     if(purchases.some(x=>!x.supplier||!x.supplier.rif||!x.docProv))warnings.push('Hay compras con datos de proveedor incompletos; revisar facturas originales.');
-    if(S.cfg.empresa==='Autopartes El Pistón, C.A.'&&S.cfg.rif==='J-40123456-8')warnings.push('El perfil coincide con los datos iniciales de ejemplo. Confirme y sustituya por los datos reales del contribuyente antes de usar el informe.');
+    if(S.cfg.empresa==='Licorería'&&!S.cfg.rif)warnings.push('Complete los datos fiscales reales de la licorería antes de emitir informes fiscales.');
     return '<div class="semaforo-bar" style="background:#FFF6E5;border-color:#F5DEB0">'+
       '<div class="semaforo-dot" style="background:#945D08;box-shadow:0 0 0 3px rgba(148,93,8,.2)"></div>'+
       '<div class="semaforo-text" style="color:#744600"><b>PREPARACIÓN PRELIMINAR — NO ES UNA PLANILLA OFICIAL DE PAGO.</b> El compromiso/planilla oficial se genera en el portal del SENIAT después de registrar la declaración. Este módulo no se conecta al SENIAT ni registra declaraciones ni pagos.</div>'+
@@ -7617,6 +5488,7 @@ function seniatSudebanDlg(initialTab){
     if(activeTab==='resumen')content.innerHTML=drawResumen();
     else if(activeTab==='ventas')content.innerHTML=drawVentas();
     else if(activeTab==='compras')content.innerHTML=drawCompras();
+    else if(activeTab==='inventario')content.innerHTML=drawInventario();
     else if(activeTab==='igtf')content.innerHTML=drawIgtf();
     else if(activeTab==='auditoria')content.innerHTML=drawAuditoria();
     else if(activeTab==='sudeban')content.innerHTML=drawSudeban();
@@ -7634,6 +5506,8 @@ function seniatSudebanDlg(initialTab){
       footL.innerHTML='<button class="btn mini2" id="btnExpV">Exportar Libro CSV</button><button class="btn mini2" id="btnPrintV">Imprimir Libro SENIAT</button>';
     }else if(activeTab==='compras'){
       footL.innerHTML='<button class="btn mini2" id="btnExpC">Exportar Libro CSV</button>';
+    }else if(activeTab==='inventario'){
+      footL.innerHTML='<button class="btn mini2" id="btnExpInv">Exportar inventario CSV</button><button class="btn mini2" id="btnPrintInv">Imprimir libro de inventario</button>';
     }else if(activeTab==='igtf'){
       footL.innerHTML='<button class="btn mini2" id="btnExpIgtf">Exportar IGTF CSV</button>';
     }else if(activeTab==='auditoria'){
@@ -7732,6 +5606,18 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnExpV')exportLibroVentasCsv(getFilteredSales());
         if(ev.target.id==='btnPrintV')printFiscalReport('Libro de Ventas Fiscal Oficial (SENIAT)',drawVentas());
         if(ev.target.id==='btnExpC')exportLibroComprasCsv(getFilteredPurchases());
+        if(ev.target.id==='btnExpInv'){
+          const rate=Number(S.cfg.rate)||0;
+          const headers=['Codigo','SKU','Descripcion','Marca','Categoria','Unidad','Existencia_actual','Costo_unitario_USD','Valor_inventario_USD','Valor_referencial_Bs','Stock_minimo','Ultimo_movimiento'];
+          const rows=(S.products||[]).slice().sort((a,b)=>String(a.code||a.sku||'').localeCompare(String(b.code||b.sku||''),'es')).map(p=>{
+            const last=(S.kardex||[]).filter(k=>k.code===p.code).sort((a,b)=>b.ts-a.ts)[0];
+            const stock=Math.max(0,Number(p.stock)||0),cost=Math.max(0,Number(p.cost)||0);
+            return [p.code||'',p.sku||'',p.desc||'',p.brand||'',p.cat||'',p.unit||'und',stock,cost.toFixed(2),r2(stock*cost).toFixed(2),rate>0?r2(stock*cost*rate).toFixed(2):'',Number(p.min)||0,last?new Date(last.ts).toISOString():''].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';');
+          });
+          downloadBlob('Libro_Inventario_SIFER_'+new Date().toISOString().slice(0,10)+'.csv','\uFEFF'+[headers.join(';')].concat(rows).join('\r\n'),'text/csv;charset=utf-8;');
+          msg('Libro de inventario actual exportado a CSV.');
+        }
+        if(ev.target.id==='btnPrintInv')printFiscalReport('Libro de Inventario — corte actual',drawInventario());
         if(ev.target.id==='btnExpIgtf')exportIgtfCsv(getFilteredSales());
         if(ev.target.id==='btnPrintActaBcv')printActaBcv(getFilteredSales());
         if(ev.target.id==='btnTxtSeniat')exportSeniatTxt('202610');
@@ -7812,12 +5698,12 @@ function helpDlg(){
   openWin({title:'Atajos de teclado',w:540,body:h('<div class="gridwrap" style="flex:none"><table class="grid"><thead><tr><th style="width:90px">Tecla</th><th>Acción</th></tr></thead><tbody>'+rows.map(r=>'<tr><td><b>'+esc(r[0])+'</b></td><td>'+esc(r[1])+'</td></tr>').join('')+'</tbody></table></div>'),foot:[{label:'Cerrar',primary:true}]});
 }
 function aboutDlg(){
-  openWin({title:'Acerca del POS',w:480,body:h('<div class="form"><p style="margin:0"><b>SIFER 360 — Sistema Integral Administrativo y Punto de Venta</b></p><p class="hint">Punto de venta para repuestos, aceites y lubricantes. Incluye facturación multimoneda (US$ / Bs.), IVA 16 %, IGTF 3 %, Módulo de Control SENIAT/SUDEBAN (Libros de Ventas y Compras oficiales, Liquidación Forma 30 IVA, Percepción IGTF, Auditoría cambiaria BCV, Conciliación bancaria POS/Biopago y Generador de TXT de Retenciones), Compras a proveedores, Cuentas por Cobrar (CxC), Cuentas por Pagar (CxP), Ficha Kardex Profesional (CPP) y Conteo Físico de Inventario.</p><p class="hint">Los datos se guardan localmente en este navegador.</p></div>'),foot:[{label:'Cerrar',primary:true}]});
+  openWin({title:'Acerca de SIFER 360 Licorería',w:480,body:h('<div class="form"><p style="margin:0"><b>SIFER 360 Licorería — Sistema Integral Administrativo y Punto de Venta</b></p><p class="hint">Punto de venta especializado en licorerías: bebidas alcohólicas y no alcohólicas, inventario por presentación, compras, ventas, caja y control fiscal. Incluye facturación multimoneda (US$ / Bs.), IVA 16 %, IGTF 3 %, Módulo de Control SENIAT/SUDEBAN (Libros de Ventas y Compras oficiales, Liquidación Forma 30 IVA, Percepción IGTF, Auditoría cambiaria BCV, Conciliación bancaria POS/Biopago y Generador de TXT de Retenciones), Compras a proveedores, Cuentas por Cobrar (CxC), Cuentas por Pagar (CxP), Ficha Kardex Profesional (CPP) y Conteo Físico de Inventario.</p><p class="hint">Los datos se guardan localmente en este navegador.</p></div>'),foot:[{label:'Cerrar',primary:true}]});
 }
 function resetAll(){
-  ask('Restablecer datos de ejemplo','Se borrarán ventas, compras, CxC, CxP, Kardex, inventario y configuración guardados en este navegador y volverá el ejemplo inicial.','Restablecer',()=>{
+  ask('Vaciar datos operativos','Se borrarán ventas, compras, CxC, CxP, Kardex, inventario y configuración guardados en este dispositivo. La base quedará vacía para configurar la licorería.','Restablecer',()=>{
     try{localStorage.removeItem(KEY);}catch(e){}
-    draftConteo={};seed();saved=false;renderAll();renderCatOptions();msg('Datos de ejemplo restablecidos.');
+    draftConteo={};seed();saved=false;renderAll();renderCatOptions();msg('Base operativa vacía. Configure los datos de la licorería y registre el inventario real.');
   });
 }
 
@@ -8156,7 +6042,7 @@ function corteZDlg(){
     '<section id="zOpenPanel" hidden style="border:1px solid var(--lo);padding:10px;margin:8px 0;border-radius:6px"><b>Apertura de turno / fondo inicial</b><p class="hint">Si esta caja todavía no tiene un turno abierto, registre el fondo inicial antes de realizar el arqueo.</p><div class="row"><label>Fondo inicial Bs. <input class="fld r" id="zOpeningBs" value="0,00" inputmode="decimal" style="width:125px"></label><label>Fondo inicial US$ <input class="fld r" id="zOpeningUsd" value="0,00" inputmode="decimal" style="width:125px"></label><button class="btn primary" id="zOpenShift">Abrir turno</button></div><div class="hint" id="zOpenStatus"></div></section>'+
     '<div class="gridwrap"><table class="grid"><thead><tr><th>Resumen del turno</th><th class="r">Total</th></tr></thead><tbody id="zSummary"></tbody></table></div>'+
     '<section id="zArqueoPanel" style="border:2px solid var(--ac);padding:12px;margin:10px 0;border-radius:8px"><h3 style="margin:0 0 6px">ARQUEO PREVIO POR MÉTODO DE PAGO</h3><p class="hint" style="margin:4px 0 10px">Este formulario es obligatorio para el Corte Z. Abra el turno primero; luego escriba el monto real contado o conciliado en cada método. Si no tuvo movimientos, escriba 0,00. La diferencia se calcula automáticamente.</p><div class="gridwrap"><table class="grid" style="min-width:660px"><thead><tr><th>Método de pago</th><th>Moneda</th><th class="r">Saldo en sistema</th><th class="r">Monto real contado / conciliado</th><th class="r">Dif. (+/−)</th></tr></thead><tbody id="zReconcile"></tbody><tfoot id="zReconcileFoot"></tfoot></table></div><div class="gridwrap"><table class="grid"><thead><tr><th>Totales de arqueo</th><th class="r">US$</th><th class="r">Bs.</th></tr></thead><tbody id="zTotals"></tbody></table></div></section>'+
-    '<section style="border:1px solid var(--lo);padding:10px;margin:8px 0;border-radius:6px"><b>Movimientos de efectivo físico (+ / −)</b><div class="row" style="flex-wrap:wrap"><label>Tipo <select class="fld" id="zMovDir"><option value="IN">Entrada (+)</option><option value="OUT">Salida (−)</option></select></label><label>Moneda <select class="fld" id="zMovCur"><option value="BS">Efectivo Bs.</option><option value="USD">Efectivo USD</option></select></label><label>Monto <input class="fld r" id="zMovAmount" inputmode="decimal" placeholder="0,00" style="width:110px"></label><label>Motivo <input class="fld" id="zMovReason" maxlength="160" placeholder="Ej. retiro para sencillo" style="min-width:190px"></label><button class="btn" id="zMovAdd">Registrar movimiento</button></div><div class="hint" id="zMovStatus">Registre entradas o salidas de efectivo físico para que aparezcan en el cierre.</div><div id="zMovRows"></div></section>'+
+    '<section style="border:1px solid var(--lo);padding:10px;margin:8px 0;border-radius:6px"><b>Movimientos de efectivo físico (+ / −)</b><div class="row" style="flex-wrap:wrap"><label>Tipo <select class="fld" id="zMovDir"><option value="IN">Entrada (+)</option><option value="OUT">Salida (−)</option></select></label><label>Moneda <select class="fld" id="zMovCur"><option value="BS">Efectivo Bs.</option><option value="USD">Efectivo USD</option></select></label><label>Monto <input class="fld r" id="zMovAmount" inputmode="decimal" placeholder="0,00" style="width:110px"></label><label>Motivo <input class="fld" id="zMovReason" maxlength="160" placeholder="Ej. retiro para sencillo" style="min-width:190px"></label><label>Contrapartida contable <select class="fld" id="zMovAccount" style="min-width:210px"><option value="">Seleccione cuenta</option><option value="3.1.1.01">Aporte / capital</option><option value="4.2.1.01">Otro ingreso</option><option value="6.1.1.04">Gasto operativo</option><option value="1.1.1.03">Traslado a banco Bs.</option><option value="1.1.1.05">Traslado a banco USD</option><option value="1.1.4.01">Inventario / mercancía</option><option value="2.1.1.01">Obligación por pagar</option></select></label><button class="btn" id="zMovAdd">Registrar movimiento</button></div><div class="hint" id="zMovStatus">Registre entradas o salidas de efectivo físico para que aparezcan en el cierre.</div><div id="zMovRows"></div></section>'+
     '<label for="zObservations">Observaciones del cierre</label><textarea class="fld" id="zObservations" rows="2" placeholder="Explique faltantes, sobrantes, depósitos pendientes o incidencias."></textarea>'+
     '<div class="row" style="margin:10px 0;gap:8px;flex-wrap:wrap"><button class="btn" id="zPreview">Vista previa del reporte Z · 80 mm</button><button class="btn primary" id="zClose">Confirmar cierre e imprimir</button></div><div class="hint" id="zActionStatus" role="status" aria-live="polite">Abra el turno y complete el arqueo para habilitar el cierre.</div>'+
     '<p class="hint">El botón de impresión abre el diálogo del sistema para seleccionar una impresora térmica de 80 mm. Este reporte es no fiscal; una impresora fiscal requiere su integración/controlador homologado para emitir documentos fiscales.</p>'+
@@ -8247,10 +6133,10 @@ function corteZDlg(){
     if(e.target.id==='zMovAdd'){
       active=readActiveOpening();
       if(!boxOpen()){msg('Debe abrir el turno antes de registrar movimientos.','bad');return;}
-      const amount=pn($('#zMovAmount',el).value),reason=$('#zMovReason',el).value.trim();
-      if(!amount||!reason){msg('Indique un monto mayor que cero y el motivo del movimiento.','bad');return;}
+      const amount=pn($('#zMovAmount',el).value),reason=$('#zMovReason',el).value.trim(),counterpartAccount=$('#zMovAccount',el).value;
+      if(!amount||!reason||!counterpartAccount){msg('Indique monto, motivo y cuenta contrapartida contable del movimiento.','bad');return;}
       if(!Array.isArray(S.movimientosCaja))S.movimientosCaja=[];
-      S.movimientosCaja.push({id:'MOV-'+box.replace(/\W/g,'')+'-'+Date.now(),cashbox:box,ts:Date.now(),direction:$('#zMovDir',el).value,currency:$('#zMovCur',el).value,amount:r2(amount),reason,user:currentCajero(),openingId:active.id||''});
+      S.movimientosCaja.push({id:'MOV-'+box.replace(/\W/g,'')+'-'+Date.now(),cashbox:box,ts:Date.now(),direction:$('#zMovDir',el).value,currency:$('#zMovCur',el).value,amount:r2(amount),reason,counterpartAccount,rate:S.cfg.rate,user:currentCajero(),openingId:active.id||''});
       save();$('#zMovAmount',el).value='';$('#zMovReason',el).value='';$('#zMovStatus',el).textContent='Movimiento registrado y guardado en el historial del turno.';draw();return;
     }
     if(e.target.id==='zOpenShift'){
@@ -8288,7 +6174,7 @@ function corteZDlg(){
       const rec=result.rec.map(r=>Object.assign({},r,{real:Number(r.real),diff:Number(r.diff)}));
       const seqs=cajaSeqs(),seq=seqs[box]||{z:1};const zSeq=Number(seq.z)||1;seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
       const t=Object.assign({},result.total);
-      const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
+      const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
       getZHistory().push(z);
       save();
       const closedOpening=Object.assign({},active,{status:'cerrada',closedAt:z.closedAt,cutId:z.id});
@@ -8325,7 +6211,7 @@ function ensureVisible(tr,wrap){
 function renderHeader(){
   const c=S.cfg;
   const session=activeUser();
-  const dashboardButton=$('#btnDashboard');if(dashboardButton)dashboardButton.hidden=session.role!=='admin';
+  const dashboardButton=$('#btnDashboard');if(dashboardButton)dashboardButton.hidden=session.role!=='admin';const sicovenButton=$('#btnSicovenTop');if(sicovenButton)sicovenButton.hidden=session.role!=='admin';
   $('#winTitle').textContent=c.empresa;
   if($('#winSub'))$('#winSub').textContent=currentCaja()==='SIN-ASIGNAR'?'Dashboard administrativo · Sin caja asignada':'Punto de venta · Caja '+currentCaja();
   document.title='POS '+c.empresa;
@@ -8600,11 +6486,11 @@ async function databaseSettingsDlg(){
         '<span style="background:#065F46;color:#6EE7B7;font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px">CONECTADO LOCAL</span>' +
       '</div>' +
       '<div class="hint" style="margin:0;color:#94A3B8;line-height:1.5">' +
-        'Este software opera <b>exclusivamente con SQLite local</b> (<code>elpiston.sqlite</code>). No depende de Turso, Vercel ni conexiones a internet. Todas las ventas, clientes, compras, inventario, libro fiscal SENIAT y pagos CASHEA residen permanentemente en este equipo.' +
+        'Este software opera <b>exclusivamente con SQLite local</b> (<code>sifer360-licoreria.sqlite</code>). No depende de Turso, Vercel ni conexiones a internet. Todas las ventas, clientes, compras, inventario, libro fiscal SENIAT y pagos CASHEA residen permanentemente en este equipo.' +
       '</div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:4px">' +
         '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">MOTOR SQL</span><b style="color:#F1F5F9;font-size:12px">' + (isDesktop ? 'SQLite3 Nativo (Electron)' : 'SQLite3 WebAssembly (sql.js)') + '</b></div>' +
-        '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">ARCHIVO / IDB</span><b style="color:#F1F5F9;font-size:12px">elpiston.sqlite</b></div>' +
+        '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">ARCHIVO / IDB</span><b style="color:#F1F5F9;font-size:12px">sifer360-licoreria.sqlite</b></div>' +
         '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">VENTAS REGISTRADAS</span><b style="color:#38BDF8;font-size:13px">' + salesCount + '</b></div>' +
         '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">OPERACIONES CASHEA</span><b style="color:#A78BFA;font-size:13px">' + cshCount + '</b></div>' +
       '</div>' +
@@ -8623,7 +6509,7 @@ async function databaseSettingsDlg(){
         '</button>' +
         '<input type="file" id="dbImportSqliteFile" accept=".sqlite,.db" hidden>' +
         '<button class="btn" id="dbExportJson" type="button" title="Respaldo completo de datos en formato JSON">Respaldo JSON</button>' +
-        '<button class="btn" id="dbResetAll" type="button" style="color:#F87171;border-color:#7F1D1D" title="Reiniciar a datos iniciales de fábrica">Reiniciar base</button>' +
+        '<button class="btn" id="dbResetAll" type="button" style="color:#F87171;border-color:#7F1D1D" title="Vaciar datos operativos locales">Reiniciar base</button>' +
       '</div>' +
       '<div id="dbMsg" class="hint" style="margin-top:10px;min-height:18px"></div>' +
     '</div>' +
@@ -8639,7 +6525,7 @@ async function databaseSettingsDlg(){
         const blob = new Blob([JSON.stringify(stateSnapshot(), null, 2)], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = 'elpiston-estado-' + new Date().toISOString().slice(0, 10) + '.json';
+        a.download = 'sifer360-licoreria-estado-' + new Date().toISOString().slice(0, 10) + '.json';
         a.click();
         note.textContent = 'Respaldo de datos exportado correctamente.';
         return;
@@ -8647,9 +6533,9 @@ async function databaseSettingsDlg(){
       const blob = new Blob([bytes], { type: 'application/x-sqlite3' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'elpiston-backup-' + new Date().toISOString().slice(0, 10) + '.sqlite';
+      a.download = 'sifer360-licoreria-backup-' + new Date().toISOString().slice(0, 10) + '.sqlite';
       a.click();
-      note.textContent = 'Archivo elpiston.sqlite descargado exitosamente.';
+      note.textContent = 'Respaldo SQLite de SIFER 360 Licorería descargado exitosamente.';
     } catch (e) {
       note.textContent = 'Error al exportar SQLite: ' + e.message;
     }
@@ -8676,7 +6562,7 @@ async function databaseSettingsDlg(){
       const blob = new Blob([JSON.stringify(stateSnapshot(), null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'elpiston-snapshot-' + new Date().toISOString().slice(0, 10) + '.json';
+      a.download = 'sifer360-licoreria-snapshot-' + new Date().toISOString().slice(0, 10) + '.json';
       a.click();
       note.textContent = 'Respaldo JSON descargado con éxito.';
     } catch (e) {
@@ -8707,6 +6593,8 @@ async function prepareDatabaseBeforeStartup(){
   }
 }
 
+window.SIFERAccountingBridge={getState:()=>S,save:()=>save()};
+
 /* ---------- arranque ---------- */
 prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(()=>{
   init();
@@ -8715,6 +6603,6 @@ prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la
   renderAll();
   wire();
   primeOperationBaseline();
-  msg(saved?'Base de datos local SQLite (elpiston.sqlite) cargada con éxito. Sistema POS y módulos Cashea listos.':'Base de datos local SQLite inicializada. Listo para operar.');
+  msg(saved?'Base de datos local SQLite de SIFER 360 Licorería cargada con éxito. Sistema listo para operar.':'Base de datos local SQLite de SIFER 360 Licorería inicializada. Listo para operar.');
 });
 })();

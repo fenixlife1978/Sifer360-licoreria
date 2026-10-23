@@ -1,6 +1,6 @@
 {
-  "name": "POS El Pistón",
-  "description": "Punto de venta y sistema administrativo con facturación multimoneda (US$ / Bs.), Biopago, IGTF 3%, Módulo de Control SENIAT/SUDEBAN, Operaciones Cambiarias y Compra de Divisas (USD Efectivo / Zelle), Libros Fiscales, Compras, Inventario, Kardex, CxC y CxP.",
+  "name": "SIFER 360 Licorería",
+  "description": "Sistema de punto de venta y administración para licorerías con ventas, compras, inventario por presentación, caja, pagos multimoneda y control fiscal.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
