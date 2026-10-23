@@ -71,6 +71,8 @@ test('the liquor-store build contains no automotive master catalog or OEM form f
   assert.match(main, /sales:\[\],held:\[\],purchases:\[\],cxc:\[\],cxp:\[\]/);
   assert.match(main, /Bebidas alcohólicas/);
   assert.match(main, /Botella 750 ml/);
+  assert.match(main, /Contenido neto \(ml\)/);
+  assert.match(main, /Graduación alcohólica \(% vol\.\)/);
   assert.match(main, /SKU Automático/);
   assert.doesNotMatch(main, /seedSalesSpec|p1Lines|CXC-0001|LIC00001|7501001/);
 });
