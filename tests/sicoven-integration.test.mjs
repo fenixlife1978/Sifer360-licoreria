@@ -174,3 +174,22 @@ test('Sicoven contabiliza movimientos de caja con contrapartida seleccionada y r
   assert.ok(movement.lines.some(l => l.accountCode === '1.1.1.02' && l.creditUsd === 5));
   assert.ok(s.sicoven.errors.some(e => e.origin === 'MOV-MOV-TEST-2'));
 });
+
+
+test('Sicoven contabiliza retenciones ISLR y conserva el comprobante para exportación', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.sicoven.islrVouchers = [{
+    id: 'ISLR-TEST-1', voucherNumber: '20261000000001', period: '202610',
+    date: '2026-10-23', invoiceDate: '2026-10-23', supplierRif: 'J123456789',
+    supplierName: 'Proveedor de prueba', invoiceNumber: 'F-100', controlNumber: '00-00100',
+    conceptCode: '001', baseAmountBs: 4000, retentionRate: 3, subtrahendBs: 0,
+    withheldAmountBs: 120, bcvRate: 40, baseAmountUsd: 100, withheldAmountUsd: 3
+  }];
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 4);
+  const entry = s.sicoven.entries.find(e => e.type === 'RETENCION_ISLR');
+  assert.ok(entry);
+  assert.ok(entry.lines.some(l => l.accountCode === '2.1.1.01' && l.debitUsd === 3));
+  assert.ok(entry.lines.some(l => l.accountCode === '2.1.2.04' && l.creditUsd === 3));
+});
