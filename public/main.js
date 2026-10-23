@@ -156,7 +156,7 @@ function addKardex(ev){
     party:ev.party||'',
     qty:r2(ev.qty),
     stockAfter:r2(ev.stockAfter),
-    cost:r2(ev.cost),
+    cost:r8(ev.cost),
     user:ev.user||(S.cfg?S.cfg.cajero:'Sistema')
   });
 }
@@ -2519,7 +2519,7 @@ function comprasDlg(initialTab){
     const retBs=r2(retUsd*S.cfg.rate);
     const payableTotal=r2(Math.max(0,total-retUsd));
     const effPaid=cond==='Contado'?payableTotal:Math.min(payableTotal,paidInit);
-    const comp={no,docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,void:false};
+    const comp={no,docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
       const periodo=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
