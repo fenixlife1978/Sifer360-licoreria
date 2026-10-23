@@ -8,6 +8,8 @@ const $=(s,r=document)=>r.querySelector(s);
 const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
 const r2=n=>Math.round((n+Number.EPSILON)*100)/100;
 const r4=n=>Math.round((n+Number.EPSILON)*10000)/10000;
+const r8=n=>Math.round((n+Number.EPSILON)*1e8)/1e8;
+const nf8=n=>{const neg=n<0;const p=Math.abs(r8(n)).toFixed(8).split('.');return (neg?'-':'')+p[0].replace(/\\B(?=(\\d{3})+(?!\\d))/g,'.')+','+p[1];};
 const nf=n=>{const neg=n<0;const p=Math.abs(r2(n)).toFixed(2).split('.');return (neg?'-':'')+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+p[1];};
 const nf4=n=>{const neg=n<0;const p=Math.abs(r4(n)).toFixed(4).split('.');return (neg?'-':'')+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+p[1];};
 const usd=n=>'US$ '+nf(n);
@@ -2318,25 +2320,25 @@ function comprasDlg(initialTab){
       $('#cpDaysWrap',v).style.display=cond==='Crédito'?'':'none';
       $('#cpBody',v).innerHTML=pLines.length?pLines.map((l,i)=>{
         const p=prod(l.code);if(!p)return '';
-        const sub=r2(l.qty*l.cost);
+        const sub=r8(l.qty*l.cost);
         return '<tr data-pi="'+i+'">'+
           '<td class="mono">'+esc(p.code)+'</td>'+
           '<td><div class="desc">'+esc(p.desc)+'</div><div class="sub">'+esc(p.brand)+' · '+esc(p.cat)+'</div></td>'+
           '<td class="r '+stockCls(p)+'">'+fq(p.stock)+'</td>'+
           '<td class="r"><input class="fld cell r" data-cpf="qty" value="'+fq(l.qty)+'" inputmode="decimal"></td>'+
-          '<td class="r"><input class="fld cell r" data-cpf="cost" value="'+nf(l.cost)+'" inputmode="decimal"></td>'+
-          '<td class="r"><input class="fld cell r" data-cpf="price" value="'+nf(l.price)+'" inputmode="decimal"></td>'+
-          '<td class="r"><b>'+nf(sub)+'</b></td>'+
+          '<td class="r"><input class="fld cell r" data-cpf="cost" value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
+          '<td class="r"><input class="fld cell r" data-cpf="price" value="'+nf8(l.price)+'" inputmode="decimal"></td>'+
+          '<td class="r"><b>'+nf8(sub)+'</b></td>'+
           '<td><select class="fld cell" data-cpf="taxRate" aria-label="Alícuota IVA del renglón"><option value="0" '+(Number(l.taxRate||0)===0?'selected':'')+'>0%</option><option value="8" '+(Number(l.taxRate)===8?'selected':'')+'>8%</option><option value="16" '+(Number(l.taxRate===undefined?16:l.taxRate)===16?'selected':'')+'>16%</option><option value="31" '+(Number(l.taxRate)===31?'selected':'')+'>31%</option></select></td>'+
           '<td class="c"><button class="mini" data-cpdel="'+i+'" title="Quitar">&times;</button></td>'+
         '</tr>';
       }).join(''):'<tr class="empty"><td colspan="8">Agregue productos a la orden de compra.</td></tr>';
 
-      const base=r2(pLines.reduce((a,l)=>a+r2(l.qty*l.cost),0));
-      const iva=r2(pLines.reduce((a,l)=>a+r2(l.qty*l.cost*(Number(l.taxRate===undefined?16:l.taxRate)||0)/100),0));
-      const tot=r2(base+iva);
+      const base=r8(pLines.reduce((a,l)=>a+r8(l.qty*l.cost),0));
+      const iva=r8(pLines.reduce((a,l)=>a+r8(l.qty*l.cost*(Number(l.taxRate===undefined?16:l.taxRate)||0)/100),0));
+      const tot=r8(base+iva);
       const effPaid=cond==='Contado'?tot:Math.min(tot,paidInit);
-      const pend=r2(Math.max(0,tot-effPaid));
+      const pend=r8(Math.max(0,tot-effPaid));
       $('#cpTotals',v).innerHTML=
         '<table class="sumt"><thead><tr><th>Resumen de Compra</th><th class="r">US$</th><th class="r">Bs. (Tasa '+nf(S.cfg.rate)+')</th></tr></thead><tbody>'+
           '<tr><td>Base imponible (Costo mercancía)</td><td class="r">'+nf(base)+'</td><td class="r">'+nf(base*S.cfg.rate)+'</td></tr>'+
@@ -2360,9 +2362,9 @@ function comprasDlg(initialTab){
       if(t.dataset.cpf){
         const tr=t.closest('tr'), idx=+tr.dataset.pi, l=pLines[idx];
         const val=pn(t.value);
-        if(t.dataset.cpf==='qty')l.qty=val||1;
-        if(t.dataset.cpf==='cost')l.cost=val||0;
-        if(t.dataset.cpf==='price')l.price=val||l.price;
+        if(t.dataset.cpf==='qty')l.qty=val?r8(val):1;
+        if(t.dataset.cpf==='cost')l.cost=r8(val);
+        if(t.dataset.cpf==='price')l.price=val?r8(val):l.price;
         if(t.dataset.cpf==='taxRate')l.taxRate=Number(t.value);
         drawLines();
       }
@@ -2372,7 +2374,7 @@ function comprasDlg(initialTab){
         const code=$('#cpAddProd',v).value, qty=pn($('#cpAddQty',v).value)||1, p=prod(code);
         if(!p)return;
         const ex=pLines.find(x=>x.code===code);
-        if(ex)ex.qty=r2(ex.qty+qty);
+        if(ex)ex.qty=r8(ex.qty+qty);
         else pLines.push({code,qty,cost:p.cost,price:p.price,taxRate:prodTaxRate(p)});
         drawLines();
       }
@@ -2481,22 +2483,22 @@ function comprasDlg(initialTab){
       const p=prod(l.code);
       /* Costo Promedio Ponderado */
       const prevVal=Math.max(0,p.stock)*p.cost;
-      const newVal=l.qty*l.cost;
+      const newVal=r8(l.qty*l.cost);
       const nextStock=r2(p.stock+l.qty);
-      const nextCost=nextStock>0?r4((prevVal+newVal)/nextStock):l.cost;
+      const nextCost=nextStock>0?r8((prevVal+newVal)/nextStock):l.cost;
       p.stock=nextStock;
       p.cost=nextCost;
-      if(l.price>0)p.price=r2(l.price);
+      if(l.price>0)p.price=r8(l.price);
       addKardex({
         ts,code:p.code,type:'COMPRA',dir:'IN',doc:'COM-'+pad(no),
         party:sup.name+' (Fac. '+docProv+')',qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
       });
       const taxRate=Number(l.taxRate===undefined?16:l.taxRate)||0;
-      return{code:p.code,desc:p.brand+' '+p.desc,qty:l.qty,cost:l.cost,sub:r2(l.qty*l.cost),taxRate,iva:r2(l.qty*l.cost*taxRate/100)};
+      return{code:p.code,desc:p.brand+' '+p.desc,qty:l.qty,cost:l.cost,sub:r8(l.qty*l.cost),taxRate,iva:r8(l.qty*l.cost*taxRate/100)};
     });
-    const base=r2(lines.reduce((a,x)=>a+x.sub,0));
-    const iva=r2(lines.reduce((a,l)=>a+(l.iva||0),0));
-    const total=r2(base+iva);
+    const base=r8(lines.reduce((a,x)=>a+x.sub,0));
+    const iva=r8(lines.reduce((a,l)=>a+(l.iva||0),0));
+    const total=r8(base+iva);
     const dueTs=ts+creditDays*86400000;
     const retPct=Number(S.cfg.retIvaPct)===100?100:75; /* Aplicar solo si la designación y el proveedor están confirmados. */
     const aplicarRetencion=!!(iva>0&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true);
