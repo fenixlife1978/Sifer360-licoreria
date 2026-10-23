@@ -6207,7 +6207,7 @@ function ensureVisible(tr,wrap){
 function renderHeader(){
   const c=S.cfg;
   const session=activeUser();
-  const dashboardButton=$('#btnDashboard');if(dashboardButton)dashboardButton.hidden=session.role!=='admin';
+  const dashboardButton=$('#btnDashboard');if(dashboardButton)dashboardButton.hidden=session.role!=='admin';const sicovenButton=$('#btnSicovenTop');if(sicovenButton)sicovenButton.hidden=session.role!=='admin';
   $('#winTitle').textContent=c.empresa;
   if($('#winSub'))$('#winSub').textContent=currentCaja()==='SIN-ASIGNAR'?'Dashboard administrativo · Sin caja asignada':'Punto de venta · Caja '+currentCaja();
   document.title='POS '+c.empresa;
