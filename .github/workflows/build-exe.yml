@@ -2,7 +2,7 @@ name: Compilar Ejecutable Windows (.exe)
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, adaptacion-licoreria ]
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
