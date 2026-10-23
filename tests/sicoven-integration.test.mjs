@@ -158,7 +158,7 @@ test('Sicoven contabiliza operaciones cambiarias y reconoce diferencias a tasa B
   const fx = s.sicoven.entries.find(e => e.type === 'CAMBIO_DIVISAS');
   assert.ok(fx);
   assert.ok(fx.lines.some(l => l.accountCode === '1.1.1.07' && l.debitUsd === 10));
-  assert.ok(fx.lines.some(l => l.accountCode === '1.1.1.06' && l.creditUsd === 10));
+  assert.ok(fx.lines.some(l => l.accountCode === '1.1.1.11' && l.creditUsd === 10));
   assert.equal(accounting.syncFromPOS(s).created, 0);
 });
 
