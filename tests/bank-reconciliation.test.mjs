@@ -7,7 +7,8 @@ function load() {
   const document = { addEventListener() {}, querySelector() { return null; }, createElement() { return { style: {}, setAttribute() {}, appendChild() {} }; }, head: { appendChild() {} } };
   const window = {};
   const context = { window, document, console, Intl, Date, Math, Number, String, Array, Object, Map, JSON, Blob: class Blob {}, URL: {}, alert() {} };
-  vm.runInNewContext(fs.readFileSync(new URL('../public/sicoven-chart.js', import.meta.url), 'utf8'), context);\n  vm.runInNewContext(fs.readFileSync(new URL('../public/sicoven.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(new URL('../public/sicoven-chart.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(new URL('../public/sicoven.js', import.meta.url), 'utf8'), context);
   return window.SIFERSicoven;
 }
 
