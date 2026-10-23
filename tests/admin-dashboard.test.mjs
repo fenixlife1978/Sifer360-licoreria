@@ -156,5 +156,5 @@ test('inventario integra el costo promedio ponderado y valoriza las existencias 
   assert.match(inventory, /Math\.max\(0,p\.stock\)\*Math\.max\(0,p\.cost\)/);
   assert.doesNotMatch(inventory, /data-f="cost"/);
   assert.match(main, /const prevVal=Math\.max\(0,p\.stock\)\*p\.cost/);
-  assert.match(main, /const nextCost=nextStock>0\?r2\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
+  assert.match(main, /const nextCost=nextStock>0\?r4\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
 });
