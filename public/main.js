@@ -115,80 +115,8 @@ function prodTaxCls(p){
 }
 
 let seedSeq=1;
-const P=(code,desc,brand,dept,cat,subcat,price,stock,min,loc,unit,cost,taxType,taxRate)=>{
-  const c=cost||r2(price*0.64);
-  const mkCost=c>0?r2(((price-c)/c)*100):56.25;
-  const mkSale=price>0?r2(((price-c)/price)*100):36.00;
-  const seq=seedSeq++;
-  const u=unit||'und';
-  const tType=taxType||'G';
-  const tRate=taxRate!==undefined?taxRate:(tType==='E'||tType==='NS'?0:16);
-  return {
-    code,
-    sku:genAutoSku(dept,cat,subcat,seq),
-    desc,brand,
-    dept:dept||'Bebidas alcohólicas',
-    cat:cat||'Ron',
-    subcat:subcat||'Botella 750 ml',
-    price,stock,min,loc,
-    unit:u,
-    cost:c,
-    photo:'',
-    pricing:{
-      mode:'auto',
-      markupCost:mkCost,
-      markupSale:mkSale,
-      gaps:[
-        {name:'Detal / Mostrador',gapPct:0,markupCost:mkCost,price:price},
-        {name:'Taller / Mecánico',gapPct:6,markupCost:r2(((price*0.94-c)/c)*100),price:r2(price*0.94)},
-        {name:'Mayorista (≥ 6 und)',gapPct:12,markupCost:r2(((price*0.88-c)/c)*100),price:r2(price*0.88)},
-        {name:'Distribuidor / Flota',gapPct:18,markupCost:r2(((price*0.82-c)/c)*100),price:r2(price*0.82)}
-      ]
-    },
-    presentations:[
-      {name:u==='L'?'Litro a granel':(u==='gal'?'Galón 4 L':'Unidad individual'),unit:u,factor:1,barcode:code,price:price},
-      {name:'Caja / Empaque x 12',unit:'caja',factor:12,barcode:code+'C12',price:r2(price*12*0.90)}
-    ],
-    tax:{
-      type:tType,
-      rate:tRate,
-      igtf:true,
-      percRate:0,
-      codeSeniat:tType==='E'?'EXENTO-0':(tType==='R'?'RED-08':(tType==='A'?'ADIC-31':'GRAV-16'))
-    },
-    assocSuppliers:[],
-    isKit:false,
-    kitItems:[]
-  };
-};
 
-const SEED=[
- P('LIC00001','Cerveza Pilsen botella 330 ml','Polar','Cervezas','Cerveza','Botella 330 ml',1.25,96,24,'A-1','und',0.72,'G',16),
- P('LIC00002','Cerveza Pilsen lata 355 ml','Polar','Cervezas','Cerveza','Lata 355 ml',1.30,72,24,'A-1','und',0.75,'G',16),
- P('LIC00003','Cerveza tipo lager botella 330 ml','Regional','Cervezas','Cerveza','Botella 330 ml',1.20,48,12,'A-1','und',0.70,'G',16),
- P('LIC00004','Cerveza importada lata 355 ml','Heineken','Cervezas','Cerveza','Lata 355 ml',2.20,36,12,'A-2','und',1.45,'G',16),
- P('LIC00005','Pack cerveza lata x 6','Polar','Cervezas','Cerveza','Pack de 6',7.20,18,6,'A-2','pack',4.35,'G',16),
- P('LIC00006','Ron añejo botella 750 ml','Cacique','Bebidas alcohólicas','Ron','Botella 750 ml',12.50,24,6,'B-1','und',8.10,'G',16),
- P('LIC00007','Ron reserva botella 750 ml','Santa Teresa','Bebidas alcohólicas','Ron','Reserva',18.50,12,4,'B-1','und',12.20,'G',16),
- P('LIC00008','Ron extra añejo botella 750 ml','Diplomático','Bebidas alcohólicas','Ron','Botella 750 ml',34.00,6,2,'B-1','und',23.00,'G',16),
- P('LIC00009','Whisky blended botella 750 ml','Johnnie Walker Red Label','Bebidas alcohólicas','Whisky','Botella 750 ml',24.00,10,3,'B-2','und',16.50,'G',16),
- P('LIC00010','Whisky blended botella 1 L','Johnnie Walker Red Label','Bebidas alcohólicas','Whisky','Botella 1 L',31.00,8,3,'B-2','und',21.00,'G',16),
- P('LIC00011','Whisky bourbon botella 750 ml','Jack Daniel’s','Bebidas alcohólicas','Whisky','Botella 750 ml',32.00,8,2,'B-2','und',22.00,'G',16),
- P('LIC00012','Vodka botella 750 ml','Smirnoff','Bebidas alcohólicas','Vodka','Botella 750 ml',16.00,10,3,'B-3','und',10.50,'G',16),
- P('LIC00013','Ginebra botella 750 ml','Gordon’s','Bebidas alcohólicas','Ginebra','Botella 750 ml',21.00,6,2,'B-3','und',14.20,'G',16),
- P('LIC00014','Tequila blanco botella 750 ml','José Cuervo','Bebidas alcohólicas','Tequila','Blanco',25.00,5,2,'B-3','und',17.00,'G',16),
- P('LIC00015','Vino tinto botella 750 ml','Concha y Toro','Vinos y espumantes','Vino tinto','Botella 750 ml',9.50,14,4,'C-1','und',6.10,'G',16),
- P('LIC00016','Vino blanco botella 750 ml','Santa Helena','Vinos y espumantes','Vino blanco','Botella 750 ml',8.50,10,3,'C-1','und',5.40,'G',16),
- P('LIC00017','Espumante botella 750 ml','Freixenet','Vinos y espumantes','Espumantes','Botella 750 ml',17.00,6,2,'C-2','und',11.50,'G',16),
- P('LIC00018','Licor de café botella 700 ml','Kahlúa','Licores y aperitivos','Licores','Botella 750 ml',22.00,4,2,'C-2','und',15.00,'G',16),
- P('LIC00019','Aguardiente botella 750 ml','Anís Cartujo','Licores y aperitivos','Aguardiente','Botella 750 ml',8.00,12,4,'C-3','und',5.00,'G',16),
- P('LIC00020','Refresco cola botella 2 L','Coca-Cola','Bebidas sin alcohol','Refrescos','Botella 1 L',2.50,30,10,'D-1','und',1.45,'G',16),
- P('LIC00021','Agua mineral botella 1,5 L','Minalba','Bebidas sin alcohol','Agua','Botella 1 L',1.20,36,12,'D-1','und',0.65,'E',0),
- P('LIC00022','Bebida energética lata 250 ml','Red Bull','Bebidas sin alcohol','Energéticas','Unidad',2.80,18,6,'D-2','und',1.75,'G',16),
- P('LIC00023','Agua tónica lata 355 ml','Schweppes','Bebidas sin alcohol','Mezcladores','Lata 355 ml',1.60,18,6,'D-2','und',0.95,'G',16),
- P('LIC00024','Hielo en bolsa 2 kg','Proveedor local','Hielo y mezcladores','Hielo','Bolsa',2.00,20,6,'D-3','und',1.10,'E',0),
- P('LIC00025','Papas fritas bolsa 150 g','Ruffles','Snacks y complementos','Snacks','Paquete',2.50,16,6,'D-3','und',1.45,'G',16)
-];
+
 
 const METHODS=[
  {id:'efUSD',name:'Efectivo US$',cur:'USD'},
@@ -226,237 +154,23 @@ function addKardex(ev){
 }
 
 function seed(){
-  const now=Date.now(), dayMs=86400000;
   S={
     cfg:{
-      empresa:'Licorería',rif:'',dir:'',cajero:'Mariela G.',caja:'01',rate:480,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
+      empresa:'',rif:'',dir:'',cajero:'',caja:'01',rate:0,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
       fiscalTipo:'FORMA_LIBRE',contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:75,provEspecial:'',
-      ctrlPrefix:'00-',ctrlNext:1043,ctrlRangoDesde:'00-00000001',ctrlRangoHasta:'00-00050000',
-      imprentaRif:'J-31009988-4',imprentaAut:'SENIAT/DAF/2022/981',serialFiscal:'Z4A7719204'
+      ctrlPrefix:'00-',ctrlNext:1,ctrlRangoDesde:'',ctrlRangoHasta:'',
+      imprentaRif:'',imprentaAut:'',serialFiscal:''
     },
-    products:SEED.map(p=>Object.assign({},p)),
-    clients:[
-      {name:'Consumidor final',rif:'V-00000000',tel:''},
-      {name:'José Gregorio Pérez',rif:'V-12345678',tel:''},
-      {name:'Cliente de mostrador',rif:'',tel:''}
-    ],
-    suppliers:[
-      {id:'PRV-01',name:'Distribuidora Nacional de Lubricantes, C.A.',rif:'J-30987654-2',tel:'0241-555-8810',cond:'30 días'},
-      {id:'PRV-02',name:'Importadora de Filtros y Frenos El Tuy, C.A.',rif:'J-40223344-5',tel:'0212-555-4321',cond:'15 días'},
-      {id:'PRV-03',name:'Baterías y Partes Eléctricas Oriente, C.A.',rif:'J-29112233-9',tel:'0281-555-9011',cond:'Contado'},
-      {id:'PRV-04',name:'Suministros Motopartes Venezuela, C.A.',rif:'J-41009988-1',tel:'0251-555-7730',cond:'15 días'}
-    ],
+    products:[],
+    clients:[{name:'Consumidor final',rif:'',tel:''}],
+    suppliers:[],
     sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],movimientosCaja:[],kardex:[],counts:[],
     lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],
-    invoice:1043,purchaseSeq:203,countSeq:102,
+    invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
   };
   S.client=S.clients[0];
-
-  /* Calcular ventas semilla para reconstruir Kardex exacto */
-  const seedSalesSpec=[
-    [1038,8,12,0,[['7501001',1,0]],'pm'],
-    [1039,9,5,4,[['7510002',1,0],['7510003',1,0]],'usd'],
-    [1040,10,31,1,[['7501006',2,5],['7504002',2,5],['7505003',1,0]],'pv'],
-    [1041,12,48,2,[['7502002',6,0],['7503003',2,0]],'bio'],
-    [1042,16,20,0,[['7506001',4,0],['7507002',1,0]],'usd']
-  ];
-  const soldQty={};
-  seedSalesSpec.forEach(sp=>sp[4].forEach(it=>{soldQty[it[0]]=(soldQty[it[0]]||0)+it[1];}));
-  const purchSpec={
-    '7501001':24,'7501002':8,'7504001':20,'7504002':10,'7505001':6
-  };
-
-  /* 1. Kardex Saldo Inicial para cada producto */
-  S.products.forEach(p=>{
-    const sold=soldQty[p.code]||0;
-    const bought=purchSpec[p.code]||0;
-    const iniStock=Math.max(0,r2(p.stock+sold-bought));
-    addKardex({
-      ts:now-7*dayMs,
-      code:p.code,
-      type:'INICIAL',
-      dir:'IN',
-      doc:'INI-2026',
-      party:'Inventario inicial de apertura',
-      qty:iniStock,
-      stockAfter:iniStock,
-      cost:p.cost,
-      user:'Sistema'
-    });
-  });
-
-  /* 2. Compras de ejemplo + entradas Kardex + CxP */
-  const p1Ts=now-4*dayMs;
-  const p1Lines=[
-    {code:'7501001',desc:'Castrol GTX Aceite 20W-50 Mineral 1 L',qty:24,cost:3.35,sub:r2(24*3.35)},
-    {code:'7501002',desc:'Castrol GTX Aceite 20W-50 Mineral Galón 4 L',qty:8,cost:12.60,sub:r2(8*12.60)}
-  ];
-  p1Lines.forEach(l=>{
-    const p=prod(l.code),sold=soldQty[l.code]||0;
-    addKardex({ts:p1Ts,code:l.code,type:'COMPRA',dir:'IN',doc:'COM-00000201',party:S.suppliers[0].name+' (Fac. Prov. F-88412)',qty:l.qty,stockAfter:r2(p.stock+sold),cost:l.cost,user:'Mariela G.'});
-  });
-  const p1Base=r2(p1Lines.reduce((a,x)=>a+x.sub,0)),p1Iva=r2(p1Base*IVA),p1Tot=r2(p1Base+p1Iva);
-  S.purchases.push({
-    no:201,docProv:'F-88412',ts:p1Ts,dueTs:p1Ts+15*dayMs,
-    supplier:Object.assign({},S.suppliers[0]),
-    cond:'Crédito',lines:p1Lines,base:p1Base,iva:p1Iva,total:p1Tot,rate:475,paid:80.00,void:false
-  });
-  S.cxp.push({
-    id:'CXP-0001',purchaseNo:201,doc:'F-88412 (COM-00000201)',
-    supplier:Object.assign({},S.suppliers[0]),
-    concept:'Compra de lubricantes Castrol GTX',
-    ts:p1Ts,dueTs:now+11*dayMs,total:p1Tot,paid:80.00,
-    payments:[{ts:now-2*dayMs,method:'Transferencia Bs.',cur:'VES',amountBs:r2(80*475),amountUsd:80.00,ref:'TRF-992104',note:'Abono inicial factura F-88412'}]
-  });
-
-  const p2Ts=now-2*dayMs;
-  const p2Lines=[
-    {code:'7504001',desc:'Fram Filtro de Aceite PH3600',qty:20,cost:3.00,sub:60.00},
-    {code:'7504002',desc:'Mann Filtro de Aceite W 712/75',qty:10,cost:5.10,sub:51.00},
-    {code:'7505001',desc:'Bendix Pastillas Delanteras Cerámicas',qty:6,cost:15.60,sub:93.60}
-  ];
-  p2Lines.forEach(l=>{
-    const p=prod(l.code),sold=soldQty[l.code]||0;
-    addKardex({ts:p2Ts,code:l.code,type:'COMPRA',dir:'IN',doc:'COM-00000202',party:S.suppliers[1].name+' (Fac. Prov. B-10492)',qty:l.qty,stockAfter:r2(p.stock+sold),cost:l.cost,user:'Mariela G.'});
-  });
-  const p2Base=r2(p2Lines.reduce((a,x)=>a+x.sub,0)),p2Iva=r2(p2Base*IVA),p2Tot=r2(p2Base+p2Iva);
-  S.purchases.push({
-    no:202,docProv:'B-10492',ts:p2Ts,dueTs:now-1*dayMs,
-    supplier:Object.assign({},S.suppliers[1]),
-    cond:'Crédito',lines:p2Lines,base:p2Base,iva:p2Iva,total:p2Tot,rate:478,paid:0,void:false
-  });
-  S.cxp.push({
-    id:'CXP-0002',purchaseNo:202,doc:'B-10492 (COM-00000202)',
-    supplier:Object.assign({},S.suppliers[1]),
-    concept:'Lote de filtros Fram/Mann y pastillas Bendix',
-    ts:p2Ts,dueTs:now-1*dayMs,total:p2Tot,paid:0,payments:[]
-  });
-
-  /* 3. Ventas de ejemplo + salidas Kardex */
-  const mk=(no,hh,mm,ci,items,how)=>{
-    const d=new Date();d.setHours(hh,mm,0,0);
-    const lines=items.map(it=>{
-      const p=prod(it[0]),ds=it[2]||0,gross=r2(p.price*it[1]);
-      addKardex({ts:d.getTime(),code:p.code,type:'VENTA',dir:'OUT',doc:'FAC-'+pad(no),party:S.clients[ci].name,qty:it[1],stockAfter:p.stock,cost:p.cost,user:'Mariela G.'});
-      return{code:p.code,desc:p.brand+' '+p.desc,qty:it[1],price:p.price,disc:ds,net:r2(gross*(1-ds/100))};
-    });
-    const sub=r2(lines.reduce((a,l)=>a+r2(l.price*l.qty),0)),base=r2(lines.reduce((a,l)=>a+l.net,0));
-    const iva=r2(base*IVA),total=r2(base+iva),rate=S.cfg.rate;
-    let igtf=0,pays;
-    if(how==='usd'){igtf=r2(total*IGTF);pays=[{id:'efUSD',name:'Efectivo US$',cur:'USD',amount:r2(total+igtf)}];}
-    else if(how==='pv')pays=[{id:'punto',name:'Punto de venta (débito / crédito)',cur:'VES',amount:r2(total*rate)}];
-    else if(how==='bio')pays=[{id:'biopago',name:'Biopago',cur:'VES',amount:r2(total*rate)}];
-    else pays=[{id:'pmovil',name:'Pago móvil',cur:'VES',amount:r2(total*rate)}];
-    const ctrlNo=(S.cfg.ctrlPrefix||'00-')+pad(no,8);
-    S.sales.push({no,ctrlNo,docType:'01-FACTURA',transType:'01-REG',ts:d.getTime(),client:Object.assign({},S.clients[ci]),lines,sub,disc:r2(sub-base),base,baseG16:base,baseR8:0,baseA31:0,baseEx:0,iva,total,igtf,rate,pays,change:0,void:false});
-  };
-  seedSalesSpec.forEach(sp=>mk.apply(null,sp));
-
-  /* 4. Cuentas por Cobrar (CxC) de ejemplo */
-  S.cxc=[
-    {
-      id:'CXC-0001',saleNo:1031,doc:'FAC-00001031',
-      client:Object.assign({},S.clients[1]),
-      concept:'Suministro de aceites y filtros flota taller',
-      ts:now-12*dayMs,dueTs:now-2*dayMs,
-      total:145.00,paid:50.00,
-      payments:[{ts:now-6*dayMs,method:'Pago móvil',cur:'VES',amountBs:r2(50*472),amountUsd:50.00,ref:'PM-441822',note:'Abono parcial cuenta taller'}]
-    },
-    {
-      id:'CXC-0002',saleNo:1035,doc:'FAC-00001035',
-      client:Object.assign({},S.clients[2]),
-      concept:'6 Galones Diésel 15W-40 + Filtros pesados',
-      ts:now-5*dayMs,dueTs:now+10*dayMs,
-      total:218.40,paid:0,
-      payments:[]
-    },
-    {
-      id:'CXC-0003',saleNo:1036,doc:'FAC-00001036',
-      client:Object.assign({},S.clients[5]),
-      concept:'Caja Aceite 20W-50 y grasas de chasis',
-      ts:now-8*dayMs,dueTs:now+7*dayMs,
-      total:112.00,paid:112.00,
-      payments:[{ts:now-1*dayMs,method:'Zelle',cur:'USD',amountBs:r2(112*480),amountUsd:112.00,ref:'ZELLE-88301',note:'Cancelación total factura'}]
-    }
-  ];
-
-  /* 5. Historial de conteo de ejemplo */
-  S.counts=[
-    {
-      id:'CNT-00000101',ts:now-3*dayMs,user:'Mariela G.',
-      items:[{code:'7504004',desc:'Filtro de Gasolina G3727',prev:3,next:2,diff:-1,cost:3.45,reason:'Producto dañado o averiado'}]
-    }
-  ];
-
-  /* 6. Conciliación de lotes bancarios SUDEBAN */
-  S.lotesSudeban=[
-    {
-      id:'LOT-000142',banco:'Banco de Venezuela (BDV)',tid:'BDV-POS-0892',ts:now-4*3600000,
-      tipo:'Biopago / Débito',totalBs:28450.00,comisionBs:426.75,netoBs:28023.25,ops:14,estado:'CONCILIADO',refLote:'LT-881290'
-    },
-    {
-      id:'LOT-000143',banco:'Banesco Banco Universal',tid:'BAN-POS-3310',ts:now-2*3600000,
-      tipo:'Punto de Venta (Débito/Crédito)',totalBs:19200.00,comisionBs:384.00,netoBs:18816.00,ops:9,estado:'CONCILIADO',refLote:'LT-441208'
-    }
-  ];
-
-  /* 7. Comprobantes de Retención de IVA (SENIAT Sujeto Pasivo Especial) */
-  S.retencionesIva=[
-    {
-      id:'20261000000041',ts:p1Ts+3600000,purchaseNo:201,docProv:'F-88412',ctrlProv:'00-00088192',
-      supplier:Object.assign({},S.suppliers[0]),
-      base:p1Base,iva:p1Iva,pct:75,retainedBs:r2(p1Iva*0.75*475),retainedUsd:r2(p1Iva*0.75),rate:475,periodo:'202610'
-    },
-    {
-      id:'20261000000042',ts:p2Ts+3600000,purchaseNo:202,docProv:'B-10492',ctrlProv:'00-00010492',
-      supplier:Object.assign({},S.suppliers[1]),
-      base:p2Base,iva:p2Iva,pct:75,retainedBs:r2(p2Iva*0.75*478),retainedUsd:r2(p2Iva*0.75),rate:478,periodo:'202610'
-    }
-  ];
-
-  /* 8. Registro y trazabilidad de Operaciones Cambiarias (Compra USD Efectivo y Zelle) */
-  S.cambiosDivisas=[
-    {
-      id:'CAMB-0001',tipo:'ZELLE_PROV',ts:now-2*dayMs,
-      vendedor:{nombre:'Carlos Eduardo Méndez',ci:'V-15.892.411',tel:'0414-234.56.78'},
-      montoUsd:80.00,tasa:475.00,tasaBcv:475.00,montoBs:38000.00,
-      medioBs:'Pago Móvil BDV',bancoOrigen:'Banco de Venezuela (BDV)',bancoDestino:'Banesco',refBs:'PM-88912304',
-      destinoTipo:'PROV',destinoNombre:S.suppliers[0].name,
-      destinatarioZelle:'pagos@distribuidoranolub.com',titularZelle:'Distribuidora Nacional Lubricantes LLC',
-      confZelle:'CONF-ZEL-994821',cxpId:'CXP-0001',cxpDoc:'F-88412 (COM-00000201)',
-      notas:'Compra de Zelle a persona natural para abonar factura de lubricantes Castrol GTX'
-    },
-    {
-      id:'CAMB-0002',tipo:'USD_EFECTIVO',ts:now-1*dayMs,
-      vendedor:{nombre:'María Alejandra Rivas',ci:'V-18.441.209',tel:'0424-911.22.33'},
-      montoUsd:150.00,tasa:480.00,tasaBcv:480.00,montoBs:72000.00,
-      medioBs:'Transferencia Bancaria',bancoOrigen:'Banesco Banco Universal',bancoDestino:'Banco Mercantil',refBs:'TRF-4410928',
-      destinoTipo:'CAJA',destinoNombre:'Caja Principal de Divisas (Caja 01)',
-      seriales:'MB-49102831A (1x100), LF-22910488B (1x50)',
-      notas:'Compra de USD billetes físicos a persona natural para fondo de caja y vuelto en divisas'
-    }
-  ];
-
-  S.client=S.clients[1];
-  /* Asociar proveedores de ejemplo a los primeros productos */
-  if(S.products[0]){
-    S.products[0].assocSuppliers=[
-      {supId:'PRV-01',rif:S.suppliers[0].rif,name:S.suppliers[0].name,barcode:'7501001-CAS',cost:3.35,leadDays:3,minOrder:12,notes:'Distribuidor oficial Castrol'}
-    ];
-  }
-  if(S.products[22]){
-    S.products[22].assocSuppliers=[
-      {supId:'PRV-02',rif:S.suppliers[1].rif,name:S.suppliers[1].name,barcode:'FRM-PH3600',cost:3.00,leadDays:2,minOrder:24,notes:'Precio especial por caja de 24'}
-    ];
-  }
-  /* CASHEA inicia sin operaciones ficticias; se registran solo cobros confirmados. */
-  S.casheaMovimientos=[];
-
-  S.cart=[{code:'7501001',qty:4,disc:5},{code:'7504001',qty:1,disc:0},{code:'7507004',qty:2,disc:0},{code:'7501009',qty:2.5,disc:0}];
-  S.sel=0;
 }
-
 function stateSnapshot(){
   return {
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
