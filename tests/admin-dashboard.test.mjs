@@ -173,3 +173,24 @@ test('compras acepta y conserva hasta ocho decimales en costos, precios, subtota
   assert.match(compras, /const nextCost=nextStock>0\?r8\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
   assert.match(main, /nf8\(p\.cost\)/);
 });
+
+
+test('CxP de compras conserva ocho decimales en saldos y pagos y mantiene el historial al anular', () => {
+  const purchaseStart = main.indexOf('const renderPurchaseHist=v=>{');
+  const purchaseEnd = main.indexOf('const renderSuppliersTab=v=>', purchaseStart);
+  const purchaseHistory = main.slice(purchaseStart, purchaseEnd);
+  assert.match(purchaseHistory, /const payable=r8\(c\.payableTotal===undefined/);
+  assert.match(purchaseHistory, /nf8\(c\.total\)/);
+  assert.match(purchaseHistory, /nf8\(pend\)/);
+  assert.match(purchaseHistory, /x\.void=true;x\.voidedAt=Date\.now\(\)/);
+  assert.match(purchaseHistory, /Anulada junto con compra COM-/);
+
+  const cxpStart = main.indexOf('function cxpDlg(selId){');
+  const cxpEnd = main.indexOf('function newCxpManualDlg(){', cxpStart);
+  const cxp = main.slice(cxpStart, cxpEnd);
+  assert.match(cxp, /const bal=r8\(Math\.max\(0,Number\(item\.total\|\|0\)-Number\(item\.paid\|\|0\)\)\)/);
+  assert.match(cxp, /item\.paid=r8\(Math\.min\(Number\(item\.total\)\|\|0/);
+  assert.match(cxp, /nf8\(p\.amountUsd\)/);
+  assert.match(cxp, /if\(rawAmt-bal>0\.00000001\)/);
+  assert.match(cxp, /mixState\[mid\]\.usd=r8\(b\/rate\)/);
+});
