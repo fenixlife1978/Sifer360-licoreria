@@ -1,0 +1,44 @@
+/* SIFER 360 — ajuste quirúrgico del asistente CASHEA. No altera la lógica del POS. */
+.dlg:has(#cshInitialRows) {
+  width: min(980px, calc(100vw - 28px)) !important;
+  max-width: calc(100vw - 28px);
+  max-height: min(90dvh, 900px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dlg:has(#cshInitialRows) .body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+.dlg:has(#cshInitialRows) .body > .form { min-width: 0; }
+.dlg:has(#cshInitialRows) .docgrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.dlg:has(#cshInitialRows) .docgrid > .f { min-width: 0; }
+.dlg:has(#cshInitialRows) .docgrid > .f.wide { grid-column: 1 / -1; }
+.dlg:has(#cshInitialRows) .fld,
+.dlg:has(#cshInitialRows) select,
+.dlg:has(#cshInitialRows) input { max-width: 100%; min-width: 0; box-sizing: border-box; }
+.dlg:has(#cshInitialRows) .gridwrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.dlg:has(#cshInitialRows) .grid { min-width: 650px; }
+.dlg:has(#cshInitialRows) .dhead { flex: 0 0 auto; }
+.dlg:has(#cshInitialRows) .foot { flex: 0 0 auto; }
+@media (max-width: 680px) {
+  .dlg:has(#cshInitialRows) { width: calc(100vw - 16px) !important; max-width: calc(100vw - 16px); max-height: 94dvh; }
+  .dlg:has(#cshInitialRows) .body { padding: 10px; }
+  .dlg:has(#cshInitialRows) .docgrid { grid-template-columns: minmax(0, 1fr); }
+  .dlg:has(#cshInitialRows) .docgrid > .f.wide { grid-column: auto; }
+  .dlg:has(#cshInitialRows) .body .cashea-calc-box { overflow-wrap: anywhere; }
+  .dlg:has(#cshInitialRows) .dhead .ttl { min-width: 0; overflow-wrap: anywhere; }
+}

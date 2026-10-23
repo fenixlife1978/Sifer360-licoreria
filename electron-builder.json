@@ -1,0 +1,23 @@
+{
+  "appId": "com.elpiston.pos",
+  "productName": "SIFER 360",
+  "directories": {
+    "output": "dist-exe"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "portable": {
+    "artifactName": "sifer-360-portable.exe"
+  }
+}

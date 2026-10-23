@@ -1,0 +1,45 @@
+name: Compilar Ejecutable Windows (.exe)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Windows .exe
+    runs-on: windows-latest
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm install --legacy-peer-deps
+
+      - name: Ejecutar pruebas de regresión
+        run: npm test
+
+      - name: Compilar aplicación web (Vite)
+        run: npm run build
+
+      - name: Construir ejecutable portátil de Windows (.exe)
+        run: npx --yes electron-builder --win portable --config electron-builder.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publicar artefacto descargable (.exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-el-piston-windows-portable-exe
+          path: dist-exe/*.exe
+          if-no-files-found: error

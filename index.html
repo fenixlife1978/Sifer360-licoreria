@@ -1,0 +1,113 @@
+<!doctype html><html lang="es"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><title>SIFER 360</title>
+<meta name="description" content="Punto de venta y sistema administrativo con facturación multimoneda (US$ / Bs.), Biopago, IGTF 3%, Módulo de Control SENIAT/SUDEBAN, Operaciones Cambiarias y Compra de Divisas (USD Efectivo / Zelle), Libros Fiscales, Compras, Inventario, Kardex, CxC y CxP.">
+<meta property="og:title" content="SIFER 360">
+<meta property="og:description" content="Punto de venta y sistema administrativo con facturación multimoneda (US$ / Bs.), Biopago, IGTF 3%, Módulo de Control SENIAT/SUDEBAN, Operaciones Cambiarias y Compra de Divisas (USD Efectivo / Zelle), Libros Fiscales, Compras, Inventario, Kardex, CxC y CxP.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=Courier+Prime:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inconsolata:wght@500;700&family=JetBrains+Mono:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;700&family=Share+Tech+Mono&display=swap">
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/access.css">
+<link rel="stylesheet" href="/sifer360-cashea.css">
+</head><body>
+
+<div class="app" id="win">
+  <header class="top">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 100 100" fill="none" aria-hidden="true" title="SIFER 360">
+        <path fill-rule="evenodd" clip-rule="evenodd" d="M 53.43 19.69 L 55.87 3.87 L 64.72 5.89 L 60.06 21.21 L 66.24 24.18 L 75.31 10.99 L 82.40 16.65 L 71.56 28.42 L 75.83 33.79 L 89.73 25.83 L 93.66 34.01 L 78.78 39.91 L 80.31 46.60 L 96.28 45.46 L 96.28 54.54 L 80.31 53.40 L 78.78 60.09 L 93.66 65.99 L 89.73 74.17 L 75.83 66.21 L 71.56 71.58 L 82.40 83.35 L 75.31 89.01 L 66.24 75.82 L 60.06 78.79 L 64.72 94.11 L 55.87 96.13 L 53.43 80.31 L 46.57 80.31 L 44.13 96.13 L 35.28 94.11 L 39.94 78.79 L 33.76 75.82 L 24.69 89.01 L 17.60 83.35 L 28.44 71.58 L 24.17 66.21 L 10.27 74.17 L 6.34 65.99 L 21.22 60.09 L 19.69 53.40 L 3.72 54.54 L 3.72 45.46 L 19.69 46.60 L 21.22 39.91 L 6.34 34.01 L 10.27 25.83 L 24.17 33.79 L 28.44 28.42 L 17.60 16.65 L 24.69 10.99 L 33.76 24.18 L 39.94 21.21 L 35.28 5.89 L 44.13 3.87 L 46.57 19.69 Z M 36.50 50 A 13.5 13.5 0 1 0 63.50 50 A 13.5 13.5 0 1 0 36.50 50 Z" fill="#F29D12"/>
+      </svg>
+      <div class="bname"><strong id="winTitle"></strong><span id="winSub"></span></div>
+    </div>
+    <div class="topr">
+      <button class="menubtn" id="btnDashboard" title="Volver al resumen del negocio" hidden aria-pressed="false">▦ Dashboard</button>
+      <button class="menubtn logout-btn" id="btnLogout" title="Cerrar la sesión actual" aria-label="Cerrar sesión">⇥ Cerrar sesión</button>
+      <button class="menubtn" id="btnCasheaTop" title="Módulo CASHEA — Pagos en Cuotas (BNPL), Aprobaciones y Conciliación" style="background:#312E81;color:#A5B4FC;border-color:#4338CA;display:inline-flex;align-items:center;gap:6px;font-weight:700;padding:5px 12px">
+        <svg viewBox="0 0 24 24" aria-hidden="true" style="stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;width:15px;height:15px"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20M7 15h3M14 15h3"/></svg>Cashea BNPL
+      </button>
+      <button class="menubtn" id="btnDivisasTop" title="Operaciones Cambiarias: Compra de USD Físico y Zelle" style="background:#0D3B2E;color:#4ADE80;border-color:#166534;display:inline-flex;align-items:center;gap:6px;font-weight:600;padding:5px 12px">
+        <svg viewBox="0 0 24 24" aria-hidden="true" style="stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;width:15px;height:15px"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>USD / Zelle
+      </button>
+      <button class="menubtn" id="btnSeniatTop" title="Control SENIAT / SUDEBAN — Cumplimiento Fiscal, IGTF y Auditoría (F1)" style="background:#0F2942;color:#FFD21F;border-color:#1E4B75;display:inline-flex;align-items:center;gap:6px;font-weight:600;padding:5px 12px">
+        <svg viewBox="0 0 24 24" aria-hidden="true" style="stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;width:15px;height:15px"><path d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z"/><path d="M9 12l2 2 4-4"/></svg>Control SENIAT / SUDEBAN <kbd style="font-size:10px;background:rgba(255,255,255,0.15);padding:1px 4px;border-radius:3px">F1</kbd>
+      </button>
+      <button class="menubtn" id="btnMenu" aria-haspopup="menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>Menú
+      </button>
+      <span class="who" id="whoUser"></span>
+    </div>
+  </header>
+
+  <nav class="toolbar" id="toolbar" aria-label="Acciones de venta"></nav>
+
+  <div class="main">
+    <section class="left" aria-label="Venta actual">
+      <div class="group">
+        <div class="gtitle">Documento de venta</div>
+        <div class="docgrid">
+          <div class="f"><label for="fNo">Factura Nº</label><input class="fld mono" id="fNo" readonly></div>
+          <div class="f"><label for="fDate">Fecha y hora</label><input class="fld" id="fDate" readonly></div>
+          <div class="f wide"><label for="fClient">Cliente</label><div class="row"><input class="fld" id="fClient" readonly><button class="btn mini2" id="btnClient" title="Seleccionar cliente (F4)" aria-label="Seleccionar cliente">&hellip;</button></div></div>
+          <div class="f"><label for="fRif">RIF / C.I.</label><input class="fld" id="fRif" readonly></div>
+          <div class="f"><label for="fCajero">Cajero</label><input class="fld" id="fCajero" readonly></div>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div>
+          <label for="entry">Código de barras, SKU o descripción &nbsp;·&nbsp; use 3*texto para varias unidades</label>
+          <input class="fld big" id="entry" autocomplete="off" spellcheck="false" placeholder="Escanee o escriba, ej: 20w50, filtro, SKU-ACE, 3*7504001">
+        </div>
+        <button class="btn primary" id="btnAdd">Agregar</button>
+      </div>
+
+      <div class="gridwrap" id="cartWrap">
+        <table class="grid cart" aria-label="Renglones de la venta">
+          <thead><tr>
+            <th class="c" style="width:34px">#</th>
+            <th style="width:82px">Código</th>
+            <th>Descripción</th>
+            <th class="c" style="width:52px">U.M.</th>
+            <th class="c" style="width:104px">Cantidad</th>
+            <th class="r" style="width:84px">P. unit. US$</th>
+            <th class="r" style="width:54px">Desc.</th>
+            <th class="c" style="width:68px" title="Alícuota de I.V.A. del producto">I.V.A.</th>
+            <th class="r" style="width:88px" title="Total sin IVA">Total US$</th>
+            <th class="r" style="width:112px" title="Total sin IVA en Bs.">Total Bs.</th>
+          </tr></thead>
+          <tbody id="cartBody"></tbody>
+        </table>
+      </div>
+
+      <div class="bottom">
+        <table class="sumt" aria-label="Resumen de la venta">
+          <thead><tr><th>Concepto</th><th class="r">US$</th><th class="r">Bs.</th></tr></thead>
+          <tbody id="sumBody"></tbody>
+        </table>
+        <div class="lcd" aria-live="polite">
+          <div class="lcd-label">TOTAL A PAGAR (CON IVA)</div>
+          <div class="lcd-bs" id="lcdBs"></div>
+          <div class="lcd-usd" id="lcdUsd"></div>
+        </div>
+        <button class="btn primary cobrar" id="btnPay"><span>Cobrar</span><small>F12</small></button>
+      </div>
+    </section>
+    <section id="adminDashboard" class="admin-dashboard" hidden aria-label="Dashboard de resumen del negocio"></section>
+  </div>
+
+  <footer class="statusbar" id="statusbar">
+    <div class="sp msg" id="sbMsg" role="status"></div>
+    <div class="sp" id="sbCajero"></div>
+    <button class="sp" id="sbRate" title="Cambiar tasa oficial BCV"></button>
+    <button class="sp" id="sbDivisas" title="Operaciones Cambiarias: Compra de USD y Zelle" style="color:#059669;font-weight:600;display:inline-flex;align-items:center;gap:4px;cursor:pointer"><svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>USD / Zelle</button>
+    <button class="sp" id="sbSeniat" title="Abrir Módulo de Control SENIAT / SUDEBAN (F1)" style="color:#1842B8;font-weight:600;display:inline-flex;align-items:center;gap:4px;cursor:pointer"><svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.2"><path d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z"/><path d="M9 12l2 2 4-4"/></svg>SENIAT / SUDEBAN: Conforme</button>
+    <div class="sp" id="sbCount"></div>
+    <div class="sp" id="sbClock"></div>
+  </footer>
+</div>
+
+<script src="/sql-wasm.js"></script>
+<script src="/main.js"></script>\n<script src="/access.js"></script>
+
+<div id="fiscalPrintWrap" hidden></div>
+</body></html>
