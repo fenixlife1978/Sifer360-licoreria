@@ -189,9 +189,9 @@ function persistenceError(err){
 /* ---------- Motor de Base de Datos Local SQLite (100% Offline) ---------- */
 let sqliteDb = null;
 let sqliteSqlInstance = null;
-const SQLITE_IDB_NAME = 'elpiston_sqlite_db';
+const SQLITE_IDB_NAME = 'sifer360_licoreria_sqlite_db';
 const SQLITE_IDB_STORE = 'files';
-const SQLITE_IDB_KEY = 'elpiston.sqlite';
+const SQLITE_IDB_KEY = 'sifer360-licoreria.sqlite';
 
 function openIndexedDb() {
   return new Promise(resolve => {
@@ -1389,7 +1389,7 @@ function productFormDlg(editCode,initialTab){
     cat:'Aceites de motor',
     subcat:'Mineral',
     loc:'',
-    unit:'L',
+    unit:'und',
     stock:0,
     min:4,
     cost:0.00,
@@ -5679,9 +5679,9 @@ function aboutDlg(){
   openWin({title:'Acerca del POS',w:480,body:h('<div class="form"><p style="margin:0"><b>SIFER 360 — Sistema Integral Administrativo y Punto de Venta</b></p><p class="hint">Punto de venta especializado en licorerías: bebidas alcohólicas y no alcohólicas, inventario por presentación, compras, ventas, caja y control fiscal. Incluye facturación multimoneda (US$ / Bs.), IVA 16 %, IGTF 3 %, Módulo de Control SENIAT/SUDEBAN (Libros de Ventas y Compras oficiales, Liquidación Forma 30 IVA, Percepción IGTF, Auditoría cambiaria BCV, Conciliación bancaria POS/Biopago y Generador de TXT de Retenciones), Compras a proveedores, Cuentas por Cobrar (CxC), Cuentas por Pagar (CxP), Ficha Kardex Profesional (CPP) y Conteo Físico de Inventario.</p><p class="hint">Los datos se guardan localmente en este navegador.</p></div>'),foot:[{label:'Cerrar',primary:true}]});
 }
 function resetAll(){
-  ask('Restablecer datos de ejemplo','Se borrarán ventas, compras, CxC, CxP, Kardex, inventario y configuración guardados en este navegador y volverá el ejemplo inicial.','Restablecer',()=>{
+  ask('Vaciar datos operativos','Se borrarán ventas, compras, CxC, CxP, Kardex, inventario y configuración guardados en este dispositivo. La base quedará vacía para configurar la licorería.','Restablecer',()=>{
     try{localStorage.removeItem(KEY);}catch(e){}
-    draftConteo={};seed();saved=false;renderAll();renderCatOptions();msg('Datos de ejemplo restablecidos.');
+    draftConteo={};seed();saved=false;renderAll();renderCatOptions();msg('Base operativa vacía. Configure los datos de la licorería y registre el inventario real.');
   });
 }
 
@@ -6464,11 +6464,11 @@ async function databaseSettingsDlg(){
         '<span style="background:#065F46;color:#6EE7B7;font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px">CONECTADO LOCAL</span>' +
       '</div>' +
       '<div class="hint" style="margin:0;color:#94A3B8;line-height:1.5">' +
-        'Este software opera <b>exclusivamente con SQLite local</b> (<code>elpiston.sqlite</code>). No depende de Turso, Vercel ni conexiones a internet. Todas las ventas, clientes, compras, inventario, libro fiscal SENIAT y pagos CASHEA residen permanentemente en este equipo.' +
+        'Este software opera <b>exclusivamente con SQLite local</b> (<code>sifer360-licoreria.sqlite</code>). No depende de Turso, Vercel ni conexiones a internet. Todas las ventas, clientes, compras, inventario, libro fiscal SENIAT y pagos CASHEA residen permanentemente en este equipo.' +
       '</div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:4px">' +
         '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">MOTOR SQL</span><b style="color:#F1F5F9;font-size:12px">' + (isDesktop ? 'SQLite3 Nativo (Electron)' : 'SQLite3 WebAssembly (sql.js)') + '</b></div>' +
-        '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">ARCHIVO / IDB</span><b style="color:#F1F5F9;font-size:12px">elpiston.sqlite</b></div>' +
+        '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">ARCHIVO / IDB</span><b style="color:#F1F5F9;font-size:12px">sifer360-licoreria.sqlite</b></div>' +
         '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">VENTAS REGISTRADAS</span><b style="color:#38BDF8;font-size:13px">' + salesCount + '</b></div>' +
         '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">OPERACIONES CASHEA</span><b style="color:#A78BFA;font-size:13px">' + cshCount + '</b></div>' +
       '</div>' +
@@ -6487,7 +6487,7 @@ async function databaseSettingsDlg(){
         '</button>' +
         '<input type="file" id="dbImportSqliteFile" accept=".sqlite,.db" hidden>' +
         '<button class="btn" id="dbExportJson" type="button" title="Respaldo completo de datos en formato JSON">Respaldo JSON</button>' +
-        '<button class="btn" id="dbResetAll" type="button" style="color:#F87171;border-color:#7F1D1D" title="Reiniciar a datos iniciales de fábrica">Reiniciar base</button>' +
+        '<button class="btn" id="dbResetAll" type="button" style="color:#F87171;border-color:#7F1D1D" title="Vaciar datos operativos locales">Reiniciar base</button>' +
       '</div>' +
       '<div id="dbMsg" class="hint" style="margin-top:10px;min-height:18px"></div>' +
     '</div>' +
@@ -6503,7 +6503,7 @@ async function databaseSettingsDlg(){
         const blob = new Blob([JSON.stringify(stateSnapshot(), null, 2)], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = 'elpiston-estado-' + new Date().toISOString().slice(0, 10) + '.json';
+        a.download = 'sifer360-licoreria-estado-' + new Date().toISOString().slice(0, 10) + '.json';
         a.click();
         note.textContent = 'Respaldo de datos exportado correctamente.';
         return;
@@ -6511,9 +6511,9 @@ async function databaseSettingsDlg(){
       const blob = new Blob([bytes], { type: 'application/x-sqlite3' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'elpiston-backup-' + new Date().toISOString().slice(0, 10) + '.sqlite';
+      a.download = 'sifer360-licoreria-backup-' + new Date().toISOString().slice(0, 10) + '.sqlite';
       a.click();
-      note.textContent = 'Archivo elpiston.sqlite descargado exitosamente.';
+      note.textContent = 'Respaldo SQLite de SIFER 360 Licorería descargado exitosamente.';
     } catch (e) {
       note.textContent = 'Error al exportar SQLite: ' + e.message;
     }
@@ -6579,6 +6579,6 @@ prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la
   renderAll();
   wire();
   primeOperationBaseline();
-  msg(saved?'Base de datos local SQLite (elpiston.sqlite) cargada con éxito. Sistema POS y módulos Cashea listos.':'Base de datos local SQLite inicializada. Listo para operar.');
+  msg(saved?'Base de datos local SQLite de SIFER 360 Licorería cargada con éxito. Sistema listo para operar.':'Base de datos local SQLite de SIFER 360 Licorería inicializada. Listo para operar.');
 });
 })();
