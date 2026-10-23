@@ -370,3 +370,27 @@ test('Sicoven revierte el asiento ISLR y no mantiene retención activa cuando se
   assert.ok(s.sicoven.entries.some(e => e.type === 'REVERSO' && e.reversalOf === 'SIC-COM-00000001-COMPRA'));
   assert.equal(accounting.syncFromPOS(s).created, 0);
 });
+
+
+test('Sicoven omite operaciones de valor cero sin generar asientos vacíos ni errores artificiales', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.kardex[0].cost = 0;
+  s.kardex.push({ id: 2, type: 'INICIAL', dir: 'IN', qty: 8, cost: 0, ts: 1790000005000 });
+  s.movimientosCaja = [{ id: 'MOV-ZERO', direction: 'IN', currency: 'USD', amount: 0, rate: 40, counterpartAccount: '3.1.1.01', ts: 1790000006000 }];
+  s.cambiosDivisas = [{ id: 'CAMB-ZERO', tipo: 'USD_EFECTIVO', montoUsd: 0, montoBs: 0, tasaBcv: 40, ts: 1790000007000 }];
+  s.cxc = [{ id: 'CXC-ZERO', saleNo: null, doc: 'ND-ZERO', total: 0, paid: 0, payments: [] }];
+  s.cxp = [{ id: 'CXP-ZERO', purchaseNo: null, doc: 'F-ZERO', total: 0, paid: 0, payments: [] }];
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 2);
+  assert.equal(result.errors, 0);
+  assert.ok(s.sicoven.entries.every(e => e.lines.length > 0));
+  assert.ok(!s.sicoven.entries.some(e => ['COSTO_VENTA', 'INVENTARIO', 'MOVIMIENTO_CAJA', 'CAMBIO_DIVISAS'].includes(e.type)));
+});
+
+test('Sicoven impide conciliar dos movimientos bancarios contra el mismo asiento', () => {
+  const source = fs.readFileSync(new URL('../public/sicoven.js', import.meta.url), 'utf8');
+  assert.match(source, /const alreadyMatched=new Set\(c\.bankMovements\.filter\(x=>x\.status==='CONCILIADO'/);
+  assert.match(source, /ya está conciliado con otro movimiento bancario/);
+  assert.match(source, /m\.status='CONCILIADO';m\.matchedEntryId=entry\.id/);
+});
