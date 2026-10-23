@@ -25,7 +25,7 @@ function state() {
       lines: [{ code: 'BEB-1', desc: 'Producto', qty: 1, net: 100, iva: 16, taxRate: 16 }]
     }],
     purchases: [{ no: 1, ts: 1790000001000, rate: 40, base: 50, iva: 8, total: 58, retIva: 0, paid: 10, void: false }],
-    kardex: [{ doc: 'FAC-1', type: 'VENTA', dir: 'OUT', qty: 1, cost: 50 }]
+    kardex: [{ doc: 'FAC-00000001', type: 'VENTA', dir: 'OUT', qty: 1, cost: 50 }]
   };
 }
 
