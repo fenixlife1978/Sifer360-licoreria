@@ -74,7 +74,7 @@ test('la conciliación automática solo marca una coincidencia única por fecha,
     '2026-10-01;1.1.1.06;IN;Bs;1250,50;REF-EXT;Abono recibido'
   ].join('\\n'), s);
   assert.equal(result.imported, 1);
-  assert.equal(result.matched, 1);
+  assert.equal(result.matched, 1, JSON.stringify({ result, movement: s.sicoven.bankMovements[0] }));
   assert.equal(s.sicoven.bankMovements[0].status, 'CONCILIADO');
   assert.equal(s.sicoven.bankMovements[0].autoMatched, true);
 });
