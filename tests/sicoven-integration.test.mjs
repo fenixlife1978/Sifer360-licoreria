@@ -500,3 +500,11 @@ test('Sicoven revierte el asiento de inventario cuando se anula el ajuste del ka
   assert.ok(s.sicoven.entries.some(e => e.type === 'REVERSO' && e.reversalOf === adjustment.id));
   assert.equal(accounting.syncFromPOS(s).created, 0);
 });
+
+
+test('Sicoven muestra hasta ocho decimales en reportes contables sin ocultar precisión de facturas', () => {
+  const source = fs.readFileSync(new URL('../public/sicoven.js', import.meta.url), 'utf8');
+  assert.match(source, /minimumFractionDigits:2,maximumFractionDigits:8/);
+  assert.match(source, /<th>Total USD<\\/th>/);
+  assert.match(source, /money\\(x\\.total\\)/);
+});
