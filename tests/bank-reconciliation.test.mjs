@@ -85,7 +85,7 @@ test('crear asiento bancario exige clasificación fiscal explícita y genera dob
   const movement = { id: 'BANK-TEST-1', date: '2026-10-01', accountCode: '1.1.1.06', direction: 'OUT', currency: 'USD', amount: 20, rate: 40, reference: 'FEE-1', description: 'Comisión bancaria', status: 'PENDIENTE' };
   const missingFiscal = accounting.createBankMovementEntry(s, movement, '6.1.1.07', '', '');
   assert.match(missingFiscal.error, /Clasifique el tratamiento fiscal/);
-  const created = accounting.createBankMovementEntry(s, movement, '6.1.1.07', 'NO_APLICA', '');
+  const created = accounting.createBankMovementEntry(s, movement, '6.1.1.07', 'NO_APLICA', '', 'Comisión bancaria según estado de cuenta');
   assert.ok(created.entry);
   assert.equal(created.entry.lines.length, 2);
   assert.equal(created.entry.lines[0].accountCode, '1.1.1.06');
@@ -116,6 +116,7 @@ test('las operaciones no gravables quedan enlazadas entre Sicoven y el módulo F
   assert.ok(result.entry);
   assert.equal(s.fiscalBankOperations.length, 1);
   assert.equal(s.fiscalBankOperations[0].taxable, false);
+  assert.match(s.fiscalBankOperations[0].fiscalReason, /Comisión bancaria/);
   assert.equal(s.fiscalBankOperations[0].accountingEntryId, result.entry.id);
   const fiscal = fs.readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
   assert.match(fiscal, /data-tab="bancarias">Operaciones no gravables/);
