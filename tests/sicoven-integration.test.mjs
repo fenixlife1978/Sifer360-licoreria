@@ -179,12 +179,13 @@ test('Sicoven contabiliza movimientos de caja con contrapartida seleccionada y r
 test('Sicoven contabiliza retenciones ISLR y conserva el comprobante para exportación', () => {
   const accounting = loadAccountingModule();
   const s = state();
+  s.cxp = [{ id: 'CXP-ISLR-TEST', purchaseNo: 1, doc: 'F-100 (COM-00001)', supplier: { name: 'Proveedor de prueba', rif: 'J123456789' }, total: 40, paid: 3, payments: [{ ts: 1790000009000, method: 'Retención ISLR', cur: 'VES', amountUsd: 3, amountBs: 120, ref: '20261000000001', note: 'Retención ISLR aplicada a factura F-100' }] }];
   s.sicoven.islrVouchers = [{
     id: 'ISLR-TEST-1', voucherNumber: '20261000000001', period: '202610',
     date: '2026-10-23', invoiceDate: '2026-10-23', supplierRif: 'J123456789',
     supplierName: 'Proveedor de prueba', invoiceNumber: 'F-100', controlNumber: '00-00100',
     conceptCode: '001', baseAmountBs: 4000, retentionRate: 3, subtrahendBs: 0,
-    withheldAmountBs: 120, bcvRate: 40, baseAmountUsd: 100, withheldAmountUsd: 3
+    withheldAmountBs: 120, bcvRate: 40, baseAmountUsd: 100, withheldAmountUsd: 3, appliedToCxp: true, cxpId: 'CXP-ISLR-TEST', cxpPurchaseNo: 1
   }];
   const result = accounting.syncFromPOS(s);
   assert.equal(result.created, 4);
@@ -192,6 +193,7 @@ test('Sicoven contabiliza retenciones ISLR y conserva el comprobante para export
   assert.ok(entry);
   assert.ok(entry.lines.some(l => l.accountCode === '2.1.1.01' && l.debitUsd === 3));
   assert.ok(entry.lines.some(l => l.accountCode === '2.1.2.04' && l.creditUsd === 3));
+  assert.equal(s.sicoven.entries.filter(e => e.type === 'PAGO').length, 0, 'La retención no se registra como salida bancaria ficticia.');
 });
 
 
@@ -307,4 +309,22 @@ test('Sicoven revierte los pagos CxP cuando se anula una compra y conserva traza
   assert.equal(paymentReverse.type, 'REVERSO');
   assert.equal(purchaseReverse.type, 'REVERSO');
   assert.equal(accounting.syncFromPOS(s).created, 0);
+});
+
+
+test('Sicoven rechaza retención ISLR no vinculada a una CxP abierta', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.sicoven.islrVouchers = [{
+    id: 'ISLR-ORPHAN', voucherNumber: '20261000000009', period: '202610',
+    date: '2026-10-23', invoiceDate: '2026-10-23', supplierRif: 'J999999999',
+    supplierName: 'Proveedor sin obligación', invoiceNumber: 'F-999', controlNumber: '00-00999',
+    conceptCode: '001', baseAmountBs: 1000, retentionRate: 3, subtrahendBs: 0,
+    withheldAmountBs: 30, bcvRate: 40, baseAmountUsd: 25, withheldAmountUsd: 0.75
+  }];
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 3);
+  assert.equal(result.errors, 1);
+  assert.ok(s.sicoven.errors.some(e => e.origin === 'ISLR-ISLR-ORPHAN'));
+  assert.equal(s.sicoven.entries.filter(e => e.type === 'RETENCION_ISLR').length, 0);
 });
