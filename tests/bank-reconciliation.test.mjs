@@ -78,3 +78,32 @@ test('la conciliación automática solo marca una coincidencia única por fecha,
   assert.equal(s.sicoven.bankMovements[0].status, 'CONCILIADO');
   assert.equal(s.sicoven.bankMovements[0].autoMatched, true);
 });
+
+test('crear asiento bancario exige clasificación fiscal explícita y genera doble partida balanceada', () => {
+  const accounting = load();
+  const s = { cfg: { rate: 40 }, sicoven: { config: {}, entries: [], errors: [], bankMovements: [] } };
+  const movement = { id: 'BANK-TEST-1', date: '2026-10-01', accountCode: '1.1.1.06', direction: 'OUT', currency: 'USD', amount: 20, rate: 40, reference: 'FEE-1', description: 'Comisión bancaria', status: 'PENDIENTE' };
+  const missingFiscal = accounting.createBankMovementEntry(s, movement, '6.1.1.07', '', '');
+  assert.match(missingFiscal.error, /Clasifique el tratamiento fiscal/);
+  const created = accounting.createBankMovementEntry(s, movement, '6.1.1.07', 'NO_APLICA', '');
+  assert.ok(created.entry);
+  assert.equal(created.entry.lines.length, 2);
+  assert.equal(created.entry.lines[0].accountCode, '1.1.1.06');
+  assert.equal(created.entry.lines[0].debitUsd, 0);
+  assert.equal(created.entry.lines[0].creditUsd, 20);
+  assert.equal(created.entry.lines[1].debitUsd, 20);
+  assert.equal(created.entry.totals.debitUsd, created.entry.totals.creditUsd);
+  assert.equal(movement.status, 'CONCILIADO');
+  assert.equal(movement.fiscalStatus, 'NO_APLICA');
+  const duplicate = accounting.createBankMovementEntry(s, movement, '6.1.1.07', 'NO_APLICA', '');
+  assert.match(duplicate.error, /ya está conciliado/);
+});
+
+test('un documento fiscal vinculado debe existir en los registros locales', () => {
+  const accounting = load();
+  const s = { cfg: { rate: 40 }, sicoven: { config: {}, entries: [], errors: [], bankMovements: [] }, sales: [], purchases: [] };
+  const movement = { id: 'BANK-TEST-2', date: '2026-10-01', accountCode: '1.1.1.06', direction: 'IN', currency: 'USD', amount: 100, rate: 40, reference: 'REF', description: 'Depósito', status: 'PENDIENTE' };
+  const result = accounting.createBankMovementEntry(s, movement, '4.1.1.01', 'DOCUMENTO_VINCULADO', 'FAC-00000099');
+  assert.match(result.error, /No se encontró ese documento/);
+  assert.equal(s.sicoven.entries.length, 0);
+});
