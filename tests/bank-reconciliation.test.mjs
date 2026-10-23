@@ -142,6 +142,12 @@ test('ventas y compras con POS, Biopago, pago móvil y transferencia usan cuenta
     assert.ok(sale, 'venta para '+method);
     assert.ok(sale.lines.some(line => line.accountCode === account), 'cuenta transitoria para '+method);
     assert.ok(!sale.lines.some(line => line.accountCode === '1.1.1.06'), 'no debe reconocer banco antes de conciliar '+method);
+    const purchaseMethod = { punto: 'Punto de venta', biopago: 'Biopago', pmovil: 'Pago móvil', transf: 'Transferencia' }[method];
+    const purchaseState = { cfg: { rate: 40 }, sicoven: { config: {}, entries: [], errors: [] }, sales: [], kardex: [], purchases: [{ no: 7, ts: 1790000000000, rate: 40, base: 50, iva: 8, total: 58, retIva: 0, paid: 58, payMethod: purchaseMethod, void: false, lines: [{ taxRate: 16, iva: 8 }] }] };
+    accounting.syncFromPOS(purchaseState);
+    const purchase = purchaseState.sicoven.entries.find(e => e.type === 'COMPRA');
+    assert.ok(purchase, 'compra para '+method);
+    assert.ok(purchase.lines.some(line => line.accountCode === account), 'cuenta transitoria de compra para '+method);
   }
 });
 
