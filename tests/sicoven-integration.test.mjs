@@ -87,3 +87,31 @@ test('Sicoven contabiliza IVA adicional del 31% y ajustes de inventario', () => 
     assert.ok(Math.abs(entry.totals.debitUsd - entry.totals.creditUsd) <= 0.02, entry.id);
   }
 });
+
+
+test('Sicoven contabiliza abonos posteriores y conserva el pago inicial de compra sin duplicarlo', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.purchases[0].paid = 15;
+  s.cxp = [{
+    id: 'CXP-1', purchaseNo: 1, doc: 'COM-00000001', total: 48, paid: 15,
+    payments: [
+      { ts: 1790000001000, method: 'Transferencia Bs.', amountUsd: 10, amountBs: 400, ref: 'INI-1', note: 'Abono inicial en compra' },
+      { ts: 1790000003000, method: 'Transferencia Bs.', amountUsd: 5, amountBs: 200, ref: 'PAGO-1', note: 'Pago parcial proveedor' }
+    ]
+  }];
+  s.cxc = [{
+    id: 'CXC-MANUAL-1', saleNo: null, doc: 'ND-1', ts: 1790000002000, total: 30, paid: 10,
+    client: { name: 'Cliente prueba' },
+    payments: [{ ts: 1790000004000, method: 'Transferencia Bs.', amountUsd: 10, amountBs: 400, ref: 'REC-1', note: 'Abono parcial' }]
+  }];
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 6);
+  assert.equal(s.sicoven.entries.filter(e => e.type === 'PAGO').length, 1);
+  assert.equal(s.sicoven.entries.filter(e => e.type === 'COBRO').length, 1);
+  assert.equal(s.sicoven.entries.filter(e => e.type === 'CXC_MANUAL').length, 1);
+  const purchase = s.sicoven.entries.find(e => e.type === 'COMPRA');
+  assert.equal(purchase.lines.find(l => l.description.includes('Pago proveedor')).debitUsd, 0);
+  assert.ok(s.sicoven.entries.every(e => Math.abs(e.totals.debitUsd - e.totals.creditUsd) <= 0.02));
+  assert.equal(accounting.syncFromPOS(s).created, 0);
+});
