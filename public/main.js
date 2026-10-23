@@ -4723,37 +4723,17 @@ function exportLibroVentasCsv(sales){
 
 function exportLibroComprasCsv(purchases){
   const BOM='\uFEFF';
-  const headers=[
-    'Nro_Operacion','Fecha_Emision','RIF_Proveedor','Nombre_Proveedor',
-    'Numero_Factura_Proveedor','Numero_Control_Proveedor','Tipo_Transaccion',
-    'Total_Compras_USD','Total_Compras_Bs','Compras_Exentas_Bs',
-    'Base_Imponible_16_Bs','Credito_Fiscal_16_Bs','IVA_Retenido_75_Bs',
-    'Comprobante_Retencion','Tasa_BCV'
-  ];
+  const headers=['Nro_Operacion','Fecha_Emision','RIF_Proveedor','Nombre_Proveedor','Numero_Factura_Proveedor','Numero_Control_Proveedor','Tipo_Transaccion','Total_Compras_USD','Total_Compras_Bs','Base_Exenta_Bs','Base_Imponible_8_Bs','Credito_Fiscal_8_Bs','Base_Imponible_16_Bs','Credito_Fiscal_16_Bs','Base_Imponible_31_Bs','Credito_Fiscal_31_Bs','IVA_Retenido_Bs','Comprobante_Retencion','Tasa_BCV','Estado'];
+  const cell=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
   const rows=purchases.map((p,idx)=>{
-    const rate=p.rate||S.cfg.rate;
-    const retBs=p.retIva?r2(p.retIva*rate):0;
-    return [
-      idx+1,
-      fmtD(new Date(p.docDateTs||p.ts)),
-      `"${p.supplier.rif}"`,
-      `"${p.supplier.name.replace(/"/g,'""')}"`,
-      p.docProv,
-      p.ctrlProv||'',
-      '01-REG',
-      p.total.toFixed(2),
-      r2(p.total*rate).toFixed(2),
-      '0.00',
-      r2(p.base*rate).toFixed(2),
-      r2(p.iva*rate).toFixed(2),
-      retBs.toFixed(2),
-      p.retIvaDoc||'',
-      rate.toFixed(2)
-    ].join(';');
+    const rate=Number(p.rate)||Number(S.cfg.rate)||0, lines=Array.isArray(p.lines)?p.lines:[];
+    const baseAt=pct=>r2(lines.length?lines.reduce((sum,l)=>{const tr=l.taxRate===undefined?(Number(p.iva)>0?16:0):Number(l.taxRate);return sum+(tr===pct?(Number(l.sub)||r2((Number(l.qty)||0)*(Number(l.cost)||0)):0):0);},0):(pct===16&&Number(p.iva)>0?(Number(p.base)||0):(pct===0&&!(Number(p.iva)>0)?(Number(p.base)||0):0)));
+    const ivaAt=pct=>r2(lines.length?lines.reduce((sum,l)=>{const tr=l.taxRate===undefined?(Number(p.iva)>0?16:0):Number(l.taxRate);return sum+(tr===pct?(Number(l.iva)||r2((Number(l.sub)||r2((Number(l.qty)||0)*(Number(l.cost)||0)))*tr/100)):0);},0):(pct===16?(Number(p.iva)||0):0));
+    return [idx+1,fmtD(new Date(p.docDateTs||p.ts)),p.supplier?.rif||'',p.supplier?.name||'',p.docProv||'',p.ctrlProv||'',p.void?'03-ANUL':'01-REG',(Number(p.total)||0).toFixed(2),r2((Number(p.total)||0)*rate).toFixed(2),r2(baseAt(0)*rate).toFixed(2),r2(baseAt(8)*rate).toFixed(2),r2(ivaAt(8)*rate).toFixed(2),r2(baseAt(16)*rate).toFixed(2),r2(ivaAt(16)*rate).toFixed(2),r2(baseAt(31)*rate).toFixed(2),r2(ivaAt(31)*rate).toFixed(2),r2((Number(p.retIva)||0)*rate).toFixed(2),p.retIvaDoc||'',rate.toFixed(2),p.void?'ANULADA':(p.retIva>0?'RETENCIÓN REGISTRADA':'REGISTRADA')].map(cell).join(';');
   });
-  const csv=BOM+[headers.join(';')].concat(rows).join('\r\n');
-  downloadBlob(`Libro_Compras_SENIAT_${S.cfg.rif}_${new Date().toISOString().slice(0,10)}.csv`,csv,'text/csv;charset=utf-8;');
-  msg('Libro de Compras Fiscal exportado a CSV con éxito.');
+  const csv=BOM+[headers.map(cell).join(';')].concat(rows).join('\r\n');
+  downloadBlob('Libro_Compras_SENIAT_'+(S.cfg.rif||'SIN_RIF')+'_'+new Date().toISOString().slice(0,10)+'.csv',csv,'text/csv;charset=utf-8;');
+  msg('Libro de Compras exportado con los datos documentales registrados. Verifique el formato oficial vigente con su contador antes de declarar.');
 }
 
 function exportIgtfCsv(sales){
@@ -5190,66 +5170,29 @@ function seniatSudebanDlg(initialTab){
 
   const drawCompras=()=>{
     const purchases=getFilteredPurchases();
-    let sumTotal=0, sumBase=0, sumIva=0, sumRet=0;
-
+    let sumTotal=0,sumBase0=0,sumBase8=0,sumIva8=0,sumBase16=0,sumIva16=0,sumBase31=0,sumIva31=0,sumRet=0;
+    const baseAt=(p,pct)=>{
+      const lines=Array.isArray(p.lines)?p.lines:[];
+      if(!lines.length)return pct===16&&Number(p.iva)>0?(Number(p.base)||0):(pct===0&&!(Number(p.iva)>0)?(Number(p.base)||0):0);
+      return r2(lines.reduce((sum,l)=>{const tr=l.taxRate===undefined?(Number(p.iva)>0?16:0):Number(l.taxRate);return sum+(tr===pct?(Number(l.sub)||r2((Number(l.qty)||0)*(Number(l.cost)||0))):0);},0));
+    };
+    const ivaAt=(p,pct)=>{
+      const lines=Array.isArray(p.lines)?p.lines:[];
+      if(!lines.length)return pct===16?(Number(p.iva)||0):0;
+      return r2(lines.reduce((sum,l)=>{const tr=l.taxRate===undefined?(Number(p.iva)>0?16:0):Number(l.taxRate);return sum+(tr===pct?(Number(l.iva)||r2((Number(l.sub)||r2((Number(l.qty)||0)*(Number(l.cost)||0)))*tr/100)):0);},0));
+    };
     const rowsHtml=purchases.length?purchases.map((p,idx)=>{
-      const rate=p.rate||S.cfg.rate;
-      const totBs=r2(p.total*rate);
-      const baseBs=r2(p.base*rate);
-      const ivaBs=r2(p.iva*rate);
-      const retBs=p.retIva?r2(p.retIva*rate):0;
-      const retDoc=p.retIvaDoc||'';
-      const status=p.void?'ANULADA':(p.retIva>0?'Registrada · retención a revisar':'Registrada');
-
-      if(!p.void){sumTotal+=totBs;sumBase+=baseBs;sumIva+=ivaBs;sumRet+=retBs;}
-
-      return '<tr class="'+(p.void?'void':'')+'">'+
-        '<td class="c mono">'+(idx+1)+'</td>'+
-        '<td class="c">'+fmtD(new Date(p.ts))+'</td>'+
-        '<td class="mono">'+esc(p.supplier.rif)+'</td>'+
-        '<td><b>'+esc(p.supplier.name)+'</b></td>'+
-        '<td class="mono c"><b>'+esc(p.docProv)+'</b></td>'+
-        '<td class="mono c">'+esc(p.ctrlProv||'—')+'</td>'+
-        '<td class="r">'+nf(p.total)+'</td>'+
-        '<td class="r"><b>'+nf(totBs)+'</b></td>'+
-        '<td class="r">'+nf(baseBs)+'</td>'+
-        '<td class="r" style="color:#1D6F39"><b>'+nf(ivaBs)+'</b></td>'+
-        '<td class="r" style="color:#1842B8"><b>'+nf(retBs)+'</b></td>'+
-        '<td><span class="fiscal-tag '+(p.void?'bad':(p.retIva>0?'warn':'ok'))+'">'+status+'</span></td>'+
-        '<td class="mono c">'+esc(retDoc||'—')+'</td>'+
-        '<td class="r">'+nf(rate)+'</td>'+
-      '</tr>';
-    }).join(''):'<tr class="empty"><td colspan="13">No se encontraron compras para el período seleccionado.</td></tr>';
-
-    const sales=getFilteredSales().filter(s=>!s.void);
-    const totDebito=r2(sales.reduce((a,s)=>a+s.iva*(s.rate||S.cfg.rate),0));
-    const cuota=r2(totDebito-sumIva-sumRet);
-
-    return '<div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1050px">'+
-      '<thead><tr>'+
-        '<th class="c" style="width:36px">#</th><th>Fecha</th><th>RIF Proveedor</th><th>Razón Social Proveedor</th>'+
-        '<th class="c">Nº Factura</th><th class="c">Nº Control</th><th class="r">Total US$</th><th class="r">Total Facturado Bs.</th>'+
-        '<th class="r">Base Gravada 16%</th><th class="r">Crédito Fiscal IVA</th><th class="r">Retención 75% Bs.</th><th class="c">Nº Comprobante</th><th class="r">Tasa BCV</th>'+
-      '</tr></thead>'+
-      '<tbody>'+rowsHtml+'</tbody>'+
-      '<tfoot><tr style="background:#EEF3FA;font-weight:700">'+
-        '<td colspan="7" class="r">TOTALES DE COMPRAS (Bs.):</td>'+
-        '<td class="r">'+nf(sumTotal)+'</td>'+
-        '<td class="r">'+nf(sumBase)+'</td>'+
-        '<td class="r" style="color:#1D6F39">'+nf(sumIva)+'</td>'+
-        '<td class="r" style="color:#1842B8">'+nf(sumRet)+'</td>'+
-        '<td colspan="3"></td>'+
-      '</tr></tfoot>'+
-    '</table></div>'+
-    '<div class="cierre" style="margin-top:8px">'+
-      '<table class="sumt"><thead><tr><th>Determinación de la Cuota Tributaria (Forma 30 SENIAT)</th><th class="r">Monto en Bs.</th></tr></thead><tbody>'+
-        '<tr><td>Total Débito Fiscal del Período (Ventas)</td><td class="r">'+nf(totDebito)+'</td></tr>'+
-        '<tr><td>(-) Total Crédito Fiscal del Período (Compras)</td><td class="r" style="color:#1D6F39">-'+nf(sumIva)+'</td></tr>'+
-        '<tr><td>(-) Retenciones de IVA Descontadas</td><td class="r" style="color:#1842B8">-'+nf(sumRet)+'</td></tr>'+
-        '<tr class="tot"><td><b>'+(cuota>0?'TOTAL IMPUESTO A PAGAR AL SENIAT':'SALDO A FAVOR DEL CONTRIBUYENTE')+'</b></td><td class="r" style="font-size:15px;color:'+(cuota>0?'var(--bad)':'var(--ok)')+'"><b>'+nf(Math.abs(cuota))+' Bs.</b></td></tr>'+
-      '</tbody></table>'+
-    '</div>';
-  };
+      const rate=Number(p.rate)||Number(S.cfg.rate)||0,total=Number(p.total)||0,totalBs=r2(total*rate);
+      const b0=baseAt(p,0),b8=baseAt(p,8),i8=ivaAt(p,8),b16=baseAt(p,16),i16=ivaAt(p,16),b31=baseAt(p,31),i31=ivaAt(p,31);
+      const retBs=r2((Number(p.retIva)||0)*rate),retDoc=p.retIvaDoc||'',status=p.void?'ANULADA':(p.retIva>0?'Registrada · retención registrada':'Registrada');
+      if(!p.void){sumTotal+=totalBs;sumBase0+=r2(b0*rate);sumBase8+=r2(b8*rate);sumIva8+=r2(i8*rate);sumBase16+=r2(b16*rate);sumIva16+=r2(i16*rate);sumBase31+=r2(b31*rate);sumIva31+=r2(i31*rate);sumRet+=retBs;}
+      return '<tr class="'+(p.void?'void':'')+'"><td class="c mono">'+(idx+1)+'</td><td class="c">'+fmtD(new Date(p.docDateTs||p.ts))+'</td><td class="mono">'+esc(p.supplier?.rif||'')+'</td><td><b>'+esc(p.supplier?.name||'Proveedor sin identificar')+'</b></td><td class="mono c">'+esc(p.docProv||'—')+'</td><td class="mono c">'+esc(p.ctrlProv||'—')+'</td><td class="r">'+nf(total)+'</td><td class="r"><b>'+nf(totalBs)+'</b></td><td class="r">'+nf(r2(b0*rate))+'</td><td class="r">'+nf(r2(b8*rate))+'</td><td class="r">'+nf(r2(i8*rate))+'</td><td class="r">'+nf(r2(b16*rate))+'</td><td class="r" style="color:#1D6F39"><b>'+nf(r2(i16*rate))+'</b></td><td class="r">'+nf(r2(b31*rate))+'</td><td class="r">'+nf(r2(i31*rate))+'</td><td class="r" style="color:#1842B8">'+nf(retBs)+'</td><td><span class="fiscal-tag '+(p.void?'bad':(p.retIva>0?'warn':'ok'))+'">'+status+'</span></td><td class="mono c">'+esc(retDoc||'—')+'</td><td class="r">'+nf(rate)+'</td></tr>';
+    }).join(''):'<tr class="empty"><td colspan="19">No hay compras registradas para el período. No se generan facturas, controles ni retenciones ficticias.</td></tr>';
+    const sales=getFilteredSales().filter(x=>!x.void);
+    const debit=r2(sales.reduce((a,x)=>a+(Number(x.iva)||0)*(Number(x.rate)||Number(S.cfg.rate)||0),0));
+    const credit=r2(sumIva8+sumIva16+sumIva31),cuota=r2(debit-credit);
+    return '<div class="hint">Registro auxiliar basado en facturas de proveedor capturadas en Compras. Las alícuotas se registran por renglón; compare siempre contra la factura original. Este informe no presenta declaraciones ni sustituye el formato oficial vigente del SENIAT.</div><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1550px"><thead><tr><th>#</th><th>Fecha factura</th><th>RIF proveedor</th><th>Razón social proveedor</th><th>Nº factura</th><th>Nº control</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th class="r">Base exenta Bs.</th><th class="r">Base 8% Bs.</th><th class="r">IVA 8% Bs.</th><th class="r">Base 16% Bs.</th><th class="r">IVA 16% Bs.</th><th class="r">Base 31% Bs.</th><th class="r">IVA 31% Bs.</th><th class="r">IVA retenido Bs.</th><th>Estado</th><th>Nº comprobante retención</th><th class="r">Tasa BCV</th></tr></thead><tbody>'+rowsHtml+'</tbody><tfoot><tr style="background:#EEF3FA;font-weight:700"><td colspan="7" class="r">TOTALES DE COMPRAS (Bs.):</td><td class="r">'+nf(sumTotal)+'</td><td class="r">'+nf(sumBase0)+'</td><td class="r">'+nf(sumBase8)+'</td><td class="r">'+nf(sumIva8)+'</td><td class="r">'+nf(sumBase16)+'</td><td class="r">'+nf(sumIva16)+'</td><td class="r">'+nf(sumBase31)+'</td><td class="r">'+nf(sumIva31)+'</td><td class="r">'+nf(sumRet)+'</td><td colspan="3"></td></tr></tfoot></table></div><div class="cierre" style="margin-top:8px"><table class="sumt"><thead><tr><th>Conciliación preliminar de IVA (no planilla oficial)</th><th class="r">Monto Bs.</th></tr></thead><tbody><tr><td>Débito fiscal de ventas no anuladas</td><td class="r">'+nf(debit)+'</td></tr><tr><td>(-) Crédito fiscal de compras registrado por alícuota</td><td class="r">-'+nf(credit)+'</td></tr><tr class="tot"><td><b>'+(cuota>0?'Saldo aritmético débito menos crédito':'Saldo aritmético a favor')+'</b></td><td class="r">'+nf(Math.abs(cuota))+'</td></tr><tr><td>Retenciones IVA practicadas a proveedores (obligación separada)</td><td class="r">'+nf(sumRet)+'</td></tr></tbody></table><p class="hint">La retención practicada a proveedores es una obligación de enteramiento separada y no se resta automáticamente del IVA propio por pagar. La determinación tributaria final depende de los documentos y reglas vigentes y debe validarla el contador.</p></div>';
+}
 
   const drawInventario=()=>{
     const products=(S.products||[]).slice().sort((a,b)=>String(a.code||a.sku||'').localeCompare(String(b.code||b.sku||''),'es'));
