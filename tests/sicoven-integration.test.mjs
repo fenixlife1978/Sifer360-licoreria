@@ -505,6 +505,6 @@ test('Sicoven revierte el asiento de inventario cuando se anula el ajuste del ka
 test('Sicoven muestra hasta ocho decimales en reportes contables sin ocultar precisión de facturas', () => {
   const source = fs.readFileSync(new URL('../public/sicoven.js', import.meta.url), 'utf8');
   assert.match(source, /minimumFractionDigits:2,maximumFractionDigits:8/);
-  assert.match(source, /<th>Total USD<\\/th>/);
-  assert.match(source, /money\\(x\\.total\\)/);
+  assert.ok(source.includes('<th>Total USD</th>'));
+  assert.ok(source.includes('money(x.total)'));
 });
