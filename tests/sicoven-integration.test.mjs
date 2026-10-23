@@ -449,3 +449,37 @@ test('Sicoven revierte también los cobros cuando se elimina la CxC al anular un
   assert.equal(s.sicoven.entries.filter(e => e.type === 'REVERSO').length, 3);
   assert.equal(accounting.syncFromPOS(s).created, 0);
 });
+
+
+test('Sicoven contabiliza movimientos de caja y retenciones IVA vinculadas sin duplicar la compra', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.purchases[0].docProv = 'FAC-PROV-88';
+  s.purchases[0].supplier = { name: 'Proveedor de prueba', rif: 'J-12345678-9' };
+  s.cxp = [{
+    id: 'CXP-RET-1', purchaseNo: 1, doc: 'FAC-PROV-88', total: 58, paid: 10,
+    supplier: { name: 'Proveedor de prueba', rif: 'J-12345678-9' }, payments: []
+  }];
+  s.retencionesIva = [{
+    id: 'RET-IVA-1', ts: 1790000002000, docProv: 'FAC-PROV-88',
+    supplier: { name: 'Proveedor de prueba', rif: 'J-12345678-9' },
+    base: 50, iva: 8, retainedUsd: 2, rate: 40, estado: 'Emitida'
+  }];
+  s.movimientosCaja = [{
+    id: 'MOV-CAJA-1', ts: 1790000003000, cashbox: '01',
+    direction: 'OUT', currency: 'USD', amount: 3, rate: 40,
+    reason: 'Gasto operativo de caja', counterpartAccount: '6.1.1.04'
+  }];
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 5);
+  const retention = s.sicoven.entries.find(e => e.type === 'RETENCION_IVA');
+  const movement = s.sicoven.entries.find(e => e.type === 'MOVIMIENTO_CAJA');
+  assert.ok(retention);
+  assert.ok(retention.lines.some(l => l.accountCode === '2.1.1.01' && l.debitUsd === 2));
+  assert.ok(retention.lines.some(l => l.accountCode === '2.1.2.03' && l.creditUsd === 2));
+  assert.ok(movement);
+  assert.ok(movement.lines.some(l => l.accountCode === '6.1.1.04' && l.debitUsd === 3));
+  assert.ok(movement.lines.some(l => l.accountCode === '1.1.1.02' && l.creditUsd === 3));
+  assert.ok(s.sicoven.entries.every(e => Math.abs(e.totals.debitUsd - e.totals.creditUsd) <= 0.02));
+  assert.equal(accounting.syncFromPOS(s).created, 0);
+});
