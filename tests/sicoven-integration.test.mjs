@@ -156,3 +156,21 @@ test('Sicoven contabiliza operaciones cambiarias y reconoce diferencias a tasa B
   assert.ok(fx.lines.some(l => l.accountCode === '1.1.1.03' && l.creditUsd === 10));
   assert.equal(accounting.syncFromPOS(s).created, 0);
 });
+
+
+test('Sicoven contabiliza movimientos de caja con contrapartida seleccionada y rechaza los no clasificados', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.movimientosCaja = [
+    { id: 'MOV-TEST-1', ts: 1790000007000, direction: 'OUT', currency: 'USD', amount: 5, rate: 40, reason: 'Gasto de caja', counterpartAccount: '6.1.1.04' },
+    { id: 'MOV-TEST-2', ts: 1790000008000, direction: 'IN', currency: 'BS', amount: 400, rate: 40, reason: 'Ingreso sin clasificar' }
+  ];
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 4);
+  assert.equal(result.errors, 1);
+  const movement = s.sicoven.entries.find(e => e.type === 'MOVIMIENTO_CAJA');
+  assert.ok(movement);
+  assert.ok(movement.lines.some(l => l.accountCode === '6.1.1.04' && l.debitUsd === 5));
+  assert.ok(movement.lines.some(l => l.accountCode === '1.1.1.02' && l.creditUsd === 5));
+  assert.ok(s.sicoven.errors.some(e => e.origin === 'MOV-MOV-TEST-2'));
+});
