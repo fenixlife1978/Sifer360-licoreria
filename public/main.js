@@ -7,7 +7,9 @@ const IVA=0.16, IGTF=0.03, KEY='sifer360-licoreria-v1';
 const $=(s,r=document)=>r.querySelector(s);
 const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
 const r2=n=>Math.round((n+Number.EPSILON)*100)/100;
+const r4=n=>Math.round((n+Number.EPSILON)*10000)/10000;
 const nf=n=>{const neg=n<0;const p=Math.abs(r2(n)).toFixed(2).split('.');return (neg?'-':'')+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+p[1];};
+const nf4=n=>{const neg=n<0;const p=Math.abs(r4(n)).toFixed(4).split('.');return (neg?'-':'')+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+p[1];};
 const usd=n=>'US$ '+nf(n);
 const bsf=n=>'Bs. '+nf(n);
 const fq=q=>Number.isInteger(q)?String(q):String(r2(q)).replace('.',',');
@@ -2207,7 +2209,7 @@ function inventoryDlg(){
       '</select></td>'+
       '<td class="r"><input class="fld cell r" data-f="stock" value="'+fq(p.stock)+'" inputmode="decimal" aria-label="Existencia de '+esc(p.desc)+'"></td>'+
       '<td class="r"><input class="fld cell r" data-f="min" value="'+fq(p.min)+'" inputmode="decimal" aria-label="Mínimo de '+esc(p.desc)+'"></td>'+
-      '<td class="r"><span title="Costo promedio ponderado calculado por entradas de inventario">'+nf(p.cost)+'</span></td>'+
+      '<td class="r"><span title="Costo promedio ponderado calculado por entradas de inventario">'+nf4(p.cost)+'</span></td>'+
       '<td class="r"><b>'+nf(r2(Math.max(0,p.stock)*Math.max(0,p.cost)))+'</b></td>'+
       '<td class="r"><input class="fld cell r" data-f="price" value="'+nf(p.price)+'" inputmode="decimal" aria-label="Precio de '+esc(p.desc)+'"></td>'+
       '<td class="c" style="white-space:nowrap"><button class="btn mini2" data-edit="'+esc(p.code)+'" title="Editar ficha, costos, presentaciones, proveedores y kit">Ficha</button> <button class="btn mini2" data-lbl="'+esc(p.code)+'" title="Generar hablador / etiqueta SKU">SKU</button> <button class="btn mini2" data-kx="'+esc(p.code)+'">Kardex</button></td>'+
@@ -2481,7 +2483,7 @@ function comprasDlg(initialTab){
       const prevVal=Math.max(0,p.stock)*p.cost;
       const newVal=l.qty*l.cost;
       const nextStock=r2(p.stock+l.qty);
-      const nextCost=nextStock>0?r2((prevVal+newVal)/nextStock):l.cost;
+      const nextCost=nextStock>0?r4((prevVal+newVal)/nextStock):l.cost;
       p.stock=nextStock;
       p.cost=nextCost;
       if(l.price>0)p.price=r2(l.price);
