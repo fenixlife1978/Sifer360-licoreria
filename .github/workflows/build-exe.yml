@@ -43,3 +43,4 @@ jobs:
           name: pos-el-piston-windows-portable-exe
           path: dist-exe/*.exe
           if-no-files-found: error
+          retention-days: 1
