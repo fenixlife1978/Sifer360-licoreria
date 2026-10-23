@@ -2211,7 +2211,7 @@ function inventoryDlg(){
       '</select></td>'+
       '<td class="r"><input class="fld cell r" data-f="stock" value="'+fq(p.stock)+'" inputmode="decimal" aria-label="Existencia de '+esc(p.desc)+'"></td>'+
       '<td class="r"><input class="fld cell r" data-f="min" value="'+fq(p.min)+'" inputmode="decimal" aria-label="Mínimo de '+esc(p.desc)+'"></td>'+
-      '<td class="r"><span title="Costo promedio ponderado calculado por entradas de inventario">'+nf4(p.cost)+'</span></td>'+
+      '<td class="r"><span title="Costo promedio ponderado calculado por entradas de inventario">'+nf8(p.cost)+'</span></td>'+
       '<td class="r"><b>'+nf(r2(Math.max(0,p.stock)*Math.max(0,p.cost)))+'</b></td>'+
       '<td class="r"><input class="fld cell r" data-f="price" value="'+nf(p.price)+'" inputmode="decimal" aria-label="Precio de '+esc(p.desc)+'"></td>'+
       '<td class="c" style="white-space:nowrap"><button class="btn mini2" data-edit="'+esc(p.code)+'" title="Editar ficha, costos, presentaciones, proveedores y kit">Ficha</button> <button class="btn mini2" data-lbl="'+esc(p.code)+'" title="Generar hablador / etiqueta SKU">SKU</button> <button class="btn mini2" data-kx="'+esc(p.code)+'">Kardex</button></td>'+
