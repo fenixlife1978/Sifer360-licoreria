@@ -500,3 +500,31 @@ test('Sicoven revierte el asiento de inventario cuando se anula el ajuste del ka
   assert.ok(s.sicoven.entries.some(e => e.type === 'REVERSO' && e.reversalOf === adjustment.id));
   assert.equal(accounting.syncFromPOS(s).created, 0);
 });
+
+
+test('Sicoven consolida ventas, compras y costo de venta por jornada sin contar operaciones anuladas', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  const ts = s.sales[0].ts;
+  const d = new Date(ts);
+  const day = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  s.purchases[0].ts = ts;
+  s.kardex = [
+    { id: 'K-VENTA', doc: 'FAC-00000001', type: 'VENTA', dir: 'OUT', qty: 1, cost: 50, ts },
+    { id: 'K-AJUSTE', doc: 'AJ-1', type: 'AJUSTE', dir: 'IN', qty: 2, cost: 3, ts }
+  ];
+  s.sales.push({ ...s.sales[0], no: 2, void: true });
+  s.purchases.push({ ...s.purchases[0], no: 2, void: true });
+  const report = accounting.buildDailyConsolidated(s, day);
+  assert.equal(report.salesCount, 1);
+  assert.equal(report.purchaseCount, 1);
+  assert.equal(report.salesBase, 100);
+  assert.equal(report.salesVat, 16);
+  assert.equal(report.salesTotal, 116);
+  assert.equal(report.purchaseBase, 50);
+  assert.equal(report.purchaseVat, 8);
+  assert.equal(report.purchaseTotal, 58);
+  assert.equal(report.cogs, 50);
+  assert.equal(report.grossProfit, 50);
+  assert.equal(report.inventoryAdjustments, 6);
+});
