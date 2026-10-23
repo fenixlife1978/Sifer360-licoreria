@@ -67,10 +67,12 @@ test('dashboard and management layouts are responsive', () => {
 
 test('the liquor-store build contains no automotive master catalog or OEM form fields', () => {
   assert.doesNotMatch(main, /CATÁLOGO MAESTRO AUTOMOTRIZ|MASTER_CURATED_CATALOG|AUTO_MODELS_MATRIX|VERIFIED_OEM_MAP|masterCatalogBrowserDlg|btnMasterCat|pfOem|Código OEM/);
-  assert.match(main, /LIC00001/);
-  assert.match(main, /Cerveza Pilsen botella 330 ml/);
+  assert.match(main, /products:\[\]/);
+  assert.match(main, /sales:\[\],held:\[\],purchases:\[\],cxc:\[\],cxp:\[\]/);
   assert.match(main, /Bebidas alcohólicas/);
+  assert.match(main, /Botella 750 ml/);
   assert.match(main, /SKU Automático/);
+  assert.doesNotMatch(main, /seedSalesSpec|p1Lines|CXC-0001|LIC00001|7501001/);
 });
 
 
