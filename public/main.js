@@ -2401,10 +2401,11 @@ function comprasDlg(initialTab){
     const list=(S.purchases||[]).slice().sort((a,b)=>b.no-a.no);
     v.innerHTML=
       '<div class="gridwrap tallwrap"><table class="grid" style="min-width:820px">'+
-        '<thead><tr><th>Compra Nº</th><th>Fac. Prov.</th><th>Fecha</th><th>Proveedor</th><th>Condición</th><th class="r">Total US$</th><th class="r">Pagado US$</th><th class="r">Saldo CxP</th><th>Acción</th></tr></thead>'+
+        '<thead><tr><th>Compra Nº</th><th>Fac. Prov.</th><th>Fecha</th><th>Proveedor</th><th>Condición</th><th class="r">Total US$</th><th class="r">Pagado / Retenido US$</th><th class="r">Saldo CxP</th><th>Acción</th></tr></thead>'+
         '<tbody>'+(list.length?list.map(c=>{
           const payable=r8(c.payableTotal===undefined?Math.max(0,Number(c.total||0)-Number(c.retIva||0)):c.payableTotal);
-          const pend=r8(Math.max(0,payable-(c.paid||0)));
+          const paidTotal=r8(Number(c.paid||0)+Number(c.withheldIslrPaid||0));
+          const pend=r8(Math.max(0,payable-paidTotal));
           return '<tr class="'+(c.void?'void':'')+'">'+
             '<td class="mono">COM-'+pad(c.no)+'</td>'+
             '<td class="mono">'+esc(c.docProv)+'</td>'+
@@ -2412,7 +2413,7 @@ function comprasDlg(initialTab){
             '<td>'+esc(c.supplier.name)+'</td>'+
             '<td>'+esc(c.cond)+'</td>'+
             '<td class="r">'+nf8(c.total)+'</td>'+
-            '<td class="r">'+nf8(c.paid||0)+'</td>'+
+            '<td class="r">'+nf8(paidTotal)+'</td>'+
             '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA':nf8(pend))+'</td>'+
             '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'">Anular</button>')+'</td>'+
           '</tr>';
