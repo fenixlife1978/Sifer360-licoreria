@@ -157,3 +157,27 @@ test('el plan de cuentas define cuentas transitorias separadas por medio electr�
   const chart = fs.readFileSync(new URL('../public/sicoven-chart.js', import.meta.url), 'utf8');
   for (const code of ['1.1.1.08','1.1.1.09','1.1.1.10','1.1.1.11']) assert.ok(chart.includes('"code":"'+code+'"'));
 });
+
+test('no permite desconciliar un movimiento que creó asiento contable sin revertirlo primero', () => {
+  const accounting = load();
+  const state = { cfg: { rate: 40 }, sicoven: { config: {}, entries: [], errors: [], bankMovements: [] } };
+  const movement = { id: 'BANK-UNMATCH-GUARD', date: '2026-10-01', accountCode: '1.1.1.06', direction: 'OUT', currency: 'USD', amount: 20, rate: 40, reference: 'FEE-2', description: 'Comisión', status: 'PENDIENTE' };
+  const created = accounting.createBankMovementEntry(state, movement, '6.1.1.07', 'NO_APLICA', '', 'Comisión bancaria según soporte');
+  assert.ok(created.entry);
+  const result = accounting.unmatchBankMovement(state, movement);
+  assert.match(result.error, /revertir primero/);
+  assert.equal(movement.status, 'CONCILIADO');
+  assert.equal(state.sicoven.entries.length, 1);
+  assert.equal(state.fiscalBankOperations.length, 1);
+});
+
+test('permite devolver a pendiente una conciliación automática sin eliminar el asiento original', () => {
+  const accounting = load();
+  const state = { cfg: { rate: 40 }, sicoven: { config: {}, entries: [], errors: [], bankMovements: [] } };
+  const movement = { id: 'BANK-UNMATCH-AUTO', status: 'CONCILIADO', matchedEntryId: 'SIC-FAC-1', matchedAt: '2026-10-01T00:00:00.000Z', autoMatched: true };
+  const result = accounting.unmatchBankMovement(state, movement);
+  assert.ok(result.movement);
+  assert.equal(movement.status, 'PENDIENTE');
+  assert.equal(movement.matchedEntryId, null);
+  assert.equal(movement.autoMatched, false);
+});
