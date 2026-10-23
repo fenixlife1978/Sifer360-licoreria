@@ -162,7 +162,8 @@ test('inventario integra el costo promedio ponderado y valoriza las existencias 
 test('compras acepta y conserva hasta ocho decimales en costos, precios, subtotales, IVA, total y CPP', () => {
   assert.match(main, /const r8=n=>Math\.round\(\(n\+Number\.EPSILON\)\*1e8\)\/1e8/);
   assert.match(main, /const nf8=n=>[\s\S]*?toFixed\(8\)/);
-  const compras = main.slice(main.indexOf('function comprasDlg(initialTab)'), main.indexOf('/* ----------', main.indexOf('function comprasDlg(initialTab)')+100));
+  const comprasStart = main.indexOf('function comprasDlg(initialTab)');
+  const compras = main.slice(comprasStart, main.indexOf('\nfunction cxcDlg', comprasStart));
   assert.match(compras, /data-cpf="cost" value="\'+nf8\(l\.cost\)/);
   assert.match(compras, /data-cpf="price" value="\'+nf8\(l\.price\)/);
   assert.match(compras, /const base=r8\(pLines\.reduce/);
