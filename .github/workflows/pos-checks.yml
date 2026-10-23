@@ -2,7 +2,7 @@ name: POS checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, adaptacion-licoreria]
   pull_request:
     branches: [main]
 
