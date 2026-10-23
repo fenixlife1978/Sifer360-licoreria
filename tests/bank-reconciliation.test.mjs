@@ -107,3 +107,18 @@ test('un documento fiscal vinculado debe existir en los registros locales', () =
   assert.match(result.error, /No se encontró ese documento/);
   assert.equal(s.sicoven.entries.length, 0);
 });
+
+test('las operaciones no gravables quedan enlazadas entre Sicoven y el módulo Fiscal sin sumarse al libro de ventas', () => {
+  const accounting = load();
+  const s = { cfg: { rate: 40 }, sicoven: { config: {}, entries: [], errors: [], bankMovements: [] } };
+  const movement = { id: 'BANK-FISC-1', date: '2026-10-01', accountCode: '1.1.1.06', direction: 'OUT', currency: 'USD', amount: 20, rate: 40, reference: 'FEE-1', description: 'Comisión bancaria', status: 'PENDIENTE' };
+  const result = accounting.createBankMovementEntry(s, movement, '6.1.1.07', 'NO_APLICA', '');
+  assert.ok(result.entry);
+  assert.equal(s.fiscalBankOperations.length, 1);
+  assert.equal(s.fiscalBankOperations[0].taxable, false);
+  assert.equal(s.fiscalBankOperations[0].accountingEntryId, result.entry.id);
+  const fiscal = fs.readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
+  assert.match(fiscal, /data-tab="bancarias">Operaciones no gravables/);
+  assert.match(fiscal, /S\.fiscalBankOperations/);
+  assert.match(fiscal, /no se incorporan al Libro de Ventas ni al Libro de Compras/);
+});
