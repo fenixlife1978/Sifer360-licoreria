@@ -433,7 +433,7 @@ test('Sicoven revierte también los cobros cuando se elimina la CxC al anular un
   ];
   s.cxc = [{
     id: 'CXC-VENTA-1', saleNo: 1, cashbox: '01', doc: 'FAC-00000001',
-    total: 116, paid: 20, ts: 1790000002000,
+    total: 116, paid: 30, ts: 1790000002000,
     payments: [
       { ts: 1790000001500, method: 'Efectivo USD', amountUsd: 10, amountBs: 400, ref: 'INI-10', note: 'Abono en caja al facturar' },
       { ts: 1790000003000, method: 'Transferencia Bancaria', amountUsd: 20, amountBs: 800, ref: 'REC-20', note: 'Abono parcial' }
