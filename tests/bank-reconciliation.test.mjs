@@ -119,7 +119,7 @@ test('las operaciones no gravables quedan enlazadas entre Sicoven y el módulo F
   assert.match(s.fiscalBankOperations[0].fiscalReason, /Comisión bancaria/);
   assert.equal(s.fiscalBankOperations[0].accountingEntryId, result.entry.id);
   const fiscal = fs.readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
-  assert.match(fiscal, /data-tab="bancarias">Operaciones no gravables/);
+  assert.match(fiscal, /data-tab="bancarias">Operaciones bancarias auxiliares/);
   assert.match(fiscal, /S\.fiscalBankOperations/);
   assert.match(fiscal, /else if\(activeTab==='bancarias'\)content\.innerHTML=drawBankOps\(\)/);
   assert.match(fiscal, /esc\(x\.fiscalReason\|\|/);
@@ -180,4 +180,23 @@ test('permite devolver a pendiente una conciliación automática sin eliminar el
   assert.equal(movement.status, 'PENDIENTE');
   assert.equal(movement.matchedEntryId, null);
   assert.equal(movement.autoMatched, false);
+});
+
+test('una liquidación agregada queda en Fiscal como auxiliar sin crear otra factura ni clasificarse como no gravable', () => {
+  const accounting = load();
+  const state = { cfg: { rate: 40 }, sicoven: { config: {}, entries: [], errors: [], bankMovements: [] } };
+  const movement = { id: 'BANK-BATCH-1', date: '2026-10-31', accountCode: '1.1.1.06', direction: 'IN', currency: 'USD', amount: 98, rate: 40, reference: 'SETTLE-31OCT', description: 'Liquidación agregada de terminal', status: 'PENDIENTE' };
+  const missingSupport = accounting.createBankMovementEntry(state, movement, '1.1.1.08', 'LIQUIDACION_AGREGADA', '', 'Liquidación terminal período octubre');
+  assert.match(missingSupport.error, /referencia del reporte o lote/);
+  const created = accounting.createBankMovementEntry(state, movement, '1.1.1.08', 'LIQUIDACION_AGREGADA', 'LOTE-POS-2026-10-31', 'Liquidación POS de octubre con varias ventas; revisar comisión por separado');
+  assert.ok(created.entry);
+  assert.equal(state.fiscalBankOperations.length, 1);
+  assert.equal(state.fiscalBankOperations[0].fiscalTreatment, 'LIQUIDACION_SIN_NUEVO_DOCUMENTO');
+  assert.equal(state.fiscalBankOperations[0].taxable, false);
+  assert.equal(state.fiscalBankOperations[0].fiscalReference, 'LOTE-POS-2026-10-31');
+  assert.equal(state.sicoven.entries.length, 1);
+  assert.equal(state.sicoven.entries[0].type, 'MOVIMIENTO_BANCARIO');
+  const fiscal = fs.readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
+  assert.match(fiscal, /Operaciones bancarias auxiliares/);
+  assert.match(fiscal, /LIQUIDACIÓN AGREGADA · Sin nueva factura/);
 });
