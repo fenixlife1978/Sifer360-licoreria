@@ -184,6 +184,8 @@ test('CxP de compras conserva ocho decimales en saldos y pagos y mantiene el his
   assert.match(purchaseHistory, /nf8\(pend\)/);
   assert.match(purchaseHistory, /x\.void=true;x\.voidedAt=Date\.now\(\)/);
   assert.match(purchaseHistory, /Anulada junto con compra COM-/);
+  assert.match(purchaseHistory, /S\.sicoven\.islrVouchers/);
+  assert.match(purchaseHistory, /x\.status='ANULADO JUNTO CON COMPRA COM-'/);
 
   const cxpStart = main.indexOf('function cxpDlg(selId){');
   const cxpEnd = main.indexOf('function newCxpManualDlg(){', cxpStart);
