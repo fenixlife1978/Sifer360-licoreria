@@ -7,7 +7,7 @@ function load() {
   const document = { addEventListener() {}, querySelector() { return null; }, createElement() { return { style: {}, setAttribute() {}, appendChild() {} }; }, head: { appendChild() {} } };
   const window = {};
   const context = { window, document, console, Intl, Date, Math, Number, String, Array, Object, Map, JSON, Blob: class Blob {}, URL: {}, alert() {} };
-  vm.runInNewContext(fs.readFileSync(new URL('../public/sicoven.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(new URL('../public/sicoven-chart.js', import.meta.url), 'utf8'), context);\n  vm.runInNewContext(fs.readFileSync(new URL('../public/sicoven.js', import.meta.url), 'utf8'), context);
   return window.SIFERSicoven;
 }
 
@@ -122,7 +122,7 @@ test('las operaciones no gravables quedan enlazadas entre Sicoven y el módulo F
   assert.match(fiscal, /data-tab="bancarias">Operaciones bancarias auxiliares/);
   assert.match(fiscal, /S\.fiscalBankOperations/);
   assert.match(fiscal, /else if\(activeTab==='bancarias'\)content\.innerHTML=drawBankOps\(\)/);
-  assert.match(fiscal, /esc\(x\.fiscalReason\|\|/);
+  assert.match(fiscal, /x\.fiscalTreatment==='LIQUIDACION_SIN_NUEVO_DOCUMENTO'/);
   assert.match(fiscal, /no se incorporan al Libro de Ventas ni al Libro de Compras/);
 });
 
