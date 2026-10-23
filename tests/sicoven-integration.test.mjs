@@ -138,3 +138,21 @@ test('Sicoven contabiliza liquidaciones Cashea con depósito real y comisión co
   assert.ok(settlement.lines.some(l => l.accountCode === '1.1.2.02' && l.creditUsd === 50));
   assert.equal(accounting.syncFromPOS(s).created, 0);
 });
+
+
+test('Sicoven contabiliza operaciones cambiarias y reconoce diferencias a tasa BCV', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.cambiosDivisas = [{
+    id: 'CAMB-TEST-1', tipo: 'ZELLE_PROPIO', ts: 1790000006000,
+    montoUsd: 10, montoBs: 400, tasa: 40, tasaBcv: 40,
+    medioBs: 'Transferencia Bancaria', destinoTipo: 'BANCO_USD'
+  }];
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 4);
+  const fx = s.sicoven.entries.find(e => e.type === 'CAMBIO_DIVISAS');
+  assert.ok(fx);
+  assert.ok(fx.lines.some(l => l.accountCode === '1.1.1.05' && l.debitUsd === 10));
+  assert.ok(fx.lines.some(l => l.accountCode === '1.1.1.03' && l.creditUsd === 10));
+  assert.equal(accounting.syncFromPOS(s).created, 0);
+});
