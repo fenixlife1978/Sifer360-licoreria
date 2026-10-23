@@ -123,3 +123,29 @@ test('las operaciones no gravables quedan enlazadas entre Sicoven y el módulo F
   assert.match(fiscal, /S\.fiscalBankOperations/);
   assert.match(fiscal, /no se incorporan al Libro de Ventas ni al Libro de Compras/);
 });
+
+test('ventas y compras con POS, Biopago, pago móvil y transferencia usan cuentas transitorias hasta conciliar banco', () => {
+  const accounting = load();
+  const makeState = method => ({
+    cfg: { rate: 40 },
+    sicoven: { config: {}, entries: [], errors: [] },
+    sales: [{ no: 1, cashbox: '01', ts: 1790000000000, rate: 40, total: 116, igtf: 0, void: false,
+      pays: [{ id: method, name: method, cur: 'USD', amount: 116 }],
+      lines: [{ code: 'BEB-1', desc: 'Producto', qty: 1, net: 100, iva: 16, taxRate: 16 }] }],
+    purchases: [], kardex: []
+  });
+  const expected = { punto: '1.1.1.08', biopago: '1.1.1.09', pmovil: '1.1.1.10', transf: '1.1.1.11' };
+  for (const [method, account] of Object.entries(expected)) {
+    const state = makeState(method);
+    accounting.syncFromPOS(state);
+    const sale = state.sicoven.entries.find(e => e.type === 'VENTA');
+    assert.ok(sale, 'venta para '+method);
+    assert.ok(sale.lines.some(line => line.accountCode === account), 'cuenta transitoria para '+method);
+    assert.ok(!sale.lines.some(line => line.accountCode === '1.1.1.06'), 'no debe reconocer banco antes de conciliar '+method);
+  }
+});
+
+test('el plan de cuentas define cuentas transitorias separadas por medio electrónico', () => {
+  const chart = fs.readFileSync(new URL('../public/sicoven-chart.js', import.meta.url), 'utf8');
+  for (const code of ['1.1.1.08','1.1.1.09','1.1.1.10','1.1.1.11']) assert.ok(chart.includes('"code":"'+code+'"'));
+});
