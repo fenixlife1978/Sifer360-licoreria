@@ -274,3 +274,37 @@ test('Sicoven marca para revisión las retenciones IVA que no tienen compra o Cx
   assert.ok(s.sicoven.errors.some(e => e.origin === 'RETIVA-RET-IVA-SIN-COMPRA'));
   assert.equal(s.sicoven.entries.filter(e => e.type === 'RETENCION_IVA').length, 0);
 });
+
+
+test('Sicoven revierte los pagos CxP cuando se anula una compra y conserva trazabilidad', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.purchases[0].paid = 10;
+  s.cxp = [{
+    id: 'CXP-VOID-1', purchaseNo: 1, doc: 'F-200 (COM-00001)',
+    supplier: { name: 'Proveedor prueba', rif: 'J-12345678-9' },
+    total: 48, paid: 15,
+    payments: [
+      { ts: 1790000010000, method: 'Transferencia Bs.', cur: 'VES', amountUsd: 10, amountBs: 400, ref: 'INI-VOID-1', note: 'Abono inicial en compra' },
+      { ts: 1790000011000, method: 'Transferencia Bs.', cur: 'VES', amountUsd: 5, amountBs: 200, ref: 'PAGO-VOID-1', note: 'Pago parcial proveedor' }
+    ]
+  }];
+  const first = accounting.syncFromPOS(s);
+  assert.equal(first.created, 4);
+  const payment = s.sicoven.entries.find(e => e.type === 'PAGO');
+  const purchase = s.sicoven.entries.find(e => e.type === 'COMPRA');
+  assert.ok(payment);
+  assert.ok(purchase);
+
+  s.purchases[0].void = true;
+  s.cxp[0].void = true;
+  const reversed = accounting.syncFromPOS(s);
+  assert.equal(reversed.created, 2);
+  const paymentReverse = s.sicoven.entries.find(e => e.reversalOf === payment.id);
+  const purchaseReverse = s.sicoven.entries.find(e => e.reversalOf === purchase.id);
+  assert.ok(paymentReverse);
+  assert.ok(purchaseReverse);
+  assert.equal(paymentReverse.type, 'REVERSO');
+  assert.equal(purchaseReverse.type, 'REVERSO');
+  assert.equal(accounting.syncFromPOS(s).created, 0);
+});
