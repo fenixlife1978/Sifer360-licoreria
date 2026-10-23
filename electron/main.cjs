@@ -91,7 +91,7 @@ function mergeStateRecords(base, incoming) {
 }
 
 function userDbPath() {
-  return path.join(app.getPath('userData'), 'elpiston.sqlite');
+  return path.join(app.getPath('userData'), 'sifer360-licoreria.sqlite');
 }
 function databaseIntegrityStatus(database) {
   try {
@@ -447,7 +447,7 @@ function registerIpc() {
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280, height: 800, minWidth: 900, minHeight: 600,
-    title: 'SIFER 360 - Sistema de Punto de Venta e Inventario',
+    title: 'SIFER 360 Licorería - Punto de Venta e Inventario',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
