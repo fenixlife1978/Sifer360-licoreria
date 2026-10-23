@@ -152,6 +152,7 @@ function addKardex(ev){
     type:ev.type,       /* 'INICIAL' | 'COMPRA' | 'VENTA' | 'CONTEO' | 'AJUSTE' | 'ANULACIÓN' */
     dir:ev.dir,         /* 'IN' | 'OUT' */
     doc:ev.doc||'-',
+    cashbox:ev.cashbox||'',
     party:ev.party||'',
     qty:r2(ev.qty),
     stockAfter:r2(ev.stockAfter),
@@ -540,6 +541,12 @@ function mergeRemoteSnapshot(local,remote){
   if(!remote||typeof remote!=='object')return false;
   const merged={...local};
   for(const [key,value] of Object.entries(remote)){
+    if(key==='sicoven'&&value&&typeof value==='object'&&local[key]&&typeof local[key]==='object'){
+      const base=local[key],incoming=value;
+      const mergeBy=(a,b,keyName)=>{const map=new Map();for(const item of [...(Array.isArray(a)?a:[]),...(Array.isArray(b)?b:[])]){const id=item&&item[keyName];if(id===undefined||id===null)continue;map.set(String(id),item);}return [...map.values()];};
+      merged[key]={...base,...incoming,config:{...(base.config||{}),...(incoming.config||{})},entries:mergeBy(base.entries,incoming.entries,'id'),errors:mergeBy(base.errors,incoming.errors,'key'),balanceReports:mergeBy(base.balanceReports,incoming.balanceReports,'id')};
+      continue;
+    }
     if(!Array.isArray(value)||!Array.isArray(local[key])){merged[key]=value;continue;}
     const map=new Map();
     const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','cxc','cortesZ','openings','movements','returns','voids'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
@@ -560,7 +567,7 @@ async function networkSyncAttempt(){
     if(result&&result.ok&&result.state){
       const changed=mergeRemoteSnapshot(local,result.state);
       networkLastStatus=result.role||'connected';
-      if(changed)await posSqliteDriver.saveState(stateSnapshot());
+      if(changed){if(window.SIFERSicoven&&S)try{window.SIFERSicoven.syncFromPOS(S);}catch(e){console.error('[Sicoven] Error al contabilizar cambios recibidos:',e);}await posSqliteDriver.saveState(stateSnapshot());}
       const status=$('#sbMsg');if(status)status.textContent=networkLastStatus==='server'?'Servidor LAN · sincronizado':networkLastStatus==='client'?'Cliente LAN · sincronizado':'Modo local';
     }else networkLastStatus='local';
   }catch(error){
@@ -4440,7 +4447,7 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
     const p=prod(l.code);
     p.stock=Math.max(0,r2(p.stock-l.qty));
     addKardex({
-      ts,code:p.code,type:'VENTA',dir:'OUT',doc:'FAC-'+pad(invNo),
+      ts,code:p.code,type:'VENTA',dir:'OUT',doc:'FAC-'+pad(invNo),cashbox:currentCaja(),
       party:S.client.name,qty:l.qty,stockAfter:p.stock,cost:p.cost,user:S.cfg.cajero
     });
   });
