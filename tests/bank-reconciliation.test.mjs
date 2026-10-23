@@ -58,3 +58,23 @@ test('rechaza CSV sin encabezados bancarios requeridos', () => {
   assert.equal(result.rows.length, 0);
   assert.match(result.errors.join(' '), /Faltan columnas requeridas/);
 });
+
+test('la conciliación automática solo marca una coincidencia única por fecha, cuenta, dirección e importe', () => {
+  const accounting = load();
+  const s = {
+    cfg: { rate: 40 },
+    sicoven: { config: {}, bankMovements: [], errors: [], entries: [{
+      id: 'SIC-FAC-01-VENTA', date: '2026-10-01', reference: 'FAC-01',
+      description: 'Cobro POS', rate: 40,
+      lines: [{ accountCode: '1.1.1.06', debitUsd: 31.2625, creditUsd: 0, debitBs: 1250.5, creditBs: 0 }]
+    }] }
+  };
+  const result = accounting.importBankStatementCSV([
+    'fecha;cuenta;direccion;moneda;monto;referencia;descripcion',
+    '2026-10-01;1.1.1.06;IN;Bs;1250,50;REF-EXT;Abono recibido'
+  ].join('\\n'), s);
+  assert.equal(result.imported, 1);
+  assert.equal(result.matched, 1);
+  assert.equal(s.sicoven.bankMovements[0].status, 'CONCILIADO');
+  assert.equal(s.sicoven.bankMovements[0].autoMatched, true);
+});
