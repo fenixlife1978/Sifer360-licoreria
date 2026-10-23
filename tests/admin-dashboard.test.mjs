@@ -147,3 +147,14 @@ test('main POS script parses and no longer references removed purchase IVA toggl
   assert.doesNotThrow(() => new vm.Script(main));
   assert.doesNotMatch(main, /applyIva/);
 });
+
+test('inventario integra el costo promedio ponderado y valoriza las existencias con CPP', () => {
+  const inventory = main.slice(main.indexOf('function inventoryDlg(){'), main.indexOf('/* ---------- MÓDULO DE COMPRAS', main.indexOf('function inventoryDlg(){')));
+  assert.match(inventory, /CPP unit\. US\$/);
+  assert.match(inventory, /Valor inventario US\$/);
+  assert.match(inventory, /Valor inventario a CPP/);
+  assert.match(inventory, /Math\.max\(0,p\.stock\)\*Math\.max\(0,p\.cost\)/);
+  assert.doesNotMatch(inventory, /data-f="cost"/);
+  assert.match(main, /const prevVal=Math\.max\(0,p\.stock\)\*p\.cost/);
+  assert.match(main, /const nextCost=nextStock>0\?r2\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
+});
