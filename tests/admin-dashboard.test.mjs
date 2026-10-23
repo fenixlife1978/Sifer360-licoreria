@@ -156,5 +156,19 @@ test('inventario integra el costo promedio ponderado y valoriza las existencias 
   assert.match(inventory, /Math\.max\(0,p\.stock\)\*Math\.max\(0,p\.cost\)/);
   assert.doesNotMatch(inventory, /data-f="cost"/);
   assert.match(main, /const prevVal=Math\.max\(0,p\.stock\)\*p\.cost/);
-  assert.match(main, /const nextCost=nextStock>0\?r4\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
+  assert.match(main, /const nextCost=nextStock>0\?r8\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
+});
+
+test('compras acepta y conserva hasta ocho decimales en costos, precios, subtotales, IVA, total y CPP', () => {
+  assert.match(main, /const r8=n=>Math\.round\(\(n\+Number\.EPSILON\)\*1e8\)\/1e8/);
+  assert.match(main, /const nf8=n=>[\s\S]*?toFixed\(8\)/);
+  const compras = main.slice(main.indexOf('function comprasDlg(initialTab)'), main.indexOf('/* ----------', main.indexOf('function comprasDlg(initialTab)')+100));
+  assert.match(compras, /data-cpf="cost" value="\'+nf8\(l\.cost\)/);
+  assert.match(compras, /data-cpf="price" value="\'+nf8\(l\.price\)/);
+  assert.match(compras, /const base=r8\(pLines\.reduce/);
+  assert.match(compras, /const iva=r8\(pLines\.reduce/);
+  assert.match(compras, /const tot=r8\(base\+iva\)/);
+  assert.match(compras, /if\(t\.dataset\.cpf==='cost'\)l\.cost=r8\(val\)/);
+  assert.match(compras, /const nextCost=nextStock>0\?r8\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
+  assert.match(main, /nf8\(p\.cost\)/);
 });
