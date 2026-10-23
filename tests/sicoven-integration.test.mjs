@@ -483,3 +483,20 @@ test('Sicoven contabiliza movimientos de caja y retenciones IVA vinculadas sin d
   assert.ok(s.sicoven.entries.every(e => Math.abs(e.totals.debitUsd - e.totals.creditUsd) <= 0.02));
   assert.equal(accounting.syncFromPOS(s).created, 0);
 });
+
+
+test('Sicoven revierte el asiento de inventario cuando se anula el ajuste del kardex', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.kardex.push({ id: 'AJ-VOID-1', doc: 'AJ-VOID-1', type: 'AJUSTE', dir: 'OUT', qty: 2, cost: 5, ts: 1790000010000, void: false });
+  const first = accounting.syncFromPOS(s);
+  assert.equal(first.created, 4);
+  const adjustment = s.sicoven.entries.find(e => e.type === 'INVENTARIO');
+  assert.ok(adjustment);
+  assert.equal(adjustment.lines.reduce((n, l) => n + l.debitUsd, 0), 10);
+  s.kardex.find(k => k.id === 'AJ-VOID-1').void = true;
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 1);
+  assert.ok(s.sicoven.entries.some(e => e.type === 'REVERSO' && e.reversalOf === adjustment.id));
+  assert.equal(accounting.syncFromPOS(s).created, 0);
+});
