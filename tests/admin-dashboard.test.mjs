@@ -59,9 +59,18 @@ test('every user can end the session from the shared top header', () => {
 });
 
 test('dashboard and management layouts are responsive', () => {
-  assert.doesNotMatch(css, /\.main\.dashboard-mode \.left\{display:none!important\}/);
-  assert.match(main, /if\(left\)left\.hidden=false; \/\/ Mantener la toolbar completa visible también en el dashboard administrativo/);
+  assert.match(css, /\.main\.dashboard-mode\{display:block;overflow:auto/);
+  assert.match(css, /@media\(max-width:900px\)\{\.dash-kpis/);
   assert.match(css, /@media\(max-width:560px\)\{\.dash-pie-layout/);
+  assert.match(main, /function showDashboardScreen\(\)/);
+});
+
+test('the liquor-store build contains no automotive master catalog or OEM form fields', () => {
+  assert.doesNotMatch(main, /CATÁLOGO MAESTRO AUTOMOTRIZ|MASTER_CURATED_CATALOG|AUTO_MODELS_MATRIX|VERIFIED_OEM_MAP|masterCatalogBrowserDlg|btnMasterCat|pfOem|Código OEM/);
+  assert.match(main, /LIC00001/);
+  assert.match(main, /Cerveza Pilsen botella 330 ml/);
+  assert.match(main, /Bebidas alcohólicas/);
+  assert.match(main, /SKU Automático/);
 });
 
 
