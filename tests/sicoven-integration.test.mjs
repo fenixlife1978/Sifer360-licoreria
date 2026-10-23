@@ -210,3 +210,34 @@ test('El módulo Sicoven está conectado a la navegación y a la persistencia SQ
   assert.doesNotThrow(() => new vm.Script(main, { filename: 'public/main.js' }));
   assert.doesNotThrow(() => new vm.Script(moduleSource, { filename: 'public/sicoven.js' }));
 });
+
+
+test('Sicoven contabiliza movimientos de caja y diferencias del Corte Z con la tasa guardada', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.movimientosCaja = [{
+    id: 'MOV-CAJA-TEST-1', cashbox: '01', ts: 1790000007000,
+    direction: 'IN', currency: 'BS', amount: 400, reason: 'Aporte de sencillo',
+    counterpartAccount: '3.1.1.01', rate: 40
+  }];
+  s.cortesZ = [{
+    id: 'Z-01-202610-0001', cashbox: '01', closedAt: 1790000008000, rate: 40,
+    reconciliation: [
+      { id: 'efUSD', name: 'Efectivo USD', cur: 'USD', system: 10, real: 8, diff: -2 },
+      { id: 'efBs', name: 'Efectivo Bs.', cur: 'VES', system: 400, real: 480, diff: 80 }
+    ]
+  }];
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 5);
+  const movement = s.sicoven.entries.find(e => e.type === 'MOVIMIENTO_CAJA');
+  const cut = s.sicoven.entries.find(e => e.type === 'AJUSTE_ARQUEO');
+  assert.ok(movement);
+  assert.ok(movement.lines.some(l => l.accountCode === '1.1.1.01' && l.debitUsd === 10));
+  assert.ok(movement.lines.some(l => l.accountCode === '3.1.1.01' && l.creditUsd === 10));
+  assert.ok(cut);
+  assert.ok(cut.lines.some(l => l.accountCode === '6.1.1.11' && l.debitUsd === 2));
+  assert.ok(cut.lines.some(l => l.accountCode === '1.1.1.02' && l.creditUsd === 2));
+  assert.ok(cut.lines.some(l => l.accountCode === '1.1.1.01' && l.debitUsd === 2));
+  assert.ok(cut.lines.some(l => l.accountCode === '4.2.1.02' && l.creditUsd === 2));
+  assert.equal(accounting.syncFromPOS(s).created, 0);
+});
