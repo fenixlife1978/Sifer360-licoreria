@@ -528,3 +528,12 @@ test('Sicoven consolida ventas, compras y costo de venta por jornada sin contar 
   assert.equal(report.grossProfit, 50);
   assert.equal(report.inventoryAdjustments, 6);
 });
+
+
+
+test('Sicoven muestra hasta ocho decimales en reportes contables sin ocultar precisión de facturas', () => {
+  const source = fs.readFileSync(new URL('../public/sicoven.js', import.meta.url), 'utf8');
+  assert.match(source, /minimumFractionDigits:2,maximumFractionDigits:8/);
+  assert.ok(source.includes('<th>Total USD</th>'));
+  assert.ok(source.includes('money(x.total)'));
+});
