@@ -5,7 +5,7 @@
 SIFER 360 Licorería utiliza **exclusivamente base de datos local SQLite** (`sifer360-licoreria.sqlite`), eliminando dependencias externas o de servidores en la nube como Turso o Vercel.
 
 ### Características del motor SQLite:
-- **Almacenamiento local directo:** En la aplicación de escritorio Windows (.exe) los datos se guardan en el archivo `elpiston.sqlite` dentro de la carpeta de datos de usuario (`AppData/Roaming/sifer360-licoreria`).
+- **Almacenamiento local directo:** En la aplicación de escritorio Windows (.exe) los datos se guardan en el archivo `sifer360-licoreria.sqlite` dentro de la carpeta de datos de usuario (`AppData/Roaming/sifer360-licoreria`).
 - **Compatibilidad web:** En el navegador web el sistema ejecuta SQLite WebAssembly (`sql.js`) con almacenamiento persistente en el dispositivo a través de IndexedDB.
 - **Rendimiento inmediato y privacidad:** Las operaciones de inventario, ventas, clientes, kardex y documentos fiscales se procesan instantáneamente en milisegundos sin requerir internet.
 - **Respaldos y Portabilidad:** Desde el menú **Base de datos**, puede descargar una copia de seguridad en formato `.sqlite` estándar para abrir en cualquier visor (como DB Browser for SQLite o DBeaver) o transferirla entre equipos.
