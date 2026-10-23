@@ -115,3 +115,26 @@ test('Sicoven contabiliza abonos posteriores y conserva el pago inicial de compr
   assert.ok(s.sicoven.entries.every(e => Math.abs(e.totals.debitUsd - e.totals.creditUsd) <= 0.02));
   assert.equal(accounting.syncFromPOS(s).created, 0);
 });
+
+
+test('Sicoven contabiliza liquidaciones Cashea con depósito real y comisión conciliados', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.sales[0].pays = [
+    { id: 'efUSD', name: 'Efectivo USD', cur: 'USD', amount: 66 },
+    { id: 'cashea', name: 'Cashea', cur: 'USD', amount: 50 }
+  ];
+  s.casheaLiquidaciones = [{
+    id: 'LIQ-CSH-TEST', fecha: 1790000005000, operaciones: ['CSH-MOV-1'],
+    brutoUsd: 50, comisionUsd: 5, depositadoUsd: 45, tasaBcv: 40,
+    banco: 'Banesco Banco Universal', referencia: 'DEP-REAL-1'
+  }];
+  const result = accounting.syncFromPOS(s);
+  assert.equal(result.created, 4);
+  const settlement = s.sicoven.entries.find(e => e.type === 'LIQUIDACION_CASHEA');
+  assert.ok(settlement);
+  assert.ok(settlement.lines.some(l => l.accountCode === '1.1.1.03' && l.debitUsd === 45));
+  assert.ok(settlement.lines.some(l => l.accountCode === '6.1.1.07' && l.debitUsd === 5));
+  assert.ok(settlement.lines.some(l => l.accountCode === '1.1.2.02' && l.creditUsd === 50));
+  assert.equal(accounting.syncFromPOS(s).created, 0);
+});
