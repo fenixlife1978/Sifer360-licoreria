@@ -1302,7 +1302,7 @@ function labelGeneratorDlg(initialCode){
       '<div class="f" style="grid-column:span 2"><label for="lbProd">Producto</label><select class="fld" id="lbProd"></select></div>'+
       '<div class="f"><label for="lbFmt">Formato de diseño</label><select class="fld" id="lbFmt"><option value="hablador">Hablador de mostrador / estante</option><option value="etiqueta">Etiqueta adhesiva de SKU</option></select></div>'+
       '<div class="f"><label for="lbCopies">Copias en vista</label><select class="fld" id="lbCopies"><option value="1">1 unidad</option><option value="2" selected>2 unidades</option><option value="4">4 unidades</option><option value="6">6 unidades</option></select></div>'+
-      '<div class="f"><label for="lbTier">Escala de precio US$</label><select class="fld" id="lbTier"><option value="0">Detal / Mostrador</option><option value="1">Taller / Mecánico</option><option value="2">Mayorista</option><option value="3">Distribuidor</option></select></div>'+
+      '<div class="f"><label for="lbTier">Escala de precio US$</label><select class="fld" id="lbTier"><option value="0">Detal / Mostrador</option><option value="1">Bar / Restaurante</option><option value="2">Mayorista</option><option value="3">Distribuidor</option></select></div>'+
       '<div class="f"><label>Opciones de precio (Solo US$)</label>'+
         '<div class="row" style="margin-top:3px"><label class="chk"><input type="checkbox" id="lbShowP" checked> Mostrar precio US$</label><label class="chk"><input type="checkbox" id="lbIva"> Con IVA</label></div>'+
       '</div>'+
@@ -1408,9 +1408,9 @@ function productFormDlg(editCode,initialTab){
       markupSale:28.57,
       gaps:[
         {name:'Detal / Mostrador',gapPct:0,markupCost:40.00,price:0.00},
-        {name:'Taller / Mecánico',gapPct:6,markupCost:31.60,price:0.00},
+        {name:'Bar / Restaurante',gapPct:6,markupCost:31.60,price:0.00},
         {name:'Mayorista (≥ 6 und)',gapPct:12,markupCost:23.20,price:0.00},
-        {name:'Distribuidor / Flota',gapPct:18,markupCost:14.80,price:0.00}
+        {name:'Distribuidor',gapPct:18,markupCost:14.80,price:0.00}
       ]
     },
     presentations:[
