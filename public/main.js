@@ -173,6 +173,7 @@ function seed(){
     suppliers:[],
     sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],movimientosCaja:[],kardex:[],counts:[],
     lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],
+    sicoven:{version:1,config:{},entries:[],errors:[],lastSyncAt:null},
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
   };
@@ -184,6 +185,7 @@ function stateSnapshot(){
     sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,cambiosDivisas:S.cambiosDivisas,
     casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],
+    sicoven:S.sicoven||null,
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
   };
 }
@@ -572,10 +574,12 @@ function scheduleNetworkSync(){
   networkSyncTimer=setTimeout(()=>{networkSyncAttempt();},1800);
 }
 function save(){
+  if(window.SIFERSicoven&&S)try{window.SIFERSicoven.syncFromPOS(S);}catch(e){console.error('[Sicoven] No se pudo sincronizar contabilidad:',e);}
   const state=stateSnapshot();
   posSqliteDriver.saveState(state).catch(e=>persistenceError(e));
   captureNewOperations();
   scheduleNetworkSync();
+  try{window.dispatchEvent(new Event('sifer:state-saved'));}catch(e){}
 }
 setInterval(()=>{if(window.posDesktop&&typeof window.posDesktop.networkSyncNow==='function')networkSyncAttempt()},20000);
 
@@ -586,6 +590,7 @@ function load(){
     if(!d||d.v!==1||!Array.isArray(d.products)||!d.cfg)return false;
     const seedMap={};SEED.forEach(sp=>{seedMap[sp.code]=sp;});
     S.cfg=Object.assign(S.cfg,d.cfg);
+    if(d.sicoven&&typeof d.sicoven==='object')S.sicoven=d.sicoven;
     S.cortesZ=Array.isArray(d.cortesZ)?d.cortesZ:[];
     const legacyCaja=String(S.cfg.caja||'01');
     (S.sales||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;if(!x.cashier)x.cashier=x.user||S.cfg.cajero||'Cajero';});
@@ -6575,6 +6580,8 @@ async function prepareDatabaseBeforeStartup(){
     console.warn('Advertencia al iniciar SQLite local:', e);
   }
 }
+
+window.SIFERAccountingBridge={getState:()=>S,save:()=>save()};
 
 /* ---------- arranque ---------- */
 prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(()=>{
