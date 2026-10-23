@@ -427,11 +427,17 @@ test('Sicoven migra las cuentas predeterminadas antiguas y preserva cuentas pers
 test('Sicoven revierte también los cobros cuando se elimina la CxC al anular una venta a crédito', () => {
   const accounting = loadAccountingModule();
   const s = state();
-  s.sales[0].pays = [{ id: 'credito', name: 'Crédito', cur: 'USD', amount: 116 }];
+  s.sales[0].pays = [
+    { id: 'efUSD', name: 'Efectivo USD', cur: 'USD', amount: 10 },
+    { id: 'credito', name: 'Crédito', cur: 'USD', amount: 106 }
+  ];
   s.cxc = [{
     id: 'CXC-VENTA-1', saleNo: 1, cashbox: '01', doc: 'FAC-00000001',
     total: 116, paid: 20, ts: 1790000002000,
-    payments: [{ ts: 1790000003000, method: 'Transferencia Bancaria', amountUsd: 20, amountBs: 800, ref: 'REC-20', note: 'Abono parcial' }]
+    payments: [
+      { ts: 1790000001500, method: 'Efectivo USD', amountUsd: 10, amountBs: 400, ref: 'INI-10', note: 'Abono en caja al facturar' },
+      { ts: 1790000003000, method: 'Transferencia Bancaria', amountUsd: 20, amountBs: 800, ref: 'REC-20', note: 'Abono parcial' }
+    ]
   }];
   const first = accounting.syncFromPOS(s);
   assert.equal(first.created, 3);
