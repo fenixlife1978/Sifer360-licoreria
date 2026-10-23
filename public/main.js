@@ -5023,6 +5023,7 @@ function seniatSudebanDlg(initialTab){
       '<button class="tab '+(activeTab==='resumen'?'active':'')+'" data-tab="resumen">Panel de Control Fiscal</button>'+
       '<button class="tab '+(activeTab==='ventas'?'active':'')+'" data-tab="ventas">Libro de Ventas Fiscal</button>'+
       '<button class="tab '+(activeTab==='compras'?'active':'')+'" data-tab="compras">Libro de Compras</button>'+
+      '<button class="tab '+(activeTab==='bancarias'?'active':'')+'" data-tab="bancarias">Operaciones no gravables</button>'+
       '<button class="tab '+(activeTab==='inventario'?'active':'')+'" data-tab="inventario">Libro de Inventario</button>'+
       '<button class="tab '+(activeTab==='igtf'?'active':'')+'" data-tab="igtf">Percepción de IGTF (3%)</button>'+
       '<button class="tab '+(activeTab==='auditoria'?'active':'')+'" data-tab="auditoria">Auditoría Ventas & Tasa BCV</button>'+
@@ -5483,6 +5484,8 @@ function seniatSudebanDlg(initialTab){
     '</div><p class="hint">Los números de control asignados son correlativos y consecutivos conforme a la Providencia SENIAT 0071 sobre emisión de facturas y otros documentos.</p>';
   };
 
+  const drawBankOps=()=>{const xs=(S.fiscalBankOperations||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));return '<h3>Registro auxiliar de operaciones bancarias no gravables</h3><p class="hint">Registro de control solicitado por el usuario/contador. Estas operaciones no se incorporan al Libro de Ventas ni al Libro de Compras, no generan IVA/IGTF automáticamente y no sustituyen facturas, comprobantes o soportes fiscales. Cada fila enlaza con su asiento de Sicoven.</p><div class="gridwrap"><table class="grid" style="min-width:850px"><thead><tr><th>Fecha</th><th>Referencia</th><th>Descripción</th><th>Cuenta banco</th><th>Contrapartida</th><th>Moneda</th><th class="r">Monto original</th><th class="r">Equiv. USD</th><th>Asiento Sicoven</th><th>Tratamiento</th></tr></thead><tbody>'+xs.map(x=>'<tr><td>'+esc(x.date||'—')+'</td><td>'+esc(x.reference||'—')+'</td><td>'+esc(x.description||'—')+'</td><td>'+esc(x.accountCode||'—')+'</td><td>'+esc(x.counterpartAccount||'—')+'</td><td>'+esc(x.currency||'—')+'</td><td class="r">'+nf(x.amount||0)+'</td><td class="r">'+nf(x.amountUsd||0)+'</td><td>'+esc(x.accountingEntryId||'—')+'</td><td>NO GRAVABLE · Requiere soporte</td></tr>').join('')+'</tbody></table></div>'+(xs.length?'':'<p class="hint">Todavía no hay operaciones bancarias clasificadas como no gravables. Se agregarán aquí cuando se importen y clasifiquen desde Sicoven.</p>');};
+
   const renderTabContent=()=>{
     const content=$('#snContent',el);
     if(activeTab==='resumen')content.innerHTML=drawResumen();
@@ -5506,6 +5509,8 @@ function seniatSudebanDlg(initialTab){
       footL.innerHTML='<button class="btn mini2" id="btnExpV">Exportar Libro CSV</button><button class="btn mini2" id="btnPrintV">Imprimir Libro SENIAT</button>';
     }else if(activeTab==='compras'){
       footL.innerHTML='<button class="btn mini2" id="btnExpC">Exportar Libro CSV</button>';
+    }else if(activeTab==='bancarias'){
+      footL.innerHTML='<span class="hint">Registro auxiliar no gravable; conservar soportes y revisión del contador.</span>';
     }else if(activeTab==='inventario'){
       footL.innerHTML='<button class="btn mini2" id="btnExpInv">Exportar inventario CSV</button><button class="btn mini2" id="btnPrintInv">Imprimir libro de inventario</button>';
     }else if(activeTab==='igtf'){
