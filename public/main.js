@@ -2177,7 +2177,7 @@ function searchCatalogDlg(){
 
 /* ---------- inventario ---------- */
 function inventoryDlg(){
-  const el=h('<div class="form"><div class="invbar"><label for="invQ">Buscar</label><input class="fld" id="invQ" placeholder="SKU, código, marca, depto, categoría o descripción" autocomplete="off"><label class="chk"><input type="checkbox" id="invLow"> Solo bajo mínimo</label><button class="btn" id="btnNewProd">+ Nuevo en Blanco</button><button class="btn mini2" id="btnGoConteo">Conteo físico masivo…</button><button class="btn mini2" id="btnGoLabels">Habladores / Etiquetas SKU</button></div><div class="dim" id="invSum"></div><div class="gridwrap tallwrap"><table class="grid" style="min-width:1040px"><thead><tr><th>SKU / Código</th><th>Descripción / Marca</th><th>Depto. / Categoría / Subcat.</th><th>Pas.</th><th class="c" style="width:68px">U.M.</th><th class="c" style="width:90px">I.V.A.</th><th class="r">Existencia</th><th class="r">Mín.</th><th class="r">Costo US$</th><th class="r">Precio US$</th><th class="c">Acciones</th></tr></thead><tbody id="invBody"></tbody></table></div></div>');
+  const el=h('<div class="form"><div class="invbar"><label for="invQ">Buscar</label><input class="fld" id="invQ" placeholder="SKU, código, marca, depto, categoría o descripción" autocomplete="off"><label class="chk"><input type="checkbox" id="invLow"> Solo bajo mínimo</label><button class="btn" id="btnNewProd">+ Nuevo en Blanco</button><button class="btn mini2" id="btnGoConteo">Conteo físico masivo…</button><button class="btn mini2" id="btnGoLabels">Habladores / Etiquetas SKU</button></div><div class="dim" id="invSum"></div><div class="gridwrap tallwrap"><table class="grid" style="min-width:1040px"><thead><tr><th>SKU / Código</th><th>Descripción / Marca</th><th>Depto. / Categoría / Subcat.</th><th>Pas.</th><th class="c" style="width:68px">U.M.</th><th class="c" style="width:90px">I.V.A.</th><th class="r">Existencia</th><th class="r">Mín.</th><th class="r">CPP unit. US$</th><th class="r">Valor inventario US$</th><th class="r">Precio US$</th><th class="c">Acciones</th></tr></thead><tbody id="invBody"></tbody></table></div></div>');
   const rows=()=>{
     const q=$('#invQ',el).value,low=$('#invLow',el).checked;
     return searchProducts(q,'Todas').filter(p=>!low||p.stock<=p.min);
@@ -2186,7 +2186,8 @@ function inventoryDlg(){
     const n=S.products.length,low=S.products.filter(p=>p.stock<=p.min&&p.stock>0).length,out=S.products.filter(p=>p.stock<=0).length;
     const valCost=S.products.reduce((a,p)=>a+p.cost*p.stock,0);
     const valSale=S.products.reduce((a,p)=>a+p.price*p.stock,0);
-    $('#invSum',el).textContent=n+' productos · '+low+' bajo mínimo · '+out+' agotados · Costo total '+usd(valCost)+' · Valor venta '+usd(valSale);
+    const totalUnits=S.products.reduce((a,p)=>a+Math.max(0,Number(p.stock)||0),0);
+    $('#invSum',el).textContent=n+' productos · '+fq(totalUnits)+' unidades · '+low+' bajo mínimo · '+out+' agotados · Valor inventario a CPP '+usd(valCost)+' · Valor venta '+usd(valSale)+(Number(S.cfg.rate)>0?' · Inventario ref. '+bsf(r2(valCost*S.cfg.rate)):' · Configure tasa BCV para ver referencia en Bs.');
   };
   const draw=()=>{
     const list=rows();
@@ -2206,10 +2207,11 @@ function inventoryDlg(){
       '</select></td>'+
       '<td class="r"><input class="fld cell r" data-f="stock" value="'+fq(p.stock)+'" inputmode="decimal" aria-label="Existencia de '+esc(p.desc)+'"></td>'+
       '<td class="r"><input class="fld cell r" data-f="min" value="'+fq(p.min)+'" inputmode="decimal" aria-label="Mínimo de '+esc(p.desc)+'"></td>'+
-      '<td class="r"><input class="fld cell r" data-f="cost" value="'+nf(p.cost)+'" inputmode="decimal" aria-label="Costo de '+esc(p.desc)+'"></td>'+
+      '<td class="r"><span title="Costo promedio ponderado calculado por entradas de inventario">'+nf(p.cost)+'</span></td>'+
+      '<td class="r"><b>'+nf(r2(Math.max(0,p.stock)*Math.max(0,p.cost)))+'</b></td>'+
       '<td class="r"><input class="fld cell r" data-f="price" value="'+nf(p.price)+'" inputmode="decimal" aria-label="Precio de '+esc(p.desc)+'"></td>'+
       '<td class="c" style="white-space:nowrap"><button class="btn mini2" data-edit="'+esc(p.code)+'" title="Editar ficha, costos, presentaciones, proveedores y kit">Ficha</button> <button class="btn mini2" data-lbl="'+esc(p.code)+'" title="Generar hablador / etiqueta SKU">SKU</button> <button class="btn mini2" data-kx="'+esc(p.code)+'">Kardex</button></td>'+
-    '</tr>').join(''):'<tr class="empty"><td colspan="11">Sin productos que coincidan.</td></tr>';
+    '</tr>').join(''):'<tr class="empty"><td colspan="12">Sin productos que coincidan.</td></tr>';
     sum();
   };
   el.addEventListener('input',e=>{if(e.target.id==='invQ')draw();});
@@ -2236,7 +2238,6 @@ function inventoryDlg(){
       }
     }
     else if(f==='min'){p.min=e.target.value.trim()==='0'?0:(v||p.min);}
-    else if(f==='cost'){p.cost=v||p.cost;}
     else if(f==='price'){p.price=v||p.price;}
     else if(f==='unit'){
       p.unit=e.target.value.trim()||'und';
