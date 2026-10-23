@@ -608,9 +608,9 @@ function load(){
           mode:'auto',markupCost:mkCost,markupSale:mkSale,
           gaps:[
             {name:'Detal / Mostrador',gapPct:0,markupCost:mkCost,price:price},
-            {name:'Taller / Mecánico',gapPct:6,markupCost:r2(((price*0.94-cost)/cost)*100),price:r2(price*0.94)},
+            {name:'Bar / Restaurante',gapPct:6,markupCost:r2(((price*0.94-cost)/cost)*100),price:r2(price*0.94)},
             {name:'Mayorista (≥ 6 und)',gapPct:12,markupCost:r2(((price*0.88-cost)/cost)*100),price:r2(price*0.88)},
-            {name:'Distribuidor / Flota',gapPct:18,markupCost:r2(((price*0.82-cost)/cost)*100),price:r2(price*0.82)}
+            {name:'Distribuidor',gapPct:18,markupCost:r2(((price*0.82-cost)/cost)*100),price:r2(price*0.82)}
           ]
         },
         presentations:sp.presentations||[
@@ -1387,7 +1387,7 @@ function productFormDlg(editCode,initialTab){
     code:'LIC'+pad(S.products.length+1,5),
     sku:'',
     desc:'',
-    brand:'PDV',
+    brand:'',
     dept:'Bebidas alcohólicas',
     cat:'Ron',
     subcat:'Botella 750 ml',
@@ -1414,8 +1414,8 @@ function productFormDlg(editCode,initialTab){
       ]
     },
     presentations:[
-      {name:'Pote / Litro 946 mL',unit:'L',factor:1,barcode:'',price:0.00},
-      {name:'Caja x 12 Litros',unit:'caja',factor:12,barcode:'',price:0.00}
+      {name:'Botella 750 ml',unit:'und',factor:1,barcode:'',price:0.00},
+      {name:'Caja x 12 botellas',unit:'caja',factor:12,barcode:'',price:0.00}
     ],
     tax:{type:'G',rate:16,igtf:true,percRate:0,codeSeniat:'GRAV-16'},
     assocSuppliers:[],
@@ -1423,6 +1423,8 @@ function productFormDlg(editCode,initialTab){
     kitItems:[]
   };
   if(!D.freight)D.freight=0;
+  if(D.volumeMl===undefined)D.volumeMl='';
+  if(D.alcoholPct===undefined)D.alcoholPct='';
   if(!D.sku)D.sku=genAutoSku(D.dept,D.cat,D.subcat,nextSeq);
   if(!D.pricing)D.pricing={motor:'cost',mode:'auto',bcvRate:S.cfg.rate,parallelRate:r2(S.cfg.rate*1.22),markupCost:40,markupSale:28.57,gaps:[{name:'Detal / Mostrador',gapPct:0,markupCost:40,price:D.price}]};
   if(!D.pricing.motor)D.pricing.motor='cost';
@@ -1481,7 +1483,7 @@ function productFormDlg(editCode,initialTab){
     '<div class="khead" id="pfHeader"></div>'+
     '<div class="tabs">'+
       '<button class="tab" data-pftab="gen">1. Información General</button>'+
-      '<button class="tab" data-pftab="cost">2. Costos y Motores de Venta</button>'+
+      '<button class="tab" data-pftab="cost">2. Costos y precios</button>'+
       '<button class="tab" data-pftab="pres">3. Presentaciones</button>'+
       '<button class="tab" data-pftab="tax">4. Impuestos</button>'+
       '<button class="tab" data-pftab="sup">5. Proveedores Asociados</button>'+
@@ -1535,7 +1537,9 @@ function productFormDlg(editCode,initialTab){
             '<div class="row"><input class="fld mono" id="pfSku" value="'+esc(D.sku)+'" '+(autoSku?'readonly':'')+'><label class="chk" style="font-size:11.5px"><input type="checkbox" id="pfAutoSku" '+(autoSku?'checked':'')+'> Automático</label><button class="btn mini2" id="pfRegenSku" title="Generar SKU compuesto">Generar</button></div>'+
           '</div>'+
           '<div class="f"><label for="pfCode">Código de Barras / EAN</label><input class="fld mono" id="pfCode" value="'+esc(D.code)+'" autocomplete="off"></div>'+
-          '<div class="f wide"><label for="pfDesc">Descripción del Producto</label><input class="fld" id="pfDesc" value="'+esc(D.desc)+'" placeholder="Ej: Aceite 20W-50 Mineral 1 L" autocomplete="off"></div>'+
+          '<div class="f wide"><label for="pfDesc">Descripción del Producto</label><input class="fld" id="pfDesc" value="'+esc(D.desc)+'" placeholder="Ej: Ron añejo botella 750 ml" autocomplete="off"></div>'+
+          '<div class="f"><label for="pfVolumeMl">Contenido neto (ml)</label><input class="fld r" id="pfVolumeMl" type="number" min="0" step="1" value="'+esc(D.volumeMl)+'" placeholder="750"></div>'+
+          '<div class="f"><label for="pfAlcoholPct">Graduación alcohólica (% vol.)</label><input class="fld r" id="pfAlcoholPct" type="number" min="0" max="100" step="0.1" value="'+esc(D.alcoholPct)+'" placeholder="40"></div>'+
           '<div class="f"><label for="pfBrand">Marca / Fabricante</label><input class="fld" id="pfBrand" value="'+esc(D.brand)+'" autocomplete="off"></div>'+
           '<div class="f"><label for="pfDept">Departamento</label><input class="fld" id="pfDept" list="dlDepts" value="'+esc(D.dept)+'" autocomplete="off"><datalist id="dlDepts">'+depts.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></div>'+
           '<div class="f"><label for="pfCat">Categoría (define prefijo SKU)</label><input class="fld" id="pfCat" list="dlCats" value="'+esc(D.cat)+'" autocomplete="off"><datalist id="dlCats">'+cats.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></div>'+
@@ -1555,6 +1559,8 @@ function productFormDlg(editCode,initialTab){
     box.oninput=e=>{
       const t=e.target;
       if(t.id==='pfDesc')D.desc=t.value;
+      if(t.id==='pfVolumeMl')D.volumeMl=t.value===''?'':Math.max(0,Number(t.value)||0);
+      if(t.id==='pfAlcoholPct')D.alcoholPct=t.value===''?'':Math.min(100,Math.max(0,Number(t.value)||0));
       if(t.id==='pfBrand')D.brand=t.value;
       if(t.id==='pfCode')D.code=t.value.trim();
       if(t.id==='pfLoc')D.loc=t.value.trim();
@@ -2139,7 +2145,7 @@ function productViewDlg(p){
   const section=(title,content)=>'<section class="pv-section"><h3>'+esc(title)+'</h3>'+content+'</section>';
   let html='<div class="form product-view" style="gap:14px">'+
     '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">'+photo+'<div style="flex:1;min-width:220px"><div class="dim">FICHA INFORMATIVA · SOLO LECTURA</div><h2 style="margin:5px 0">'+esc(p.desc||'Producto sin descripción')+'</h2><div class="sub">'+esc(p.brand||'-')+(p.isKit?' · KIT / COMBO':'')+'</div><div style="margin-top:8px"><span class="um-tag">'+esc((p.unit||'und').toUpperCase())+'</span> <span class="iva-tag '+prodTaxCls(p)+'">'+esc(tax)+'</span></div></div></div>'+
-    section('Identificación','<div class="pv-grid">'+field('Código / EAN',p.code)+field('SKU',p.sku)+field('Marca',p.brand)+'</div>')+
+    section('Identificación','<div class="pv-grid">'+field('Código / EAN',p.code)+field('SKU',p.sku)+field('Marca',p.brand)+field('Contenido neto',p.volumeMl?String(p.volumeMl)+' ml':'-')+field('Graduación alcohólica',p.alcoholPct?String(p.alcoholPct)+' % vol.':'-')+'</div>')+
     section('Clasificación y ubicación','<div class="pv-grid">'+field('Departamento',p.dept)+field('Categoría',p.cat)+field('Subcategoría',p.subcat)+field('Pasillo / Ubicación',p.loc)+field('Unidad de medida',(p.unit||'und').toUpperCase())+'</div>')+
     section('Existencias y precios','<div class="pv-grid">'+field('Existencia',fq(Number(p.stock)||0)+' '+(p.unit||'und'))+field('Stock mínimo',fq(Number(p.min)||0))+field('Costo unitario',usd(Number(p.cost)||0))+field('Flete unitario',usd(Number(p.freight)||0))+field('Precio base sin IVA',usd(Number(p.price)||0))+field('Precio con IVA',usd(r2((Number(p.price)||0)*(1+prodTaxRate(p)/100))))+field('Impuesto',tax)+'</div>');
   if(gaps.length)html+=section('Precios por modalidad','<div class="gridwrap"><table class="grid"><thead><tr><th>Modalidad</th><th class="r">Descuento / brecha</th><th class="r">Precio US$</th></tr></thead><tbody>'+gaps.map(g=>'<tr><td>'+esc(g.name||'-')+'</td><td class="r">'+fq(Number(g.gapPct)||0)+'%</td><td class="r">'+nf(Number(g.price)||0)+'</td></tr>').join('')+'</tbody></table></div>');
@@ -5679,7 +5685,7 @@ function helpDlg(){
   openWin({title:'Atajos de teclado',w:540,body:h('<div class="gridwrap" style="flex:none"><table class="grid"><thead><tr><th style="width:90px">Tecla</th><th>Acción</th></tr></thead><tbody>'+rows.map(r=>'<tr><td><b>'+esc(r[0])+'</b></td><td>'+esc(r[1])+'</td></tr>').join('')+'</tbody></table></div>'),foot:[{label:'Cerrar',primary:true}]});
 }
 function aboutDlg(){
-  openWin({title:'Acerca del POS',w:480,body:h('<div class="form"><p style="margin:0"><b>SIFER 360 — Sistema Integral Administrativo y Punto de Venta</b></p><p class="hint">Punto de venta especializado en licorerías: bebidas alcohólicas y no alcohólicas, inventario por presentación, compras, ventas, caja y control fiscal. Incluye facturación multimoneda (US$ / Bs.), IVA 16 %, IGTF 3 %, Módulo de Control SENIAT/SUDEBAN (Libros de Ventas y Compras oficiales, Liquidación Forma 30 IVA, Percepción IGTF, Auditoría cambiaria BCV, Conciliación bancaria POS/Biopago y Generador de TXT de Retenciones), Compras a proveedores, Cuentas por Cobrar (CxC), Cuentas por Pagar (CxP), Ficha Kardex Profesional (CPP) y Conteo Físico de Inventario.</p><p class="hint">Los datos se guardan localmente en este navegador.</p></div>'),foot:[{label:'Cerrar',primary:true}]});
+  openWin({title:'Acerca de SIFER 360 Licorería',w:480,body:h('<div class="form"><p style="margin:0"><b>SIFER 360 Licorería — Sistema Integral Administrativo y Punto de Venta</b></p><p class="hint">Punto de venta especializado en licorerías: bebidas alcohólicas y no alcohólicas, inventario por presentación, compras, ventas, caja y control fiscal. Incluye facturación multimoneda (US$ / Bs.), IVA 16 %, IGTF 3 %, Módulo de Control SENIAT/SUDEBAN (Libros de Ventas y Compras oficiales, Liquidación Forma 30 IVA, Percepción IGTF, Auditoría cambiaria BCV, Conciliación bancaria POS/Biopago y Generador de TXT de Retenciones), Compras a proveedores, Cuentas por Cobrar (CxC), Cuentas por Pagar (CxP), Ficha Kardex Profesional (CPP) y Conteo Físico de Inventario.</p><p class="hint">Los datos se guardan localmente en este navegador.</p></div>'),foot:[{label:'Cerrar',primary:true}]});
 }
 function resetAll(){
   ask('Vaciar datos operativos','Se borrarán ventas, compras, CxC, CxP, Kardex, inventario y configuración guardados en este dispositivo. La base quedará vacía para configurar la licorería.','Restablecer',()=>{
