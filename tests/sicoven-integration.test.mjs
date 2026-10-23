@@ -404,6 +404,9 @@ test('Sicoven migra las cuentas predeterminadas antiguas y preserva cuentas pers
     bankUsd: '1.1.1.05',
     cashea: '1.1.2.02',
     adjustmentGain: '4.2.1.02',
+    manualIncome: '4.1.1.03',
+    manualExpense: '6.1.1.04',
+    opening: '3.3.1.01',
     sales8: '4.1.1.01',
     payable: '2.1.1.01'
   };
@@ -412,6 +415,9 @@ test('Sicoven migra las cuentas predeterminadas antiguas y preserva cuentas pers
   assert.equal(s.sicoven.config.bankUsd, '1.1.1.07');
   assert.equal(s.sicoven.config.cashea, '1.1.2.03');
   assert.equal(s.sicoven.config.adjustmentGain, '4.2.1.03');
+  assert.equal(s.sicoven.config.manualIncome, '4.1.1.07');
+  assert.equal(s.sicoven.config.manualExpense, '6.1.1.12');
+  assert.equal(s.sicoven.config.opening, '3.3.1.04');
   assert.equal(s.sicoven.config.sales8, '4.1.1.01');
   assert.equal(s.sicoven.config.payable, '2.1.1.01');
   assert.equal(s.sicoven.config.mappingVersion, 2);
