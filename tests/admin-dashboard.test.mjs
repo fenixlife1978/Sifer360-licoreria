@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 
 const main = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
 const access = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
@@ -112,4 +113,37 @@ test('finalizar venta muestra un modal centrado con vuelto o VENTA FINALIZADA y 
   assert.match(fn, /Ver \/ imprimir ticket/);
   assert.match(main, /save\(\);renderAll\(\);[\s\S]{0,400}showSaleCompletion\(sale\);/);
   assert.match(css, /\.sale-completion\{display:flex;flex-direction:column;align-items:center;text-align:center/);
+});
+
+
+test('fiscal purchase book records real supplier documents, invoice date and line-level VAT rates without fabricated fields', () => {
+  assert.match(main, /let pLines=\[\];/);
+  assert.match(main, /Nº de factura del proveedor \*/);
+  assert.match(main, /id="cpCtrl"/);
+  assert.match(main, /id="cpDate" type="date"/);
+  assert.match(main, /const docDateTs=docDate\?parseIsoD\(docDate\):0/);
+  assert.match(main, /data-cpf="taxRate"/);
+  assert.match(main, /Numero_Control_Proveedor/);
+  assert.match(main, /Credito_Fiscal_8_Bs/);
+  assert.match(main, /Credito_Fiscal_16_Bs/);
+  assert.match(main, /Credito_Fiscal_31_Bs/);
+  assert.doesNotMatch(main, /p\.ctrlProv\|\|\('00-'\+pad\(p\.no\+4400,8\)\)/);
+  assert.doesNotMatch(main, /p\.retIvaDoc\|\|\('202610'\+pad\(idx\+41,8\)\)/);
+  assert.doesNotMatch(main, /esc\(r\.estado\|\|'Registro histórico: revisar'\)/);
+});
+
+test('fiscal module includes a current inventory book with valuation, Kardex, print and CSV export', () => {
+  assert.match(main, /data-tab="inventario">Libro de Inventario/);
+  assert.match(main, /const drawInventario=\(\)=>/);
+  assert.match(main, /Valor de inventario US\$/);
+  assert.match(main, /Libro de movimientos \(Kardex\)/);
+  assert.match(main, /id==='btnExpInv'/);
+  assert.match(main, /id==='btnPrintInv'/);
+  assert.match(main, /Libro_Inventario_SIFER_/);
+  assert.match(main, /No inventa movimientos ni existencias de apertura/);
+});
+
+test('main POS script parses and no longer references removed purchase IVA toggle state', () => {
+  assert.doesNotThrow(() => new vm.Script(main));
+  assert.doesNotMatch(main, /applyIva/);
 });
