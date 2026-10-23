@@ -2403,16 +2403,17 @@ function comprasDlg(initialTab){
       '<div class="gridwrap tallwrap"><table class="grid" style="min-width:820px">'+
         '<thead><tr><th>Compra Nº</th><th>Fac. Prov.</th><th>Fecha</th><th>Proveedor</th><th>Condición</th><th class="r">Total US$</th><th class="r">Pagado US$</th><th class="r">Saldo CxP</th><th>Acción</th></tr></thead>'+
         '<tbody>'+(list.length?list.map(c=>{
-          const pend=r2(Math.max(0,c.total-(c.paid||0)));
+          const payable=r8(c.payableTotal===undefined?Math.max(0,Number(c.total||0)-Number(c.retIva||0)):c.payableTotal);
+          const pend=r8(Math.max(0,payable-(c.paid||0)));
           return '<tr class="'+(c.void?'void':'')+'">'+
             '<td class="mono">COM-'+pad(c.no)+'</td>'+
             '<td class="mono">'+esc(c.docProv)+'</td>'+
             '<td>'+fmtDT(c.ts)+'</td>'+
             '<td>'+esc(c.supplier.name)+'</td>'+
             '<td>'+esc(c.cond)+'</td>'+
-            '<td class="r">'+nf(c.total)+'</td>'+
-            '<td class="r">'+nf(c.paid||0)+'</td>'+
-            '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA':nf(pend))+'</td>'+
+            '<td class="r">'+nf8(c.total)+'</td>'+
+            '<td class="r">'+nf8(c.paid||0)+'</td>'+
+            '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA':nf8(pend))+'</td>'+
             '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'">Anular</button>')+'</td>'+
           '</tr>';
         }).join(''):'<tr class="empty"><td colspan="9">Sin compras registradas.</td></tr>')+'</tbody>'+
@@ -2433,7 +2434,8 @@ function comprasDlg(initialTab){
           });
         }
       });
-      S.cxp=(S.cxp||[]).filter(x=>x.purchaseNo!==c.no);
+      (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
+      (S.retencionesIva||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||''))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
       save();renderAll();renderPurchaseHist(v);
       msg('Compra COM-'+pad(c.no)+' anulada. Se revirtió el ingreso en inventario y Kardex.');
     };
@@ -2902,13 +2904,13 @@ function cxpDlg(selId){
   '</div>');
 
   const draw=()=>{
-    const now=Date.now(), rate=S.cfg.rate, all=S.cxp||[];
-    const totPend=r2(all.reduce((a,x)=>a+Math.max(0,x.total-x.paid),0));
-    const totOver=r2(all.filter(x=>x.total-x.paid>=0.01&&x.dueTs<now).reduce((a,x)=>a+Math.max(0,x.total-x.paid),0));
-    const totVig=r2(Math.max(0,totPend-totOver));
+    const now=Date.now(), rate=S.cfg.rate, all=(S.cxp||[]).filter(x=>!x.void);
+    const totPend=r8(all.reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
+    const totOver=r8(all.filter(x=>r8(Number(x.total||0)-Number(x.paid||0))>=0.00000001&&x.dueTs<now).reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
+    const totVig=r8(Math.max(0,totPend-totOver));
     let pagHoy=0;
     all.forEach(x=>(x.payments||[]).forEach(p=>{if(sameDay(p.ts))pagHoy+=p.amountUsd;}));
-    pagHoy=r2(pagHoy);
+    pagHoy=r8(pagHoy);
 
     $('#cxpKpis',el).innerHTML=
       '<div class="kpi"><span>Total por Pagar (Pasivo)</span><b class="warn">'+usd(totPend)+'</b><small>'+bsf(totPend*rate)+'</small></div>'+
@@ -2918,10 +2920,10 @@ function cxpDlg(selId){
 
     const q=norm(fQ);
     const list=all.filter(x=>{
-      const bal=r2(x.total-x.paid);
-      if(fState==='PEND'&&bal<0.01)return false;
-      if(fState==='OVER'&&(bal<0.01||x.dueTs>=now))return false;
-      if(fState==='PAID'&&bal>=0.01)return false;
+      const bal=r8(Math.max(0,Number(x.total||0)-Number(x.paid||0)));
+      if(fState==='PEND'&&bal<0.00000001)return false;
+      if(fState==='OVER'&&(bal<0.00000001||x.dueTs>=now))return false;
+      if(fState==='PAID'&&bal>=0.00000001)return false;
       if(q&&norm(x.doc+x.supplier.name+x.supplier.rif+x.concept).indexOf(q)<0)return false;
       return true;
     }).sort((a,b)=>a.dueTs-b.dueTs);
@@ -2930,7 +2932,7 @@ function cxpDlg(selId){
     if(!curId&&list[0])curId=list[0].id;
 
     $('#cxpBody',el).innerHTML=list.length?list.map(x=>{
-      const bal=r2(Math.max(0,x.total-x.paid));
+      const bal=r8(Math.max(0,Number(x.total||0)-Number(x.paid||0)));
       const isOver=bal>=0.01&&x.dueTs<now;
       const stTxt=bal<0.01?'PAGADA':(isOver?'VENCIDA':'VIGENTE');
       const stCls=bal<0.01?'st-ok':(isOver?'st-out':'st-low');
@@ -2941,9 +2943,9 @@ function cxpDlg(selId){
         '<td>'+fmtD(x.ts)+'</td>'+
         '<td>'+fmtD(x.dueTs)+'</td>'+
         '<td class="'+stCls+'">'+stTxt+'</td>'+
-        '<td class="r">'+nf(x.total)+'</td>'+
-        '<td class="r">'+nf(x.paid)+'</td>'+
-        '<td class="r"><b>'+nf(bal)+'</b></td>'+
+        '<td class="r">'+nf8(x.total)+'</td>'+
+        '<td class="r">'+nf8(x.paid)+'</td>'+
+        '<td class="r"><b>'+nf8(bal)+'</b></td>'+
         '<td class="r">'+nf(bal*rate)+'</td>'+
       '</tr>';
     }).join(''):'<tr class="empty"><td colspan="10">No hay cuentas por pagar para el filtro seleccionado.</td></tr>';
@@ -2951,45 +2953,45 @@ function cxpDlg(selId){
     renderDetailBox();
   };
 
-  const calcMixTotalUsd=()=>r2(METHODS.reduce((a,m)=>a+(mixState[m.id]?mixState[m.id].usd:0),0));
+  const calcMixTotalUsd=()=>r8(METHODS.reduce((a,m)=>a+(mixState[m.id]?mixState[m.id].usd:0),0));
 
   const updateMixSummary=bal=>{
     const rate=S.cfg.rate;
     const sumUsd=calcMixTotalUsd();
-    const remUsd=r2(bal-sumUsd);
+    const remUsd=r8(bal-sumUsd);
     const sumEl=$('#cxpMixSum',el);
     if(!sumEl)return;
     let statusHtml='';
     if(sumUsd<=0){
       statusHtml='<span class="dim">Ingrese el monto en uno o más medios de pago.</span>';
-    }else if(remUsd<-0.01){
+    }else if(remUsd< -0.00000001){
       statusHtml='<b class="bad">Excede el saldo por '+usd(Math.abs(remUsd))+' ('+bsf(Math.abs(remUsd)*rate)+')</b>';
-    }else if(remUsd<=0.01){
+    }else if(remUsd<=0.00000001){
       statusHtml='<b class="ok">Cubre el 100 % de la obligación con el proveedor</b>';
     }else{
       statusHtml='<b class="warn">Pago parcial · Resta por pagar: '+usd(remUsd)+' ('+bsf(remUsd*rate)+')</b>';
     }
     sumEl.innerHTML=
-      '<span>Total Pago Mixto: <b>'+usd(sumUsd)+'</b> ('+bsf(sumUsd*rate)+')</span>'+
+      '<span>Total Pago Mixto: <b>US$ '+nf8(sumUsd)+'</b> ('+bsf(sumUsd*rate)+')</span>'+
       '<span style="margin-left:14px">'+statusHtml+'</span>';
   };
 
   const renderDetailBox=()=>{
     const box=$('#cxpDetail',el), item=(S.cxp||[]).find(x=>x.id===curId);
     if(!item){box.innerHTML='<span class="dim">Seleccione una obligación para registrar un pago simple o mixto al proveedor o consultar comprobantes.</span>';return;}
-    const bal=r2(Math.max(0,item.total-item.paid)), rate=S.cfg.rate;
+    const bal=r8(Math.max(0,Number(item.total||0)-Number(item.paid||0))), rate=S.cfg.rate;
     const mOpts='<option value="MIXTO"'+(payMode==='MIXTO'?' selected':'')+'>★ Pago Mixto (Múltiples métodos de pago)</option>'+
       METHODS.map(m=>'<option value="'+esc(m.id)+'"'+(payMode===m.id?' selected':'')+'>'+esc(m.name)+' ('+m.cur+')</option>').join('');
-    const hist=(item.payments||[]).map(p=>'<tr><td>'+fmtDT(p.ts)+'</td><td>'+esc(p.method)+'</td><td class="mono">'+esc(p.ref||'-')+'</td><td class="r">'+nf(p.amountUsd)+'</td><td class="r">'+nf(p.amountBs)+'</td><td>'+esc(p.note||'')+'</td></tr>').join('')||'<tr><td colspan="6" class="dim">Sin pagos registrados todavía.</td></tr>';
+    const hist=(item.payments||[]).map(p=>'<tr><td>'+fmtDT(p.ts)+'</td><td>'+esc(p.method)+'</td><td class="mono">'+esc(p.ref||'-')+'</td><td class="r">'+nf8(p.amountUsd)+'</td><td class="r">'+nf(p.amountBs)+'</td><td>'+esc(p.note||'')+'</td></tr>').join('')||'<tr><td colspan="6" class="dim">Sin pagos registrados todavía.</td></tr>';
 
     let formHtml='';
-    if(bal<0.01){
+    if(bal<0.00000001){
       formHtml='<div class="dim" style="margin-bottom:6px">Esta obligación con el proveedor ya está pagada en su totalidad.</div>';
     }else if(payMode!=='MIXTO'){
       formHtml=
         '<div class="invbar" style="margin-bottom:6px">'+
           '<label>Medio de pago</label><select class="fld" id="pgMethod" style="max-width:235px">'+mOpts+'</select>'+
-          '<label>Monto US$</label><input class="fld r" id="pgUsd" value="'+nf(bal)+'" style="max-width:92px" inputmode="decimal">'+
+          '<label>Monto US$</label><input class="fld r" id="pgUsd" value="'+nf8(bal)+'" style="max-width:92px" inputmode="decimal">'+
           '<label>Equiv. Bs.</label><input class="fld r" id="pgBs" value="'+nf(bal*rate)+'" style="max-width:105px" inputmode="decimal">'+
           '<label>Comprobante</label><input class="fld" id="pgRef" placeholder="Nº transf. / ref." style="max-width:115px">'+
           '<label>Nota</label><input class="fld" id="pgNote" placeholder="Pago a proveedor">'+
@@ -3004,7 +3006,7 @@ function cxpDlg(selId){
         return '<tr>'+
           '<td><b>'+esc(m.name)+'</b></td>'+
           '<td class="c"><span class="sku-tag">'+(isUsd?'US$':'Bs.')+'</span></td>'+
-          '<td class="r" style="width:125px"><input class="fld r cxp-mix-usd" data-m="'+esc(m.id)+'" value="'+(st.usd>0?nf(st.usd):'')+'" placeholder="0,00" inputmode="decimal"></td>'+
+          '<td class="r" style="width:125px"><input class="fld r cxp-mix-usd" data-m="'+esc(m.id)+'" value="'+(st.usd>0?nf8(st.usd):'')+'" placeholder="0,00" inputmode="decimal"></td>'+
           '<td class="r" style="width:135px"><input class="fld r cxp-mix-bs" data-m="'+esc(m.id)+'" value="'+(st.bs>0?nf(st.bs):'')+'" placeholder="0,00" inputmode="decimal"></td>'+
           '<td style="width:155px"><input class="fld mono cxp-mix-ref" data-m="'+esc(m.id)+'" value="'+esc(st.ref||'')+'" placeholder="Nº op. / ref. / recibo"></td>'+
           '<td class="c" style="width:85px"><button class="btn mini2" data-cxp-fill="'+esc(m.id)+'" title="Asignar el saldo restante a este medio de pago">Restante</button></td>'+
@@ -3031,7 +3033,7 @@ function cxpDlg(selId){
       formHtml+
       '<div class="gridwrap" style="max-height:110px"><table class="grid"><thead><tr><th>Fecha</th><th>Medio de Pago</th><th>Comprobante</th><th class="r">Equiv. US$</th><th class="r">Monto Bs.</th><th>Observación</th></tr></thead><tbody>'+hist+'</tbody></table></div>';
 
-    if(payMode==='MIXTO'&&bal>=0.01)updateMixSummary(bal);
+    if(payMode==='MIXTO'&&bal>=0.00000001)updateMixSummary(bal);
   };
 
   el.addEventListener('change',e=>{
@@ -3051,29 +3053,29 @@ function cxpDlg(selId){
     }
     if(e.target.id==='pgBs'){
       const v=pn(e.target.value);
-      const usdInp=$('#pgUsd',el);if(usdInp)usdInp.value=v>0?nf(r2(v/rate)):'';
+      const usdInp=$('#pgUsd',el);if(usdInp)usdInp.value=v>0?nf8(r8(v/rate)):'';
       return;
     }
     if(e.target.classList.contains('cxp-mix-usd')){
       const mid=e.target.dataset.m, u=Math.max(0,pn(e.target.value));
       mixState[mid]=mixState[mid]||{usd:0,bs:0,ref:''};
-      mixState[mid].usd=r2(u);
+      mixState[mid].usd=r8(u);
       mixState[mid].bs=r2(u*rate);
       const bsInp=el.querySelector('.cxp-mix-bs[data-m="'+mid+'"]');
       if(bsInp)bsInp.value=u>0?nf(mixState[mid].bs):'';
       const item=(S.cxp||[]).find(x=>x.id===curId);
-      if(item)updateMixSummary(r2(Math.max(0,item.total-item.paid)));
+      if(item)updateMixSummary(r8(Math.max(0,Number(item.total||0)-Number(item.paid||0))));
       return;
     }
     if(e.target.classList.contains('cxp-mix-bs')){
       const mid=e.target.dataset.m, b=Math.max(0,pn(e.target.value));
       mixState[mid]=mixState[mid]||{usd:0,bs:0,ref:''};
       mixState[mid].bs=r2(b);
-      mixState[mid].usd=r2(b/rate);
+      mixState[mid].usd=r8(b/rate);
       const usdInp=el.querySelector('.cxp-mix-usd[data-m="'+mid+'"]');
       if(usdInp)usdInp.value=b>0?nf(mixState[mid].usd):'';
       const item=(S.cxp||[]).find(x=>x.id===curId);
-      if(item)updateMixSummary(r2(Math.max(0,item.total-item.paid)));
+      if(item)updateMixSummary(r8(Math.max(0,Number(item.total||0)-Number(item.paid||0))));
       return;
     }
     if(e.target.classList.contains('cxp-mix-ref')){
@@ -3093,9 +3095,9 @@ function cxpDlg(selId){
     if(fillBtn){
       const mid=fillBtn.dataset.cxpFill;
       const item=(S.cxp||[]).find(x=>x.id===curId);if(!item)return;
-      const bal=r2(Math.max(0,item.total-item.paid));
-      const otherUsd=r2(METHODS.reduce((a,m)=>a+(m.id!==mid&&mixState[m.id]?mixState[m.id].usd:0),0));
-      const rem=r2(Math.max(0,bal-otherUsd));
+      const bal=r8(Math.max(0,Number(item.total||0)-Number(item.paid||0)));
+      const otherUsd=r8(METHODS.reduce((a,m)=>a+(m.id!==mid&&mixState[m.id]?mixState[m.id].usd:0),0));
+      const rem=r8(Math.max(0,bal-otherUsd));
       mixState[mid]=mixState[mid]||{usd:0,bs:0,ref:''};
       mixState[mid].usd=rem;
       mixState[mid].bs=r2(rem*S.cfg.rate);
@@ -3104,14 +3106,14 @@ function cxpDlg(selId){
     }
     if(e.target.id==='pgSaveBtn'){
       const item=(S.cxp||[]).find(x=>x.id===curId);if(!item)return;
-      const bal=r2(Math.max(0,item.total-item.paid));
+      const bal=r8(Math.max(0,Number(item.total||0)-Number(item.paid||0)));
       const rawAmt=pn($('#pgUsd',el).value);
       if(rawAmt<=0){msg('Indique un monto de pago válido mayor a cero.','bad');return;}
-      if(rawAmt-bal>0.01){msg('El monto ingresado ('+usd(rawAmt)+') supera el saldo por pagar ('+usd(bal)+').','bad');return;}
-      const amt=Math.min(bal,rawAmt);
+      if(rawAmt-bal>0.00000001){msg('El monto ingresado ('+usd(rawAmt)+') supera el saldo por pagar ('+usd(bal)+').','bad');return;}
+      const amt=r8(Math.min(bal,rawAmt));
       const mId=$('#pgMethod',el).value;
       const m=METHODS.find(x=>x.id===mId)||METHODS[5];
-      item.paid=r2(item.paid+amt);
+      item.paid=r8(Math.min(Number(item.total)||0,(Number(item.paid)||0)+amt));
       item.payments=item.payments||[];
       item.payments.push({
         ts:Date.now(),method:m.name,cur:m.cur,
@@ -3129,11 +3131,11 @@ function cxpDlg(selId){
     }
     if(e.target.id==='pgSaveMixBtn'){
       const item=(S.cxp||[]).find(x=>x.id===curId);if(!item)return;
-      const bal=r2(Math.max(0,item.total-item.paid));
-      const active=METHODS.filter(m=>mixState[m.id]&&mixState[m.id].usd>=0.01);
+      const bal=r8(Math.max(0,Number(item.total||0)-Number(item.paid||0)));
+      const active=METHODS.filter(m=>mixState[m.id]&&mixState[m.id].usd>=0.00000001);
       if(!active.length){msg('Ingrese el monto en al menos un medio de pago para el pago mixto.','bad');return;}
-      const totalMix=r2(active.reduce((a,m)=>a+mixState[m.id].usd,0));
-      if(totalMix-bal>0.01){
+      const totalMix=r8(active.reduce((a,m)=>a+mixState[m.id].usd,0));
+      if(totalMix-bal>0.00000001){
         msg('La suma del pago mixto ('+usd(totalMix)+') excede el saldo pendiente de la obligación ('+usd(bal)+'). Ajuste los montos.','bad');
         return;
       }
@@ -3148,13 +3150,13 @@ function cxpDlg(selId){
           ts,
           method:tag+m.name,
           cur:m.cur,
-          amountUsd:r2(st.usd),
+          amountUsd:r8(st.usd),
           amountBs:r2(st.bs||st.usd*S.cfg.rate),
           ref:(st.ref||'').trim()||('OPM-'+pad(batchNo,3)+'-'+(idx+1)),
           note:baseNote
         });
       });
-      item.paid=r2(Math.min(item.total,item.paid+totalMix));
+      item.paid=r8(Math.min(Number(item.total)||0,(Number(item.paid)||0)+totalMix));
       if(item.purchaseNo){
         const comp=(S.purchases||[]).find(x=>x.no===item.purchaseNo);
         if(comp)comp.paid=item.paid;
