@@ -72,6 +72,9 @@ const MOTIVOS=[
 /* ---------- datos de ejemplo con Departamento, Categoría, Subcategoría, SKU, U.M., Costo e I.V.A. ---------- */
 const UM_OPTIONS=[
   {id:'und',name:'Unidad (und)'},
+  {id:'botella',name:'Botella'},
+  {id:'lata',name:'Lata'},
+  {id:'pack',name:'Pack / Six-pack'},
   {id:'L',name:'Litro (L)'},
   {id:'gal',name:'Galón (gal)'},
   {id:'kg',name:'Kilogramo (kg)'},
@@ -586,7 +589,7 @@ function load(){
     /* Enriquecer productos guardados con SKU, U.M., motores de venta, presentaciones, impuestos, proveedores y kits */
     S.products=d.products.map((p,idx)=>{
       const sp=seedMap[p.code]||{};
-      const dept=p.dept||sp.dept||'Lubricantes y Fluidos';
+      const dept=p.dept||sp.dept||'Bebidas alcohólicas';
       const cat=p.cat||sp.cat||'Correas y accesorios';
       const subcat=p.subcat||sp.subcat||'General';
       const cost=p.cost||sp.cost||r2((p.price||1)*0.64);
@@ -1385,9 +1388,9 @@ function productFormDlg(editCode,initialTab){
     sku:'',
     desc:'',
     brand:'PDV',
-    dept:'Lubricantes y Fluidos',
-    cat:'Aceites de motor',
-    subcat:'Mineral',
+    dept:'Bebidas alcohólicas',
+    cat:'Ron',
+    subcat:'Botella 750 ml',
     loc:'',
     unit:'und',
     stock:0,
@@ -1919,7 +1922,7 @@ function productFormDlg(editCode,initialTab){
         '<div class="newgrid" style="margin:4px 0">'+
           '<div class="f wide"><label for="asSel">Seleccionar del directorio o crear nuevo</label><select class="fld" id="asSel">'+supOpts+'</select></div>'+
           '<div class="f"><label for="asRif">RIF del Proveedor</label><input class="fld mono" id="asRif" placeholder="J-40000000-1"></div>'+
-          '<div class="f wide"><label for="asName">Razón Social / Nombre del Proveedor</label><input class="fld" id="asName" placeholder="Ej: Importadora Repuestos del Centro, C.A."></div>'+
+          '<div class="f wide"><label for="asName">Razón Social / Nombre del Proveedor</label><input class="fld" id="asName" placeholder="Ej: Distribuidora de bebidas, C.A."></div>'+
           '<div class="f"><label for="asTel">Teléfono / Contacto</label><input class="fld" id="asTel" placeholder="0414-000-0000"></div>'+
           '<div class="f"><label for="asBc">Código de Barras / SKU Proveedor</label><input class="fld mono" id="asBc" value="'+esc(D.code)+'-PRV"></div>'+
           '<div class="f"><label for="asCost">Precio de Costo Ofrecido US$</label><input class="fld r" id="asCost" value="'+nf(D.cost)+'" inputmode="decimal"></div>'+
@@ -3319,7 +3322,7 @@ function newOperacionCambiariaDlg(opts, onDone){
       box.innerHTML=
         '<div style="font-weight:700;font-size:12px;color:#1e40af;margin-bottom:6px">4. Destino de los USD: Cuenta Zelle Propia de la Empresa</div>'+
         '<div class="newgrid">'+
-          '<div class="f wide"><label for="opZellePropioEmail">Cuenta Zelle de la Empresa</label><input class="fld" id="opZellePropioEmail" value="tesoreria@elpiston.com" placeholder="correo@zelle.com"></div>'+
+          '<div class="f wide"><label for="opZellePropioEmail">Cuenta Zelle de la Empresa</label><input class="fld" id="opZellePropioEmail" value="" placeholder="correo@zelle.com"></div>'+
           '<div class="f"><label for="opZellePropioConf">Confirmation Number Zelle</label><input class="fld mono" id="opZellePropioConf" placeholder="Confirmation Number" value="ZEL-'+pad(Math.floor(Math.random()*899999+100000),6)+'"></div>'+
         '</div>';
     }else{
@@ -6540,7 +6543,7 @@ async function databaseSettingsDlg(){
       const blob = new Blob([JSON.stringify(stateSnapshot(), null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'elpiston-snapshot-' + new Date().toISOString().slice(0, 10) + '.json';
+      a.download = 'sifer360-licoreria-snapshot-' + new Date().toISOString().slice(0, 10) + '.json';
       a.click();
       note.textContent = 'Respaldo JSON descargado con éxito.';
     } catch (e) {
