@@ -245,7 +245,7 @@ test('Sicoven contabiliza movimientos de caja y diferencias del Corte Z con la t
   assert.ok(cut.lines.some(l => l.accountCode === '6.1.1.11' && l.debitUsd === 2));
   assert.ok(cut.lines.some(l => l.accountCode === '1.1.1.02' && l.creditUsd === 2));
   assert.ok(cut.lines.some(l => l.accountCode === '1.1.1.01' && l.debitUsd === 2));
-  assert.ok(cut.lines.some(l => l.accountCode === '4.2.1.02' && l.creditUsd === 2));
+  assert.ok(cut.lines.some(l => l.accountCode === '4.2.1.03' && l.creditUsd === 2));
   assert.equal(accounting.syncFromPOS(s).created, 0);
 });
 
