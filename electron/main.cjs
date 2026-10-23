@@ -268,7 +268,15 @@ async function startLanServer(requestedPort) {
               const state = stateRow ? JSON.parse(stateRow.payload) : {};
               const records = Array.isArray(state[collection]) ? state[collection] : [];
               const recordId = String(ev.entityId);
-              const existingRecord = records.find(item => item && String(item.id ?? item.uuid ?? item.eventId ?? item.no ?? item.number ?? item.ctrlNo ?? item.code ?? '') === recordId);
+              const boxScopedCollections = new Set(['sales','cxc','cortesZ','openings','movements','returns','voids']);
+              const recordIdentity = item => {
+                const id = String(item.id ?? item.uuid ?? item.eventId ?? item.no ?? item.number ?? item.ctrlNo ?? item.code ?? '');
+                return boxScopedCollections.has(collection) ? String(item.cashbox || 'sin-caja') + ':' + id : id;
+              };
+              const incomingIdentity = boxScopedCollections.has(collection)
+                ? String(record.cashbox || 'sin-caja') + ':' + recordId
+                : recordId;
+              const existingRecord = records.find(item => item && recordIdentity(item) === incomingIdentity);
               if (!existingRecord) {
                 state[collection] = [...records, record];
                 run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(state)]);

@@ -102,6 +102,12 @@ test('el servidor aplica una operación nueva una sola vez y reporta entidades e
   assert.match(electron, /conflictIds/);
 });
 
+test('el servidor separa identificadores iguales cuando pertenecen a cajas distintas', () => {
+  assert.match(electron, /const boxScopedCollections = new Set\(\['sales','cxc','cortesZ','openings','movements','returns','voids'\]\)/);
+  assert.match(electron, /String\(record\.cashbox \|\| 'sin-caja'\) \+ ':' \+ recordId/);
+  assert.match(electron, /recordIdentity\(item\) === incomingIdentity/);
+});
+
 test('CASHEA no precarga operaciones ficticias y elimina únicamente firmas semilla conocidas', () => {
   assert.match(pos, /S\.casheaMovimientos=\[\];/);
   assert.match(pos, /demoCasheaSignatures/);
