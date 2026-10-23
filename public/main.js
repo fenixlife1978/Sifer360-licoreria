@@ -544,7 +544,7 @@ function mergeRemoteSnapshot(local,remote){
     if(key==='sicoven'&&value&&typeof value==='object'&&local[key]&&typeof local[key]==='object'){
       const base=local[key],incoming=value;
       const mergeBy=(a,b,keyName)=>{const map=new Map();for(const item of [...(Array.isArray(a)?a:[]),...(Array.isArray(b)?b:[])]){const id=item&&item[keyName];if(id===undefined||id===null)continue;map.set(String(id),item);}return [...map.values()];};
-      merged[key]={...base,...incoming,config:{...(base.config||{}),...(incoming.config||{})},entries:mergeBy(base.entries,incoming.entries,'id'),errors:mergeBy(base.errors,incoming.errors,'key'),balanceReports:mergeBy(base.balanceReports,incoming.balanceReports,'id'),bankMovements:mergeBy(base.bankMovements,incoming.bankMovements,'id')};
+      merged[key]={...base,...incoming,config:{...(base.config||{}),...(incoming.config||{})},entries:mergeBy(base.entries,incoming.entries,'id'),errors:mergeBy(base.errors,incoming.errors,'key'),balanceReports:mergeBy(base.balanceReports,incoming.balanceReports,'id'),bankMovements:mergeBy(base.bankMovements,incoming.bankMovements,'id'),islrVouchers:mergeBy(base.islrVouchers,incoming.islrVouchers,'id')};
       continue;
     }
     if(!Array.isArray(value)||!Array.isArray(local[key])){merged[key]=value;continue;}
