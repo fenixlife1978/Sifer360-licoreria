@@ -328,3 +328,40 @@ test('Sicoven rechaza retención ISLR no vinculada a una CxP abierta', () => {
   assert.ok(s.sicoven.errors.some(e => e.origin === 'ISLR-ISLR-ORPHAN'));
   assert.equal(s.sicoven.entries.filter(e => e.type === 'RETENCION_ISLR').length, 0);
 });
+
+
+test('Sicoven revierte el asiento ISLR y no mantiene retención activa cuando se anula la compra asociada', () => {
+  const accounting = loadAccountingModule();
+  const s = state();
+  s.purchases[0].docProv = 'F-100';
+  s.purchases[0].supplier = { name: 'Proveedor de prueba', rif: 'J123456789' };
+  s.cxp = [{
+    id: 'CXP-ISLR-VOID', purchaseNo: 1, doc: 'F-100 (COM-00001)',
+    supplier: { name: 'Proveedor de prueba', rif: 'J123456789' },
+    total: 40, paid: 3,
+    payments: [{ ts: 1790000009000, method: 'Retención ISLR', cur: 'VES', amountUsd: 3, amountBs: 120, ref: 'ISLR-VOID-1', note: 'Retención ISLR aplicada a factura F-100' }]
+  }];
+  const voucher = {
+    id: 'ISLR-VOID-1', voucherNumber: '20261000000010', period: '202610',
+    date: '2026-10-23', invoiceDate: '2026-10-23', supplierRif: 'J123456789',
+    supplierName: 'Proveedor de prueba', invoiceNumber: 'F-100', controlNumber: '00-00100',
+    conceptCode: '001', baseAmountBs: 4000, retentionRate: 3, subtrahendBs: 0,
+    withheldAmountBs: 120, bcvRate: 40, baseAmountUsd: 100, withheldAmountUsd: 3,
+    appliedToCxp: true, cxpId: 'CXP-ISLR-VOID', cxpPurchaseNo: 1
+  };
+  s.sicoven.islrVouchers = [voucher];
+  const first = accounting.syncFromPOS(s);
+  assert.equal(first.created, 4);
+  const original = s.sicoven.entries.find(e => e.type === 'RETENCION_ISLR');
+  assert.ok(original);
+
+  s.purchases[0].void = true;
+  s.cxp[0].void = true;
+  voucher.void = true;
+  voucher.status = 'ANULADO JUNTO CON COMPRA COM-00001';
+  const reversed = accounting.syncFromPOS(s);
+  assert.equal(reversed.created, 2);
+  assert.ok(s.sicoven.entries.some(e => e.type === 'REVERSO' && e.reversalOf === original.id));
+  assert.ok(s.sicoven.entries.some(e => e.type === 'REVERSO' && e.reversalOf === 'SIC-COM-00000001-COMPRA'));
+  assert.equal(accounting.syncFromPOS(s).created, 0);
+});
