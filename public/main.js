@@ -2495,8 +2495,8 @@ function comprasDlg(initialTab){
     const iva=r2(lines.reduce((a,l)=>a+(l.iva||0),0));
     const total=r2(base+iva);
     const dueTs=ts+creditDays*86400000;
-    const retPct=75; /* Por defecto legal ordinario; los casos especiales al 100% se documentan aparte para revisión del contador. */
-    const aplicarRetencion=!!(applyIva&&iva>0&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true);
+    const retPct=Number(S.cfg.retIvaPct)===100?100:75; /* Aplicar solo si la designación y el proveedor están confirmados. */
+    const aplicarRetencion=!!(iva>0&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true);
     const retUsd=aplicarRetencion?r2(iva*(retPct/100)):0;
     const retBs=r2(retUsd*S.cfg.rate);
     const payableTotal=r2(Math.max(0,total-retUsd));
@@ -5592,7 +5592,7 @@ function seniatSudebanDlg(initialTab){
             const stock=Math.max(0,Number(p.stock)||0),cost=Math.max(0,Number(p.cost)||0);
             return [p.code||'',p.sku||'',p.desc||'',p.brand||'',p.cat||'',p.unit||'und',stock,cost.toFixed(2),r2(stock*cost).toFixed(2),rate>0?r2(stock*cost*rate).toFixed(2):'',Number(p.min)||0,last?new Date(last.ts).toISOString():''].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';');
           });
-          downloadBlob('Libro_Inventario_SIFER_'+new Date().toISOString().slice(0,10),'\uFEFF'+[headers.join(';')].concat(rows).join('\r\n'),'text/csv;charset=utf-8;');
+          downloadBlob('Libro_Inventario_SIFER_'+new Date().toISOString().slice(0,10)+'.csv','\uFEFF'+[headers.join(';')].concat(rows).join('\r\n'),'text/csv;charset=utf-8;');
           msg('Libro de inventario actual exportado a CSV.');
         }
         if(ev.target.id==='btnPrintInv')printFiscalReport('Libro de Inventario — corte actual',drawInventario());
