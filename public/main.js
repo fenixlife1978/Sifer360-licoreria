@@ -2271,7 +2271,7 @@ function comprasDlg(initialTab){
   let tab=initialTab||'new';
   let supIdx=0;
   let pLines=[];
-  let cond='Crédito', creditDays=15, applyIva=true, paidInit=0, payMethod='Transferencia Bs.';
+  let cond='Crédito', creditDays=15, paidInit=0, payMethod='Transferencia Bs.';
 
   const el=h('<div class="form"><div class="tabs"><button class="tab" data-tab="new">Registrar Compra de Mercancía</button><button class="tab" data-tab="hist">Historial de Compras</button><button class="tab" data-tab="sup">Directorio de Proveedores</button></div><div id="compView"></div></div>');
 
@@ -2291,6 +2291,7 @@ function comprasDlg(initialTab){
         '<div class="f" style="grid-column:span 2"><label for="cpSup">Proveedor</label><select class="fld" id="cpSup">'+supOpts+'</select></div>'+
         '<div class="f"><label for="cpDoc">Nº de factura del proveedor *</label><input class="fld mono" id="cpDoc" value="" placeholder="Copiar de la factura original" autocomplete="off" required></div>'+
         '<div class="f"><label for="cpCtrl">Nº de control del proveedor</label><input class="fld mono" id="cpCtrl" value="" placeholder="Según factura (si aplica)" autocomplete="off"></div>'+
+        '<div class="f"><label for="cpDate">Fecha de emisión de factura *</label><input class="fld" id="cpDate" type="date" value="'+isoD(Date.now())+'" required></div>'+
         '<div class="f"><label for="cpCond">Condición de Compra</label><select class="fld" id="cpCond"><option value="Crédito"'+(cond==='Crédito'?' selected':'')+'>Crédito (Genera CxP)</option><option value="Contado"'+(cond==='Contado'?' selected':'')+'>Contado (Pagada)</option></select></div>'+
         '<div class="f" id="cpDaysWrap"><label for="cpDays">Plazo Crédito (días)</label><input class="fld r" id="cpDays" value="'+creditDays+'" inputmode="numeric"></div>'+
         '<div class="f"><label for="cpInit">Abono / Pago Inicial US$</label><input class="fld r" id="cpInit" value="'+(paidInit?nf(paidInit):'0,00')+'" inputmode="decimal"></div>'+
@@ -2302,10 +2303,10 @@ function comprasDlg(initialTab){
         '<label for="cpAddQty">Cant.</label>'+
         '<input class="fld r" id="cpAddQty" value="6" style="max-width:75px" inputmode="decimal">'+
         '<button class="btn" id="cpBtnAdd">+ Agregar renglón</button>'+
-        '<label class="chk" style="margin-left:auto"><input type="checkbox" id="cpIva" '+(applyIva?'checked':'')+'> Incluye IVA 16 %</label>'+
+        '<span class="hint" style="margin-left:auto">Verifique la alícuota IVA de cada renglón contra la factura del proveedor.</span>'+
       '</div>'+
       '<div class="gridwrap invwrap"><table class="grid" style="min-width:820px">'+
-        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Costo Unit. US$</th><th class="r">P. Venta US$</th><th class="r">Subtotal US$</th><th></th></tr></thead>'+
+        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Costo Unit. US$</th><th class="r">P. Venta US$</th><th class="r">Base US$</th><th>IVA %</th><th></th></tr></thead>'+
         '<tbody id="cpBody"></tbody>'+
       '</table></div>'+
       '<div class="cierre" id="cpTotals"></div>';
@@ -2323,19 +2324,20 @@ function comprasDlg(initialTab){
           '<td class="r"><input class="fld cell r" data-cpf="cost" value="'+nf(l.cost)+'" inputmode="decimal"></td>'+
           '<td class="r"><input class="fld cell r" data-cpf="price" value="'+nf(l.price)+'" inputmode="decimal"></td>'+
           '<td class="r"><b>'+nf(sub)+'</b></td>'+
+          '<td><select class="fld cell" data-cpf="taxRate" aria-label="Alícuota IVA del renglón"><option value="0" '+(Number(l.taxRate||0)===0?'selected':'')+'>0%</option><option value="8" '+(Number(l.taxRate)===8?'selected':'')+'>8%</option><option value="16" '+(Number(l.taxRate===undefined?16:l.taxRate)===16?'selected':'')+'>16%</option><option value="31" '+(Number(l.taxRate)===31?'selected':'')+'>31%</option></select></td>'+
           '<td class="c"><button class="mini" data-cpdel="'+i+'" title="Quitar">&times;</button></td>'+
         '</tr>';
       }).join(''):'<tr class="empty"><td colspan="8">Agregue productos a la orden de compra.</td></tr>';
 
       const base=r2(pLines.reduce((a,l)=>a+r2(l.qty*l.cost),0));
-      const iva=applyIva?r2(base*IVA):0;
+      const iva=r2(pLines.reduce((a,l)=>a+r2(l.qty*l.cost*(Number(l.taxRate===undefined?16:l.taxRate)||0)/100),0));
       const tot=r2(base+iva);
       const effPaid=cond==='Contado'?tot:Math.min(tot,paidInit);
       const pend=r2(Math.max(0,tot-effPaid));
       $('#cpTotals',v).innerHTML=
         '<table class="sumt"><thead><tr><th>Resumen de Compra</th><th class="r">US$</th><th class="r">Bs. (Tasa '+nf(S.cfg.rate)+')</th></tr></thead><tbody>'+
           '<tr><td>Base imponible (Costo mercancía)</td><td class="r">'+nf(base)+'</td><td class="r">'+nf(base*S.cfg.rate)+'</td></tr>'+
-          '<tr><td>IVA 16 % Crédito Fiscal</td><td class="r">'+nf(iva)+'</td><td class="r">'+nf(iva*S.cfg.rate)+'</td></tr>'+
+          '<tr><td>IVA total según alícuotas indicadas</td><td class="r">'+nf(iva)+'</td><td class="r">'+nf(iva*S.cfg.rate)+'</td></tr>'+
           '<tr class="tot"><td>Total Factura de Compra</td><td class="r">'+nf(tot)+'</td><td class="r">'+nf(tot*S.cfg.rate)+'</td></tr>'+
         '</tbody></table>'+
         '<table class="sumt"><thead><tr><th>Condición Financiera</th><th class="r">US$</th><th class="r">Bs.</th></tr></thead><tbody>'+
@@ -2352,13 +2354,13 @@ function comprasDlg(initialTab){
       if(t.id==='cpDays'){creditDays=Math.max(1,Math.round(pn(t.value)||15));drawLines();return;}
       if(t.id==='cpInit'){paidInit=pn(t.value);t.value=nf(paidInit);drawLines();return;}
       if(t.id==='cpMethod'){payMethod=t.value;return;}
-      if(t.id==='cpIva'){applyIva=t.checked;drawLines();return;}
       if(t.dataset.cpf){
         const tr=t.closest('tr'), idx=+tr.dataset.pi, l=pLines[idx];
         const val=pn(t.value);
         if(t.dataset.cpf==='qty')l.qty=val||1;
-        if(t.dataset.cpf==='cost')l.cost=val||l.cost;
+        if(t.dataset.cpf==='cost')l.cost=val||0;
         if(t.dataset.cpf==='price')l.price=val||l.price;
+        if(t.dataset.cpf==='taxRate')l.taxRate=Number(t.value);
         drawLines();
       }
     };
@@ -2368,7 +2370,7 @@ function comprasDlg(initialTab){
         if(!p)return;
         const ex=pLines.find(x=>x.code===code);
         if(ex)ex.qty=r2(ex.qty+qty);
-        else pLines.push({code,qty,cost:p.cost,price:p.price});
+        else pLines.push({code,qty,cost:p.cost,price:p.price,taxRate:prodTaxRate(p)});
         drawLines();
       }
       const del=e.target.closest('[data-cpdel]');
@@ -2463,7 +2465,10 @@ function comprasDlg(initialTab){
     if(!sup||!sup.name||!sup.rif){msg('Registre y seleccione un proveedor real con razón social y RIF antes de procesar la compra.','bad');return false;}
     const docProv=$('#cpDoc',el)?$('#cpDoc',el).value.trim():'';
     const ctrlProv=$('#cpCtrl',el)?$('#cpCtrl',el).value.trim():'';
+    const docDate=$('#cpDate',el)?$('#cpDate',el).value:'';
+    const docDateTs=docDate?parseIsoD(docDate):0;
     if(!docProv){msg('El número de factura del proveedor es obligatorio; no se generará uno ficticio.','bad');return false;}
+    if(!docDateTs){msg('Indique la fecha de emisión que aparece en la factura original.','bad');return false;}
     if((S.purchases||[]).some(p=>!p.void&&String(p.supplier?.rif||'').trim().toLowerCase()===String(sup.rif).trim().toLowerCase()&&String(p.docProv||'').trim().toLowerCase()===docProv.toLowerCase())){msg('Ya existe una compra activa con ese proveedor y número de factura. Verifique el documento original.','bad');return false;}
     if(!(Number(S.cfg.rate)>0)){msg('Configure una tasa BCV real mayor que cero antes de registrar la compra.','bad');return false;}
     if(pLines.some(l=>!(Number(l.qty)>0)||!(Number(l.cost)>=0))){msg('Cada renglón debe tener cantidad positiva y costo válido.','bad');return false;}
@@ -2483,10 +2488,11 @@ function comprasDlg(initialTab){
         ts,code:p.code,type:'COMPRA',dir:'IN',doc:'COM-'+pad(no),
         party:sup.name+' (Fac. '+docProv+')',qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
       });
-      return{code:p.code,desc:p.brand+' '+p.desc,qty:l.qty,cost:l.cost,sub:r2(l.qty*l.cost)};
+      const taxRate=Number(l.taxRate===undefined?16:l.taxRate)||0;
+      return{code:p.code,desc:p.brand+' '+p.desc,qty:l.qty,cost:l.cost,sub:r2(l.qty*l.cost),taxRate,iva:r2(l.qty*l.cost*taxRate/100)};
     });
     const base=r2(lines.reduce((a,x)=>a+x.sub,0));
-    const iva=applyIva?r2(base*IVA):0;
+    const iva=r2(lines.reduce((a,l)=>a+(l.iva||0),0));
     const total=r2(base+iva);
     const dueTs=ts+creditDays*86400000;
     const retPct=75; /* Por defecto legal ordinario; los casos especiales al 100% se documentan aparte para revisión del contador. */
@@ -2495,7 +2501,7 @@ function comprasDlg(initialTab){
     const retBs=r2(retUsd*S.cfg.rate);
     const payableTotal=r2(Math.max(0,total-retUsd));
     const effPaid=cond==='Contado'?payableTotal:Math.min(payableTotal,paidInit);
-    const comp={no,docProv,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,void:false};
+    const comp={no,docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,void:false};
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
       const periodo=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
@@ -4729,11 +4735,11 @@ function exportLibroComprasCsv(purchases){
     const retBs=p.retIva?r2(p.retIva*rate):0;
     return [
       idx+1,
-      fmtD(new Date(p.ts)),
+      fmtD(new Date(p.docDateTs||p.ts)),
       `"${p.supplier.rif}"`,
       `"${p.supplier.name.replace(/"/g,'""')}"`,
       p.docProv,
-      p.ctrlProv||('00-'+pad(p.no+4400,8)),
+      p.ctrlProv||'',
       '01-REG',
       p.total.toFixed(2),
       r2(p.total*rate).toFixed(2),
@@ -4741,7 +4747,7 @@ function exportLibroComprasCsv(purchases){
       r2(p.base*rate).toFixed(2),
       r2(p.iva*rate).toFixed(2),
       retBs.toFixed(2),
-      p.retIvaDoc||('202610'+pad(idx+41,8)),
+      p.retIvaDoc||'',
       rate.toFixed(2)
     ].join(';');
   });
@@ -5060,7 +5066,7 @@ function seniatSudebanDlg(initialTab){
   const getFilteredPurchases=()=>{
     const q=norm(qText);
     return (S.purchases||[]).filter(p=>{
-      if(!filterPeriod(p.ts))return false;
+      if(!filterPeriod(p.docDateTs||p.ts))return false;
       if(!q)return true;
       return norm(p.supplier.name+p.supplier.rif+p.docProv+(p.ctrlProv||'')).indexOf(q)>=0;
     });
@@ -5203,7 +5209,7 @@ function seniatSudebanDlg(initialTab){
         '<td class="mono">'+esc(p.supplier.rif)+'</td>'+
         '<td><b>'+esc(p.supplier.name)+'</b></td>'+
         '<td class="mono c"><b>'+esc(p.docProv)+'</b></td>'+
-        '<td class="mono c">'+esc(p.ctrlProv||('00-'+pad(p.no+4400,8)))+'</td>'+
+        '<td class="mono c">'+esc(p.ctrlProv||'—')+'</td>'+
         '<td class="r">'+nf(p.total)+'</td>'+
         '<td class="r"><b>'+nf(totBs)+'</b></td>'+
         '<td class="r">'+nf(baseBs)+'</td>'+
@@ -5232,7 +5238,7 @@ function seniatSudebanDlg(initialTab){
         '<td class="r">'+nf(sumBase)+'</td>'+
         '<td class="r" style="color:#1D6F39">'+nf(sumIva)+'</td>'+
         '<td class="r" style="color:#1842B8">'+nf(sumRet)+'</td>'+
-        '<td colspan="2"></td>'+
+        '<td colspan="3"></td>'+
       '</tr></tfoot>'+
     '</table></div>'+
     '<div class="cierre" style="margin-top:8px">'+
