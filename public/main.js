@@ -2436,6 +2436,7 @@ function comprasDlg(initialTab){
       });
       (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
       (S.retencionesIva||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||''))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
+      if(S.sicoven&&Array.isArray(S.sicoven.islrVouchers))(S.sicoven.islrVouchers||[]).filter(x=>Number(x.cxpPurchaseNo)===Number(c.no)||(String(x.invoiceNumber||'').trim()===String(c.docProv||'').trim()&&String(x.supplierRif||'').toUpperCase().replace(/[^A-Z0-9]/g,'')===String(c.supplier&&c.supplier.rif||'').toUpperCase().replace(/[^A-Z0-9]/g,''))).forEach(x=>{x.void=true;x.status='ANULADO JUNTO CON COMPRA COM-'+pad(c.no);x.voidedAt=Date.now();});
       save();renderAll();renderPurchaseHist(v);
       msg('Compra COM-'+pad(c.no)+' anulada. Se revirtió el ingreso en inventario y Kardex.');
     };
