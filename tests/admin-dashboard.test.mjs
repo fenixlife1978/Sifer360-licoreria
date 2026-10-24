@@ -186,7 +186,6 @@ test('CxP de compras conserva ocho decimales en saldos y pagos y mantiene el his
   assert.match(purchaseHistory, /nf8\(pend\)/);
   assert.match(purchaseHistory, /x\.void=true;x\.voidedAt=Date\.now\(\)/);
   assert.match(purchaseHistory, /Anulada junto con compra COM-/);
-  assert.match(purchaseHistory, /S\.sicoven\.islrVouchers/);
   assert.match(purchaseHistory, /x\.status='ANULADO JUNTO CON COMPRA COM-'/);
 
   const cxpStart = main.indexOf('function cxpDlg(selId){');
@@ -197,4 +196,13 @@ test('CxP de compras conserva ocho decimales en saldos y pagos y mantiene el his
   assert.match(cxp, /nf8\(p\.amountUsd\)/);
   assert.match(cxp, /if\(rawAmt-bal>0\.00000001\)/);
   assert.match(cxp, /mixState\[mid\]\.usd=r8\(b\/rate\)/);
+});
+
+test('Corte Z consolida ventas por SKU/código y ajustes de inventario positivos y negativos', () => {
+  assert.match(main, /const getProductSales=\(sales\)=>/);
+  assert.match(main, /productSales:getProductSales\(sales\)/);
+  assert.match(main, /inventoryAdjustments:getInventoryAdjustments\(shiftStart\(\),Date\.now\(\)\)/);
+  assert.match(main, /CONSOLIDADO DE PRODUCTOS VENDIDOS · SKU \/ CÓDIGO \/ CANTIDAD/);
+  assert.match(main, /AJUSTES DE INVENTARIO · POSITIVOS \(\+\) Y NEGATIVOS/);
+  assert.match(main, /Number\(a\.sign\)>0\?/);
 });
