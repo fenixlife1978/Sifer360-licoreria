@@ -58,3 +58,56 @@ body.sa-locked .app,body.sa-locked .statusbar{visibility:hidden}
 #sifer-access .sa-brand{min-width:0}
 #sifer-access .sa-panel{min-width:0}
 @media(max-width:760px){#sifer-access .sa-shell{grid-template-columns:minmax(0,1fr)}#sifer-access .sa-brand{min-height:190px;min-height:28dvh;padding:18px 22px}#sifer-access .sa-logo{width:min(260px,68%);max-height:100px}#sifer-access .sa-brand-foot{display:none}#sifer-access .sa-brand-caption{margin-top:0}#sifer-access .sa-panel{padding:24px 18px}}
+
+/* Pantalla de acceso basada fielmente en la referencia visual proporcionada */
+#sifer-access{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;overflow:hidden;background:#dbe7f4;color:#173d63;font-family:"Segoe UI",Arial,sans-serif}
+#sifer-access *{box-sizing:border-box}
+#sifer-access .sa-windowbar{height:48px;flex:0 0 48px;display:flex;align-items:center;gap:10px;padding:0 18px;background:linear-gradient(90deg,#285783,#3e6e9d);color:#fff;font-size:16px;box-shadow:0 2px 5px #102d4a33;z-index:3}
+#sifer-access .sa-window-mark{color:#ff9b21;font-size:25px}
+#sifer-access .sa-window-controls{margin-left:auto;font-size:19px;letter-spacing:4px;white-space:nowrap}
+#sifer-access .sa-shell{display:grid;grid-template-columns:minmax(340px,47%) minmax(0,53%);flex:1;min-height:0;width:100%;padding:clamp(18px,3vw,46px);gap:clamp(20px,3vw,46px);background:linear-gradient(135deg,#f4f8fc,#d6e4f3)}
+#sifer-access .sa-brand{position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-height:0;height:100%;overflow:hidden;padding:clamp(22px,3vw,42px);border-radius:4px;background:linear-gradient(130deg,#edf3f9 0%,#d4e1ef 48%,#486784 100%);color:#163a61}
+#sifer-access .sa-brand:before{content:"";position:absolute;inset:0;z-index:-2;background:radial-gradient(ellipse at 28% 70%,#bd7b3c55,transparent 36%),linear-gradient(90deg,#ffffff35,#c6d6e8aa)}
+#sifer-access .sa-photo-glow{position:absolute;z-index:-1;left:-10%;bottom:-8%;width:75%;height:52%;background:radial-gradient(ellipse at 45% 75%,#d89a4c88,transparent 55%),linear-gradient(130deg,transparent 35%,#183d5e66);filter:blur(10px)}
+#sifer-access .sa-ring{left:50%;top:37%;width:125%;opacity:.09}
+#sifer-access .sa-brand-top{align-self:flex-start;display:flex;align-items:center;gap:10px;color:#214b75;font-size:13px;letter-spacing:.12em;font-weight:700}
+#sifer-access .sa-brand-dot{background:#f29d12;box-shadow:0 0 0 5px #f29d1226}
+#sifer-access .sa-logo{width:min(440px,92%);max-height:310px;margin:clamp(26px,5vh,60px) auto 10px;filter:drop-shadow(0 8px 12px #153d5b12);object-fit:contain}
+#sifer-access .sa-brand-caption{margin:0;text-align:center;font-size:clamp(14px,1.5vw,22px);font-style:italic;letter-spacing:.01em;color:#17456f;font-weight:500}
+#sifer-access .sa-feature-list{display:grid;gap:12px;align-self:flex-end;margin:auto 8% 20px auto;color:#fff;font-size:clamp(14px,1.35vw,19px);text-shadow:0 1px 5px #102c48}
+#sifer-access .sa-brand-slogan{position:absolute;left:10%;bottom:6%;font-family:"Segoe Print","Comic Sans MS",cursive;font-size:clamp(16px,1.5vw,22px);font-style:italic;color:white;text-shadow:0 2px 8px #173b5b}
+#sifer-access .sa-brand-slogan i{display:block;width:90%;height:3px;margin:8px 0 0 12px;background:#f29d12;transform:rotate(-9deg);border-radius:50%}
+#sifer-access .sa-brand-foot{display:none}
+#sifer-access .sa-panel{display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;padding:0;background:transparent}
+#sifer-access .sa-content{width:100%;max-width:770px;max-height:100%;overflow:auto;background:#f7fafdde;border:1px solid #c1d4e7;border-radius:6px;box-shadow:0 10px 26px #254e751c}
+#sifer-access .sa-card{width:100%;padding:0;background:transparent;border:0;border-radius:6px;box-shadow:none}
+#sifer-access .sa-login-title{display:flex;align-items:center;gap:24px;padding:24px 38px;background:linear-gradient(90deg,#17466f,#234f78);color:white;font-size:clamp(22px,2vw,30px);font-weight:700}
+#sifer-access .sa-user-glyph{font-size:39px;line-height:1}
+#sifer-access .sa-eyebrow{padding:24px 38px 0;color:#173f68;font-size:0;letter-spacing:0}
+#sifer-access .sa-card h1{display:none}
+#sifer-access .sa-muted{padding:0 38px;color:#59738e}
+#sifer-access #sa-login{padding:16px 38px 10px}
+#sifer-access .sa-field{margin:18px 0 28px}
+#sifer-access .sa-field label{display:block;margin-bottom:8px;color:#153f69;font-size:18px;font-weight:700;text-transform:none;letter-spacing:0}
+#sifer-access .sa-field input{width:100%;height:56px;border:1.5px solid #a9c2dd;border-radius:6px;background:#fff;color:#163b62;padding:0 16px;font-size:17px;outline:none;box-shadow:inset 0 1px 2px #1a416010}
+#sifer-access .sa-field input:focus{border-color:#1761b7;box-shadow:0 0 0 3px #1761b71b}
+#sifer-access .sa-input-wrap{position:relative}
+#sifer-access .sa-input-wrap input{padding-right:56px}
+#sifer-access .sa-eye{position:absolute;right:8px;top:8px;width:40px;height:40px;display:grid;place-items:center;border:0;background:transparent;color:#285783;cursor:pointer}
+#sifer-access .sa-eye svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2}
+#sifer-access .sa-btn{display:flex;align-items:center;justify-content:center;gap:16px;width:100%;min-height:62px;margin:14px 0 4px;border:0;border-radius:6px;background:linear-gradient(90deg,#0755ad,#0755ad);color:white;font-size:19px;font-weight:700;cursor:pointer}
+#sifer-access .sa-btn:hover{background:#064b98}
+#sifer-access .sa-btn span{font-size:24px}
+#sifer-access .sa-error{color:#b42318;font-size:13px;min-height:0}
+#sifer-access .sa-remember{padding:8px 38px 12px}
+#sifer-access .sa-remember label{display:flex;align-items:center;gap:10px;color:#173d63;font-size:17px}
+#sifer-access .sa-remember input{width:20px;height:20px;accent-color:#0755ad}
+#sifer-access .sa-help{margin:0 38px 16px;padding:0;border:0;background:transparent;color:#1d5a91;text-decoration:underline;cursor:pointer}
+#sifer-access .sa-login-meta{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:12px 38px 22px;padding-top:18px;border-top:1px solid #c3d3e3;color:#173d63;font-size:14px}
+#sifer-access .sa-login-meta small{color:#6d849c}
+#sifer-access .sa-statusbar{height:66px;flex:0 0 66px;display:flex;align-items:center;gap:22px;padding:0 26px;background:linear-gradient(90deg,#17466f,#234f78);color:#fff;font-size:14px}
+#sifer-access .sa-statusbar span{white-space:nowrap}
+#sifer-access .sa-statusbar span:last-child{margin-left:auto}
+#sifer-access .sa-statusbar i{display:inline-block;width:13px;height:13px;margin-right:8px;border-radius:50%;background:#4dcc78;vertical-align:-2px}
+@media(max-width:900px){#sifer-access .sa-shell{grid-template-columns:minmax(240px,40%) minmax(0,60%);padding:14px;gap:14px}#sifer-access .sa-login-title{padding:18px 22px}#sifer-access #sa-login{padding:10px 22px}#sifer-access .sa-remember{padding-left:22px}#sifer-access .sa-help{margin-left:22px}#sifer-access .sa-login-meta{margin-left:22px;margin-right:22px}#sifer-access .sa-eyebrow{padding-left:22px}}
+@media(max-width:650px){#sifer-access .sa-windowbar{height:40px;flex-basis:40px;font-size:12px;padding:0 9px}#sifer-access .sa-window-controls{font-size:14px;letter-spacing:1px}#sifer-access .sa-shell{grid-template-columns:minmax(0,1fr);gap:10px;padding:10px;overflow:auto}#sifer-access .sa-brand{min-height:185px;height:185px;padding:12px}#sifer-access .sa-logo{width:min(190px,45%);max-height:75px;margin:4px auto}#sifer-access .sa-brand-caption{font-size:13px}#sifer-access .sa-feature-list,#sifer-access .sa-brand-slogan{display:none}#sifer-access .sa-ring{width:100%;top:50%}#sifer-access .sa-panel{align-items:flex-start}#sifer-access .sa-content{max-height:none}#sifer-access .sa-login-title{padding:14px 18px;font-size:21px}#sifer-access #sa-login{padding:8px 18px}#sifer-access .sa-field{margin:14px 0 18px}#sifer-access .sa-field input{height:48px;font-size:15px}#sifer-access .sa-btn{min-height:50px;font-size:16px}#sifer-access .sa-remember{padding:6px 18px}#sifer-access .sa-help{margin-left:18px}#sifer-access .sa-login-meta{margin:8px 18px 16px;font-size:11px}#sifer-access .sa-statusbar{height:auto;min-height:36px;flex-basis:auto;padding:8px 12px;font-size:10px;gap:8px;flex-wrap:wrap}#sifer-access .sa-statusbar span:last-child{display:none}}
