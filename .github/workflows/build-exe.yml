@@ -1,5 +1,9 @@
 name: Compilar Ejecutable Windows (.exe)
 
+concurrency:
+  group: sifer360-licoreria-windows-release-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [ main, master ]
