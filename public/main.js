@@ -174,7 +174,6 @@ function seed(){
     suppliers:[],
     sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],movimientosCaja:[],kardex:[],counts:[],
     lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],
-    sicoven:{version:1,config:{},entries:[],errors:[],lastSyncAt:null},
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
   };
@@ -186,7 +185,6 @@ function stateSnapshot(){
     sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,cambiosDivisas:S.cambiosDivisas,
     casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],
-    sicoven:S.sicoven||null,
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
   };
 }
@@ -541,12 +539,6 @@ function mergeRemoteSnapshot(local,remote){
   if(!remote||typeof remote!=='object')return false;
   const merged={...local};
   for(const [key,value] of Object.entries(remote)){
-    if(key==='sicoven'&&value&&typeof value==='object'&&local[key]&&typeof local[key]==='object'){
-      const base=local[key],incoming=value;
-      const mergeBy=(a,b,keyName)=>{const map=new Map();for(const item of [...(Array.isArray(a)?a:[]),...(Array.isArray(b)?b:[])]){const id=item&&item[keyName];if(id===undefined||id===null)continue;map.set(String(id),item);}return [...map.values()];};
-      merged[key]={...base,...incoming,config:{...(base.config||{}),...(incoming.config||{})},entries:mergeBy(base.entries,incoming.entries,'id'),errors:mergeBy(base.errors,incoming.errors,'key'),balanceReports:mergeBy(base.balanceReports,incoming.balanceReports,'id'),bankMovements:mergeBy(base.bankMovements,incoming.bankMovements,'id'),islrVouchers:mergeBy(base.islrVouchers,incoming.islrVouchers,'id')};
-      continue;
-    }
     if(!Array.isArray(value)||!Array.isArray(local[key])){merged[key]=value;continue;}
     const map=new Map();
     const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','cxc','cortesZ','openings','movements','returns','voids'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
@@ -567,7 +559,7 @@ async function networkSyncAttempt(){
     if(result&&result.ok&&result.state){
       const changed=mergeRemoteSnapshot(local,result.state);
       networkLastStatus=result.role||'connected';
-      if(changed){if(window.SIFERSicoven&&S)try{window.SIFERSicoven.syncFromPOS(S);}catch(e){console.error('[Sicoven] Error al contabilizar cambios recibidos:',e);}await posSqliteDriver.saveState(stateSnapshot());}
+
       const status=$('#sbMsg');if(status)status.textContent=networkLastStatus==='server'?'Servidor LAN · sincronizado':networkLastStatus==='client'?'Cliente LAN · sincronizado':'Modo local';
     }else networkLastStatus='local';
   }catch(error){
@@ -581,7 +573,6 @@ function scheduleNetworkSync(){
   networkSyncTimer=setTimeout(()=>{networkSyncAttempt();},1800);
 }
 function save(){
-  if(window.SIFERSicoven&&S)try{window.SIFERSicoven.syncFromPOS(S);}catch(e){console.error('[Sicoven] No se pudo sincronizar contabilidad:',e);}
   const state=stateSnapshot();
   posSqliteDriver.saveState(state).catch(e=>persistenceError(e));
   captureNewOperations();
@@ -597,7 +588,6 @@ function load(){
     if(!d||d.v!==1||!Array.isArray(d.products)||!d.cfg)return false;
     const seedMap={};SEED.forEach(sp=>{seedMap[sp.code]=sp;});
     S.cfg=Object.assign(S.cfg,d.cfg);
-    if(d.sicoven&&typeof d.sicoven==='object')S.sicoven=d.sicoven;
     S.cortesZ=Array.isArray(d.cortesZ)?d.cortesZ:[];
     S.movimientosCaja=Array.isArray(d.movimientosCaja)?d.movimientosCaja:[];
     const legacyCaja=String(S.cfg.caja||'01');
@@ -2437,7 +2427,6 @@ function comprasDlg(initialTab){
       });
       (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
       (S.retencionesIva||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||''))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
-      if(S.sicoven&&Array.isArray(S.sicoven.islrVouchers))(S.sicoven.islrVouchers||[]).filter(x=>Number(x.cxpPurchaseNo)===Number(c.no)||(String(x.invoiceNumber||'').trim()===String(c.docProv||'').trim()&&String(x.supplierRif||'').toUpperCase().replace(/[^A-Z0-9]/g,'')===String(c.supplier&&c.supplier.rif||'').toUpperCase().replace(/[^A-Z0-9]/g,''))).forEach(x=>{x.void=true;x.status='ANULADO JUNTO CON COMPRA COM-'+pad(c.no);x.voidedAt=Date.now();});
       save();renderAll();renderPurchaseHist(v);
       msg('Compra COM-'+pad(c.no)+' anulada. Se revirtió el ingreso en inventario y Kardex.');
     };
@@ -5484,7 +5473,7 @@ function seniatSudebanDlg(initialTab){
     '</div><p class="hint">Los números de control asignados son correlativos y consecutivos conforme a la Providencia SENIAT 0071 sobre emisión de facturas y otros documentos.</p>';
   };
 
-  const drawBankOps=()=>{const xs=(S.fiscalBankOperations||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));return '<h3>Registro auxiliar de operaciones bancarias sin nuevo documento fiscal</h3><p class="hint">Registro de control solicitado por el usuario/contador. Estas operaciones no se incorporan al Libro de Ventas ni al Libro de Compras, no generan IVA/IGTF automáticamente y no sustituyen facturas, comprobantes o soportes fiscales. Cada fila enlaza con su asiento de Sicoven.</p><div class="gridwrap"><table class="grid" style="min-width:850px"><thead><tr><th>Fecha</th><th>Referencia</th><th>Descripción</th><th>Cuenta banco</th><th>Contrapartida</th><th>Moneda</th><th class="r">Monto original</th><th class="r">Equiv. USD</th><th>Asiento Sicoven</th><th>Motivo / tratamiento</th></tr></thead><tbody>'+xs.map(x=>'<tr><td>'+esc(x.date||'—')+'</td><td>'+esc(x.reference||'—')+'</td><td>'+esc(x.description||'—')+'</td><td>'+esc(x.accountCode||'—')+'</td><td>'+esc(x.counterpartAccount||'—')+'</td><td>'+esc(x.currency||'—')+'</td><td class="r">'+nf(x.amount||0)+'</td><td class="r">'+nf(x.amountUsd||0)+'</td><td>'+esc(x.accountingEntryId||'—')+'</td><td>'+esc((x.fiscalTreatment==='LIQUIDACION_SIN_NUEVO_DOCUMENTO'?'LIQUIDACIÓN AGREGADA · Sin nueva factura · ':'NO GRAVABLE · ')+(x.fiscalReason||'Requiere soporte')+(x.fiscalReference?' · Soporte: '+x.fiscalReference:''))+'</td></tr>').join('')+'</tbody></table></div>'+(xs.length?'':'<p class="hint">Todavía no hay operaciones bancarias auxiliares. Aquí aparecerán operaciones no gravables y liquidaciones agregadas, siempre enlazadas con su asiento de Sicoven.</p>');};
+  const drawBankOps=()=>{const xs=(S.fiscalBankOperations||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));return '<h3>Registro auxiliar de operaciones bancarias sin nuevo documento fiscal</h3><p class="hint">Registro de control solicitado por el usuario/contador. Estas operaciones no se incorporan al Libro de Ventas ni al Libro de Compras, no generan IVA/IGTF automáticamente y no sustituyen facturas, comprobantes o soportes fiscales. Cada fila conserva su referencia interna de control.</p><div class="gridwrap"><table class="grid" style="min-width:850px"><thead><tr><th>Fecha</th><th>Referencia</th><th>Descripción</th><th>Cuenta banco</th><th>Contrapartida</th><th>Moneda</th><th class="r">Monto original</th><th class="r">Equiv. USD</th><th>Asiento Sicoven</th><th>Motivo / tratamiento</th></tr></thead><tbody>'+xs.map(x=>'<tr><td>'+esc(x.date||'—')+'</td><td>'+esc(x.reference||'—')+'</td><td>'+esc(x.description||'—')+'</td><td>'+esc(x.accountCode||'—')+'</td><td>'+esc(x.counterpartAccount||'—')+'</td><td>'+esc(x.currency||'—')+'</td><td class="r">'+nf(x.amount||0)+'</td><td class="r">'+nf(x.amountUsd||0)+'</td><td>'+esc(x.accountingEntryId||'—')+'</td><td>'+esc((x.fiscalTreatment==='LIQUIDACION_SIN_NUEVO_DOCUMENTO'?'LIQUIDACIÓN AGREGADA · Sin nueva factura · ':'NO GRAVABLE · ')+(x.fiscalReason||'Requiere soporte')+(x.fiscalReference?' · Soporte: '+x.fiscalReference:''))+'</td></tr>').join('')+'</tbody></table></div>'+(xs.length?'':'<p class="hint">Todavía no hay operaciones bancarias auxiliares. Aquí aparecerán operaciones no gravables y liquidaciones agregadas, con sus referencias internas de control.</p>');};
 
   const renderTabContent=()=>{
     const content=$('#snContent',el);
@@ -6021,10 +6010,15 @@ function printCorteZ(z,autoPrint){
   const line=(a,b)=>'<div class="zr"><span>'+esc(a)+'</span><b>'+esc(b==null?'—':String(b))+'</b></div>';
   const reconciliation=Array.isArray(z.reconciliation)?z.reconciliation:[];
   const recHtml=reconciliation.map(r=>'<div class="zrec"><b>'+esc(r.name)+' ('+esc(r.cur)+')</b><div class="zrecvals"><span>Sist. '+esc(nf(r.system))+'</span><span>Real '+esc(r.real==null?'—':nf(r.real))+'</span><b>Dif. '+esc(r.diff==null?'—':(r.diff>0?'+':'')+nf(r.diff))+'</b></div></div>').join('');
+  const productRows=Array.isArray(z.productSales)?z.productSales:[];
+  const productHtml=productRows.length?'<div class="zdetail"><table><thead><tr><th>SKU / Código</th><th>Producto</th><th class="qty">Cant.</th></tr></thead><tbody>'+productRows.map(p=>'<tr><td>'+esc(p.code)+'</td><td>'+esc(p.desc)+'</td><td class="qty">'+esc(fq(Number(p.qty)||0))+'</td></tr>').join('')+'</tbody></table></div>':'<div class="zrec">Sin detalle de productos para este corte.</div>';
+  const adjustmentRows=Array.isArray(z.inventoryAdjustments)?z.inventoryAdjustments:[];
+  const adjustmentHtml=adjustmentRows.length?'<div class="zdetail"><table><thead><tr><th>SKU / Código</th><th>Producto / motivo</th><th class="qty">Ajuste</th></tr></thead><tbody>'+adjustmentRows.map(a=>'<tr><td>'+esc(a.code)+'</td><td>'+esc(a.desc)+(a.doc&&a.doc!=='—'?'<br><small>'+esc(a.doc)+'</small>':'')+(a.reason?'<br><small>'+esc(a.reason)+'</small>':'')+'</td><td class="qty">'+(Number(a.sign)>0?'+':'−')+esc(fq(Number(a.qty)||0))+'</td></tr>').join('')+'</tbody></table></div>':'<div class="zrec">No se registraron ajustes positivos o negativos de inventario en este turno.</div>';
   const notes=z.observations?line('Observaciones',z.observations):'';
   const html='<div class="zpaper"><center><b>'+esc(S.cfg.empresa||'SIFER 360')+'</b><br>REPORTE Z · CIERRE DE CAJA<br><small>REPORTE DE CONTROL INTERNO · NO FISCAL</small></center><hr>'+
     line('Corte Z',z.id)+line('Fecha',fmtDT(z.closedAt))+line('Caja',z.cashbox)+line('Cajero',z.cashier)+line('Desde',z.openedAt?fmtDT(z.openedAt):'—')+line('Desde factura',z.invoiceFrom||'—')+line('Hasta factura',z.invoiceTo||'—')+
     '<hr><b>RESUMEN DE VENTAS</b>'+line('Facturas válidas',String(z.salesCount))+line('Anulaciones',String(z.voidCount))+line('Ventas netas USD',usd(z.netUsd))+line('Ventas netas Bs.',bsf(z.netBs))+line('IVA USD',usd(z.ivaUsd))+line('IGTF USD',usd(z.igtfUsd))+
+    '<hr><b>CONSOLIDADO DE PRODUCTOS VENDIDOS · SKU / CÓDIGO / CANTIDAD</b>'+productHtml+'<hr><b>AJUSTES DE INVENTARIO · POSITIVOS (+) Y NEGATIVOS (−)</b>'+adjustmentHtml+
     '<hr><b>RESUMEN DE COBROS Y CRÉDITOS</b>'+line('Cobros de CxC recibidos',usd(z.detailTotals&&z.detailTotals.cxcUsd||0)+' / '+bsf(z.detailTotals&&z.detailTotals.cxcBs||0))+line('Depósitos Cashea recibidos',usd(z.detailTotals&&z.detailTotals.casheaUsd||0))+line('Ventas a crédito generadas (CxC)',usd(z.detailTotals&&z.detailTotals.creditSalesUsd||0))+
     '<hr><b>TOTALES COBRADOS · POR MÉTODO</b>'+(Object.keys(z.payments||{}).length?Object.entries(z.payments).map(([name,amount])=>line(name,name.includes('(VES)')?bsf(amount):usd(amount))).join(''):'<div class="zrec">No hay cobros registrados por método en este corte.</div>')+'<hr><b>ARQUEO DE CAJA · POR MÉTODO</b><div class="zrec-head"><b>SISTEMA</b> / <b>REAL CONTADO O CONCILIADO</b> / <b>DIFERENCIA</b></div>'+(recHtml||'<div class="zrec">Este Corte Z no contiene detalle de arqueo por método.</div>')+
     '<hr><b>RESULTADO DEL ARQUEO</b>'+line('Estado de conciliación',z.reconciliationStatus||(reconciliation.length?zDiffStatus(reconciliation):'SIN ARQUEO DETALLADO · CORTE ANTERIOR'))+line('Faltante USD',usd(z.shortageUsd||0))+line('Sobrante USD',usd(z.surplusUsd||0))+line('Faltante Bs.',bsf(z.shortageBs||0))+line('Sobrante Bs.',bsf(z.surplusBs||0))+
@@ -6033,7 +6027,7 @@ function printCorteZ(z,autoPrint){
   const printScript=autoPrint?'window.onload=()=>{window.focus();window.print()}':'window.onload=()=>window.focus()';
   const previewToolbar='<div class="zpreview-tools"><b>Vista previa de impresión · Térmica 80 mm</b><button type="button" onclick="window.print()">Imprimir 80 mm</button><button type="button" onclick="window.close()">Cerrar vista previa</button></div>';
   const previewCss='.zpreview-tools{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px;background:#f1f5f9;border-bottom:1px solid #cbd5e1;font:13px Arial,sans-serif}.zpreview-tools button{padding:8px 12px;cursor:pointer;border:1px solid #64748b;border-radius:5px;background:#fff;font-weight:600}';
-  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(z.id)+'</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>@page{size:80mm auto;margin:3mm}*{box-sizing:border-box}body{margin:0;color:#000;font:10px/1.3 "Courier New",monospace}.zpaper{width:74mm;margin:auto}.zr{display:flex;justify-content:space-between;align-items:flex-start;gap:5px;margin:3px 0}.zr span{max-width:48mm;overflow-wrap:anywhere}.zr b{text-align:right;overflow-wrap:anywhere}.zrec{margin:5px 0;border-bottom:1px dotted #777;padding-bottom:4px}.zrecvals{display:flex;justify-content:space-between;gap:3px;font-size:9px;flex-wrap:wrap}.zrec-head{font-size:9px;margin:4px 0}hr{border:0;border-top:1px dashed #333;margin:7px 0}center{line-height:1.5}small{font-size:8px}'+previewCss+'@media print{body{width:74mm}.zpreview-tools{display:none!important}}</style></head><body>'+(autoPrint?'':previewToolbar)+html+'<script>'+printScript+'<\/script></body></html>');
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(z.id)+'</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>@page{size:80mm auto;margin:3mm}*{box-sizing:border-box}body{margin:0;color:#000;font:10px/1.3 "Courier New",monospace}.zpaper{width:74mm;margin:auto}.zr{display:flex;justify-content:space-between;align-items:flex-start;gap:5px;margin:3px 0}.zr span{max-width:48mm;overflow-wrap:anywhere}.zr b{text-align:right;overflow-wrap:anywhere}.zrec{margin:5px 0;border-bottom:1px dotted #777;padding-bottom:4px}.zrecvals{display:flex;justify-content:space-between;gap:3px;font-size:9px;flex-wrap:wrap}.zrec-head{font-size:9px;margin:4px 0}.zdetail{width:100%;margin:4px 0 8px}.zdetail table{width:100%;border-collapse:collapse;table-layout:fixed;font:8px/1.25 monospace}.zdetail th,.zdetail td{border-bottom:1px dotted #777;padding:3px 1px;text-align:left;vertical-align:top;overflow-wrap:anywhere}.zdetail th.qty,.zdetail td.qty{text-align:right;width:12mm;white-space:nowrap}.zdetail th:first-child,.zdetail td:first-child{width:19mm}.zdetail small{font-size:7px}hr{border:0;border-top:1px dashed #333;margin:7px 0}center{line-height:1.5}small{font-size:8px}'+previewCss+'@media print{body{width:74mm}.zpreview-tools{display:none!important}}</style></head><body>'+(autoPrint?'':previewToolbar)+html+'<script>'+printScript+'<\/script></body></html>');
   w.document.close();
 }
 function corteZDlg(){
@@ -6054,6 +6048,19 @@ function corteZDlg(){
     '<p class="hint">El botón de impresión abre el diálogo del sistema para seleccionar una impresora térmica de 80 mm. Este reporte es no fiscal; una impresora fiscal requiere su integración/controlador homologado para emitir documentos fiscales.</p>'+
     '<h3>Historial de Cortes Z</h3><div class="gridwrap"><table class="grid" style="min-width:560px"><thead><tr><th>Corte</th><th>Fecha</th><th>Cajero</th><th class="r">Ventas USD</th><th>Resultado</th><th>Acciones</th></tr></thead><tbody id="zHistory"></tbody></table></div></div>');
   const getPeriodSales=()=>S.sales.filter(s=>String(s.cashbox||box)===box&&Number(s.ts)>=shiftStart());
+  const getProductSales=(sales)=>{
+    const map=new Map();
+    (sales||[]).filter(s=>!s.void).forEach(s=>(s.lines||[]).forEach(l=>{
+      const code=String(l.code||l.sku||'SIN-CODIGO');
+      const row=map.get(code)||{code,desc:String(l.desc||l.name||'Producto sin nombre'),qty:0};
+      row.qty=r2(row.qty+(Number(l.qty)||0));map.set(code,row);
+    }));
+    return [...map.values()].sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
+  };
+  const getInventoryAdjustments=(start,end)=>(S.kardex||[]).filter(k=>{
+    const ts=Number(k.ts)||0;
+    return ts>=Number(start)&&ts<=Number(end)&&['CONTEO','AJUSTE'].includes(String(k.type||'').toUpperCase());
+  }).map(k=>({code:String(k.code||'SIN-CODIGO'),desc:String((prod(k.code)||{}).desc||k.party||'Producto sin nombre'),qty:Math.abs(Number(k.qty)||0),sign:k.dir==='IN'?1:-1,doc:String(k.doc||'—'),reason:String(k.party||'')})).sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true})||a.doc.localeCompare(b.doc));
   const getRows=()=>{
     const sales=getPeriodSales().filter(s=>!s.void);
     const expected=zExpectedByMethod(sales,active||{});
@@ -6165,7 +6172,7 @@ function corteZDlg(){
       const all=getPeriodSales(),sales=all.filter(s=>!s.void),voids=all.filter(s=>s.void);
       const now=Date.now();
       const rec=result.rec.map(r=>Object.assign({},r,{real:r.real==null?null:Number(r.real),diff:r.diff==null?null:Number(r.diff)}));
-      const draft={id:'VISTA PREVIA · Z-'+box,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:now,openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),now,box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:result.total.status,shortageUsd:result.total.shortageUsd,surplusUsd:result.total.surplusUsd,shortageBs:result.total.shortageBs,surplusBs:result.total.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'previa'};
+      const draft={id:'VISTA PREVIA · Z-'+box,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:now,productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),now),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),now,box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:result.total.status,shortageUsd:result.total.shortageUsd,surplusUsd:result.total.surplusUsd,shortageBs:result.total.shortageBs,surplusBs:result.total.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'previa'};
       printCorteZ(draft,false);return;
     }
     if(e.target.id==='zClose'){
@@ -6180,7 +6187,7 @@ function corteZDlg(){
       const rec=result.rec.map(r=>Object.assign({},r,{real:Number(r.real),diff:Number(r.diff)}));
       const seqs=cajaSeqs(),seq=seqs[box]||{z:1};const zSeq=Number(seq.z)||1;seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
       const t=Object.assign({},result.total);
-      const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
+      const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now()),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
       getZHistory().push(z);
       save();
       const closedOpening=Object.assign({},active,{status:'cerrada',closedAt:z.closedAt,cutId:z.id});
@@ -6217,7 +6224,7 @@ function ensureVisible(tr,wrap){
 function renderHeader(){
   const c=S.cfg;
   const session=activeUser();
-  const dashboardButton=$('#btnDashboard');if(dashboardButton)dashboardButton.hidden=session.role!=='admin';const sicovenButton=$('#btnSicovenTop');if(sicovenButton)sicovenButton.hidden=session.role!=='admin';
+  const dashboardButton=$('#btnDashboard');if(dashboardButton)dashboardButton.hidden=session.role!=='admin';
   $('#winTitle').textContent=c.empresa;
   if($('#winSub'))$('#winSub').textContent=currentCaja()==='SIN-ASIGNAR'?'Dashboard administrativo · Sin caja asignada':'Punto de venta · Caja '+currentCaja();
   document.title='POS '+c.empresa;
