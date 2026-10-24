@@ -174,7 +174,6 @@ function seed(){
     suppliers:[],
     sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],movimientosCaja:[],kardex:[],counts:[],
     lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],
-    sicoven:{version:1,config:{},entries:[],errors:[],lastSyncAt:null},
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
   };
@@ -186,7 +185,6 @@ function stateSnapshot(){
     sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,cambiosDivisas:S.cambiosDivisas,
     casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],
-    sicoven:S.sicoven||null,
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
   };
 }
@@ -541,12 +539,6 @@ function mergeRemoteSnapshot(local,remote){
   if(!remote||typeof remote!=='object')return false;
   const merged={...local};
   for(const [key,value] of Object.entries(remote)){
-    if(key==='sicoven'&&value&&typeof value==='object'&&local[key]&&typeof local[key]==='object'){
-      const base=local[key],incoming=value;
-      const mergeBy=(a,b,keyName)=>{const map=new Map();for(const item of [...(Array.isArray(a)?a:[]),...(Array.isArray(b)?b:[])]){const id=item&&item[keyName];if(id===undefined||id===null)continue;map.set(String(id),item);}return [...map.values()];};
-      merged[key]={...base,...incoming,config:{...(base.config||{}),...(incoming.config||{})},entries:mergeBy(base.entries,incoming.entries,'id'),errors:mergeBy(base.errors,incoming.errors,'key'),balanceReports:mergeBy(base.balanceReports,incoming.balanceReports,'id'),bankMovements:mergeBy(base.bankMovements,incoming.bankMovements,'id'),islrVouchers:mergeBy(base.islrVouchers,incoming.islrVouchers,'id')};
-      continue;
-    }
     if(!Array.isArray(value)||!Array.isArray(local[key])){merged[key]=value;continue;}
     const map=new Map();
     const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','cxc','cortesZ','openings','movements','returns','voids'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
@@ -567,7 +559,6 @@ async function networkSyncAttempt(){
     if(result&&result.ok&&result.state){
       const changed=mergeRemoteSnapshot(local,result.state);
       networkLastStatus=result.role||'connected';
-      if(changed){if(window.SIFERSicoven&&S)try{window.SIFERSicoven.syncFromPOS(S);}catch(e){console.error('[Sicoven] Error al contabilizar cambios recibidos:',e);}await posSqliteDriver.saveState(stateSnapshot());}
       const status=$('#sbMsg');if(status)status.textContent=networkLastStatus==='server'?'Servidor LAN · sincronizado':networkLastStatus==='client'?'Cliente LAN · sincronizado':'Modo local';
     }else networkLastStatus='local';
   }catch(error){
@@ -581,7 +572,6 @@ function scheduleNetworkSync(){
   networkSyncTimer=setTimeout(()=>{networkSyncAttempt();},1800);
 }
 function save(){
-  if(window.SIFERSicoven&&S)try{window.SIFERSicoven.syncFromPOS(S);}catch(e){console.error('[Sicoven] No se pudo sincronizar contabilidad:',e);}
   const state=stateSnapshot();
   posSqliteDriver.saveState(state).catch(e=>persistenceError(e));
   captureNewOperations();
@@ -597,7 +587,6 @@ function load(){
     if(!d||d.v!==1||!Array.isArray(d.products)||!d.cfg)return false;
     const seedMap={};SEED.forEach(sp=>{seedMap[sp.code]=sp;});
     S.cfg=Object.assign(S.cfg,d.cfg);
-    if(d.sicoven&&typeof d.sicoven==='object')S.sicoven=d.sicoven;
     S.cortesZ=Array.isArray(d.cortesZ)?d.cortesZ:[];
     S.movimientosCaja=Array.isArray(d.movimientosCaja)?d.movimientosCaja:[];
     const legacyCaja=String(S.cfg.caja||'01');
@@ -2437,7 +2426,6 @@ function comprasDlg(initialTab){
       });
       (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
       (S.retencionesIva||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||''))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
-      if(S.sicoven&&Array.isArray(S.sicoven.islrVouchers))(S.sicoven.islrVouchers||[]).filter(x=>Number(x.cxpPurchaseNo)===Number(c.no)||(String(x.invoiceNumber||'').trim()===String(c.docProv||'').trim()&&String(x.supplierRif||'').toUpperCase().replace(/[^A-Z0-9]/g,'')===String(c.supplier&&c.supplier.rif||'').toUpperCase().replace(/[^A-Z0-9]/g,''))).forEach(x=>{x.void=true;x.status='ANULADO JUNTO CON COMPRA COM-'+pad(c.no);x.voidedAt=Date.now();});
       save();renderAll();renderPurchaseHist(v);
       msg('Compra COM-'+pad(c.no)+' anulada. Se revirtió el ingreso en inventario y Kardex.');
     };
@@ -6211,7 +6199,6 @@ function ensureVisible(tr,wrap){
 function renderHeader(){
   const c=S.cfg;
   const session=activeUser();
-  const dashboardButton=$('#btnDashboard');if(dashboardButton)dashboardButton.hidden=session.role!=='admin';const sicovenButton=$('#btnSicovenTop');if(sicovenButton)sicovenButton.hidden=session.role!=='admin';
   $('#winTitle').textContent=c.empresa;
   if($('#winSub'))$('#winSub').textContent=currentCaja()==='SIN-ASIGNAR'?'Dashboard administrativo · Sin caja asignada':'Punto de venta · Caja '+currentCaja();
   document.title='POS '+c.empresa;
