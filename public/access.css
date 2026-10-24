@@ -52,3 +52,9 @@ body.sa-locked .app,body.sa-locked .statusbar{visibility:hidden}
 @media(max-width:860px){.sa-shell{grid-template-columns:1fr}.sa-brand{padding:24px 24px 20px;min-height:0;height:auto}.sa-logo{width:min(200px,52%);max-height:100px}.sa-ring{width:260%;top:50%}.sa-brand-caption,.sa-brand-foot{display:none}.sa-brand-top{justify-content:center}.sa-panel{padding:28px 20px 24px;justify-content:flex-start}.sa-card h1,.sa-card h2{font-size:26px}.sa-roles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.sa-roles{grid-template-columns:1fr 1fr;gap:8px}.sa-role-option{padding:10px 8px;gap:7px}.sa-role-option b{font-size:11px}.sa-role-option small{font-size:9px}.sa-opening-grid{grid-template-columns:1fr}.sa-panel{padding-left:18px;padding-right:18px}}
 @media(prefers-reduced-motion:reduce){.sa-ring{animation:none;opacity:.09}#sifer-access *{transition:none!important}}
+
+/* Login responsive: el logo nunca debe dominar ni desbordar la pantalla. */
+#sifer-access .sa-logo{width:min(440px,90%);max-width:100%;height:auto;max-height:280px;object-fit:contain;flex:none}
+#sifer-access .sa-brand{min-width:0}
+#sifer-access .sa-panel{min-width:0}
+@media(max-width:760px){#sifer-access .sa-shell{grid-template-columns:minmax(0,1fr)}#sifer-access .sa-brand{min-height:190px;min-height:28dvh;padding:18px 22px}#sifer-access .sa-logo{width:min(260px,68%);max-height:100px}#sifer-access .sa-brand-foot{display:none}#sifer-access .sa-brand-caption{margin-top:0}#sifer-access .sa-panel{padding:24px 18px}}
