@@ -539,6 +539,7 @@ function mergeRemoteSnapshot(local,remote){
   if(!remote||typeof remote!=='object')return false;
   const merged={...local};
   for(const [key,value] of Object.entries(remote)){
+    if(key==='sicoven')continue; // Ignora snapshots antiguos de la contabilidad retirada.
     if(!Array.isArray(value)||!Array.isArray(local[key])){merged[key]=value;continue;}
     const map=new Map();
     const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','cxc','cortesZ','openings','movements','returns','voids'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
