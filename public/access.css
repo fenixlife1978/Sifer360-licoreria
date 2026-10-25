@@ -1,163 +1,719 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
-#sifer-access{position:fixed;inset:0;z-index:99999;overflow:auto;background:#f3f5f8;color:#122642;font-family:Poppins,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;color-scheme:light}
-#sifer-access *{box-sizing:border-box}
-#sifer-access button,#sifer-access input,#sifer-access select{font:inherit}
-.sa-shell{display:grid;grid-template-columns:minmax(340px,5fr) 6fr;min-height:100%;width:100%;background:#f3f5f8}
-.sa-brand{position:relative;isolation:isolate;overflow:hidden;background:#122642;display:flex;flex-direction:column;justify-content:space-between;padding:clamp(28px,4vw,48px);color:#c9d3e3;min-height:100vh}
-.sa-brand:after{content:"";position:absolute;z-index:-1;inset:0;background:radial-gradient(circle at 50% 42%,transparent 0,transparent 35%,rgba(11,26,46,.55) 100%);pointer-events:none}
-.sa-ring{position:absolute;z-index:-1;left:50%;top:44%;width:150%;aspect-ratio:1;translate:-50% -50%;opacity:.09;animation:sa-turn 2.4s cubic-bezier(.2,.8,.2,1) both}
-@keyframes sa-turn{from{rotate:-70deg;opacity:0}to{rotate:0deg;opacity:.09}}
-.sa-brand>*:not(.sa-ring){position:relative;z-index:1}
-.sa-brand-top{display:flex;align-items:center;gap:10px;font-size:13px;letter-spacing:.16em;font-weight:700;color:#fff}
-.sa-brand-dot{width:10px;height:10px;border-radius:50%;background:#F5A623;box-shadow:0 0 0 5px #f5a62326}
-.sa-logo{display:block;width:min(440px,90%);height:auto;margin:auto;max-height:280px}
-.sa-brand-caption{text-align:center;font-size:11px;letter-spacing:.19em;color:#c9d3e3;margin-top:-20px}
-.sa-brand-foot{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;font-size:12px;line-height:1.5}
-.sa-clock{font-size:34px;font-weight:600;color:#fff;letter-spacing:.02em;line-height:1;font-variant-numeric:tabular-nums}
-.sa-date{margin-top:7px;text-transform:capitalize;color:#c9d3e3}
-.sa-branch{text-align:right}.sa-branch b{display:block;color:#fff;font-weight:600}.sa-branch span{color:#c9d3e3}
-.sa-panel{display:flex;flex-direction:column;justify-content:center;align-items:center;padding:38px 24px 20px;gap:24px;min-width:0}
-.sa-content{width:100%;max-width:440px}
-.sa-card{width:100%;background:transparent;border:0;border-radius:0;padding:0;box-shadow:none}
-.sa-eyebrow{color:#9b6710;font-size:11px;letter-spacing:.15em;font-weight:700;text-transform:uppercase}
-.sa-card h1,.sa-card h2{font-size:30px;line-height:1.15;margin:9px 0 8px;font-weight:600;letter-spacing:-.025em;color:#122642}
-.sa-muted{margin:0 0 25px;color:#5d6b82;font-size:14px;line-height:1.6}
-.sa-roles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 23px}
-.sa-role-option{min-width:0;display:flex;gap:10px;align-items:center;text-align:left;padding:12px;border:1.5px solid #d5dce7;border-radius:12px;background:#fff;color:#122642;cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s}
-.sa-role-option:hover{border-color:#5d6b82}
-.sa-role-option[aria-pressed="true"]{border-color:#F5A623;background:#122642;color:#fff;box-shadow:0 0 0 3px #f5a62338}
-.sa-role-icon{display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:8px;background:#edf1f6;color:#5d6b82;font-size:19px}
-.sa-role-option[aria-pressed="true"] .sa-role-icon{background:#243b59;color:#F5A623}
-.sa-role-option b{display:block;font-size:12px;font-weight:700;line-height:1.35}
-.sa-role-option small{display:block;color:#5d6b82;font-size:10px;margin-top:3px;line-height:1.35}
-.sa-role-option[aria-pressed="true"] small{color:#c9d3e3}
-.sa-field{display:grid;gap:7px;margin:16px 0}
-.sa-field label{font-size:12px;color:#122642;font-weight:600;letter-spacing:.025em}
-.sa-field input,.sa-field select{width:100%;height:51px;background:#fff;border:1.5px solid #d5dce7;border-radius:10px;padding:0 14px;color:#122642;outline:none;font-size:14px;transition:border-color .15s,box-shadow .15s}
-.sa-field input::placeholder{color:#7e8ba0}
-.sa-field input:focus,.sa-field select:focus{border-color:#F5A623;box-shadow:0 0 0 4px #f5a62338}
-.sa-input-wrap{position:relative}.sa-input-wrap input{padding-right:52px}
-.sa-eye{position:absolute;right:5px;top:5px;width:41px;height:41px;border:0;border-radius:8px;background:transparent;color:#5d6b82;display:grid;place-items:center;cursor:pointer}
-.sa-eye:hover{color:#122642;background:#f3f5f8}.sa-eye svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.sa-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:53px;border:0;border-radius:10px;padding:12px 16px;background:#F5A623;color:#1a1405;font-size:15px;font-weight:700;cursor:pointer;transition:filter .15s,transform .08s}
-.sa-btn:hover{filter:brightness(1.04)}.sa-btn:active{transform:translateY(1px)}
-.sa-btn:focus-visible,.sa-role-option:focus-visible,.sa-eye:focus-visible,.sa-help:focus-visible{outline:3px solid #F5A623;outline-offset:3px}
-.sa-error{color:#b42318;font-size:12px;min-height:18px;margin:4px 0 8px;line-height:1.45}
-.sa-help{display:block;margin:14px auto 0;border:0;background:transparent;color:#122642;font-size:12px;font-weight:600;text-decoration:underline;text-decoration-color:#F5A623;text-decoration-thickness:2px;text-underline-offset:4px;cursor:pointer}
-.sa-small{font-size:11px;color:#5d6b82;line-height:1.65;margin-top:18px;text-align:center}
-.sa-footer{width:100%;max-width:440px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;font-size:10px;color:#8793a5}
-.sa-footer span+span:before{content:"·";margin-right:8px}
-.sa-top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:30px}.sa-user{display:flex;align-items:center;gap:12px}.sa-avatar{width:44px;height:44px;border-radius:14px;background:#122642;display:grid;place-items:center;color:#F5A623;font-weight:800}.sa-role{color:#9b6710;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.sa-dashgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.sa-module{background:#fff;border:1.5px solid #d5dce7;border-radius:14px;padding:18px 14px;text-align:left;color:#122642;cursor:pointer;min-height:115px}.sa-module:hover{border-color:#F5A623;transform:translateY(-1px)}.sa-module b{display:block;margin:12px 0 5px}.sa-module span{font-size:12px;color:#5d6b82}.sa-icon{font-size:23px}.sa-actions{display:flex;gap:10px}.sa-btn.secondary{background:transparent;color:#122642;border:1.5px solid #d5dce7}.sa-opening{max-width:660px;margin:2vh auto;padding:clamp(22px,4vw,38px);background:#fff;border:1.5px solid #d5dce7;border-radius:18px;position:relative;box-shadow:0 20px 60px #12264212}.sa-opening h2{margin:8px 0;font-size:27px}.sa-opening-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}.sa-opening .sa-field{margin:12px 0}.sa-summary{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}.sa-summary span{background:#f3f5f8;border:1px solid #d5dce7;padding:9px 12px;border-radius:10px;font-size:12px}.sa-warning{background:#fff7e8;border:1px solid #f0cb83;border-radius:11px;padding:12px;color:#69490b;font-size:12px;line-height:1.6;margin-top:14px}
-body.sa-locked .app,body.sa-locked .statusbar{visibility:hidden}
-@media(max-width:860px){.sa-shell{grid-template-columns:1fr}.sa-brand{padding:24px 24px 20px;min-height:0;height:auto}.sa-logo{width:min(200px,52%);max-height:100px}.sa-ring{width:260%;top:50%}.sa-brand-caption,.sa-brand-foot{display:none}.sa-brand-top{justify-content:center}.sa-panel{padding:28px 20px 24px;justify-content:flex-start}.sa-card h1,.sa-card h2{font-size:26px}.sa-roles{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:480px){.sa-roles{grid-template-columns:1fr 1fr;gap:8px}.sa-role-option{padding:10px 8px;gap:7px}.sa-role-option b{font-size:11px}.sa-role-option small{font-size:9px}.sa-opening-grid{grid-template-columns:1fr}.sa-panel{padding-left:18px;padding-right:18px}}
-@media(prefers-reduced-motion:reduce){.sa-ring{animation:none;opacity:.09}#sifer-access *{transition:none!important}}
 
-/* Login responsive: el logo nunca debe dominar ni desbordar la pantalla. */
-#sifer-access .sa-logo{width:min(440px,90%);max-width:100%;height:auto;max-height:280px;object-fit:contain;flex:none}
-#sifer-access .sa-brand{min-width:0}
-#sifer-access .sa-panel{min-width:0}
-@media(max-width:760px){#sifer-access .sa-shell{grid-template-columns:minmax(0,1fr)}#sifer-access .sa-brand{min-height:190px;min-height:28dvh;padding:18px 22px}#sifer-access .sa-logo{width:min(260px,68%);max-height:100px}#sifer-access .sa-brand-foot{display:none}#sifer-access .sa-brand-caption{margin-top:0}#sifer-access .sa-panel{padding:24px 18px}}
+/* =========================================================
+   PANTALLA DE ACCESO E INICIO DE SESIÓN - SIFER360 LICORERÍA
+   Fielmente idéntica al diseño de referencia visual
+   ========================================================= */
 
-/* Pantalla de acceso basada fielmente en la referencia visual proporcionada */
-#sifer-access{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;overflow:hidden;background:#dbe7f4;color:#173d63;font-family:"Segoe UI",Arial,sans-serif}
-#sifer-access *{box-sizing:border-box}
-#sifer-access .sa-windowbar{height:48px;flex:0 0 48px;display:flex;align-items:center;gap:10px;padding:0 18px;background:linear-gradient(90deg,#285783,#3e6e9d);color:#fff;font-size:16px;box-shadow:0 2px 5px #102d4a33;z-index:3}
-#sifer-access .sa-window-mark{color:#ff9b21;font-size:25px}
-#sifer-access .sa-window-controls{margin-left:auto;font-size:19px;letter-spacing:4px;white-space:nowrap}
-#sifer-access .sa-shell{display:grid;grid-template-columns:minmax(340px,47%) minmax(0,53%);flex:1;min-height:0;width:100%;padding:clamp(18px,3vw,46px);gap:clamp(20px,3vw,46px);background:linear-gradient(135deg,#f4f8fc,#d6e4f3)}
-#sifer-access .sa-brand{position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-height:0;height:100%;overflow:hidden;padding:clamp(22px,3vw,42px);border-radius:4px;background:linear-gradient(130deg,#edf3f9 0%,#d4e1ef 48%,#486784 100%);color:#163a61}
-#sifer-access .sa-brand:before{content:"";position:absolute;inset:0;z-index:-2;background:radial-gradient(ellipse at 28% 70%,#bd7b3c55,transparent 36%),linear-gradient(90deg,#ffffff35,#c6d6e8aa)}
-#sifer-access .sa-photo-glow{position:absolute;z-index:-1;left:-10%;bottom:-8%;width:75%;height:52%;background:radial-gradient(ellipse at 45% 75%,#d89a4c88,transparent 55%),linear-gradient(130deg,transparent 35%,#183d5e66);filter:blur(10px)}
-#sifer-access .sa-ring{left:50%;top:37%;width:125%;opacity:.09}
-#sifer-access .sa-brand-top{align-self:flex-start;display:flex;align-items:center;gap:10px;color:#214b75;font-size:13px;letter-spacing:.12em;font-weight:700}
-#sifer-access .sa-brand-dot{background:#f29d12;box-shadow:0 0 0 5px #f29d1226}
-#sifer-access .sa-logo{width:min(440px,92%);max-height:310px;margin:clamp(26px,5vh,60px) auto 10px;filter:drop-shadow(0 8px 12px #153d5b12);object-fit:contain}
-#sifer-access .sa-brand-caption{margin:0;text-align:center;font-size:clamp(14px,1.5vw,22px);font-style:italic;letter-spacing:.01em;color:#17456f;font-weight:500}
-#sifer-access .sa-feature-list{display:grid;gap:12px;align-self:flex-end;margin:auto 8% 20px auto;color:#fff;font-size:clamp(14px,1.35vw,19px);text-shadow:0 1px 5px #102c48}
-#sifer-access .sa-brand-slogan{position:absolute;left:10%;bottom:6%;font-family:"Segoe Print","Comic Sans MS",cursive;font-size:clamp(16px,1.5vw,22px);font-style:italic;color:white;text-shadow:0 2px 8px #173b5b}
-#sifer-access .sa-brand-slogan i{display:block;width:90%;height:3px;margin:8px 0 0 12px;background:#f29d12;transform:rotate(-9deg);border-radius:50%}
-#sifer-access .sa-brand-foot{display:none}
-#sifer-access .sa-panel{display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;padding:0;background:transparent}
-#sifer-access .sa-content{width:100%;max-width:770px;max-height:100%;overflow:auto;background:#f7fafdde;border:1px solid #c1d4e7;border-radius:6px;box-shadow:0 10px 26px #254e751c}
-#sifer-access .sa-card{width:100%;padding:0;background:transparent;border:0;border-radius:6px;box-shadow:none}
-#sifer-access .sa-login-title{display:flex;align-items:center;gap:24px;padding:24px 38px;background:linear-gradient(90deg,#17466f,#234f78);color:white;font-size:clamp(22px,2vw,30px);font-weight:700}
-#sifer-access .sa-user-glyph{font-size:39px;line-height:1}
-#sifer-access .sa-eyebrow{padding:24px 38px 0;color:#173f68;font-size:0;letter-spacing:0}
-#sifer-access .sa-card h1{display:none}
-#sifer-access .sa-muted{padding:0 38px;color:#59738e}
-#sifer-access #sa-login{padding:16px 38px 10px}
-#sifer-access .sa-field{margin:18px 0 28px}
-#sifer-access .sa-field label{display:block;margin-bottom:8px;color:#153f69;font-size:18px;font-weight:700;text-transform:none;letter-spacing:0}
-#sifer-access .sa-field input{width:100%;height:56px;border:1.5px solid #a9c2dd;border-radius:6px;background:#fff;color:#163b62;padding:0 16px;font-size:17px;outline:none;box-shadow:inset 0 1px 2px #1a416010}
-#sifer-access .sa-field input:focus{border-color:#1761b7;box-shadow:0 0 0 3px #1761b71b}
-#sifer-access .sa-input-wrap{position:relative}
-#sifer-access .sa-input-wrap input{padding-right:56px}
-#sifer-access .sa-eye{position:absolute;right:8px;top:8px;width:40px;height:40px;display:grid;place-items:center;border:0;background:transparent;color:#285783;cursor:pointer}
-#sifer-access .sa-eye svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2}
-#sifer-access .sa-btn{display:flex;align-items:center;justify-content:center;gap:16px;width:100%;min-height:62px;margin:14px 0 4px;border:0;border-radius:6px;background:linear-gradient(90deg,#0755ad,#0755ad);color:white;font-size:19px;font-weight:700;cursor:pointer}
-#sifer-access .sa-btn:hover{background:#064b98}
-#sifer-access .sa-btn span{font-size:24px}
-#sifer-access .sa-error{color:#b42318;font-size:13px;min-height:0}
-#sifer-access .sa-remember{padding:8px 38px 12px}
-#sifer-access .sa-remember label{display:flex;align-items:center;gap:10px;color:#173d63;font-size:17px}
-#sifer-access .sa-remember input{width:20px;height:20px;accent-color:#0755ad}
-#sifer-access .sa-help{margin:0 38px 16px;padding:0;border:0;background:transparent;color:#1d5a91;text-decoration:underline;cursor:pointer}
-#sifer-access .sa-login-meta{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:12px 38px 22px;padding-top:18px;border-top:1px solid #c3d3e3;color:#173d63;font-size:14px}
-#sifer-access .sa-login-meta small{color:#6d849c}
-#sifer-access .sa-statusbar{height:66px;flex:0 0 66px;display:flex;align-items:center;gap:22px;padding:0 26px;background:linear-gradient(90deg,#17466f,#234f78);color:#fff;font-size:14px}
-#sifer-access .sa-statusbar span{white-space:nowrap}
-#sifer-access .sa-statusbar span:last-child{margin-left:auto}
-#sifer-access .sa-statusbar i{display:inline-block;width:13px;height:13px;margin-right:8px;border-radius:50%;background:#4dcc78;vertical-align:-2px}
-@media(max-width:900px){#sifer-access .sa-shell{grid-template-columns:minmax(240px,40%) minmax(0,60%);padding:14px;gap:14px}#sifer-access .sa-login-title{padding:18px 22px}#sifer-access #sa-login{padding:10px 22px}#sifer-access .sa-remember{padding-left:22px}#sifer-access .sa-help{margin-left:22px}#sifer-access .sa-login-meta{margin-left:22px;margin-right:22px}#sifer-access .sa-eyebrow{padding-left:22px}}
-@media(max-width:650px){#sifer-access .sa-windowbar{height:40px;flex-basis:40px;font-size:12px;padding:0 9px}#sifer-access .sa-window-controls{font-size:14px;letter-spacing:1px}#sifer-access .sa-shell{grid-template-columns:minmax(0,1fr);gap:10px;padding:10px;overflow:auto}#sifer-access .sa-brand{min-height:185px;height:185px;padding:12px}#sifer-access .sa-logo{width:min(190px,45%);max-height:75px;margin:4px auto}#sifer-access .sa-brand-caption{font-size:13px}#sifer-access .sa-feature-list,#sifer-access .sa-brand-slogan{display:none}#sifer-access .sa-ring{width:100%;top:50%}#sifer-access .sa-panel{align-items:flex-start}#sifer-access .sa-content{max-height:none}#sifer-access .sa-login-title{padding:14px 18px;font-size:21px}#sifer-access #sa-login{padding:8px 18px}#sifer-access .sa-field{margin:14px 0 18px}#sifer-access .sa-field input{height:48px;font-size:15px}#sifer-access .sa-btn{min-height:50px;font-size:16px}#sifer-access .sa-remember{padding:6px 18px}#sifer-access .sa-help{margin-left:18px}#sifer-access .sa-login-meta{margin:8px 18px 16px;font-size:11px}#sifer-access .sa-statusbar{height:auto;min-height:36px;flex-basis:auto;padding:8px 12px;font-size:10px;gap:8px;flex-wrap:wrap}#sifer-access .sa-statusbar span:last-child{display:none}}
+#sifer-access {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #dde8f3;
+  color: #173d63;
+  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  box-sizing: border-box;
+}
 
-/* Ajuste fiel a la captura aprobada: barra azul, paneles celestes, formulario de tres campos y estado inferior */
-#sifer-access{background:#dce8f5;color:#173d63;font-family:"Segoe UI",Arial,sans-serif;overflow:hidden}
-#sifer-access .sa-windowbar{height:48px;flex-basis:48px;background:#315e89;padding:0 18px;font-size:16px}
-#sifer-access .sa-shell{grid-template-columns:minmax(0,47%) minmax(0,53%);padding:clamp(22px,3vw,46px);gap:clamp(22px,3vw,46px);background:linear-gradient(120deg,#e9f0f7,#d2e2f3)}
-#sifer-access .sa-brand{height:100%;min-height:0;padding:clamp(20px,3vw,44px);background:linear-gradient(130deg,#edf3f9 0%,#d7e3ef 44%,#456682 100%);border-radius:4px}
-#sifer-access .sa-brand:before{background:linear-gradient(90deg,#ffffff24,#d3e1ef22),radial-gradient(ellipse at 25% 75%,#b98b6150,transparent 50%)}
-#sifer-access .sa-photo-glow{left:0;bottom:0;width:100%;height:55%;filter:blur(16px);background:linear-gradient(0deg,#243b4d80,transparent 95%),radial-gradient(ellipse at 20% 80%,#a96e3d99,transparent 55%)}
-#sifer-access .sa-ring{opacity:.035}
-#sifer-access .sa-brand-top{display:none}
-#sifer-access .sa-logo{width:min(480px,95%);max-height:310px;margin:auto auto 8px;filter:none}
-#sifer-access .sa-brand-caption{font-size:clamp(16px,1.8vw,25px);letter-spacing:0;text-transform:none;color:#173d63;font-style:italic;margin:0 0 auto}
-#sifer-access .sa-feature-list{align-self:flex-end;margin:auto 8% 19% auto;gap:14px;font-size:clamp(15px,1.4vw,21px);text-shadow:0 1px 3px #18344d}
-#sifer-access .sa-brand-slogan{bottom:5%;left:10%;font-size:clamp(17px,1.7vw,25px)}
-#sifer-access .sa-panel{justify-content:center;padding:0;min-height:0}
-#sifer-access .sa-content{max-width:770px;width:100%;overflow:auto;border:1px solid #c4d4e5;border-radius:6px;background:#eaf1f9d9;box-shadow:0 2px 8px #183b5b22}
-#sifer-access .sa-login-card{padding:0}
-#sifer-access .sa-login-title{height:95px;padding:0 42px;gap:28px;background:linear-gradient(90deg,#1a456d,#214f7b);font-size:clamp(24px,2vw,32px);color:#fff}
-#sifer-access .sa-user-glyph{display:inline-flex;align-items:center;justify-content:center;font-size:0;width:36px;height:36px;position:relative}
-#sifer-access .sa-user-glyph:before{content:"";position:absolute;top:0;width:19px;height:19px;border-radius:50%;background:white}
-#sifer-access .sa-user-glyph:after{content:"";position:absolute;bottom:0;width:35px;height:17px;border-radius:18px 18px 3px 3px;background:white}
-#sifer-access #sa-login{padding:22px 48px 0}
-#sifer-access .sa-field{display:block;margin:16px 0 34px}
-#sifer-access .sa-field label{display:block;margin:0 0 8px;color:#173d63;font-size:20px;font-weight:700;letter-spacing:0}
-#sifer-access .sa-control{display:flex;align-items:stretch;height:56px;position:relative;background:#fff;border:1.5px solid #a9bfd4;border-radius:7px;overflow:hidden}
-#sifer-access .sa-control-icon{width:53px;flex:0 0 53px;display:grid;place-items:center;background:#e4edf7;border-right:1px solid #a9bfd4;color:#214f7b;font-size:26px}
-#sifer-access .sa-control input,#sifer-access .sa-control select{width:100%;min-width:0;height:100%;border:0;border-radius:0;background:#fff;color:#173d63;padding:0 14px;font-size:18px;outline:none;box-shadow:none}
-#sifer-access .sa-control input::placeholder{color:#a3b2c3}
-#sifer-access .sa-control:focus-within{border-color:#2c70b7;box-shadow:0 0 0 2px #2c70b722}
-#sifer-access .sa-control .sa-eye{top:7px;right:6px;width:40px;height:40px;color:#315e89}
-#sifer-access .sa-control.sa-input-wrap input{padding-right:52px}
-#sifer-access .sa-control select{appearance:none;padding-right:42px}
-#sifer-access .sa-select-arrow{position:absolute;right:13px;top:10px;font-size:25px;color:#214f7b;pointer-events:none}
-#sifer-access .sa-error{margin:0;color:#b42318;font-size:13px}
-#sifer-access .sa-remember{padding:0 48px 18px}
-#sifer-access .sa-remember label{display:flex;align-items:center;gap:11px;font-size:19px;color:#173d63}
-#sifer-access .sa-remember input{width:27px;height:27px;accent-color:#0759b1}
-#sifer-access .sa-btn{min-height:67px;border-radius:6px;background:linear-gradient(90deg,#0758b6,#0758b6);color:#fff;font-size:21px;gap:18px;margin:14px 0 0}
-#sifer-access .sa-btn span{font-size:27px}
-#sifer-access .sa-btn:hover{background:#064b98}
-#sifer-access .sa-login-meta{margin:0 48px 20px;padding-top:22px;border-top:1px solid #c4d4e5;display:flex;justify-content:space-between;align-items:center;min-height:95px;font-size:16px}
-#sifer-access .sa-product-meta,#sifer-access .sa-date-meta{display:flex;align-items:center;gap:16px}
-#sifer-access .sa-product-meta small{font-size:14px;color:#70869d}
-#sifer-access .sa-meta-gear{font-size:43px;color:#214f7b}
-#sifer-access .sa-date-meta{white-space:pre-line;text-align:left;font-size:15px}
-#sifer-access .sa-date-meta b{font-size:33px;color:#214f7b}
-#sifer-access .sa-statusbar{height:66px;flex-basis:66px;background:linear-gradient(90deg,#17466f,#234f78);font-size:15px;padding:0 28px}
-#sifer-access .sa-statusbar span:nth-child(2){display:none}
-@media(max-width:900px){#sifer-access .sa-shell{grid-template-columns:minmax(0,40%) minmax(0,60%);padding:14px;gap:14px}#sifer-access #sa-login{padding:18px 24px 0}#sifer-access .sa-login-title{height:72px;padding:0 24px}#sifer-access .sa-field{margin:12px 0 20px}#sifer-access .sa-remember{padding:0 24px 12px}#sifer-access .sa-login-meta{margin:0 24px 14px;padding-top:14px}#sifer-access .sa-feature-list{margin-right:0}}
-@media(max-width:650px){#sifer-access{overflow:auto}#sifer-access .sa-windowbar{height:40px;flex-basis:40px;font-size:12px;padding:0 8px}#sifer-access .sa-shell{grid-template-columns:minmax(0,1fr);gap:10px;padding:10px;overflow:visible}#sifer-access .sa-brand{height:185px;min-height:185px;padding:8px}#sifer-access .sa-logo{width:min(240px,65%);max-height:95px;margin:auto auto 0}#sifer-access .sa-brand-caption{font-size:13px;margin:0 auto 5px}#sifer-access .sa-feature-list,#sifer-access .sa-brand-slogan{display:none}#sifer-access .sa-panel{align-items:stretch}#sifer-access .sa-login-title{height:60px;font-size:21px;padding:0 18px}#sifer-access #sa-login{padding:10px 18px 0}#sifer-access .sa-field label{font-size:16px}#sifer-access .sa-control{height:48px}#sifer-access .sa-control input,#sifer-access .sa-control select{font-size:15px}#sifer-access .sa-remember{padding:0 18px 10px}#sifer-access .sa-remember label{font-size:15px}#sifer-access .sa-btn{min-height:52px;font-size:17px}#sifer-access .sa-login-meta{margin:0 18px 12px;font-size:12px}#sifer-access .sa-statusbar{height:auto;min-height:38px;flex-basis:auto;flex-wrap:wrap;padding:8px 12px;font-size:10px}#sifer-access .sa-statusbar span:last-child{display:none}}
+#sifer-access * {
+  box-sizing: border-box;
+}
+
+body.sa-locked .app,
+body.sa-locked .statusbar {
+  visibility: hidden;
+}
+
+/* 1. BARRA SUPERIOR DE VENTANA */
+#sifer-access .sa-windowbar {
+  height: 44px;
+  flex: 0 0 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: #204d73;
+  color: #ffffff;
+  font-size: 14px;
+  user-select: none;
+  z-index: 10;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+#sifer-access .sa-window-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  font-size: 14px;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+}
+
+#sifer-access .sa-window-mark {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  display: block;
+}
+
+#sifer-access .sa-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#sifer-access .sa-win-btn {
+  width: 38px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.15s, color 0.15s;
+  padding: 0;
+}
+
+#sifer-access .sa-win-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+#sifer-access .sa-win-btn.sa-win-close:hover {
+  background: #e81123;
+  color: #ffffff;
+}
+
+/* 2. ÁREA PRINCIPAL DIVIDIDA EN DOS COLUMNAS */
+#sifer-access .sa-shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(420px, 48%) minmax(0, 52%);
+  width: 100%;
+  height: calc(100vh - 98px);
+  background: linear-gradient(135deg, #eaf1f8 0%, #d8e5f2 50%, #c8d9ea 100%);
+  overflow: hidden;
+}
+
+/* 3. COLUMNA IZQUIERDA: MARCA, FOTOGRAFÍA DE LICORES Y CARACTERÍSTICAS */
+#sifer-access .sa-brand {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: #dde8f3 url('/login-brand.png') no-repeat left center;
+  background-size: cover;
+}
+
+#sifer-access .sa-brand-artwork {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* 4. COLUMNA DERECHA: PANEL DE INICIO DE SESIÓN */
+#sifer-access .sa-panel {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 44px;
+  overflow-y: auto;
+  background: transparent;
+}
+
+#sifer-access .sa-content {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  justify-content: center;
+}
+
+/* 5. TARJETA DE INICIO DE SESIÓN */
+#sifer-access .sa-card.sa-login-card {
+  width: 100%;
+  max-width: 680px;
+  background: #ffffff;
+  border: 1.5px solid #b8cce0;
+  border-radius: 8px;
+  box-shadow: 0 10px 32px rgba(18, 48, 80, 0.14);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#sifer-access .sa-login-title {
+  height: 84px;
+  flex: 0 0 84px;
+  background: linear-gradient(90deg, #164168 0%, #1e4d79 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 36px;
+}
+
+#sifer-access .sa-user-glyph {
+  width: 32px;
+  height: 32px;
+  fill: #ffffff;
+  flex: 0 0 32px;
+}
+
+#sifer-access .sa-login-title span {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: #ffffff;
+}
+
+/* FORMULARIO */
+#sifer-access #sa-login {
+  padding: 28px 42px 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+#sifer-access .sa-field {
+  margin-bottom: 22px;
+  display: flex;
+  flex-direction: column;
+}
+
+#sifer-access .sa-field label {
+  font-size: 17px;
+  font-weight: 700;
+  color: #15395f;
+  margin-bottom: 8px;
+  letter-spacing: 0;
+}
+
+#sifer-access .sa-control {
+  display: flex;
+  align-items: stretch;
+  height: 52px;
+  background: #ffffff;
+  border: 1.5px solid #b4c7dc;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+#sifer-access .sa-control:focus-within {
+  border-color: #0353b7;
+  box-shadow: 0 0 0 3px rgba(3, 83, 183, 0.15);
+}
+
+#sifer-access .sa-control-icon {
+  width: 50px;
+  flex: 0 0 50px;
+  background: #eaf0f7;
+  border-right: 1.5px solid #b4c7dc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #184672;
+}
+
+#sifer-access .sa-control input,
+#sifer-access .sa-control select {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: #ffffff;
+  color: #173e66;
+  font-size: 16px;
+  padding: 0 16px;
+  font-family: inherit;
+  font-weight: 400;
+}
+
+#sifer-access .sa-control input::placeholder {
+  color: #9ab0c4;
+}
+
+#sifer-access .sa-control select {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 44px;
+}
+
+#sifer-access .sa-select-arrow {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #184672;
+  display: flex;
+  align-items: center;
+}
+
+#sifer-access .sa-eye {
+  width: 44px;
+  flex: 0 0 44px;
+  border: none;
+  background: transparent;
+  color: #204d73;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+#sifer-access .sa-eye:hover {
+  color: #0353b7;
+}
+
+#sifer-access .sa-eye-icon {
+  width: 22px;
+  height: 22px;
+}
+
+#sifer-access .sa-error {
+  color: #d32f2f;
+  font-size: 13px;
+  font-weight: 500;
+  min-height: 18px;
+  margin: 2px 0 6px;
+}
+
+/* RECORDAR USUARIO CHECKBOX */
+#sifer-access .sa-remember {
+  margin: 12px 0 22px;
+  display: flex;
+  align-items: center;
+}
+
+#sifer-access .sa-remember label {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 16px;
+  font-weight: 500;
+  color: #15395f;
+  position: relative;
+}
+
+#sifer-access .sa-remember input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
+
+#sifer-access .sa-custom-check {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border: 2px solid #b4c7dc;
+  border-radius: 4px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+#sifer-access .sa-custom-check svg {
+  width: 12px;
+  height: 10px;
+  display: none;
+}
+
+#sifer-access .sa-remember input[type="checkbox"]:checked + .sa-custom-check {
+  background: #0057b7;
+  border-color: #0057b7;
+}
+
+#sifer-access .sa-remember input[type="checkbox"]:checked + .sa-custom-check svg {
+  display: block;
+}
+
+#sifer-access .sa-remember-label {
+  color: #15395f;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+/* BOTÓN INICIAR SESIÓN */
+#sifer-access .sa-btn {
+  width: 100%;
+  height: 56px;
+  background: #0353b7;
+  border: none;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 19px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.05s;
+  box-shadow: 0 3px 6px rgba(3, 83, 183, 0.2);
+  font-family: inherit;
+}
+
+#sifer-access .sa-btn:hover {
+  background: #02479e;
+}
+
+#sifer-access .sa-btn:active {
+  transform: translateY(1px);
+}
+
+#sifer-access .sa-btn-icon {
+  width: 22px;
+  height: 22px;
+  stroke: #ffffff;
+}
+
+/* LÍNEA DIVISORIA Y METADATOS DE TARJETA */
+#sifer-access .sa-card-divider {
+  border-top: 1px solid #cad8e6;
+  margin: 24px 42px 18px;
+}
+
+#sifer-access .sa-login-meta {
+  padding: 0 42px 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+#sifer-access .sa-product-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+#sifer-access .sa-meta-gear {
+  width: 44px;
+  height: 30px;
+  fill: #184672;
+  flex: 0 0 44px;
+}
+
+#sifer-access .sa-product-meta strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: #173d63;
+  line-height: 1.25;
+}
+
+#sifer-access .sa-product-meta span {
+  font-size: 13px;
+  color: #6d849b;
+}
+
+#sifer-access .sa-date-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+#sifer-access .sa-meta-cal {
+  width: 26px;
+  height: 26px;
+  fill: #184672;
+  flex: 0 0 26px;
+}
+
+#sifer-access .sa-date-day {
+  font-size: 15px;
+  font-weight: 700;
+  color: #173d63;
+  line-height: 1.25;
+}
+
+#sifer-access .sa-date-time {
+  font-size: 14px;
+  font-weight: 600;
+  color: #173d63;
+}
+
+/* 6. BARRA INFERIOR DE ESTADO */
+#sifer-access .sa-statusbar {
+  height: 54px;
+  flex: 0 0 54px;
+  background: linear-gradient(90deg, #153f6a 0%, #1a4570 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  font-size: 14px;
+  z-index: 10;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#sifer-access .sa-sb-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#sifer-access .sa-sb-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ffffff;
+}
+
+#sifer-access .sa-sb-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+  display: inline-block;
+}
+
+#sifer-access .sa-sb-divider {
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0 4px;
+}
+
+#sifer-access .sa-sb-net {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ffffff;
+}
+
+#sifer-access .sa-sb-right {
+  color: #ffffff;
+}
+
+/* 7. ESTILOS DE PANELES ADICIONALES (APERTURA DE CAJA, DASHBOARD, RED) */
+.sa-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.sa-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sa-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #122642;
+  display: grid;
+  place-items: center;
+  color: #F5A623;
+  font-weight: 800;
+  font-size: 18px;
+}
+.sa-role {
+  color: #9b6710;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.sa-muted {
+  margin: 0 0 18px;
+  color: #5d6b82;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.sa-eyebrow {
+  color: #9b6710;
+  font-size: 11px;
+  letter-spacing: .15em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.sa-dashgrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.sa-module {
+  background: #fff;
+  border: 1.5px solid #d5dce7;
+  border-radius: 12px;
+  padding: 16px 14px;
+  text-align: left;
+  color: #122642;
+  cursor: pointer;
+  min-height: 105px;
+  transition: border-color .15s, transform .08s;
+}
+.sa-module:hover {
+  border-color: #0353b7;
+  transform: translateY(-1px);
+}
+.sa-module b {
+  display: block;
+  margin: 10px 0 4px;
+  font-size: 14px;
+}
+.sa-module span {
+  font-size: 12px;
+  color: #5d6b82;
+}
+.sa-icon {
+  font-size: 22px;
+}
+.sa-small {
+  font-size: 11px;
+  color: #5d6b82;
+  line-height: 1.6;
+  margin-top: 16px;
+  text-align: center;
+}
+.sa-btn.secondary {
+  background: transparent;
+  color: #122642;
+  border: 1.5px solid #d5dce7;
+}
+
+/* MODAL APERTURA DE CAJA */
+.sa-opening {
+  max-width: 660px;
+  margin: 2vh auto;
+  padding: clamp(22px, 4vw, 36px);
+  background: #fff;
+  border: 1.5px solid #d5dce7;
+  border-radius: 12px;
+  position: relative;
+  box-shadow: 0 20px 60px rgba(18, 38, 66, 0.12);
+}
+.sa-opening h2 {
+  margin: 8px 0;
+  font-size: 26px;
+  color: #122642;
+}
+.sa-opening-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+.sa-opening .sa-field {
+  margin: 10px 0;
+}
+.sa-opening .sa-field input {
+  height: 48px;
+  border: 1.5px solid #b4c7dc;
+  border-radius: 6px;
+  padding: 0 12px;
+  font-size: 15px;
+}
+.sa-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+}
+.sa-summary span {
+  background: #f3f5f8;
+  border: 1px solid #d5dce7;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.sa-warning {
+  background: #fff7e8;
+  border: 1px solid #f0cb83;
+  border-radius: 8px;
+  padding: 12px;
+  color: #69490b;
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 14px 0;
+}
+
+/* RESPONSIVE */
+@media (max-width: 1024px) {
+  #sifer-access .sa-shell {
+    grid-template-columns: minmax(320px, 44%) minmax(0, 56%);
+  }
+  #sifer-access .sa-panel {
+    padding: 18px 24px;
+  }
+  #sifer-access #sa-login {
+    padding: 24px 28px 10px;
+  }
+  #sifer-access .sa-card-divider {
+    margin: 20px 28px 16px;
+  }
+  #sifer-access .sa-login-meta {
+    padding: 0 28px 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  #sifer-access {
+    overflow-y: auto;
+  }
+  #sifer-access .sa-shell {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: calc(100vh - 98px);
+    overflow: visible;
+  }
+  #sifer-access .sa-brand {
+    height: 240px;
+    min-height: 240px;
+    background-position: center top;
+  }
+  #sifer-access .sa-panel {
+    padding: 16px;
+  }
+  #sifer-access .sa-card.sa-login-card {
+    max-width: 100%;
+  }
+  #sifer-access .sa-login-title {
+    height: 68px;
+    padding: 0 20px;
+    font-size: 22px;
+  }
+  #sifer-access #sa-login {
+    padding: 20px 20px 8px;
+  }
+  #sifer-access .sa-card-divider {
+    margin: 18px 20px 14px;
+  }
+  #sifer-access .sa-login-meta {
+    padding: 0 20px 18px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  #sifer-access .sa-statusbar {
+    height: auto;
+    padding: 10px 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+}
