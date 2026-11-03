@@ -107,3 +107,10 @@ test("el historial de tasas expone snapshots documentados y se muestra en contab
   assert.ok(renderer.includes("accExchangeRates"));
   assert.ok(renderer.includes("rate.sourceReference"));
 });
+
+test("reutiliza tasas idénticas y rechaza referencias repetidas con valor distinto", () => {
+  assert.ok(main.includes("const existingRate=one("));
+  assert.ok(main.includes("rateRecordExists=true"));
+  assert.ok(main.includes("if(rateId&&!rateRecordExists)"));
+  assert.ok(main.includes("Documenta la corrección con una referencia distinta."));
+});
