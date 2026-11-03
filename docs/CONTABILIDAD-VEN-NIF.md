@@ -83,3 +83,5 @@ El contador o administrador puede marcar un evento pendiente como **needs_review
 ## Plan de cuentas configurable
 
 La interfaz permite registrar y actualizar cuentas sin precargar un plan universal. Exige que el marco VEN-NIF ya esté configurado; valida código, clasificación, saldo normal, alcance PYME/GE y jerarquía. Una cuenta padre debe estar activa y ser de agrupación; no se admiten ciclos ni subcuentas de distinta clasificación. Si una cuenta ya tiene renglones contables, no se permite cambiar su clasificación, saldo normal o jerarquía. Cada alta o cambio se registra en la bitácora. No hay borrado de cuentas desde esta pantalla.
+
+La cola LAN y la notificación de estado guardado se activan únicamente después de que el IPC SQLite confirma la persistencia local. Si la escritura falla, se muestra el error y no se inicia esa replicación desde el flujo de guardado.
