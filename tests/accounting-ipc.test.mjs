@@ -31,6 +31,8 @@ test("las operaciones POS y sus eventos contables se capturan en la misma transa
   assert.ok(main.includes("Operación comercial y su evento contable se escriben juntos"));
   assert.ok(main.includes("insertAccountingSourceEvents(buildAccountingSourceEvents(state, nextState"));
   assert.ok(main.includes("const accountingEvents = buildAccountingSourceEvents(current, merged"));
+  assert.ok(renderer.includes("const result = await window.posDesktop.saveState(state)"));
+  assert.ok(renderer.includes("SQLite no confirmó el guardado del estado POS."));
 });
 
 test("la interfaz muestra eventos pendientes sin presentarlos como asientos", () => {
