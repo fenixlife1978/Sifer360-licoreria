@@ -44,4 +44,8 @@ test("no oculta diferencias por redondeo entre renglones", () => {
   }), /diferencia en moneda de presentación/);
 });
 
-test("interpreta tasas decimales sin errores de coma flotante", () => {\n  assert.deepEqual(decimalRateToRational("0,001143"), { rateNumerator: 1143, rateDenominator: 1000000 });\n  assert.deepEqual(decimalRateToRational("874.7321"), { rateNumerator: 8747321, rateDenominator: 10000 });\n  assert.throws(() => decimalRateToRational("0"), /mayor que cero/);\n});\n
+test("interpreta tasas decimales sin errores de coma flotante", () => {
+  assert.deepEqual(decimalRateToRational("0,001143"), { rateNumerator: 1143, rateDenominator: 1000000 });
+  assert.deepEqual(decimalRateToRational("874.7321"), { rateNumerator: 8747321, rateDenominator: 10000 });
+  assert.throws(() => decimalRateToRational("0"), /mayor que cero/);
+});
