@@ -466,6 +466,11 @@ function accountingActor(input) {
   }
   return { actorId, actorRole };
 }
+function isValidIsoDate(value) {
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value || ''))) return false;
+  const date = new Date(String(value) + 'T00:00:00.000Z');
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
 function registerAccountingIpc() {
   ipcMain.handle('accounting:get-settings', event => {
     assertTrustedAccountingSender(event);
@@ -568,15 +573,19 @@ function registerAccountingIpc() {
     const label = String(input.label || '').trim();
     const startDate = String(input.startDate || '');
     const endDate = String(input.endDate || '');
-    if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(id) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(startDate) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(endDate) || startDate > endDate || !label || startDate.slice(0,7)!==id || endDate.slice(0,7)!==id) throw new Error('Período inválido: el identificador AAAA-MM debe coincidir con las fechas de inicio y fin.');
+    if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(id) || !isValidIsoDate(startDate) || !isValidIsoDate(endDate) || startDate > endDate || !label || startDate.slice(0,7)!==id || endDate.slice(0,7)!==id) throw new Error('Período inválido: el identificador AAAA-MM debe coincidir con las fechas de inicio y fin.');
     const overlap = one('SELECT id FROM accounting_periods WHERE id<>? AND start_date<=? AND end_date>=? LIMIT 1', [id,endDate,startDate]);
     if (overlap) throw new Error('El período se solapa con el período contable ' + overlap.id + '.');
     const existing = one('SELECT status FROM accounting_periods WHERE id=?', [id]);
     if (existing && existing.status === 'closed') throw new Error('Un período cerrado no puede modificarse.');
     const now = new Date().toISOString();
-    run('INSERT INTO accounting_periods(id,label,start_date,end_date,status) VALUES(?,?,?,?,\'open\') ON CONFLICT(id) DO UPDATE SET label=excluded.label,start_date=excluded.start_date,end_date=excluded.end_date', [id,label,startDate,endDate]);
-    run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,after_json) VALUES(?,?,?,?,?,?,?)',
-      [crypto.randomUUID(),'accounting_period',id,existing?'update':'create',actor.actorId,now,JSON.stringify({label,startDate,endDate})]);
+    db.run('BEGIN IMMEDIATE');
+    try {
+      run('INSERT INTO accounting_periods(id,label,start_date,end_date,status) VALUES(?,?,?,?,\\'open\\') ON CONFLICT(id) DO UPDATE SET label=excluded.label,start_date=excluded.start_date,end_date=excluded.end_date', [id,label,startDate,endDate]);
+      run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
+        [crypto.randomUUID(),'accounting_period',id,existing?'update':'create',actor.actorId,now,existing?JSON.stringify(existing):null,JSON.stringify({label,startDate,endDate})]);
+      db.run('COMMIT');
+    } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
     persistDb();
     return one('SELECT id,label,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?', [id]);
   });
