@@ -500,6 +500,8 @@ function registerAccountingIpc() {
     if (!['internal_only','official_portal','authorized_provider','fiscal_machine','contingency'].includes(emission)) throw new Error('Modalidad de emisión no válida.');
     const special = input.specialSubjectConfirmed === true ? 1 : 0;
     const withholding = input.ivaWithholdingAgentConfirmed === true ? 1 : 0;
+    if ((classification === 'special') !== (special === 1)) throw new Error('La clasificación especial debe coincidir con la notificación expresa verificada.');
+    if (withholding && !special) throw new Error('No se puede activar agente de retención IVA sin designación especial confirmada.');
     const perception = input.ivaPerceptionAgentConfirmed === true ? 1 : 0;
     if (special && (!String(input.specialNoticeReference || '').trim() || !input.specialNoticeDate)) throw new Error('La condición de sujeto pasivo especial exige referencia y fecha de notificación.');
     if (emission === 'authorized_provider' && (!String(input.providerRif || '').trim() || !String(input.providerAuthorizationReference || '').trim())) throw new Error('El proveedor tecnológico requiere RIF y autorización verificables.');
@@ -530,7 +532,7 @@ function registerAccountingIpc() {
     const label = String(input.label || '').trim();
     const startDate = String(input.startDate || '');
     const endDate = String(input.endDate || '');
-    if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(id) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(startDate) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(endDate) || startDate > endDate || !label) throw new Error('Período inválido: usa un identificador AAAA-MM y fechas coherentes.');
+    if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(id) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(startDate) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(endDate) || startDate > endDate || !label || startDate.slice(0,7)!==id || endDate.slice(0,7)!==id) throw new Error('Período inválido: el identificador AAAA-MM debe coincidir con las fechas de inicio y fin.');
     const overlap = one('SELECT id FROM accounting_periods WHERE id<>? AND start_date<=? AND end_date>=? LIMIT 1', [id,endDate,startDate]);
     if (overlap) throw new Error('El período se solapa con el período contable ' + overlap.id + '.');
     const existing = one('SELECT status FROM accounting_periods WHERE id=?', [id]);
