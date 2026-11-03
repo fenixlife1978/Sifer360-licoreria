@@ -5587,7 +5587,8 @@ function seniatSudebanDlg(initialTab){
       '<div class="f wide"><label for="accJournalDescription">Descripción / fundamento</label><input class="fld" id="accJournalDescription" maxlength="500" placeholder="Ajuste contable y soporte"></div>'+
       '<p class="hint wide">La tasa se expresa en moneda de presentación por cada unidad funcional. Si la tasa publicada está expresada al revés, registra su inversa. Debe corresponder a la fecha y política aplicable; el sistema no inventa ni descarga tasas automáticamente. La tasa y su fuente quedan congeladas en el asiento.</p>'+
       '</div><div id="accJournalLines"></div><div class="row" style="gap:8px"><button class="btn" id="btnAddJournalLine">Añadir renglón</button><button class="btn primary" id="btnCreateJournalEntry" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar borrador de asiento</button></div><div id="accJournalEntries" class="hint">Cargando asientos...</div></section>'+
-      '<section class="cierre"><h3>7. Balance de comprobación</h3><p class="hint">Solo considera asientos contabilizados y sus reversos. Los borradores y aprobados no afectan este balance.</p><div id="accTrialBalance" class="hint">Calculando balance...</div></section>'+
+      '<section class="cierre"><h3>7. Historial de tasas de cambio</h3><p class="hint">Tasas utilizadas en asientos, con su fecha, tipo, fuente y referencia documental. Los valores se conservan como fracciones exactas.</p><div id="accExchangeRates" class="hint">Cargando tasas...</div></section>'+
+      '<section class="cierre"><h3>8. Balance de comprobación</h3><p class="hint">Solo considera asientos contabilizados y sus reversos. Los borradores y aprobados no afectan este balance.</p><div id="accTrialBalance" class="hint">Calculando balance...</div></section>'+
       '<div class="hint">Pendiente: mapeo aprobado de operaciones POS, contabilización automática supervisada, saldos de apertura, diario y mayor detallados, reportes financieros y libros fiscales oficiales.</div>'+
       '</div>';
   };
@@ -5597,7 +5598,7 @@ function seniatSudebanDlg(initialTab){
     if(!window.posDesktop)return;
     renderAccountingJournalLines();
     try{
-      const [settings,profile,periods,accounts,sourceEvents,sourceSummary,journalEntries,trialBalance]=await Promise.all([
+      const [settings,profile,periods,accounts,sourceEvents,sourceSummary,journalEntries,exchangeRates,trialBalance]=await Promise.all([
         window.posDesktop.accountingGetSettings(),
         window.posDesktop.accountingGetProfile(),
         window.posDesktop.accountingListPeriods(),
@@ -5605,6 +5606,7 @@ function seniatSudebanDlg(initialTab){
         window.posDesktop.accountingListSourceEvents(),
         window.posDesktop.accountingSourceEventSummary(),
         window.posDesktop.accountingListJournalEntries(),
+        window.posDesktop.accountingListExchangeRates(),
         window.posDesktop.accountingGetTrialBalance()
       ]);
       const set=(id,value)=>{const node=$('#'+id,el);if(node&&value!==null&&value!==undefined)node.value=String(value);};
@@ -5646,6 +5648,8 @@ function seniatSudebanDlg(initialTab){
         if(canReviewJournals&&entry.status==='posted')actions.push('<button class="btn mini" data-reverse-journal="'+esc(entry.id)+'">Reversar</button>');
         return '<tr><td>'+esc(entry.entryDate)+'</td><td class="mono">'+esc(entry.id.slice(0,8))+'</td><td>'+esc(entry.description)+'</td><td>'+esc(entry.periodId)+'</td><td class="r">'+esc(fmtJournalMinor(entry.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(entry.creditMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(entry.presentationDebitMinor==null?'—':fmtJournalMinor(entry.presentationDebitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(entry.presentationCreditMinor==null?'—':fmtJournalMinor(entry.presentationCreditMinor,settings?.monetaryDecimals??2))+'</td><td>'+esc(journalStatus[entry.status]||entry.status)+'</td><td>'+actions.join(' ')+'</td></tr>';
       }).join('')+'</tbody></table></div>':'Todavía no hay asientos manuales.';
+      const exchangeRateNode=$('#accExchangeRates',el);
+      if(exchangeRateNode)exchangeRateNode.innerHTML=exchangeRates.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Par</th><th>Tasa</th><th>Tipo</th><th>Fuente</th><th>Referencia</th></tr></thead><tbody>'+exchangeRates.map(rate=>'<tr><td>'+esc(rate.rateDate)+'</td><td class="mono">'+esc(rate.fromCurrency)+' / '+esc(rate.toCurrency)+'</td><td class="r">'+esc(rate.rate)+'</td><td>'+esc(({official:'Oficial',market:'Mercado',contractual:'Contractual',accounting_adjustment:'Ajuste contable'})[rate.rateType]||rate.rateType)+'</td><td>'+esc(rate.sourceName)+'</td><td>'+esc(rate.sourceReference)+'</td></tr>').join('')+'</tbody></table></div>':'No hay tasas de cambio registradas todavía.';
       const trialNode=$('#accTrialBalance',el);
       if(trialNode){
         const totalDebit=trialBalance.reduce((sum,row)=>sum+Number(row.debitMinor||0),0);
