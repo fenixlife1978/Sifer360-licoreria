@@ -5305,7 +5305,7 @@ function seniatSudebanDlg(initialTab){
         '<td class="r" style="font-weight:700;color:#1842B8">'+nf(rate)+'</td>'+
         '<td class="r"><b>'+nf(dueBs)+'</b></td>'+
         '<td class="c">'+esc(S.cfg.cajero)+'</td>'+
-        '<td class="c">'+(s.void?'<span class="fiscal-tag bad">ANULADA</span>':'<span class="fiscal-tag ok">100% CONFORME BCV</span>')+'</td>'+
+        '<td class="c">'+(s.void?'<span class="fiscal-tag bad">ANULADA</span>':'<span class="fiscal-tag ok">TASA REGISTRADA · NO CERTIFICADA</span>')+'</td>'+
       '</tr>';
     }).join(''):'<tr class="empty"><td colspan="9">No hay registros de ventas auditadas.</td></tr>';
 
