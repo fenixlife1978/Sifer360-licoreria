@@ -735,10 +735,10 @@ function registerAccountingIpc() {
       if(!['official','market','contractual','accounting_adjustment'].includes(rateType)||!sourceName||!sourceReference)
         throw new Error('La tasa bimonetaria exige tipo, fuente y referencia documental.');
       rateSource=sourceName+' · '+sourceReference;
-      const existingRate=one('SELECT id,rate_numerator AS rateNumerator,rate_denominator AS rateDenominator FROM accounting_exchange_rates WHERE rate_date=? AND from_currency=? AND to_currency=? AND rate_type=? AND source_reference=?',
+      const existingRate=one('SELECT id,rate_numerator AS rateNumerator,rate_denominator AS rateDenominator,source_name AS sourceName FROM accounting_exchange_rates WHERE rate_date=? AND from_currency=? AND to_currency=? AND rate_type=? AND source_reference=?',
         [entryDate,settings.functional_currency,presentationCurrency,rateType,sourceReference]);
       if(existingRate){
-        if(Number(existingRate.rateNumerator)!==rate.rateNumerator||Number(existingRate.rateDenominator)!==rate.rateDenominator)
+        if(Number(existingRate.rateNumerator)!==rate.rateNumerator||Number(existingRate.rateDenominator)!==rate.rateDenominator||String(existingRate.sourceName)!==sourceName)
           throw new Error('Ya existe una tasa con esa fecha, par, tipo y referencia documental, pero con otro valor. Documenta la corrección con una referencia distinta.');
         rateId=existingRate.id;rateRecordExists=true;
       }else rateId=crypto.randomUUID();
