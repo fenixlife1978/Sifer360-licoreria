@@ -601,7 +601,7 @@ function registerAccountingIpc() {
     const now = new Date().toISOString();
     db.run('BEGIN IMMEDIATE');
     try {
-      run('INSERT INTO accounting_periods(id,label,start_date,end_date,status) VALUES(?,?,?,?,\\'open\\') ON CONFLICT(id) DO UPDATE SET label=excluded.label,start_date=excluded.start_date,end_date=excluded.end_date', [id,label,startDate,endDate]);
+      run('INSERT INTO accounting_periods(id,label,start_date,end_date,status) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,start_date=excluded.start_date,end_date=excluded.end_date', [id,label,startDate,endDate,'open']);
       run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
         [crypto.randomUUID(),'accounting_period',id,existing?'update':'create',actor.actorId,now,existing?JSON.stringify(existing):null,JSON.stringify({label,startDate,endDate})]);
       db.run('COMMIT');
