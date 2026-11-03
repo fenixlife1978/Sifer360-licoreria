@@ -1,0 +1,75 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import initSqlJs from "sql.js";
+const require = createRequire(import.meta.url);
+test("el esquema contable se crea en SQLite y activa restricciones de integridad", async () => {
+  const SQL = await initSqlJs({ locateFile: file => require.resolve("sql.js/dist/" + file) });
+  const db = new SQL.Database();
+  db.run(fs.readFileSync(new URL("../src/accounting/schema.sql", import.meta.url), "utf8"));
+  const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
+  const names = new Set(tables[0].values.map(row => row[0]));
+  for (const name of ["accounting_settings","accounting_periods","accounting_exchange_rates","chart_of_accounts","fiscal_entity_profile","fiscal_document_series","alcohol_product_profiles","alcohol_traceability_movements","tax_rule_sets","tax_rules","journal_entries","journal_lines","accounting_source_events","accounting_audit_log"]) assert.ok(names.has(name), "Falta tabla " + name);
+  const triggers = db.exec("SELECT name FROM sqlite_master WHERE type='trigger'");
+  assert.ok(triggers[0].values.length >= 3, "No se instalaron las salvaguardas de inmutabilidad");
+  const entryColumns = new Set(db.exec("PRAGMA table_info(journal_entries)")[0].values.map(row => row[1]));
+  const lineColumns = new Set(db.exec("PRAGMA table_info(journal_lines)")[0].values.map(row => row[1]));
+  for (const name of ["presentation_currency","exchange_rate_numerator","exchange_rate_denominator","exchange_rate_type","exchange_rate_source","presentation_debit_minor","presentation_credit_minor"]) assert.ok(entryColumns.has(name), "Falta columna bimonetaria " + name);
+  for (const name of ["presentation_debit_minor","presentation_credit_minor"]) assert.ok(lineColumns.has(name), "Falta importe bimonetario por renglón " + name);
+  const exchangeRateForeignKey = db.exec("PRAGMA foreign_key_list(journal_entries)")[0].values;
+  assert.ok(exchangeRateForeignKey.some(row => row[2] === "accounting_exchange_rates" && row[3] === "exchange_rate_id"), "El asiento debe referenciar la tasa documentada.");
+  assert.ok(db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='journal_lines'")[0].values[0][0].includes("presentation_debit_minor INTEGER CHECK"), "Los importes de presentación deben rechazar valores negativos.");
+  db.run("INSERT INTO accounting_periods(id,label,start_date,end_date) VALUES('2026-11','Noviembre 2026','2026-11-01','2026-11-30')");
+  db.run("INSERT INTO accounting_settings(id,policy_version,updated_at) VALUES(1,'pending-review','now')");
+  const settings = db.exec("SELECT accounting_framework,functional_currency,presentation_currency FROM accounting_settings WHERE id=1");
+  assert.deepEqual(settings[0].values[0], [null, null, null], "No debe presumirse VEN-NIF PYME ni moneda funcional VES");
+  db.run("INSERT INTO chart_of_accounts(code,name,account_type,normal_balance,created_at,updated_at) VALUES('1.1','Caja','asset','debit','now','now')");
+  db.run("INSERT INTO journal_entries(id,source_type,source_id,entry_date,period_id,functional_currency,rule_version,status,debit_minor,credit_minor,created_at) VALUES('A1','sale','V1','2026-11-03','2026-11','VES','v1','posted',100,100,'now')");
+  assert.throws(() => db.run("DELETE FROM journal_entries WHERE id='A1'"), /No se permite borrar asientos/);
+  db.close();
+});
+
+test("la cola de eventos de origen conserva idempotencia y estados permitidos", async () => {
+  const SQL = await initSqlJs({ locateFile: file => require.resolve("sql.js/dist/" + file) });
+  const db = new SQL.Database();
+  db.run(fs.readFileSync(new URL("../src/accounting/schema.sql", import.meta.url), "utf8"));
+  const insert = "INSERT OR IGNORE INTO accounting_source_events(event_id,source_type,source_id,event_type,occurred_at,payload_hash,payload_json) VALUES(?,?,?,?,?,?,?)";
+  const row = ["evt-1","sale","Caja 01:V-1","created.abcd","2026-11-03T10:00:00.000Z","hash-1",JSON.stringify({ action: "created" })];
+  db.run(insert, row);
+  db.run(insert, row);
+  const count = db.exec("SELECT COUNT(*) FROM accounting_source_events");
+  assert.equal(count[0].values[0][0], 1);
+  assert.equal(db.exec("SELECT processing_status FROM accounting_source_events WHERE event_id='evt-1'")[0].values[0][0], "pending");
+  assert.throws(() => db.run("UPDATE accounting_source_events SET processing_status='invented' WHERE event_id='evt-1'"));
+  db.close();
+});
+
+test("un asiento aprobado bloquea cambios de cabecera y renglones; uno contabilizado es inmutable", async () => {
+  const SQL = await initSqlJs({ locateFile: file => require.resolve("sql.js/dist/" + file) });
+  const db = new SQL.Database();
+  db.run(fs.readFileSync(new URL("../src/accounting/schema.sql", import.meta.url), "utf8"));
+  db.run("INSERT INTO accounting_periods(id,label,start_date,end_date) VALUES('2026-12','Diciembre 2026','2026-12-01','2026-12-31')");
+  db.run("INSERT INTO chart_of_accounts(code,name,account_type,normal_balance,created_at,updated_at) VALUES('1.1','Caja','asset','debit','now','now'),('4.1','Ventas','income','credit','now','now')");
+  db.run("INSERT INTO journal_entries(id,source_type,source_id,entry_date,period_id,functional_currency,rule_version,status,debit_minor,credit_minor,created_at) VALUES('J-1','manual','M-1','2026-12-03','2026-12','VES','v1','draft',100,100,'now')");
+  db.run("INSERT INTO journal_lines(id,entry_id,line_no,account_code,debit_minor,credit_minor) VALUES('L-1','J-1',1,'1.1',100,0),('L-2','J-1',2,'4.1',0,100)");
+  db.run("UPDATE journal_entries SET status='approved',approved_at='now',approved_by='contador' WHERE id='J-1'");
+  assert.throws(() => db.run("UPDATE journal_lines SET description='alterado' WHERE id='L-1'"), /No se pueden modificar renglones/);
+  assert.throws(() => db.run("DELETE FROM journal_lines WHERE id='L-1'"), /No se pueden borrar renglones/);
+  assert.throws(() => db.run("INSERT INTO journal_lines(id,entry_id,line_no,account_code,debit_minor,credit_minor) VALUES('L-3','J-1',3,'1.1',1,0)"), /No se pueden agregar renglones/);
+  assert.throws(() => db.run("UPDATE journal_entries SET debit_minor=200 WHERE id='J-1'"), /Un asiento aprobado no puede cambiar/);
+  db.run("UPDATE journal_entries SET status='posted',posted_at='now',posted_by='contador' WHERE id='J-1'");
+  assert.throws(() => db.run("UPDATE journal_entries SET posted_by='otro' WHERE id='J-1'"), /Un asiento contabilizado es inmutable/);
+  db.close();
+});
+
+test("la migración de una base anterior puede añadir la referencia de tasa sin reconstruir asientos", async () => {
+  const SQL = await initSqlJs({ locateFile: file => require.resolve("sql.js/dist/" + file) });
+  const db = new SQL.Database();
+  db.run("PRAGMA foreign_keys=ON; CREATE TABLE accounting_exchange_rates(id TEXT PRIMARY KEY); CREATE TABLE journal_entries(id TEXT PRIMARY KEY);");
+  db.run("ALTER TABLE journal_entries ADD COLUMN exchange_rate_id TEXT REFERENCES accounting_exchange_rates(id)");
+  const foreignKeys = db.exec("PRAGMA foreign_key_list(journal_entries)")[0].values;
+  assert.ok(foreignKeys.some(row => row[2] === "accounting_exchange_rates" && row[3] === "exchange_rate_id"));
+  assert.throws(() => db.run("INSERT INTO journal_entries(id,exchange_rate_id) VALUES('legacy-1','missing-rate')"), /FOREIGN KEY constraint failed/);
+  db.close();
+});

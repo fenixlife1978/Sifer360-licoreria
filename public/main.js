@@ -165,14 +165,14 @@ function seed(){
   S={
     cfg:{
       empresa:'',rif:'',dir:'',cajero:'',caja:'01',rate:0,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
-      fiscalTipo:'FORMA_LIBRE',contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:75,provEspecial:'',
-      ctrlPrefix:'00-',ctrlNext:1,ctrlRangoDesde:'',ctrlRangoHasta:'',
+      fiscalTipo:'NO_CONFIGURADO',contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:0,retIvaPctConfirmed:false,provEspecial:'',
+      ctrlPrefix:'',ctrlNext:0,ctrlRangoDesde:'',ctrlRangoHasta:'',
       imprentaRif:'',imprentaAut:'',serialFiscal:''
     },
     products:[],
     clients:[{name:'Consumidor final',rif:'',tel:''}],
     suppliers:[],
-    sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],movimientosCaja:[],kardex:[],counts:[],
+    sales:[],held:[],openings:[],purchases:[],cxc:[],cxp:[],cortesZ:[],movimientosCaja:[],kardex:[],counts:[],
     lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
@@ -182,7 +182,7 @@ function seed(){
 function stateSnapshot(){
   return {
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
-    sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],movimientosCaja:S.movimientosCaja||[],
+    sales:S.sales,held:S.held,openings:S.openings||[],purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,cambiosDivisas:S.cambiosDivisas,
     casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
@@ -371,12 +371,10 @@ const posSqliteDriver = {
   async saveState(state) {
     const payload = JSON.stringify(state);
     if (window.posDesktop) {
-      try {
-        await window.posDesktop.saveState(state);
-      } catch (e) {
-        persistenceError(e);
-      }
-      return { ok: true };
+      // No ocultar fallos del IPC: el guardado comercial y su evento contable deben confirmarse juntos.
+      const result = await window.posDesktop.saveState(state);
+      if (!result || result.ok !== true) throw new Error('SQLite no confirmó el guardado del estado POS.');
+      return result;
     }
     if (sqliteDb) {
       try {
@@ -575,10 +573,17 @@ function scheduleNetworkSync(){
 }
 function save(){
   const state=stateSnapshot();
-  posSqliteDriver.saveState(state).catch(e=>persistenceError(e));
-  captureNewOperations();
-  scheduleNetworkSync();
-  try{window.dispatchEvent(new Event('sifer:state-saved'));}catch(e){}
+  // Do not enqueue LAN replication or announce a completed save until SQLite confirms persistence.
+  return posSqliteDriver.saveState(state).then(result=>{
+    if(!result||result.ok!==true)throw new Error('SQLite no confirmó el guardado del estado POS.');
+    captureNewOperations();
+    scheduleNetworkSync();
+    try{window.dispatchEvent(new Event('sifer:state-saved'));}catch(e){}
+    return result;
+  }).catch(error=>{
+    persistenceError(error);
+    return {ok:false,error:(error&&error.message)||String(error)};
+  });
 }
 setInterval(()=>{if(window.posDesktop&&typeof window.posDesktop.networkSyncNow==='function')networkSyncAttempt()},20000);
 
@@ -634,6 +639,7 @@ function load(){
     if(Array.isArray(d.suppliers)&&d.suppliers.length)S.suppliers=d.suppliers;
     S.sales=Array.isArray(d.sales)?d.sales:S.sales;
     S.held=Array.isArray(d.held)?d.held:[];
+    S.openings=Array.isArray(d.openings)?d.openings:[];
     if(Array.isArray(d.purchases))S.purchases=d.purchases;
     if(Array.isArray(d.cxc))S.cxc=d.cxc;
     if(Array.isArray(d.cxp))S.cxp=d.cxp;
@@ -656,26 +662,49 @@ function load(){
     else if(!Array.isArray(S.casheaLiquidaciones))S.casheaLiquidaciones=[];
     if(Array.isArray(d.cambiosDivisas))S.cambiosDivisas=d.cambiosDivisas;
     else if(!S.cambiosDivisas)S.cambiosDivisas=[];
-    if(!S.cfg.fiscalTipo)S.cfg.fiscalTipo='FORMA_LIBRE';
+    if(!S.cfg.fiscalTipo)S.cfg.fiscalTipo='NO_CONFIGURADO';
     if(S.cfg.contribEspecial===undefined)S.cfg.contribEspecial=false;
     if(S.cfg.retencionHabilitadaConfirmada===undefined)S.cfg.retencionHabilitadaConfirmada=false;
-    if(!S.cfg.retIvaPct)S.cfg.retIvaPct=75;
+    if(S.cfg.retIvaPct===undefined||S.cfg.retIvaPct===null)S.cfg.retIvaPct=0;
+    if(S.cfg.retIvaPctConfirmed!==true)S.cfg.retIvaPct=0;
     if(!S.cfg.provEspecial)S.cfg.provEspecial='';
-    if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='00-';
-    if(!S.cfg.ctrlNext)S.cfg.ctrlNext=1043;
-    if(!S.cfg.ctrlRangoDesde)S.cfg.ctrlRangoDesde='00-00000001';
-    if(!S.cfg.ctrlRangoHasta)S.cfg.ctrlRangoHasta='00-00050000';
-    if(!S.cfg.imprentaRif)S.cfg.imprentaRif='J-31009988-4';
-    if(!S.cfg.imprentaAut)S.cfg.imprentaAut='SENIAT/DAF/2022/981';
-    if(!S.cfg.serialFiscal)S.cfg.serialFiscal='Z4A7719204';
+    if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='';
+    if(S.cfg.ctrlNext===undefined||S.cfg.ctrlNext===null)S.cfg.ctrlNext=0;
+    const hadLegacyFiscalDemo = S.cfg.ctrlRangoDesde==='00-00000001' ||
+      S.cfg.ctrlRangoHasta==='00-00050000' ||
+      S.cfg.imprentaRif==='J-31009988-4' ||
+      S.cfg.imprentaAut==='SENIAT/DAF/2022/981' ||
+      S.cfg.serialFiscal==='Z4A7719204' ||
+      S.cfg.provEspecial==='SNAT/2023/000412';
+    if(hadLegacyFiscalDemo){
+      if(S.cfg.ctrlRangoDesde==='00-00000001')S.cfg.ctrlRangoDesde='';
+      if(S.cfg.ctrlRangoHasta==='00-00050000')S.cfg.ctrlRangoHasta='';
+      if(S.cfg.imprentaRif==='J-31009988-4')S.cfg.imprentaRif='';
+      if(S.cfg.imprentaAut==='SENIAT/DAF/2022/981')S.cfg.imprentaAut='';
+      if(S.cfg.serialFiscal==='Z4A7719204')S.cfg.serialFiscal='';
+      if(S.cfg.provEspecial==='SNAT/2023/000412')S.cfg.provEspecial='';
+      if(S.cfg.ctrlPrefix==='00-')S.cfg.ctrlPrefix='';
+      if(Number(S.cfg.ctrlNext)===1043)S.cfg.ctrlNext=0;
+      if(S.cfg.fiscalTipo==='FORMA_LIBRE')S.cfg.fiscalTipo='NO_CONFIGURADO';
+      (S.sales||[]).forEach(s=>{
+        const generated='00-'+String(s.cashbox||'').replace(/\W/g,'').slice(-4)+'-'+pad(s.no,8);
+        if(s.ctrlNo===generated)s.ctrlNo='';
+      });
+    }
+
+    
+    
+    
+    
+    
     (S.sales||[]).forEach(s=>{
-      if(!s.ctrlNo)s.ctrlNo=(S.cfg.ctrlPrefix||'00-')+pad(s.no,8);
-      if(!s.docType)s.docType='01-FACTURA';
-      if(!s.transType)s.transType=s.void?'03-ANUL':'01-REG';
+      if(!s.ctrlNo)s.ctrlNo='';
+      if(!s.docType)s.docType='NO_CLASIFICADO';
+      if(!s.transType)s.transType=s.void?'03-ANUL':'NO_CLASIFICADO';
       if(s.baseG16===undefined)s.baseG16=s.base||0;
     });
     (S.purchases||[]).forEach(p=>{
-      if(!p.ctrlProv)p.ctrlProv='00-'+pad(p.no+4400,8);
+      if(!p.ctrlProv||p.ctrlProv==='00-'+pad(p.no+4400,8))p.ctrlProv='';
     });
     S.invoice=d.invoice||S.invoice;
     S.purchaseSeq=d.purchaseSeq||S.purchaseSeq;
@@ -2434,33 +2463,57 @@ function comprasDlg(initialTab){
   };
 
   const renderSuppliersTab=v=>{
+    const options=(value,items)=>items.map(x=>'<option value="'+x[0]+'"'+(value===x[0]?' selected':'')+'>'+x[1]+'</option>').join('');
     v.innerHTML=
-      '<div class="gridwrap invwrap"><table class="grid"><thead><tr><th>Código</th><th>Razón Social / Proveedor</th><th>RIF</th><th>Teléfono</th><th>Condición Habitual</th><th>Retención IVA</th></tr></thead><tbody>'+
-        S.suppliers.map(s=>'<tr><td class="mono">'+esc(s.id)+'</td><td><b>'+esc(s.name)+'</b></td><td class="mono">'+esc(s.rif)+'</td><td>'+esc(s.tel)+'</td><td>'+esc(s.cond)+'</td><td>'+'<select class="fld" data-ret-iva="'+esc(s.id)+'" aria-label="Sujeto a retención IVA"><option value="no"'+(s.retieneIva===true?'':' selected')+'>No / verificar</option><option value="si"'+(s.retieneIva===true?' selected':'')+'>Sí, confirmado</option></select>'+'</td></tr>').join('')+
+      '<div class="gridwrap invwrap"><table class="grid" style="min-width:1250px"><thead><tr><th>Código</th><th>Razón Social / Proveedor</th><th>RIF</th><th>Teléfono</th><th>Condición habitual</th><th>Sujeto a retención IVA</th><th>Agente de percepción IVA</th><th>Aplicabilidad de retención</th><th>100 % verificado</th><th>Referencia verificada</th></tr></thead><tbody>'+
+        S.suppliers.map(s=>'<tr><td class="mono">'+esc(s.id)+'</td><td><b>'+esc(s.name)+'</b></td><td class="mono">'+esc(s.rif)+'</td><td>'+esc(s.tel)+'</td><td>'+esc(s.cond)+'</td>'+
+          '<td><select class="fld" data-ret-iva="'+esc(s.id)+'" aria-label="Proveedor sujeto a retención">'+options(s.retieneIvaStatus||(s.retieneIva===true?'yes':'unknown'),[['unknown','Por verificar'],['yes','Sí, confirmado'],['no','No, verificado']])+'</select></td>'+
+          '<td><select class="fld" data-ret-perception="'+esc(s.id)+'" aria-label="Proveedor agente de percepción IVA">'+options(s.ivaPerceptionAgentStatus||'unknown',[['unknown','Por verificar'],['yes','Sí'],['no','No']])+'</select></td>'+
+          '<td><select class="fld" data-ret-eligibility="'+esc(s.id)+'" aria-label="Aplicabilidad de retención IVA">'+options(s.retencionExclusionStatus||'unknown',[['unknown','Por verificar'],['eligible','Aplicable verificada'],['excluded','Excluida']])+'</select></td>'+
+          '<td><select class="fld" data-ret-100="'+esc(s.id)+'" aria-label="Supuesto de retención del 100 por ciento">'+options(s.retencion100PorcientoVerificada===true?'yes':'unknown',[['unknown','Por verificar'],['yes','Sí, verificado'],['no','No aplica']])+'</select></td>'+
+          '<td><input class="fld" data-ret-ref="'+esc(s.id)+'" value="'+esc(s.retencionReglaRef||'')+'" placeholder="Soporte / referencia"></td></tr>').join('')+
       '</tbody></table></div>'+
       '<details class="newp" open><summary>Registrar nuevo proveedor</summary><div class="newgrid">'+
         '<div class="f"><label for="nsRif">RIF</label><input class="fld" id="nsRif" placeholder="J-00000000-0"></div>'+
         '<div class="f wide"><label for="nsName">Razón Social</label><input class="fld" id="nsName" placeholder="Nombre de la distribuidora o fabricante"></div>'+
         '<div class="f"><label for="nsTel">Teléfono</label><input class="fld" id="nsTel"></div>'+
         '<div class="f"><label for="nsCond">Condición</label><select class="fld" id="nsCond"><option>Contado</option><option selected>15 días</option><option>30 días</option></select></div>'+
-        '<div class="f"><label for="nsRetIva">Sujeto a retención de IVA</label><select class="fld" id="nsRetIva"><option value="no" selected>No / por verificar</option><option value="si">Sí, confirmado</option></select></div>'+
-      '</div><p class="muted">Active esta opción solo después de verificar la condición fiscal del proveedor y la operación.</p><button class="btn" id="nsSave">Guardar proveedor</button></details>';
+        '<div class="f"><label for="nsRetIva">Sujeto a retención de IVA</label><select class="fld" id="nsRetIva"><option value="unknown" selected>Por verificar</option><option value="yes">Sí, confirmado</option><option value="no">No, verificado</option></select></div>'+
+        '<div class="f"><label for="nsPerception">¿Agente de percepción IVA?</label><select class="fld" id="nsPerception"><option value="unknown" selected>Por verificar</option><option value="yes">Sí, confirmado</option><option value="no">No, verificado</option></select></div>'+
+        '<div class="f"><label for="nsRetentionEligibility">Aplicabilidad de retención</label><select class="fld" id="nsRetentionEligibility"><option value="unknown" selected>Por verificar</option><option value="eligible">Aplicable, verificada</option><option value="excluded">Excluida por norma</option></select></div>'+
+        '<div class="f"><label for="nsRet100">¿Supuesto de retención del 100 % verificado?</label><select class="fld" id="nsRet100"><option value="unknown" selected>Por verificar</option><option value="yes">Sí, verificado</option><option value="no">No aplica</option></select></div>'+
+        '<div class="f wide"><label for="nsTaxBasis">Referencia / soporte de verificación</label><input class="fld" id="nsTaxBasis" placeholder="Providencia, constancia o documento revisado"></div>'+
+      '</div><p class="muted">La retención automática solo se habilita si el proveedor está sujeto, no es agente de percepción según verificación, la operación es aplicable y existe soporte registrado. Si falta información, queda pendiente de revisión.</p><button class="btn" id="nsSave">Guardar proveedor</button></details>';
     v.onchange=e=>{
-      const ctl=e.target.closest('[data-ret-iva]');
-      if(!ctl)return;
-      const sup=S.suppliers.find(x=>x.id===ctl.dataset.retIva);
+      const id=(e.target.closest('[data-ret-iva]')||e.target.closest('[data-ret-perception]')||e.target.closest('[data-ret-eligibility]')||e.target.closest('[data-ret-100]')||e.target.closest('[data-ret-ref]'));
+      if(!id)return;
+      const sup=S.suppliers.find(x=>x.id===id.dataset.retIva||x.id===id.dataset.retPerception||x.id===id.dataset.retEligibility||x.id===id.dataset.ret100||x.id===id.dataset.retRef);
       if(!sup)return;
-      sup.retieneIva=ctl.value==='si';
-      save();
-      renderSuppliersTab(v);
-      msg('Configuración de retención IVA actualizada para '+sup.name+'.');
+      if(id.dataset.retIva){sup.retieneIvaStatus=id.value;sup.retieneIva=id.value==='yes';}
+      if(id.dataset.retPerception)sup.ivaPerceptionAgentStatus=id.value;
+      if(id.dataset.retEligibility)sup.retencionExclusionStatus=id.value;
+      if(id.dataset.ret100)sup.retencion100PorcientoVerificada=id.value==='yes';
+      if(id.dataset.retRef)sup.retencionReglaRef=id.value.trim();
+      save();renderSuppliersTab(v);
+      msg('Perfil tributario del proveedor actualizado. La aplicabilidad debe tener soporte verificable.');
     };
     v.onclick=e=>{
       if(e.target.id==='nsSave'){
         const rif=$('#nsRif',v).value.trim(), name=$('#nsName',v).value.trim();
+        const eligibility=$('#nsRetentionEligibility',v).value, basis=$('#nsTaxBasis',v).value.trim();
         if(!rif||!name){msg('Indique RIF y razón social del proveedor.','bad');return;}
-        S.suppliers.push({id:'PRV-'+two(S.suppliers.length+1),name,rif,tel:$('#nsTel',v).value.trim(),cond:$('#nsCond',v).value,retieneIva:$('#nsRetIva',v).value==='si'});
-        save();renderSuppliersTab(v);msg('Proveedor '+name+' registrado.');
+        if(eligibility==='eligible'&&!basis){msg('Indique el soporte que justifica la aplicabilidad de la retención.','bad');return;}
+        S.suppliers.push({
+          id:'PRV-'+two(S.suppliers.length+1),name,rif,tel:$('#nsTel',v).value.trim(),cond:$('#nsCond',v).value,
+          retieneIva:$('#nsRetIva',v).value==='yes',
+          retieneIvaStatus:$('#nsRetIva',v).value,
+          ivaPerceptionAgentStatus:$('#nsPerception',v).value,
+          retencionExclusionStatus:eligibility,
+          retencionSupuestoVerificado:eligibility==='eligible',
+          retencion100PorcientoVerificada:$('#nsRet100',v).value==='yes',
+          retencionReglaRef:basis
+        });
+        save();renderSuppliersTab(v);msg('Proveedor '+name+' registrado con perfil tributario pendiente o verificado.');
       }
     };
   };
@@ -2507,8 +2560,8 @@ function comprasDlg(initialTab){
     const iva=r8(lines.reduce((a,l)=>a+(l.iva||0),0));
     const total=r8(base+iva);
     const dueTs=ts+creditDays*86400000;
-    const retPct=Number(S.cfg.retIvaPct)===100?100:75; /* Aplicar solo si la designación y el proveedor están confirmados. */
-    const aplicarRetencion=!!(iva>0&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true);
+    const retPct=[75,100].includes(Number(S.cfg.retIvaPct))?Number(S.cfg.retIvaPct):0; /* No asumir tasa si el contador no la configuró. */
+    const aplicarRetencion=!!(iva>0&&retPct>0&&S.cfg.retIvaPctConfirmed===true&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true&&sup.retieneIvaStatus==='yes'&&sup.ivaPerceptionAgentStatus==='no'&&sup.retencionExclusionStatus==='eligible'&&sup.retencionReglaRef&&(retPct!==100||sup.retencion100PorcientoVerificada===true));
     const retUsd=aplicarRetencion?r2(iva*(retPct/100)):0;
     const retBs=r2(retUsd*S.cfg.rate);
     const payableTotal=r2(Math.max(0,total-retUsd));
@@ -2517,8 +2570,9 @@ function comprasDlg(initialTab){
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
       const periodo=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
-      const retSeq=(S.retencionesIva||[]).filter(r=>String(r.periodo)===periodo).reduce((m,r)=>Math.max(m,Number(String(r.id||'').slice(-8))||0),0)+1;
-      const retDoc=periodo+pad(retSeq,8);
+      const retPrefix='BORRADOR-RET-'+periodo+'-';
+      const retSeq=(S.retencionesIva||[]).filter(r=>String(r.id||'').startsWith(retPrefix)).length+1;
+      const retDoc=retPrefix+pad(retSeq,5);
       comp.retIvaDoc=retDoc;
       if(!S.retencionesIva)S.retencionesIva=[];
       S.retencionesIva.push({
@@ -4382,12 +4436,11 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
   if(creditAmt>0){
     pays.push({id:'credito',name:'Crédito CxC ('+cDays+' días)',cur:'USD',amount:creditAmt});
   }
-  const ctrlPrefix=S.cfg.ctrlPrefix||'00-';
-  const seqs=cajaSeqs(),boxSeq=seqs[currentCaja()]||(seqs[currentCaja()]={invoice:1,void:1,refund:1,cxc:1,movement:1,z:1});
-  const ctrlNext=Number(boxSeq.ctrl||1);boxSeq.ctrl=ctrlNext+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
-  const ctrlNo=ctrlPrefix+String(currentCaja()).replace(/\W/g,'').slice(-4)+'-'+pad(ctrlNext,8);
+  // Sin integración con imprenta digital autorizada o máquina fiscal validada,
+  // el POS conserva la operación como documento interno y no inventa un número de control.
+  const ctrlNo='';
   const sale={
-    no:invNo,ctrlNo,docType:'01-FACTURA',transType:'01-REG',
+    no:invNo,ctrlNo,docType:'DOCUMENTO_INTERNO',transType:'AUXILIAR',fiscalStatus:'NO_CONFIGURADO',
     ts,cashbox:currentCaja(),cashier:currentCajero(),client:Object.assign({},S.client),lines,
     sub:t.sub,disc:t.disc,base:t.base,
     baseG16:t.baseG16,baseR8:t.baseR8,baseA31:t.baseA31,baseEx:t.baseEx,
@@ -4496,7 +4549,7 @@ function ticketText(s){
   const L=[];
   if(s.void)L.push(dln,ctr('*** VENTA ANULADA ***'),dln);
   L.push(ctr(cut(S.cfg.empresa.toUpperCase(),Wd)),ctr('RIF: '+S.cfg.rif));
-  L.push(dln,row('RECIBO / TICKET: '+pad(s.no),fmtDT(s.ts)),row('Nº Control: '+(s.ctrlNo||('00-'+pad(s.no,8))),'Tasa BCV: '+nf(s.rate||S.cfg.rate)+' Bs.'),row('Cajero: '+S.cfg.cajero,'Caja '+S.cfg.caja),'Cliente: '+cut(s.client.name,Wd-9),'RIF/C.I.: '+s.client.rif,ln,row('CANT·U.M. x PRECIO (IVA)','SUBTOTAL US$'),ln);
+  L.push(dln,row('RECIBO / TICKET: '+pad(s.no),fmtDT(s.ts)),row('Nº Control: '+(s.ctrlNo||'NO REGISTRADO'),'Tasa BCV: '+nf(s.rate||S.cfg.rate)+' Bs.'),row('Cajero: '+S.cfg.cajero,'Caja '+S.cfg.caja),'Cliente: '+cut(s.client.name,Wd-9),'RIF/C.I.: '+s.client.rif,ln,row('CANT·U.M. x PRECIO (IVA)','SUBTOTAL US$'),ln);
   s.lines.forEach(l=>{
     const uLabel=(l.unit||'und').toUpperCase();
     const tTag=l.taxRate===0?'(E 0%)':(l.taxRate===8?'(R 8%)':(l.taxRate===31?'(A 31%)':'(G 16%)'));
@@ -4665,12 +4718,12 @@ function printFiscalReport(title,html){
       '<div style="text-align:right">'+
         '<div style="font-weight:700;font-size:14px;color:#1842B8">'+esc(title)+'</div>'+
         '<div style="font-size:11px;color:#555">Fecha de Emisión: '+fmtDT(Date.now())+'</div>'+
-        '<div style="font-size:11px;color:#555">Control Fiscal: '+esc(S.cfg.ctrlPrefix||'00-')+' &middot; Rango Aut. Imprenta</div>'+
+        '<div style="font-size:11px;color:#92400E">Numeración fiscal: no configurada ni validada en esta instalación. Este reporte es auxiliar.</div>'+
       '</div>'+
     '</div>'+
     html+
     '<div style="margin-top:24px;border-top:1px dashed #888;padding-top:10px;display:flex;justify-content:space-between;font-size:10.5px;color:#555">'+
-      '<div>Documento generado por SIFER 360 &middot; Sistema Administrativo y de Control Fiscal</div>'+
+      '<div>Documento auxiliar generado por SIFER 360 &middot; No sustituye factura emitida por medio autorizado</div>'+
       '<div>Firma Contador / Administrador: _____________________________</div>'+
     '</div>'+
   '</div>';
@@ -4709,7 +4762,7 @@ function exportLibroVentasCsv(sales){
       `"${s.client.rif}"`,
       `"${s.client.name.replace(/"/g,'""')}"`,
       pad(s.no),
-      s.ctrlNo||('00-'+pad(s.no,8)),
+      s.ctrlNo||'NO REGISTRADO',
       s.void?(s.voidDoc||('NC-'+pad(s.no,8))):'',
       s.void?pad(s.no):'',
       s.transType||(s.void?'03-ANUL':'01-REG'),
@@ -4782,60 +4835,41 @@ function exportIgtfCsv(sales){
   msg('Reporte de Percepción IGTF exportado a CSV con éxito.');
 }
 
-function exportSeniatTxt(periodo){
-  if(!periodo){const d=new Date();periodo=String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');}
-  const rifAgente=S.cfg.rif.replace(/[^A-Za-z0-9]/g,'').toUpperCase();
-  const list=S.retencionesIva||[];
-  if(!list.length){
-    msg('No hay registros de retención IVA para el período '+periodo+'.','bad');
-    return;
-  }
-  const lines=list.map(r=>{
-    const rifProv=(r.supplier.rif||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase();
-    const fec=new Date(r.ts).toISOString().slice(0,10);
-    const numFac=(r.docProv||'0001').replace(/[^A-Za-z0-9-]/g,'').slice(0,20);
-    const numCtrl=(r.ctrlProv||'00-00000001').replace(/[^A-Za-z0-9-]/g,'').slice(0,20);
-    const totBs=r2((r.base+r.iva)*(r.rate||S.cfg.rate)).toFixed(2);
-    const baseBs=r2(r.base*(r.rate||S.cfg.rate)).toFixed(2);
-    const retBs=r2(r.retainedBs||(r.iva*0.75*(r.rate||S.cfg.rate))).toFixed(2);
-    const numComp=r.id||(periodo+pad(r.purchaseNo||1,8));
-    return `${rifAgente}\t${periodo}\t${fec}\tC\t01\t${rifProv}\t${numFac}\t${numCtrl}\t${totBs}\t${baseBs}\t${retBs}\t0\t${numComp}\t0.00\t16.00\t0`;
-  });
-  const txt=lines.join('\r\n');
-  downloadBlob(`RetencionesIVA_${rifAgente}_${periodo}.txt`,txt,'text/plain;charset=utf-8;');
-  msg('Archivo de trabajo exportado. El contador debe validar formato y datos antes de cualquier carga o declaración ante el SENIAT.');
+function exportSeniatTxt(){
+  msg('Exportación TXT deshabilitada: la estructura oficial vigente no está validada en esta versión. Los borradores internos no pueden exportarse como comprobantes o declaraciones SENIAT.','bad');
+  return;
 }
 
 function printComprobanteRetencion(r){
-  const rate=r.rate||S.cfg.rate;
-  const totBs=r2((r.base+r.iva)*rate);
-  const baseBs=r2(r.base*rate);
-  const ivaBs=r2(r.iva*rate);
-  const retBs=r2(r.retainedBs||(r.iva*0.75*rate));
-  const html='<div style="padding:10px;border:1px solid #10222B;border-radius:6px">'+
-    '<div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:8px">COMPROBANTE DE RETENCIÓN DEL IMPUESTO AL VALOR AGREGADO (I.V.A.)</div>'+
-    '<div style="text-align:center;font-size:11.5px;color:#444;margin-bottom:14px">Ley de IVA &middot; Artículos 11 y Providencia Administrativa SNAT/2015/0049 para Sujetos Pasivos Especiales</div>'+
+  const rate=Number(r.rate)||0;
+  const totBs=r2((Number(r.base)||0)+(Number(r.iva)||0))*rate;
+  const baseBs=r2((Number(r.base)||0)*rate);
+  const ivaBs=r2((Number(r.iva)||0)*rate);
+  const retBs=r2((Number(r.retainedBs)||0));
+  const html='<div style="padding:10px;border:2px solid #B45309;border-radius:6px">'+
+    '<div style="text-align:center;font-weight:800;font-size:15px;color:#92400E;margin-bottom:8px">BORRADOR INTERNO — NO VÁLIDO COMO COMPROBANTE OFICIAL</div>'+
+    '<div style="text-align:center;font-size:11.5px;color:#444;margin-bottom:14px">Documento de trabajo para revisión del contador. Referencia: Providencia SNAT/2025/000054.</div>'+
     '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">'+
-      '<tr><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5;width:25%"><b>Nº Comprobante:</b></td><td style="padding:4px;border:1px solid #BAC7CE;font-family:monospace;font-weight:700">'+esc(r.id)+'</td><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5;width:20%"><b>Fecha Emisión:</b></td><td style="padding:4px;border:1px solid #BAC7CE">'+fmtD(new Date(r.ts))+'</td></tr>'+
-      '<tr><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5"><b>Agente de Retención:</b></td><td style="padding:4px;border:1px solid #BAC7CE">'+esc(S.cfg.empresa)+' ('+esc(S.cfg.rif)+')</td><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5"><b>Período Fiscal:</b></td><td style="padding:4px;border:1px solid #BAC7CE">'+esc(r.periodo||'202610')+'</td></tr>'+
-      '<tr><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5"><b>Proveedor Sujeto:</b></td><td style="padding:4px;border:1px solid #BAC7CE" colspan="3">'+esc(r.supplier.name)+' &middot; <b>RIF:</b> '+esc(r.supplier.rif)+'</td></tr>'+
+      '<tr><td><b>ID interno:</b></td><td style="font-family:monospace;font-weight:700">'+esc(r.id)+'</td><td><b>Fecha del borrador:</b></td><td>'+fmtD(new Date(r.ts))+'</td></tr>'+
+      '<tr><td><b>Agente:</b></td><td>'+esc(S.cfg.empresa)+' ('+esc(S.cfg.rif)+')</td><td><b>Período:</b></td><td>'+esc(r.periodo||'No indicado')+'</td></tr>'+
+      '<tr><td><b>Proveedor:</b></td><td colspan="3">'+esc(r.supplier?.name||'')+' · RIF: '+esc(r.supplier?.rif||'')+'</td></tr>'+
     '</table>'+
     '<table style="width:100%;border-collapse:collapse;font-size:11.5px;text-align:right">'+
-      '<thead><tr style="background:#10222B;color:#fff"><th style="padding:5px;text-align:center">Operación</th><th style="padding:5px;text-align:center">Nº Factura</th><th style="padding:5px;text-align:center">Nº Control</th><th style="padding:5px">Total Bs.</th><th style="padding:5px">Base Imponible Bs.</th><th style="padding:5px">IVA 16% Bs.</th><th style="padding:5px;text-align:center">% Ret.</th><th style="padding:5px">IVA Retenido Bs.</th></tr></thead>'+
-      '<tbody><tr><td style="padding:6px;border:1px solid #BAC7CE;text-align:center">01-COMPRA</td><td style="padding:6px;border:1px solid #BAC7CE;text-align:center;font-family:monospace">'+esc(r.docProv)+'</td><td style="padding:6px;border:1px solid #BAC7CE;text-align:center;font-family:monospace">'+esc(r.ctrlProv)+'</td><td style="padding:6px;border:1px solid #BAC7CE">'+nf(totBs)+'</td><td style="padding:6px;border:1px solid #BAC7CE">'+nf(baseBs)+'</td><td style="padding:6px;border:1px solid #BAC7CE">'+nf(ivaBs)+'</td><td style="padding:6px;border:1px solid #BAC7CE;text-align:center;font-weight:700">'+fq(r.pct||75)+'%</td><td style="padding:6px;border:1px solid #BAC7CE;font-weight:700;color:#1842B8">'+nf(retBs)+'</td></tr></tbody>'+
+      '<thead><tr style="background:#10222B;color:#fff"><th>Factura</th><th>Control</th><th>Total Bs.</th><th>Base Bs.</th><th>IVA Bs.</th><th>% Ret.</th><th>Retención Bs.</th></tr></thead>'+
+      '<tbody><tr><td>'+esc(r.docProv||'')+'</td><td>'+esc(r.ctrlProv||'')+'</td><td>'+nf(totBs)+'</td><td>'+nf(baseBs)+'</td><td>'+nf(ivaBs)+'</td><td>'+fq(Number(r.pct)||0)+'%</td><td><b>'+nf(retBs)+'</b></td></tr></tbody>'+
     '</table>'+
-    '<div style="margin-top:16px;padding:8px;background:#EDF7F0;border:1px solid #BEE7C8;border-radius:4px;font-size:11.5px;color:#1D6F39">'+
-      '<b>Monto Retenido en Letras:</b> Retención del 75% correspondiente al impuesto facturado por un total de <b>'+nf(retBs)+' Bolívares</b> (Equivalente: US$ '+nf(r.retainedUsd||(r.iva*0.75))+').'+
-    '</div>'+
-  '</div>';
-  printFiscalReport('Comprobante de Retención IVA — '+r.id,html);
+    '<p><b>Fundamento registrado:</b> '+esc(r.basis||'Pendiente de documentar')+'</p>'+
+    '<div style="margin-top:14px;padding:8px;background:#FFF7E6;border:1px solid #F3D08A;border-radius:4px;font-size:11.5px;color:#92400E">'+
+      'Este borrador no tiene número oficial, no acredita retención practicada y no sustituye el comprobante emitido conforme al medio autorizado. Retención preliminar: '+nf(retBs)+' Bs. ('+usd(Number(r.retainedUsd)||0)+').'+
+    '</div></div>';
+  printFiscalReport('BORRADOR INTERNO DE RETENCIÓN IVA — '+r.id,html);
 }
 
 function printActaBcv(sales){
   const ok=sales.filter(s=>!s.void);
-  const rowsHtml=ok.map(s=>'<tr><td style="padding:4px;border:1px solid #BAC7CE;font-family:monospace">'+pad(s.no)+'</td><td style="padding:4px;border:1px solid #BAC7CE">'+fmtDT(s.ts)+'</td><td style="padding:4px;border:1px solid #BAC7CE">'+esc(s.client.name)+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right">'+nf(s.total+(s.igtf||0))+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right;font-weight:700;color:#1842B8">'+nf(s.rate||S.cfg.rate)+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right">'+nf((s.total+(s.igtf||0))*(s.rate||S.cfg.rate))+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:center;color:#1D6F39;font-weight:700">100% CONFORME BCV</td></tr>').join('');
+  const rowsHtml=ok.map(s=>'<tr><td style="padding:4px;border:1px solid #BAC7CE;font-family:monospace">'+pad(s.no)+'</td><td style="padding:4px;border:1px solid #BAC7CE">'+fmtDT(s.ts)+'</td><td style="padding:4px;border:1px solid #BAC7CE">'+esc(s.client.name)+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right">'+nf(s.total+(s.igtf||0))+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right;font-weight:700;color:#1842B8">'+nf(s.rate||S.cfg.rate)+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right">'+nf((s.total+(s.igtf||0))*(s.rate||S.cfg.rate))+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:center;color:#1D6F39;font-weight:700">TASA REGISTRADA · NO CERTIFICADA</td></tr>').join('');
   const html='<div style="font-size:12px">'+
-    '<div style="background:#EBF7EE;border:1px solid #BEE7C8;padding:10px;border-radius:6px;margin-bottom:12px">'+
+    '<div style="background:#FFF7E6;border:1px solid #F3D08A;padding:10px;border-radius:6px;margin-bottom:12px">'+
       '<h3 style="margin:0 0 4px;font-size:14px;color:#1D6F39">ACTA DE FISCALIZACIÓN Y CONFORMIDAD CAMBIARIA (BANCO CENTRAL DE VENEZUELA)</h3>'+
       '<p style="margin:0;font-size:11.5px;color:#144A75">Se hace constar ante los funcionarios del <b>SENIAT</b> y la <b>SUNDDE</b> que la entidad <b>'+esc(S.cfg.empresa)+'</b> (RIF: '+esc(S.cfg.rif)+') aplica de manera estricta y sin excepciones la <b>Tasa Oficial publicada por el Banco Central de Venezuela (BCV)</b> en todas sus operaciones comerciales y documentos de venta.</p>'+
     '</div>'+
@@ -4912,84 +4946,77 @@ function printVoucherLoteSudeban(l){
     '</div>'+
     '<div style="display:flex;justify-content:space-between;font-size:11px;color:#555"><span>Equiv. Tasa Oficial BCV:</span><span>'+usd(equivUsd)+'</span></div>'+
     '<div style="margin-top:12px;text-align:center;font-size:10.5px;color:#333;border-top:1px dashed #666;padding-top:8px">'+
-      'ESTADO: <b>'+esc(l.estado)+'</b> CON REGISTROS POS<br>CONCILIACIÓN FÍSICA Y ELECTRÓNICA CONFORME<br>CONSERVACIÓN LEGAL 10 AÑOS (SUDEBAN)'+
+      'ESTADO: <b>'+esc(l.estado)+'</b> CON REGISTROS POS<br>CONCILIACIÓN FÍSICA Y ELECTRÓNICA PENDIENTE DE VALIDACIÓN<br>CONSERVAR SEGÚN EL PLAZO LEGAL APLICABLE'+
     '</div>'+
   '</div>';
   printFiscalReport('Voucher de Cierre de Lote — '+l.refLote,html);
 }
 
 function newRetencionIvaDlg(onDone){
-  const supOpts=(S.suppliers||[]).map((s,i)=>'<option value="'+i+'">'+esc(s.name)+' ('+esc(s.rif)+')</option>').join('');
-  const rate=S.cfg.rate;
+  const supOpts=(S.suppliers||[]).map((x,i)=>'<option value="'+i+'">'+esc(x.name)+' ('+esc(x.rif)+')</option>').join('');
+  const rate=Number(S.cfg.rate)||0;
   const el=h('<div class="form"><div class="newgrid">'+
-    '<div class="f wide"><label for="retSup">Proveedor Sujeto Pasivo</label><select class="fld" id="retSup">'+supOpts+'</select></div>'+
-    '<div class="f"><label for="retDocProv">Nº Factura Proveedor</label><input class="fld mono" id="retDocProv" value="00048912" placeholder="00012345"></div>'+
-    '<div class="f"><label for="retCtrlProv">Nº de Control Proveedor</label><input class="fld mono" id="retCtrlProv" value="00-'+pad(Math.floor(Math.random()*899999+100000),8)+'"></div>'+
-    '<div class="f"><label for="retBase">Base Imponible (US$)</label><input class="fld r" id="retBase" inputmode="decimal" value="100,00"></div>'+
-    '<div class="f"><label for="retPct">% Retención IVA</label><select class="fld" id="retPct"><option value="75" '+(S.cfg.retIvaPct===75?'selected':'')+'>75 % (Estándar)</option><option value="100" '+(S.cfg.retIvaPct===100?'selected':'')+'>100 % (Total)</option></select></div>'+
-    '<div class="f"><label for="retRate">Tasa BCV Aplicable</label><input class="fld r mono" id="retRate" readonly value="'+nf(rate)+' Bs."></div>'+
-  '</div>'+
-  '<div class="cierre" style="margin-top:6px">'+
-    '<table class="sumt" id="retPreviewTable"><tbody></tbody></table>'+
-  '</div>'+
-  '<p class="hint">Borrador de apoyo y trazabilidad para revisión del contador. Referencia normativa: Providencia Administrativa SNAT/2025/000054. Este POS no declara, no paga ni certifica por sí mismo la retención ante el SENIAT; el contador debe validar datos, excepciones y formalidades antes de emitir o declarar.</p></div>');
-
+    '<div class="f wide"><label for="retSup">Proveedor sujeto a retención (confirmado)</label><select class="fld" id="retSup"><option value="">Seleccionar proveedor</option>'+supOpts+'</select></div>'+
+    '<div class="f"><label for="retDocProv">Nº factura del proveedor</label><input class="fld mono" id="retDocProv" value="" placeholder="Transcribir factura real"></div>'+
+    '<div class="f"><label for="retCtrlProv">Nº control del proveedor</label><input class="fld mono" id="retCtrlProv" value="" placeholder="Transcribir control real"></div>'+
+    '<div class="f"><label for="retDocDate">Fecha de la factura</label><input class="fld" type="date" id="retDocDate" value=""></div>'+
+    '<div class="f"><label for="retBase">Base imponible (US$)</label><input class="fld r" id="retBase" inputmode="decimal" value="" placeholder="Según factura"></div>'+
+    '<div class="f"><label for="retIvaAmount">IVA facturado (US$)</label><input class="fld r" id="retIvaAmount" inputmode="decimal" value="" placeholder="Según factura"></div>'+
+    '<div class="f"><label for="retPct">% de retención</label><select class="fld" id="retPct"><option value="" selected>Seleccionar tras validar supuesto</option><option value="75">75 %</option><option value="100">100 % (requiere supuesto legal específico)</option></select></div>'+
+    '<div class="f"><label for="retBasis">Fundamento / observación del contador</label><input class="fld" id="retBasis" value="" placeholder="Describa el supuesto verificado"></div>'+
+    '<div class="f"><label for="retRate">Tasa BCV registrada</label><input class="fld r mono" id="retRate" readonly value="'+nf(rate)+' Bs."></div>'+
+  '</div><div class="cierre" style="margin-top:6px"><table class="sumt" id="retPreviewTable"><tbody></tbody></table></div>'+
+  '<p class="hint">Se guarda únicamente un BORRADOR INTERNO. No asigna número oficial, no emite un comprobante fiscal, no declara ni paga la retención. El contador debe verificar la designación del agente, la condición del proveedor, exclusiones, porcentaje y documento original conforme a la Providencia SNAT/2025/000054.</p></div>');
   const upd=()=>{
-    const base=pn($('#retBase',el).value);
-    const pct=parseInt($('#retPct',el).value)||75;
-    const ivaUsd=r2(base*0.16);
-    const retUsd=r2(ivaUsd*(pct/100));
-    const baseBs=r2(base*rate);
-    const ivaBs=r2(ivaUsd*rate);
-    const retBs=r2(retUsd*rate);
+    const base=pn($('#retBase',el).value), ivaUsd=pn($('#retIvaAmount',el).value), pct=Number($('#retPct',el).value);
+    if(!(base>0)||!(ivaUsd>0)||![75,100].includes(pct)||!(rate>0)){
+      $('#retPreviewTable',el).innerHTML='<tr><td class="hint">Complete los importes reales, seleccione un porcentaje después de verificar el supuesto y configure una tasa válida para ver el cálculo preliminar.</td></tr>';
+      return;
+    }
+    const retUsd=r2(ivaUsd*pct/100), retBs=r2(retUsd*rate);
     $('#retPreviewTable',el).innerHTML=
-      '<tr><td>Base Imponible:</td><td class="r">'+usd(base)+' ('+bsf(baseBs)+')</td></tr>'+
-      '<tr><td>IVA Facturado (16 %):</td><td class="r">'+usd(ivaUsd)+' ('+bsf(ivaBs)+')</td></tr>'+
-      '<tr class="tot"><td><b>Monto a Retener al Proveedor ('+pct+' %):</b></td><td class="r" style="color:#1842B8;font-size:14px"><b>'+bsf(retBs)+'</b> ('+usd(retUsd)+')</td></tr>';
+      '<tr><td>Base imponible de la factura:</td><td class="r">'+usd(base)+' ('+bsf(r2(base*rate))+')</td></tr>'+
+      '<tr><td>IVA transcrito de la factura:</td><td class="r">'+usd(ivaUsd)+' ('+bsf(r2(ivaUsd*rate))+')</td></tr>'+
+      '<tr class="tot"><td><b>Retención preliminar ('+pct+' %):</b></td><td class="r"><b>'+bsf(retBs)+' ('+usd(retUsd)+')</b></td></tr>';
   };
   el.addEventListener('input',upd);
   el.addEventListener('change',upd);
   upd();
-
   openWin({
-    title:'Emitir Comprobante de Retención de IVA (SENIAT)',
-    w:620,
+    title:'Preparar borrador interno de retención IVA',
+    w:680,
     body:el,
     foot:[
       {label:'Cancelar'},
-      {label:'Emitir y Guardar',primary:true,fn:()=>{
-        const base=pn($('#retBase',el).value);
-        if(!base){msg('Indique una base imponible válida.','bad');return false;}
-        const supIdx=parseInt($('#retSup',el).value)||0;
-        const sup=S.suppliers[supIdx]||S.suppliers[0];
-        const docProv=$('#retDocProv',el).value.trim()||'0001';
-        const ctrlProv=$('#retCtrlProv',el).value.trim()||('00-'+pad(Math.floor(Math.random()*899999+100000),8));
-        const pct=parseInt($('#retPct',el).value)||75;
-        const iva=r2(base*0.16);
-        const retUsd=r2(iva*(pct/100));
-        const retBs=r2(retUsd*rate);
-        const seq=(S.retencionesIva||[]).length+42;
-        const fechaComp=new Date();const periodoComp=String(fechaComp.getFullYear())+String(fechaComp.getMonth()+1).padStart(2,'0');
-        const compId=periodoComp+pad(seq,8);
+      {label:'Guardar borrador para revisión',primary:true,fn:()=>{
+        const base=pn($('#retBase',el).value), iva=pn($('#retIvaAmount',el).value), pct=Number($('#retPct',el).value);
+        const supIdx=$('#retSup',el).value;
+        const sup=supIdx!==''?S.suppliers[Number(supIdx)]:null;
+        const docProv=$('#retDocProv',el).value.trim(), ctrlProv=$('#retCtrlProv',el).value.trim();
+        const docDate=$('#retDocDate',el).value, basis=$('#retBasis',el).value.trim();
+        if(!S.cfg.contribEspecial||S.cfg.retencionHabilitadaConfirmada!==true){
+          msg('No se puede preparar el borrador: confirme primero la designación vigente de la empresa como agente de retención.','bad');return false;
+        }
+        if(!sup||sup.retieneIva!==true||sup.retieneIvaStatus!=='yes'||sup.ivaPerceptionAgentStatus!=='no'||sup.retencionExclusionStatus!=='eligible'||!sup.retencionReglaRef||(pct===100&&sup.retencion100PorcientoVerificada!==true)){msg('El proveedor debe tener condición de sujeto, agente de percepción descartado y supuesto de retención verificado con soporte.','bad');return false;}
+        if(!docProv||!ctrlProv||!docDate||!(base>0)||!(iva>0)||![75,100].includes(pct)||!basis||!(rate>0)){
+          msg('Faltan datos reales de la factura, importes, porcentaje, fundamento o tasa. No se usarán datos de demostración.','bad');return false;
+        }
+        const now=new Date(), periodo=String(now.getFullYear())+String(now.getMonth()+1).padStart(2,'0');
+        const prefix='BORRADOR-RET-'+periodo+'-';
+        const seq=(S.retencionesIva||[]).filter(x=>String(x.id||'').startsWith(prefix)).length+1;
+        const retainedUsd=r2(iva*pct/100), retainedBs=r2(retainedUsd*rate);
         const retEntry={
-          id:compId,
-          ts:Date.now(),
-          periodo:periodoComp,
-          supplier:Object.assign({},sup),
-          docProv,
-          ctrlProv,
-          base,
-          iva,
-          pct,
-          rate,
-          retainedUsd:retUsd,
-          retainedBs:retBs
+          id:prefix+pad(seq,5), ts:Date.now(), periodo, docDateTs:parseIsoD(docDate),
+          supplier:Object.assign({},sup), docProv, ctrlProv, base, iva, pct, basis, rate,
+          retainedUsd, retainedBs, estado:'Borrador interno pendiente de aprobación',
+          declarada:false, pagada:false, comprobanteEntregado:false,
+          comprobanteOficial:false, numeroComprobante:null,
+          observaciones:'No es comprobante oficial. Pendiente de revisión y emisión por el medio autorizado.'
         };
         if(!S.retencionesIva)S.retencionesIva=[];
         S.retencionesIva.push(retEntry);
         save();
-        retEntry.estado='Borrador para revisión del contador';retEntry.declarada=false;retEntry.pagada=false;retEntry.comprobanteEntregado=false;retEntry.observaciones='Registro interno del POS; validar antes de emitir/declarar ante SENIAT.';
-        msg('Registro de retención guardado como borrador para revisión del contador.');
+        msg('Borrador interno guardado. No se ha emitido ni declarado un comprobante oficial.');
         if(onDone)onDone();
         printComprobanteRetencion(retEntry);
         return false;
@@ -5005,9 +5032,9 @@ function seniatSudebanDlg(initialTab){
 
   const el=h('<div class="form" style="gap:10px">'+
     '<div class="semaforo-bar">'+
-      '<div class="semaforo-dot"></div>'+
-      '<div class="semaforo-text"><b>CONTROL FISCAL & SUDEBAN CONFORME</b> &middot; Tasa Oficial BCV en vigencia ('+nf(S.cfg.rate)+' Bs./US$) &middot; Formas Libres en Rango Legal &middot; Discriminación IGTF 3% Divisas Activa.</div>'+
-      '<span class="fiscal-seal">SENIAT &middot; SUDEBAN OK</span>'+
+      '<div class="semaforo-dot" style="background:#D97706"></div>'+
+      '<div class="semaforo-text"><b>ESTADO FISCAL: REVISIÓN PENDIENTE</b> &middot; Indicadores auxiliares del sistema; verifique documentos, autorizaciones y reglas tributarias vigentes con el contador. Este panel no certifica cumplimiento.</div>'+
+      '<span class="fiscal-seal">NO CERTIFICADO</span>'+
     '</div>'+
     '<div class="tabs" id="snTabs">'+
       '<button class="tab '+(activeTab==='resumen'?'active':'')+'" data-tab="resumen">Panel de Control Fiscal</button>'+
@@ -5015,12 +5042,13 @@ function seniatSudebanDlg(initialTab){
       '<button class="tab '+(activeTab==='compras'?'active':'')+'" data-tab="compras">Libro de Compras</button>'+
       '<button class="tab '+(activeTab==='bancarias'?'active':'')+'" data-tab="bancarias">Operaciones bancarias auxiliares</button>'+
       '<button class="tab '+(activeTab==='inventario'?'active':'')+'" data-tab="inventario">Libro de Inventario</button>'+
-      '<button class="tab '+(activeTab==='igtf'?'active':'')+'" data-tab="igtf">Percepción de IGTF (3%)</button>'+
+      '<button class="tab '+(activeTab==='igtf'?'active':'')+'" data-tab="igtf">Percepción de IGTF</button>'+
       '<button class="tab '+(activeTab==='auditoria'?'active':'')+'" data-tab="auditoria">Auditoría Ventas & Tasa BCV</button>'+
       '<button class="tab '+(activeTab==='sudeban'?'active':'')+'" data-tab="sudeban">Conciliación POS / SUDEBAN</button>'+
-      '<button class="tab '+(activeTab==='retenciones'?'active':'')+'" data-tab="retenciones">Retenciones IVA & TXT</button>'+
+      '<button class="tab '+(activeTab==='retenciones'?'active':'')+'" data-tab="retenciones">Retenciones IVA (borradores)</button>'+
       '<button class="tab '+(activeTab==='pagoSeniat'?'active':'')+'" data-tab="pagoSeniat">Preparar Pago SENIAT</button>'+
       '<button class="tab '+(activeTab==='config'?'active':'')+'" data-tab="config">Parámetros Fiscales</button>'+
+      '<button class="tab '+(activeTab==='contabilidad'?'active':'')+'" data-tab="contabilidad">Contabilidad VEN-NIF</button>'+
     '</div>'+
     '<div class="invbar" id="snFilterBar" style="background:var(--panel-2);padding:6px 10px;border:1px solid var(--line);border-radius:6px">'+
       '<label for="snPeriod"><b>Período Fiscal:</b></label>'+
@@ -5094,18 +5122,18 @@ function seniatSudebanDlg(initialTab){
     '</div>'+
     '<div class="cierre" style="margin-top:6px">'+
       '<table class="sumt"><thead><tr><th>Verificaciones del Sistema (Semáforo SENIAT / SUDEBAN)</th><th class="c" style="width:110px">Estado</th></tr></thead><tbody>'+
-        '<tr><td><b>Tasa Oficial Cambiaria BCV</b>: Aplicada rigurosamente en todas las ventas ('+nf(rate)+' Bs./US$). Sin sobreprecios.</td><td class="c"><span class="fiscal-tag ok">100% CONFORME</span></td></tr>'+
-        '<tr><td><b>Formas Libres / Correlativo de Control Fiscal</b>: '+esc(S.cfg.ctrlPrefix)+pad(S.cfg.ctrlNext||1043,8)+' (Rango aut. hasta '+esc(S.cfg.ctrlRangoHasta)+').</td><td class="c"><span class="fiscal-tag ok">48.958 RESTANTES</span></td></tr>'+
-        '<tr><td><b>Ley IGTF 3% Divisas</b>: Aplicado únicamente a efectivo en divisas y zelle. Cobros en Bs. 100% exentos.</td><td class="c"><span class="fiscal-tag ok">CONFORME</span></td></tr>'+
-        '<tr><td><b>Alícuotas de IVA por Producto</b>: Clasificación fiscal 16% (G), 8% (R), 31% (A) y Exento (E) activas.</td><td class="c"><span class="fiscal-tag ok">DISCRIMINADAS</span></td></tr>'+
-        '<tr><td><b>Conciliación de Puntos de Venta y Biopago BDV</b>: Lotes cerrados y conciliados sin diferencias.</td><td class="c"><span class="fiscal-tag ok">CUADRADOS</span></td></tr>'+
+        '<tr><td><b>Tasa de cambio registrada</b>: cada operación conserva su tasa; confirme fuente, fecha y aplicabilidad del tipo de cambio.</td><td class="c"><span class="fiscal-tag warn">REGISTRO LOCAL</span></td></tr>'+
+        '<tr><td><b>Numeración y control fiscal</b>: '+(S.cfg.ctrlRangoDesde&&S.cfg.ctrlRangoHasta?'Rango registrado '+esc(S.cfg.ctrlRangoDesde)+' a '+esc(S.cfg.ctrlRangoHasta)+'. Debe cotejarse con la autorización vigente.':'Sin rango autorizado registrado; el POS no genera números de control.')+'</td><td class="c"><span class="fiscal-tag warn">NO VALIDADO</span></td></tr>'+
+        '<tr><td><b>IGTF</b>: el hecho imponible y la tasa deben evaluarse por sujeto, medio de pago y operación conforme a la regla vigente.</td><td class="c"><span class="fiscal-tag warn">POR VALIDAR</span></td></tr>'+
+        '<tr><td><b>Clasificación de IVA por producto</b>: se conserva la clasificación registrada; validar alícuota, exención y vigencia por fecha de operación.</td><td class="c"><span class="fiscal-tag warn">POR VALIDAR</span></td></tr>'+
+        '<tr><td><b>Conciliación de medios electrónicos</b>: el registro POS es auxiliar; la conciliación requiere extracto o reporte bancario externo.</td><td class="c"><span class="fiscal-tag warn">NO CONFIRMADA</span></td></tr>'+
       '</tbody></table>'+
       '<table class="sumt"><thead><tr><th>Ficha Fiscal de la Empresa</th><th>Valor Registrado</th></tr></thead><tbody>'+
         '<tr><td>Razón Social</td><td><b>'+esc(S.cfg.empresa)+'</b></td></tr>'+
         '<tr><td>RIF de la Empresa</td><td><b class="mono">'+esc(S.cfg.rif)+'</b></td></tr>'+
         '<tr><td>Condición Tributaria</td><td>'+(S.cfg.contribEspecial?'<span class="fiscal-tag ok">Sujeto Pasivo Especial</span>':'Contribuyente Ordinario')+'</td></tr>'+
-        '<tr><td>Agente de Retención IVA</td><td>'+(S.cfg.contribEspecial?'Alícuota del '+S.cfg.retIvaPct+'%':'No aplica')+'</td></tr>'+
-        '<tr><td>Nº Providencia Notificación</td><td>'+esc(S.cfg.provEspecial||'SNAT/2023/000412')+'</td></tr>'+
+        '<tr><td>Agente de Retención IVA</td><td>'+(S.cfg.contribEspecial&&[75,100].includes(Number(S.cfg.retIvaPct))?'Porcentaje configurado: '+S.cfg.retIvaPct+'%':'No configurado / requiere validación')+'</td></tr>'+
+        '<tr><td>Nº Providencia Notificación</td><td>'+esc(S.cfg.provEspecial||'No registrada')+'</td></tr>'+
         '<tr><td>Imprenta Autorizada</td><td>'+esc(S.cfg.imprentaRif)+' ('+esc(S.cfg.imprentaAut)+')</td></tr>'+
       '</tbody></table>'+
     '</div>';
@@ -5138,7 +5166,7 @@ function seniatSudebanDlg(initialTab){
         '<td class="mono">'+esc(s.client.rif)+'</td>'+
         '<td><b>'+esc(s.client.name)+'</b></td>'+
         '<td class="mono c"><b>'+pad(s.no)+'</b></td>'+
-        '<td class="mono c">'+esc(s.ctrlNo||('00-'+pad(s.no,8)))+'</td>'+
+        '<td class="mono c">'+esc(s.ctrlNo||'NO REGISTRADO')+'</td>'+
         '<td class="mono c">'+(s.void?esc(s.voidDoc||('NC-'+pad(s.no,8))):'—')+'</td>'+
         '<td class="c">'+(s.void?'<span class="fiscal-tag bad">03-ANUL</span>':'<span class="fiscal-tag ok">01-REG</span>')+'</td>'+
         '<td class="r">'+nf(due)+'</td>'+
@@ -5299,13 +5327,13 @@ function seniatSudebanDlg(initialTab){
       return '<tr class="'+(s.void?'void':'')+'">'+
         '<td class="mono c"><b>'+pad(s.no)+'</b></td>'+
         '<td class="c">'+fmtDT(s.ts)+'</td>'+
-        '<td class="mono c">'+esc(s.ctrlNo||('00-'+pad(s.no,8)))+'</td>'+
+        '<td class="mono c">'+esc(s.ctrlNo||'NO REGISTRADO')+'</td>'+
         '<td><b>'+esc(s.client.name)+'</b> ('+esc(s.client.rif)+')</td>'+
         '<td class="r">'+nf(dueUsd)+'</td>'+
         '<td class="r" style="font-weight:700;color:#1842B8">'+nf(rate)+'</td>'+
         '<td class="r"><b>'+nf(dueBs)+'</b></td>'+
         '<td class="c">'+esc(S.cfg.cajero)+'</td>'+
-        '<td class="c">'+(s.void?'<span class="fiscal-tag bad">ANULADA</span>':'<span class="fiscal-tag ok">100% CONFORME BCV</span>')+'</td>'+
+        '<td class="c">'+(s.void?'<span class="fiscal-tag bad">ANULADA</span>':'<span class="fiscal-tag ok">TASA REGISTRADA · NO CERTIFICADA</span>')+'</td>'+
       '</tr>';
     }).join(''):'<tr class="empty"><td colspan="9">No hay registros de ventas auditadas.</td></tr>';
 
@@ -5401,7 +5429,7 @@ function seniatSudebanDlg(initialTab){
     return '<div class="semaforo-bar">'+
       '<div class="semaforo-dot"></div>'+
       '<div class="semaforo-text"><b>CONTROL Y TRAZABILIDAD DE RETENCIONES IVA</b> &middot; Reporte interno de apoyo al contador bajo referencia SNAT/2025/000054. El POS no declara ni paga; valide la normativa, las excepciones y el formato vigente antes de usar cualquier archivo.</div>'+ 
-      '<button class="btn mini2 primary" id="btnNewManualRet" style="margin-left:auto;flex:none">+ Emitir Retención de IVA</button>'+
+      '<button class="btn mini2 primary" id="btnNewManualRet" style="margin-left:auto;flex:none">+ Preparar borrador de retención</button>'+
     '</div>'+
     '<div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1050px">'+
       '<thead><tr>'+
@@ -5459,22 +5487,196 @@ function seniatSudebanDlg(initialTab){
       '<div class="f wide"><label for="fEmp">Razón Social</label><input class="fld" id="fEmp" value="'+esc(c.empresa)+'"></div>'+
       '<div class="f"><label for="fRif">RIF de la Empresa</label><input class="fld" id="fRif" value="'+esc(c.rif)+'"></div>'+
       '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
-      '<div class="f"><label for="fTipo">Modalidad de Facturación</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option></select></div>'+
+      '<div class="f"><label for="fTipo">Medio de emisión fiscal</label><select class="fld" id="fTipo"><option value="NO_CONFIGURADO" '+(c.fiscalTipo==='NO_CONFIGURADO'?'selected':'')+'>No configurado / uso interno</option><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas libres autorizadas (régimen vigente)</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Máquina fiscal homologada y autorizada</option><option value="PORTAL_OFICIAL" '+(c.fiscalTipo==='PORTAL_OFICIAL'?'selected':'')+'>Portal o aplicación oficial</option><option value="PROVEEDOR_AUTORIZADO" '+(c.fiscalTipo==='PROVEEDOR_AUTORIZADO'?'selected':'')+'>Proveedor tecnológico autorizado (según vigencia PA 2026/00093)</option><option value="CONTINGENCIA" '+(c.fiscalTipo==='CONTINGENCIA'?'selected':'')+'>Contingencia documentada</option></select></div>'+
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
-      '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
+      '<div class="f"><label for="fPctRet">Porcentaje de retención (solo tras validar supuesto)</label><select class="fld" id="fPctRet"><option value="0" '+(![75,100].includes(Number(c.retIvaPct))?'selected':'')+'>No configurado</option><option value="75" '+(Number(c.retIvaPct)===75?'selected':'')+'>75 % (supuesto general aplicable)</option><option value="100" '+(Number(c.retIvaPct)===100?'selected':'')+'>100 % (solo supuestos específicos de la norma)</option></select></div>'+
       '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
-      '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'SNAT/2023/000412')+'"></div>'+
-      '<div class="f"><label for="fCtrlPref">Prefijo Nº Control Fiscal</label><input class="fld mono" id="fCtrlPref" value="'+esc(c.ctrlPrefix||'00-')+'"></div>'+
-      '<div class="f"><label for="fCtrlNext">Próximo Nº de Control</label><input class="fld mono r" id="fCtrlNext" value="'+(c.ctrlNext||1043)+'"></div>'+
-      '<div class="f"><label for="fRangoD">Rango Autorizado (Desde)</label><input class="fld mono" id="fRangoD" value="'+esc(c.ctrlRangoDesde||'00-00000001')+'"></div>'+
-      '<div class="f"><label for="fRangoH">Rango Autorizado (Hasta)</label><input class="fld mono" id="fRangoH" value="'+esc(c.ctrlRangoHasta||'00-00050000')+'"></div>'+
-      '<div class="f"><label for="fImpRif">RIF Imprenta Digital Autorizada</label><input class="fld" id="fImpRif" value="'+esc(c.imprentaRif||'J-31009988-4')+'"></div>'+
-      '<div class="f"><label for="fImpAut">Nº Providencia Imprenta</label><input class="fld" id="fImpAut" value="'+esc(c.imprentaAut||'SENIAT/DAF/2022/981')+'"></div>'+
-      '<div class="f"><label for="fSerial">Serial Máquina / Memoria Fiscal</label><input class="fld mono" id="fSerial" value="'+esc(c.serialFiscal||'Z4A7719204')+'"></div>'+
-    '</div><p class="hint">Los números de control asignados son correlativos y consecutivos conforme a la Providencia SENIAT 0071 sobre emisión de facturas y otros documentos.</p>';
+      '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'')+'"></div>'+
+      '<div class="f"><label for="fCtrlPref">Prefijo Nº Control Fiscal</label><input class="fld mono" id="fCtrlPref" value="'+esc(c.ctrlPrefix||'')+'"></div>'+
+      '<div class="f"><label for="fCtrlNext">Próximo Nº de Control</label><input class="fld mono r" id="fCtrlNext" value="'+(c.ctrlNext||0)+'"></div>'+
+      '<div class="f"><label for="fRangoD">Rango Autorizado (Desde)</label><input class="fld mono" id="fRangoD" value="'+esc(c.ctrlRangoDesde||'')+'"></div>'+
+      '<div class="f"><label for="fRangoH">Rango Autorizado (Hasta)</label><input class="fld mono" id="fRangoH" value="'+esc(c.ctrlRangoHasta||'')+'"></div>'+
+      '<div class="f"><label for="fImpRif">RIF Imprenta Digital Autorizada</label><input class="fld" id="fImpRif" value="'+esc(c.imprentaRif||'')+'"></div>'+
+      '<div class="f"><label for="fImpAut">Nº Providencia Imprenta</label><input class="fld" id="fImpAut" value="'+esc(c.imprentaAut||'')+'"></div>'+
+      '<div class="f"><label for="fSerial">Serial Máquina / Memoria Fiscal</label><input class="fld mono" id="fSerial" value="'+esc(c.serialFiscal||'')+'"></div>'+
+    '</div><p class="hint">El sistema no asigna números oficiales sin validar la autorización, el rango y el medio de emisión. La Providencia SNAT/2026/00093 establece una transición normativa; no se activa antes de su entrada en vigencia ni sustituye la integración con un proveedor o máquina autorizados.</p>';
   };
 
-  const drawBankOps=()=>{const xs=(S.fiscalBankOperations||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));return '<h3>Registro auxiliar de operaciones bancarias sin nuevo documento fiscal</h3><p class="hint">Registro de control solicitado por el usuario/contador. Estas operaciones no se incorporan al Libro de Ventas ni al Libro de Compras, no generan IVA/IGTF automáticamente y no sustituyen facturas, comprobantes o soportes fiscales. Cada fila conserva su referencia interna de control.</p><div class="gridwrap"><table class="grid" style="min-width:850px"><thead><tr><th>Fecha</th><th>Referencia</th><th>Descripción</th><th>Cuenta banco</th><th>Contrapartida</th><th>Moneda</th><th class="r">Monto original</th><th class="r">Equiv. USD</th><th>Referencia contable</th><th>Motivo / tratamiento</th></tr></thead><tbody>'+xs.map(x=>'<tr><td>'+esc(x.date||'—')+'</td><td>'+esc(x.reference||'—')+'</td><td>'+esc(x.description||'—')+'</td><td>'+esc(x.accountCode||'—')+'</td><td>'+esc(x.counterpartAccount||'—')+'</td><td>'+esc(x.currency||'—')+'</td><td class="r">'+nf(x.amount||0)+'</td><td class="r">'+nf(x.amountUsd||0)+'</td><td>'+esc(x.accountingEntryId||'—')+'</td><td>'+esc((x.fiscalTreatment==='LIQUIDACION_SIN_NUEVO_DOCUMENTO'?'LIQUIDACIÓN AGREGADA · Sin nueva factura · ':'NO GRAVABLE · ')+(x.fiscalReason||'Requiere soporte')+(x.fiscalReference?' · Soporte: '+x.fiscalReference:''))+'</td></tr>').join('')+'</tbody></table></div>'+(xs.length?'':'<p class="hint">Todavía no hay operaciones bancarias auxiliares. Aquí aparecerán operaciones no gravables y liquidaciones agregadas, con sus referencias internas de control.</p>');};
+
+
+  let accountingJournalLines=Array.from({length:4},()=>({accountCode:'',description:'',debit:'',credit:''}));
+  const collectAccountingJournalLines=()=>{
+    const rows=$('.acc-journal-row',el);
+    if(!rows.length)return accountingJournalLines;
+    return rows.map(row=>({
+      accountCode:$('[data-journal-account]',row)?.value||'',
+      description:$('[data-journal-description]',row)?.value||'',
+      debit:$('[data-journal-debit]',row)?.value||'0',
+      credit:$('[data-journal-credit]',row)?.value||'0'
+    }));
+  };
+  const renderAccountingJournalLines=()=>{
+    const node=$('#accJournalLines',el);
+    if(!node)return;
+    node.innerHTML=accountingJournalLines.map((line,index)=>'<div class="newgrid acc-journal-row" data-line-index="'+index+'">'+
+      '<div class="f"><label>Cuenta</label><input class="fld mono" data-journal-account value="'+esc(line.accountCode)+'" placeholder="Código contable"></div>'+
+      '<div class="f wide"><label>Concepto del renglón</label><input class="fld" data-journal-description value="'+esc(line.description)+'" placeholder="Descripción"></div>'+
+      '<div class="f"><label>Debe ('+esc($('#accJournalCurrency',el)?.textContent||'moneda')+')</label><input class="fld r" data-journal-debit inputmode="decimal" value="'+esc(line.debit)+'" placeholder="0,00"></div>'+
+      '<div class="f"><label>Haber</label><input class="fld r" data-journal-credit inputmode="decimal" value="'+esc(line.credit)+'" placeholder="0,00"></div>'+
+      '<div class="f"><button type="button" class="btn mini" data-remove-journal-line="'+index+'" '+(accountingJournalLines.length<=2?'disabled':'')+'>Quitar renglón</button></div>'+
+      '</div>').join('');
+  };
+  const drawAccountingTab=()=>{
+    const user=activeUser()||{};
+    const canEdit=['admin','contador'].includes(String(user.role||''));
+    return '<div class="form" style="gap:14px">'+
+      '<div class="hint"><b>Configuración contable local.</b> No se selecciona automáticamente la moneda funcional ni el marco contable. La elección debe documentarla y aprobarla el contador. Esta pantalla no activa todavía asientos automáticos del POS.</div>'+
+      (!window.posDesktop?'<div class="hint bad">Esta configuración solo está disponible en la aplicación de escritorio SQLite.</div>':'')+
+      (!canEdit?'<div class="hint bad">Acceso de solo lectura: requiere perfil Administrador o Contador.</div>':'')+
+      '<section class="cierre"><h3>1. Política contable</h3><div class="newgrid">'+
+      '<div class="f"><label for="accFramework">Marco VEN-NIF</label><select class="fld" id="accFramework"><option value="">Seleccionar con el contador</option><option value="VEN_NIF_PYME">VEN-NIF PYME</option><option value="VEN_NIF_GE">VEN-NIF GE</option></select></div>'+
+      '<div class="f"><label for="accFunctionalCurrency">Moneda funcional (ISO 4217)</label><input class="fld" id="accFunctionalCurrency" maxlength="3" placeholder="Ej. VES / USD"></div>'+
+      '<div class="f"><label for="accPresentationCurrency">Moneda de presentación</label><input class="fld" id="accPresentationCurrency" maxlength="3" placeholder="Ej. VES / USD"></div>'+
+      '<div class="f"><label for="accDecimals">Decimales monetarios</label><select class="fld" id="accDecimals"><option>2</option><option>0</option><option>3</option><option>4</option><option>6</option></select></div>'+
+      '<div class="f"><label for="accAutomation">Automatización</label><select class="fld" id="accAutomation"><option value="supervised">Supervisada: borradores para aprobación</option><option value="suggest_only">Solo sugerencias</option></select></div>'+
+      '<div class="f wide"><label for="accPolicyVersion">Versión de política aprobada</label><input class="fld" id="accPolicyVersion" placeholder="Referencia aprobada por el contador"></div>'+
+      '</div><button class="btn primary" id="btnSaveAccountingSettings" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar política contable</button></section>'+
+      '<section class="cierre"><h3>2. Perfil de la entidad y fiscal</h3><div class="newgrid">'+
+      '<div class="f"><label for="accRif">RIF</label><input class="fld" id="accRif" placeholder="J-12345678-9" value="'+esc(S.cfg.rif||'')+'"></div>'+
+      '<div class="f wide"><label for="accLegalName">Razón social según RIF</label><input class="fld" id="accLegalName" value="'+esc(S.cfg.empresa||'')+'"></div>'+
+      '<div class="f"><label for="accTaxClass">Clasificación tributaria</label><select class="fld" id="accTaxClass"><option value="unknown">Por verificar</option><option value="ordinary">Ordinario</option><option value="formal">Formal</option><option value="special">Sujeto pasivo especial</option></select></div>'+
+      '<div class="f"><label><input type="checkbox" id="accSpecial"> Designación especial confirmada</label></div>'+
+      '<div class="f"><label for="accSpecialRef">Referencia de notificación</label><input class="fld" id="accSpecialRef"></div>'+
+      '<div class="f"><label for="accSpecialDate">Fecha de notificación</label><input class="fld" id="accSpecialDate" type="date"></div>'+
+      '<div class="f"><label><input type="checkbox" id="accWithholding"> Agente de retención IVA confirmado</label></div>'+
+      '<div class="f"><label><input type="checkbox" id="accPerception"> Agente de percepción IVA confirmado</label></div>'+
+      '<div class="f"><label for="accActivity">Actividad licorera</label><select class="fld" id="accActivity"><option value="unknown">Por determinar</option><option value="retail">Comercio minorista</option><option value="wholesale">Mayorista</option><option value="importer">Importador</option><option value="manufacturer">Fabricante</option><option value="producer">Productor</option><option value="mixed">Actividad mixta</option></select></div>'+
+      '<div class="f"><label for="accEmission">Medio de emisión</label><select class="fld" id="accEmission"><option value="internal_only">Solo documento interno / no autorizado</option><option value="official_portal">Portal oficial</option><option value="authorized_provider">Proveedor tecnológico autorizado</option><option value="fiscal_machine">Máquina fiscal autorizada</option><option value="contingency">Contingencia autorizada</option></select></div>'+
+      '<div class="f"><label for="accAlcoholLicense">Licencia de expendio de alcohol</label><input class="fld" id="accAlcoholLicense"></div>'+
+      '<div class="f"><label for="accMunicipalLicense">Licencia / patente municipal</label><input class="fld" id="accMunicipalLicense"></div>'+
+      '<div class="f"><label for="accProviderRif">RIF proveedor autorizado</label><input class="fld" id="accProviderRif"></div>'+
+      '<div class="f"><label for="accProviderAuth">Autorización proveedor</label><input class="fld" id="accProviderAuth"></div>'+
+      '<div class="f"><label for="accMachineSerial">Serial máquina fiscal</label><input class="fld" id="accMachineSerial"></div>'+
+      '</div><p class="hint">No marques una designación tributaria o medio de emisión sin su documento de respaldo. Seleccionar una modalidad no autoriza al POS a emitir facturas fiscales.</p><button class="btn primary" id="btnSaveFiscalProfile" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar perfil fiscal</button></section>'+
+      '<section class="cierre"><h3>3. Períodos contables</h3><div class="newgrid">'+
+      '<div class="f"><label for="accPeriodId">Identificador AAAA-MM</label><input class="fld" id="accPeriodId" placeholder="2026-11"></div>'+
+      '<div class="f"><label for="accPeriodLabel">Nombre</label><input class="fld" id="accPeriodLabel" placeholder="Noviembre 2026"></div>'+
+      '<div class="f"><label for="accPeriodStart">Desde</label><input class="fld" id="accPeriodStart" type="date"></div>'+
+      '<div class="f"><label for="accPeriodEnd">Hasta</label><input class="fld" id="accPeriodEnd" type="date"></div>'+
+      '</div><button class="btn" id="btnSaveAccountingPeriod" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Crear / actualizar período abierto</button><div id="accPeriodsList" class="hint">Cargando períodos...</div></section>'+
+      '<section class="cierre"><h3>4. Plan de cuentas VEN-NIF</h3><p class="hint">No se carga un catálogo universal automáticamente. Registra el plan aprobado por el contador para el marco configurado. Los códigos se mantienen estables y no se pueden eliminar si tienen trazabilidad.</p><div class="newgrid">'+
+      '<div class="f"><label for="accAccountCode">Código</label><input class="fld" id="accAccountCode" maxlength="30" placeholder="1.1.01"></div>'+
+      '<div class="f wide"><label for="accAccountName">Nombre de la cuenta</label><input class="fld" id="accAccountName" maxlength="150" placeholder="Caja principal"></div>'+
+      '<div class="f"><label for="accAccountType">Clasificación</label><select class="fld" id="accAccountType"><option value="">Seleccionar</option><option value="asset">Activo</option><option value="liability">Pasivo</option><option value="equity">Patrimonio</option><option value="income">Ingreso</option><option value="expense">Gasto</option><option value="memorandum">Orden / memorando</option></select></div>'+
+      '<div class="f"><label for="accNormalBalance">Saldo normal</label><select class="fld" id="accNormalBalance"><option value="">Seleccionar</option><option value="debit">Debe</option><option value="credit">Haber</option></select></div>'+
+      '<div class="f"><label for="accParentCode">Cuenta padre (opcional)</label><input class="fld" id="accParentCode" maxlength="30" placeholder="1.1"></div>'+
+      '<div class="f"><label for="accFrameworkScope">Aplicabilidad</label><select class="fld" id="accFrameworkScope"><option value="both">Ambos marcos</option><option value="VEN_NIF_PYME">Solo PYME</option><option value="VEN_NIF_GE">Solo GE</option></select></div>'+
+      '<div class="f"><label><input type="checkbox" id="accAcceptsPosting" checked> Acepta contabilizaciones</label></div>'+
+      '<div class="f"><label><input type="checkbox" id="accAccountActive" checked> Cuenta activa</label></div>'+
+      '</div><button class="btn primary" id="btnSaveAccountingAccount" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar cuenta contable</button><div id="accAccountsList" class="hint">Cargando plan de cuentas...</div></section>'+
+      '<section class="cierre"><h3>5. Operaciones recibidas por el motor contable</h3><div id="accSourceSummary" class="hint">Cargando eventos...</div><div id="accSourceEvents" class="hint">Leyendo eventos de origen...</div><p class="hint">Estos eventos son evidencia de operaciones del POS. Permanecen pendientes de revisión y todavía no generan asientos ni modifican saldos contables.</p></section>'+
+      '<section class="cierre"><h3>6. Asientos manuales</h3><p class="hint">Crea borradores de ajustes con cuentas activas y contabilizables. El Debe y el Haber deben cuadrar. El creador no puede aprobar su propio asiento; solo el Contador puede aprobar y contabilizar. La integración automática de ventas y compras sigue separada.</p><div class="newgrid">'+
+      '<div class="f"><label for="accJournalDate">Fecha del asiento</label><input class="fld" id="accJournalDate" type="date" value="'+isoD(Date.now())+'"></div>'+
+      '<div class="f"><label for="accJournalPeriod">Período abierto</label><select class="fld" id="accJournalPeriod"><option value="">Seleccionar período</option></select></div>'+
+      '<div class="f"><label>Moneda funcional</label><b id="accJournalCurrency" class="hint">No configurada</b></div>'+
+      '<div class="f"><label>Moneda de presentación</label><b id="accJournalPresentationCurrency" class="hint">No configurada</b></div>'+
+      '<div class="f"><label for="accJournalExchangeRate">Tasa (presentación por 1 funcional)</label><input class="fld r" id="accJournalExchangeRate" inputmode="decimal" placeholder="Ej. 0,001143"></div>'+
+      '<div class="f"><label for="accJournalExchangeRateType">Tipo de tasa</label><select class="fld" id="accJournalExchangeRateType"><option value="official">Oficial</option><option value="market">Mercado</option><option value="contractual">Contractual</option><option value="accounting_adjustment">Ajuste contable</option></select></div>'+
+      '<div class="f"><label for="accJournalExchangeRateSource">Fuente de la tasa</label><input class="fld" id="accJournalExchangeRateSource" maxlength="120" placeholder="Ej. BCV"></div>'+
+      '<div class="f"><label for="accJournalExchangeRateReference">Referencia / soporte</label><input class="fld" id="accJournalExchangeRateReference" maxlength="180" placeholder="Publicación, fecha o documento"></div>'+
+      '<div class="f wide"><label for="accJournalDescription">Descripción / fundamento</label><input class="fld" id="accJournalDescription" maxlength="500" placeholder="Ajuste contable y soporte"></div>'+
+      '<p class="hint wide">La tasa se expresa en moneda de presentación por cada unidad funcional. Si la tasa publicada está expresada al revés, registra su inversa. Debe corresponder a la fecha y política aplicable; el sistema no inventa ni descarga tasas automáticamente. La tasa y su fuente quedan congeladas en el asiento.</p>'+
+      '</div><div id="accJournalLines"></div><div class="row" style="gap:8px"><button class="btn" id="btnAddJournalLine">Añadir renglón</button><button class="btn primary" id="btnCreateJournalEntry" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar borrador de asiento</button></div><div id="accJournalEntries" class="hint">Cargando asientos...</div></section>'+
+      '<section class="cierre"><h3>7. Historial de tasas de cambio</h3><p class="hint">Tasas utilizadas en asientos, con su fecha, tipo, fuente y referencia documental. Los valores se conservan como fracciones exactas.</p><div id="accExchangeRates" class="hint">Cargando tasas...</div></section>'+
+      '<section class="cierre"><h3>8. Balance de comprobación</h3><p class="hint">Solo considera asientos contabilizados y sus reversos. Los borradores y aprobados no afectan este balance.</p><div id="accTrialBalance" class="hint">Calculando balance...</div></section>'+
+      '<div class="hint">Pendiente: mapeo aprobado de operaciones POS, contabilización automática supervisada, saldos de apertura, diario y mayor detallados, reportes financieros y libros fiscales oficiales.</div>'+
+      '</div>';
+  };
+  const loadAccountingTab=async()=>{
+    const content=$('#snContent',el);
+    if(!content||activeTab!=='contabilidad')return;
+    if(!window.posDesktop)return;
+    renderAccountingJournalLines();
+    try{
+      const [settings,profile,periods,accounts,sourceEvents,sourceSummary,journalEntries,exchangeRates,trialBalance]=await Promise.all([
+        window.posDesktop.accountingGetSettings(),
+        window.posDesktop.accountingGetProfile(),
+        window.posDesktop.accountingListPeriods(),
+        window.posDesktop.accountingListAccounts(),
+        window.posDesktop.accountingListSourceEvents(),
+        window.posDesktop.accountingSourceEventSummary(),
+        window.posDesktop.accountingListJournalEntries(),
+        window.posDesktop.accountingListExchangeRates(),
+        window.posDesktop.accountingGetTrialBalance()
+      ]);
+      const set=(id,value)=>{const node=$('#'+id,el);if(node&&value!==null&&value!==undefined)node.value=String(value);};
+      const check=(id,value)=>{const node=$('#'+id,el);if(node)node.checked=!!value;};
+      if(settings){
+        set('accFramework',settings.accountingFramework);set('accFunctionalCurrency',settings.functionalCurrency);
+        set('accPresentationCurrency',settings.presentationCurrency);set('accDecimals',settings.monetaryDecimals);
+        set('accAutomation',settings.automationMode);set('accPolicyVersion',settings.policyVersion);
+      }
+      if(profile){
+        set('accRif',profile.rif);set('accLegalName',profile.legal_name);set('accTaxClass',profile.taxpayer_classification);
+        check('accSpecial',profile.special_subject_confirmed);set('accSpecialRef',profile.special_notice_reference);
+        set('accSpecialDate',profile.special_notice_date);check('accWithholding',profile.iva_withholding_agent_confirmed);
+        check('accPerception',profile.iva_perception_agent_confirmed);set('accActivity',profile.business_activity_scope);
+        set('accEmission',profile.invoice_emission_mode);set('accAlcoholLicense',profile.alcohol_license_reference);
+        set('accMunicipalLicense',profile.municipal_license_reference);set('accProviderRif',profile.provider_rif);
+        set('accProviderAuth',profile.provider_authorization_reference);set('accMachineSerial',profile.fiscal_machine_serial);
+      }
+      const journalCurrency=$('#accJournalCurrency',el);
+      if(journalCurrency)journalCurrency.textContent=settings?.functionalCurrency||'No configurada';
+      const journalPresentationCurrency=$('#accJournalPresentationCurrency',el);
+      if(journalPresentationCurrency)journalPresentationCurrency.textContent=settings?.presentationCurrency||'No configurada';
+      const exchangeRateLabel=$('#accJournalExchangeRate',el);
+      if(exchangeRateLabel)exchangeRateLabel.placeholder=settings?.functionalCurrency===settings?.presentationCurrency?'1 (monedas iguales)':'Tasa '+(settings?.presentationCurrency||'')+' por 1 '+(settings?.functionalCurrency||'');
+      const periodSelect=$('#accJournalPeriod',el);
+      if(periodSelect)periodSelect.innerHTML='<option value="">Seleccionar período abierto</option>'+periods.filter(p=>p.status==='open').map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+' ('+esc(p.startDate)+' a '+esc(p.endDate)+')</option>').join('');
+      renderAccountingJournalLines();
+      const list=$('#accPeriodsList',el);
+      if(list)list.innerHTML=periods.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Período</th><th>Desde</th><th>Hasta</th><th>Estado</th></tr></thead><tbody>'+periods.map(p=>'<tr><td>'+esc(p.label)+'</td><td>'+esc(p.startDate)+'</td><td>'+esc(p.endDate)+'</td><td>'+esc(p.status==='closed'?'Cerrado':'Abierto')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay períodos contables definidos.';
+      const accountList=$('#accAccountsList',el);
+      if(accountList)accountList.innerHTML=accounts.length?'<div class="hint">'+accounts.length+' cuentas registradas</div><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>Cuenta</th><th>Padre</th><th>Clasificación</th><th>Saldo normal</th><th>Uso</th><th>Estado</th></tr></thead><tbody>'+accounts.map(a=>'<tr><td>'+esc(a.code)+'</td><td>'+esc(a.name)+'</td><td>'+esc(a.parentCode||'—')+'</td><td>'+esc(({asset:'Activo',liability:'Pasivo',equity:'Patrimonio',income:'Ingreso',expense:'Gasto',memorandum:'Orden'})[a.accountType]||a.accountType)+'</td><td>'+esc(a.normalBalance==='debit'?'Debe':'Haber')+'</td><td>'+esc(Number(a.acceptsPosting)?'Contabilizable':'Agrupación')+'</td><td>'+esc(Number(a.active)?'Activa':'Inactiva')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay cuentas. Carga el plan aprobado antes de generar asientos.';
+      const canReviewJournals=String((activeUser()||{}).role||'')==='contador';
+      const journalNode=$('#accJournalEntries',el);
+      const journalStatus={draft:'Borrador',approved:'Aprobado',posted:'Contabilizado',reversed:'Reversado'};
+      if(journalNode)journalNode.innerHTML=journalEntries.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Asiento</th><th>Descripción</th><th>Período</th><th>Debe ('+esc(settings?.functionalCurrency||'')+')</th><th>Haber ('+esc(settings?.functionalCurrency||'')+')</th><th>Debe ('+esc(settings?.presentationCurrency||'')+')</th><th>Haber ('+esc(settings?.presentationCurrency||'')+')</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>'+journalEntries.map(entry=>{
+        const actions=[];
+        if(canReviewJournals&&entry.status==='draft')actions.push('<button class="btn mini" data-approve-journal="'+esc(entry.id)+'">Aprobar</button>');
+        if(canReviewJournals&&entry.status==='approved')actions.push('<button class="btn mini primary" data-post-journal="'+esc(entry.id)+'">Contabilizar</button>');
+        if(canReviewJournals&&entry.status==='posted')actions.push('<button class="btn mini" data-reverse-journal="'+esc(entry.id)+'">Reversar</button>');
+        return '<tr><td>'+esc(entry.entryDate)+'</td><td class="mono">'+esc(entry.id.slice(0,8))+'</td><td>'+esc(entry.description)+'</td><td>'+esc(entry.periodId)+'</td><td class="r">'+esc(fmtJournalMinor(entry.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(entry.creditMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(entry.presentationDebitMinor==null?'—':fmtJournalMinor(entry.presentationDebitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(entry.presentationCreditMinor==null?'—':fmtJournalMinor(entry.presentationCreditMinor,settings?.monetaryDecimals??2))+'</td><td>'+esc(journalStatus[entry.status]||entry.status)+'</td><td>'+actions.join(' ')+'</td></tr>';
+      }).join('')+'</tbody></table></div>':'Todavía no hay asientos manuales.';
+      const exchangeRateNode=$('#accExchangeRates',el);
+      if(exchangeRateNode)exchangeRateNode.innerHTML=exchangeRates.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Par</th><th>Tasa</th><th>Tipo</th><th>Fuente</th><th>Referencia</th></tr></thead><tbody>'+exchangeRates.map(rate=>'<tr><td>'+esc(rate.rateDate)+'</td><td class="mono">'+esc(rate.fromCurrency)+' / '+esc(rate.toCurrency)+'</td><td class="r">'+esc(rate.rate)+'</td><td>'+esc(({official:'Oficial',market:'Mercado',contractual:'Contractual',accounting_adjustment:'Ajuste contable'})[rate.rateType]||rate.rateType)+'</td><td>'+esc(rate.sourceName)+'</td><td>'+esc(rate.sourceReference)+'</td></tr>').join('')+'</tbody></table></div>':'No hay tasas de cambio registradas todavía.';
+      const trialNode=$('#accTrialBalance',el);
+      if(trialNode){
+        const totalDebit=trialBalance.reduce((sum,row)=>sum+Number(row.debitMinor||0),0);
+        const totalCredit=trialBalance.reduce((sum,row)=>sum+Number(row.creditMinor||0),0);
+        const totalPresentationDebit=trialBalance.reduce((sum,row)=>sum+Number(row.presentationDebitMinor||0),0);
+        const totalPresentationCredit=trialBalance.reduce((sum,row)=>sum+Number(row.presentationCreditMinor||0),0);
+        trialNode.innerHTML=trialBalance.length?((Number(trialBalance[0]?.unconvertedEntryCount||0)>0?'<p class="hint bad">Atención: '+esc(trialBalance[0].unconvertedEntryCount)+' asiento(s) histórico(s) no tienen conversión bimonetaria guardada. No se inventaron tasas ni importes de presentación; deben revisarse antes de emitir reportes en ambas monedas.</p>':'')+'<div class="gridwrap"><table class="grid"><thead><tr><th>Cuenta</th><th>Nombre</th><th>Debe ('+esc(settings?.functionalCurrency||'')+')</th><th>Haber ('+esc(settings?.functionalCurrency||'')+')</th><th>Debe ('+esc(settings?.presentationCurrency||'')+')</th><th>Haber ('+esc(settings?.presentationCurrency||'')+')</th></tr></thead><tbody>'+trialBalance.map(row=>'<tr><td class="mono">'+esc(row.code)+'</td><td>'+esc(row.name)+'</td><td class="r">'+esc(fmtJournalMinor(row.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.creditMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.presentationDebitMinor??0,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.presentationCreditMinor??0,settings?.monetaryDecimals??2))+'</td></tr>').join('')+'<tr><th colspan="2">Totales</th><th class="r">'+esc(fmtJournalMinor(totalDebit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(totalCredit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(totalPresentationDebit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(totalPresentationCredit,settings?.monetaryDecimals??2))+'</th></tr></tbody></table></div><p class="hint">'+(totalDebit===totalCredit?'Balance funcional cuadrado.':'Diferencia funcional: '+esc(fmtJournalMinor(Math.abs(totalDebit-totalCredit),settings?.monetaryDecimals??2)))+' · '+(totalPresentationDebit===totalPresentationCredit?'Balance de presentación cuadrado.':'Diferencia de presentación: '+esc(fmtJournalMinor(Math.abs(totalPresentationDebit-totalPresentationCredit),settings?.monetaryDecimals??2)))+'</p>'):'No hay cuentas en el plan contable.';
+      }
+      const summaryNode=$('#accSourceSummary',el);
+      if(summaryNode)summaryNode.textContent='Total: '+sourceSummary.total+' · Pendientes: '+sourceSummary.pending+' · Revisión: '+sourceSummary.needs_review+' · Procesados: '+sourceSummary.processed+' · Rechazados: '+sourceSummary.rejected;
+      const eventsNode=$('#accSourceEvents',el);
+      if(eventsNode)eventsNode.innerHTML=sourceEvents.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Origen</th><th>Operación</th><th>Estado</th></tr></thead><tbody>'+sourceEvents.slice(0,40).map(item=>'<tr><td>'+esc(item.occurredAt)+'</td><td>'+esc(item.sourceType)+' / '+esc(item.sourceId)+'</td><td>'+esc(item.payload?.action||item.eventType.split('.')[0])+'</td><td>'+esc(({pending:'Pendiente',processed:'Procesado',needs_review:'Revisión',rejected:'Rechazado'})[item.processingStatus]||item.processingStatus)+(item.processingStatus==='pending'&&['admin','contador'].includes(String((activeUser()||{}).role||''))?' <button class="btn mini" data-source-event-review="'+esc(item.eventId)+'">Marcar revisión</button>':'')+'</td></tr>').join('')+'</tbody></table></div>':'No hay operaciones capturadas todavía.';
+    }catch(error){msg('No se pudo leer la configuración contable: '+(error.message||error),'bad');}
+  };
+  const fmtJournalMinor=(value,decimals)=>{
+    const places=Math.max(0,Math.min(6,Number(decimals)||0));
+    return new Intl.NumberFormat('es-VE',{minimumFractionDigits:places,maximumFractionDigits:places}).format(Number(value||0)/(10**places));
+  };
+  const accountingActorInput=()=>{
+    const user=activeUser()||{};
+    if(!['admin','contador'].includes(String(user.role||'')))throw new Error('Solo Administrador o Contador puede modificar esta configuración.');
+    const actorId=String(user.username||user.user||user.name||'').trim();
+    if(!actorId)throw new Error('No se pudo identificar al usuario activo.');
+    return {actorId,actorRole:user.role};
+  };
+
+    const drawBankOps=()=>{const xs=(S.fiscalBankOperations||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));return '<h3>Registro auxiliar de operaciones bancarias sin nuevo documento fiscal</h3><p class="hint">Registro de control solicitado por el usuario/contador. Estas operaciones no se incorporan al Libro de Ventas ni al Libro de Compras, no generan IVA/IGTF automáticamente y no sustituyen facturas, comprobantes o soportes fiscales. Cada fila conserva su referencia interna de control.</p><div class="gridwrap"><table class="grid" style="min-width:850px"><thead><tr><th>Fecha</th><th>Referencia</th><th>Descripción</th><th>Cuenta banco</th><th>Contrapartida</th><th>Moneda</th><th class="r">Monto original</th><th class="r">Equiv. USD</th><th>Referencia contable</th><th>Motivo / tratamiento</th></tr></thead><tbody>'+xs.map(x=>'<tr><td>'+esc(x.date||'—')+'</td><td>'+esc(x.reference||'—')+'</td><td>'+esc(x.description||'—')+'</td><td>'+esc(x.accountCode||'—')+'</td><td>'+esc(x.counterpartAccount||'—')+'</td><td>'+esc(x.currency||'—')+'</td><td class="r">'+nf(x.amount||0)+'</td><td class="r">'+nf(x.amountUsd||0)+'</td><td>'+esc(x.accountingEntryId||'—')+'</td><td>'+esc((x.fiscalTreatment==='LIQUIDACION_SIN_NUEVO_DOCUMENTO'?'LIQUIDACIÓN AGREGADA · Sin nueva factura · ':'NO GRAVABLE · ')+(x.fiscalReason||'Requiere soporte')+(x.fiscalReference?' · Soporte: '+x.fiscalReference:''))+'</td></tr>').join('')+'</tbody></table></div>'+(xs.length?'':'<p class="hint">Todavía no hay operaciones bancarias auxiliares. Aquí aparecerán operaciones no gravables y liquidaciones agregadas, con sus referencias internas de control.</p>');};
 
   const renderTabContent=()=>{
     const content=$('#snContent',el);
@@ -5489,7 +5691,10 @@ function seniatSudebanDlg(initialTab){
     else if(activeTab==='retenciones')content.innerHTML=drawRetenciones();
     else if(activeTab==='pagoSeniat')content.innerHTML=drawPagoSeniat();
     else if(activeTab==='config')content.innerHTML=drawConfig();
+    else if(activeTab==='contabilidad')content.innerHTML=drawAccountingTab();
+    const filter=$('#snFilterBar',el);if(filter)filter.style.display=activeTab==='contabilidad'?'none':'';
     updateFoot();
+    if(activeTab==='contabilidad')loadAccountingTab();
   };
 
   const updateFoot=()=>{
@@ -5511,13 +5716,15 @@ function seniatSudebanDlg(initialTab){
     }else if(activeTab==='sudeban'){
       footL.innerHTML='<button class="btn mini2 primary" id="btnQuickLote">+ Cierre de Lote POS</button>';
     }else if(activeTab==='retenciones'){
-      footL.innerHTML='<button class="btn mini2 primary" id="btnTxtSeniat">Descargar TXT para SENIAT</button>';
+      footL.innerHTML='<button class="btn mini2" id="btnTxtSeniat" disabled>TXT oficial no habilitado</button>';
     }else if(activeTab==='pagoSeniat'){
       footL.innerHTML='<span class="hint">Borrador informativo; la planilla oficial se obtiene en el SENIAT.</span>';
     }else if(activeTab==='config'){
       footL.innerHTML='<button class="btn mini2 primary" id="btnSaveF">Guardar Parámetros Fiscales</button>';
+    }else if(activeTab==='contabilidad'){
+      footL.innerHTML='<span class="hint">SQLite local · Cambios auditados · Sin contabilización automática</span>';
     }else{
-      footL.innerHTML='<button class="btn mini2" id="btnGotoVentas">Ver Libro de Ventas</button><button class="btn mini2" id="btnGotoIgtf">Ver IGTF 3%</button>';
+      footL.innerHTML='<button class="btn mini2" id="btnGotoVentas">Ver Libro de Ventas</button><button class="btn mini2" id="btnGotoIgtf">Ver IGTF</button>';
     }
   };
 
@@ -5644,18 +5851,131 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnQuickLote')registerLoteSudebanDlg(()=>{seniatSudebanDlg('sudeban');});
         if(ev.target.id==='btnGotoVentas'){activeTab='ventas';$('.tab[data-tab="ventas"]',el)?.click();}
         if(ev.target.id==='btnGotoIgtf'){activeTab='igtf';$('.tab[data-tab="igtf"]',el)?.click();}
+
+        if(ev.target.dataset.sourceEventReview){
+          (async()=>{try{
+            const reason=prompt('Indica por qué esta operación requiere revisión contable:');
+            if(reason===null)return;
+            await window.posDesktop.accountingMarkSourceEventReview({...accountingActorInput(),eventId:ev.target.dataset.sourceEventReview,reason});
+            msg('Evento marcado para revisión. Se registró el responsable y el motivo en la auditoría.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnAddJournalLine'){
+          accountingJournalLines=collectAccountingJournalLines();
+          accountingJournalLines.push({accountCode:'',description:'',debit:'',credit:''});
+          renderAccountingJournalLines();
+        }
+        if(ev.target.dataset.removeJournalLine!==undefined){
+          accountingJournalLines=collectAccountingJournalLines();
+          const removeIndex=Number(ev.target.dataset.removeJournalLine);
+          if(accountingJournalLines.length>2&&Number.isInteger(removeIndex))accountingJournalLines.splice(removeIndex,1);
+          renderAccountingJournalLines();
+        }
+        if(ev.target.id==='btnCreateJournalEntry'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            const lines=collectAccountingJournalLines();
+            const result=await window.posDesktop.accountingCreateJournalEntry({...actor,
+              entryDate:$('#accJournalDate',el).value,periodId:$('#accJournalPeriod',el).value,
+              description:$('#accJournalDescription',el).value,lines,
+              exchangeRate:$('#accJournalExchangeRate',el).value,
+              exchangeRateType:$('#accJournalExchangeRateType',el).value,
+              exchangeRateSourceName:$('#accJournalExchangeRateSource',el).value,
+              exchangeRateSourceReference:$('#accJournalExchangeRateReference',el).value
+            });
+            msg('Borrador de asiento '+result.id.slice(0,8)+' guardado. Aún no afecta el balance.');
+            accountingJournalLines=Array.from({length:4},()=>({accountCode:'',description:'',debit:'',credit:''}));
+            $('#accJournalDescription',el).value='';
+            renderAccountingJournalLines();
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.approveJournal){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingApproveJournalEntry({...accountingActorInput(),entryId:ev.target.dataset.approveJournal});
+            msg('Asiento '+result.id.slice(0,8)+' aprobado. Falta contabilizarlo.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.postJournal){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingPostJournalEntry({...accountingActorInput(),entryId:ev.target.dataset.postJournal});
+            msg('Asiento '+result.id.slice(0,8)+' contabilizado.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.reverseJournal){
+          (async()=>{try{
+            const reason=prompt('Indica el motivo y soporte del reverso:');
+            if(reason===null)return;
+            const result=await window.posDesktop.accountingCreateReversalDraft({...accountingActorInput(),
+              entryId:ev.target.dataset.reverseJournal,reason,
+              reversalDate:$('#accJournalDate',el).value,reversalPeriodId:$('#accJournalPeriod',el).value
+            });
+            msg('Borrador de reverso '+result.id.slice(0,8)+' creado. Debe aprobarse y contabilizarse por separado.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveAccountingAccount'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            const result=await window.posDesktop.accountingSaveAccount({...actor,
+              code:$('#accAccountCode',el).value,name:$('#accAccountName',el).value,
+              accountType:$('#accAccountType',el).value,normalBalance:$('#accNormalBalance',el).value,
+              parentCode:$('#accParentCode',el).value,frameworkScope:$('#accFrameworkScope',el).value,
+              acceptsPosting:$('#accAcceptsPosting',el).checked,active:$('#accAccountActive',el).checked
+            });
+            msg('Cuenta '+result.code+' guardada y auditada.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveAccountingSettings'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            await window.posDesktop.accountingSaveSettings({...actor,
+              accountingFramework:$('#accFramework',el).value,functionalCurrency:$('#accFunctionalCurrency',el).value,
+              presentationCurrency:$('#accPresentationCurrency',el).value,monetaryDecimals:Number($('#accDecimals',el).value),
+              automationMode:$('#accAutomation',el).value,policyVersion:$('#accPolicyVersion',el).value.trim()
+            });
+            msg('Política contable guardada y auditada en SQLite.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveFiscalProfile'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            await window.posDesktop.accountingSaveProfile({...actor,
+              rif:$('#accRif',el).value,legalName:$('#accLegalName',el).value,
+              taxpayerClassification:$('#accTaxClass',el).value,specialSubjectConfirmed:$('#accSpecial',el).checked,
+              specialNoticeReference:$('#accSpecialRef',el).value,specialNoticeDate:$('#accSpecialDate',el).value,
+              ivaWithholdingAgentConfirmed:$('#accWithholding',el).checked,ivaPerceptionAgentConfirmed:$('#accPerception',el).checked,
+              businessActivityScope:$('#accActivity',el).value,invoiceEmissionMode:$('#accEmission',el).value,
+              alcoholLicenseReference:$('#accAlcoholLicense',el).value,municipalLicenseReference:$('#accMunicipalLicense',el).value,
+              providerRif:$('#accProviderRif',el).value,providerAuthorizationReference:$('#accProviderAuth',el).value,
+              fiscalMachineSerial:$('#accMachineSerial',el).value
+            });
+            msg('Perfil fiscal guardado y auditado en SQLite.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveAccountingPeriod'){
+          (async()=>{try{
+            const actor=accountingActorInput(),startDate=$('#accPeriodStart',el).value,endDate=$('#accPeriodEnd',el).value;
+            const result=await window.posDesktop.accountingSavePeriod({...actor,id:$('#accPeriodId',el).value,label:$('#accPeriodLabel',el).value,startDate,endDate});
+            msg('Período '+result.id+' guardado como abierto.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
         if(ev.target.id==='btnSaveF'){
           S.cfg.empresa=$('#fEmp',el).value.trim()||S.cfg.empresa;
           S.cfg.rif=$('#fRif',el).value.trim()||S.cfg.rif;
           S.cfg.dir=$('#fDir',el).value.trim();
           S.cfg.fiscalTipo=$('#fTipo',el).value;
           S.cfg.contribEspecial=$('#fEsp',el).value==='1';
-          S.cfg.retIvaPct=75;
+          S.cfg.retIvaPct=Number($('#fPctRet',el).value)||0;
+          S.cfg.retIvaPctConfirmed=[75,100].includes(S.cfg.retIvaPct);
           S.cfg.retencionHabilitadaConfirmada=$('#fRetConfirm',el).checked===true;
           if(!S.cfg.contribEspecial)S.cfg.retencionHabilitadaConfirmada=false;
           S.cfg.provEspecial=$('#fProvEsp',el).value.trim();
-          S.cfg.ctrlPrefix=$('#fCtrlPref',el).value.trim()||'00-';
-          S.cfg.ctrlNext=parseInt($('#fCtrlNext',el).value)||1043;
+          S.cfg.ctrlPrefix=$('#fCtrlPref',el).value.trim()||'';
+          S.cfg.ctrlNext=parseInt($('#fCtrlNext',el).value)||0;
           S.cfg.ctrlRangoDesde=$('#fRangoD',el).value.trim();
           S.cfg.ctrlRangoHasta=$('#fRangoH',el).value.trim();
           S.cfg.imprentaRif=$('#fImpRif',el).value.trim();
@@ -5833,6 +6153,7 @@ function openCashboxDlg(){
     const all=(()=>{try{return JSON.parse(localStorage.getItem('sifer360_openings')||'[]')||[];}catch(e){return [];}})();
     const openedAt=new Date().toISOString(),op={id:'OPEN-'+Date.now(),invoiceStart:'FAC-'+String(currentCajaInvoice()).padStart(8,'0'),cashier:user.name||user.username,username:user.username,cashbox:box,bs,usd,rate,openedAt,status:'abierta'};
     all.push(op);localStorage.setItem('sifer360_openings',JSON.stringify(all));localStorage.setItem('sifer360_bcv_rate',String(rate));
+    if(!Array.isArray(S.openings))S.openings=[];S.openings.push(op);
     const context={username:user.username,name:user.name||user.username,role:user.role,cashbox:box,openingId:op.id,openedAt,bs,usd,rate,status:'abierta'};
     sessionStorage.setItem('sifer360_active_box',JSON.stringify(context));localStorage.setItem('sifer360_active_box',JSON.stringify(context));sessionStorage.setItem('sifer360_active_opening',JSON.stringify(op));localStorage.setItem('sifer360_active_opening',JSON.stringify(op));S.cfg.rate=rate;save();
     showPosScreen();msg('Apertura de caja '+box+' registrada. Ya puedes operar en el POS.','ok');return true;
@@ -6161,6 +6482,8 @@ function corteZDlg(){
       const now=Date.now();
       active={id:'OPEN-'+box.replace(/\W/g,'')+'-'+now,cashbox:box,cashier:currentCajero(),openedAt:now,bs:r2(bs),usd:r2(usdOpening),status:'abierta'};
       writeActiveOpening(active);
+      if(!Array.isArray(S.openings))S.openings=[];S.openings.push(active);
+      save();
       const ctx=Object.assign(cajaContext(),{cashbox:box,name:currentCajero(),status:'abierta',openedAt:now});
       sessionStorage.setItem('sifer360_active_box',JSON.stringify(ctx));localStorage.setItem('sifer360_active_box',JSON.stringify(ctx));
       msg('Turno abierto para la caja '+box+'. Registre el arqueo real antes de cerrar.');

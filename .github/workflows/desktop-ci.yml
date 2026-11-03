@@ -1,0 +1,54 @@
+name: SIFER360 desktop validation
+
+on:
+  push:
+    branches:
+      - feat/ven-nif-accounting-foundation
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "electron/**"
+      - "public/**"
+      - "src/accounting/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - "electron-builder.json"
+      - "vite.config.ts"
+      - ".github/workflows/desktop-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Tests, typecheck and web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --legacy-peer-deps
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
+
+  windows-portable:
+    name: Windows portable executable
+    runs-on: windows-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --legacy-peer-deps
+      - run: npm run build:exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sifer360-licoreria-windows-portable
+          path: dist-exe/*.exe
+          if-no-files-found: error
+          retention-days: 14
