@@ -638,14 +638,17 @@ function registerAccountingIpc() {
     const before = one('SELECT * FROM chart_of_accounts WHERE code=?', [code]);
     const hasLines = Number(one('SELECT COUNT(*) AS total FROM journal_lines WHERE account_code=?', [code]).total) > 0;
     const children = Number(one('SELECT COUNT(*) AS total FROM chart_of_accounts WHERE parent_code=?', [code]).total);
-    if (hasLines && before && (before.account_type !== accountType || before.normal_balance !== normalBalance || (before.parent_code || null) !== parentCode)) {
+    const activeChildren = Number(one('SELECT COUNT(*) AS total FROM chart_of_accounts WHERE parent_code=? AND active=1', [code]).total);
+    if (hasLines && before && (before.account_type !== accountType || before.normal_balance !== normalBalance || (before.parent_code || null) !== parentCode || before.framework_scope !== frameworkScope || Number(before.accepts_posting) !== acceptsPosting)) {
       throw new Error('No se puede cambiar clasificación, saldo normal o jerarquía de una cuenta que ya tiene movimientos contables.');
     }
     if (children > 0 && acceptsPosting) throw new Error('Una cuenta con subcuentas debe ser de agrupación y no aceptar contabilizaciones.');
+    if (active === 0 && activeChildren > 0) throw new Error('No se puede inactivar una cuenta que conserva subcuentas activas.');
     if (parentCode) {
-      const parent = one('SELECT code,account_type,accepts_posting,active FROM chart_of_accounts WHERE code=?', [parentCode]);
+      const parent = one('SELECT code,account_type,accepts_posting,active,framework_scope FROM chart_of_accounts WHERE code=?', [parentCode]);
       if (!parent || Number(parent.active) !== 1 || Number(parent.accepts_posting) !== 0) throw new Error('La cuenta padre debe existir, estar activa y ser de agrupación.');
       if (parent.account_type !== accountType) throw new Error('La cuenta hija debe conservar la misma clasificación de su cuenta padre.');
+      if (parent.framework_scope !== 'both' && parent.framework_scope !== frameworkScope) throw new Error('La cuenta hija no puede tener un alcance VEN-NIF más amplio que su cuenta padre.');
       const visited = new Set([code]);
       let cursor = parentCode;
       while (cursor) {
