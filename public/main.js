@@ -4833,9 +4833,9 @@ function printComprobanteRetencion(r){
 
 function printActaBcv(sales){
   const ok=sales.filter(s=>!s.void);
-  const rowsHtml=ok.map(s=>'<tr><td style="padding:4px;border:1px solid #BAC7CE;font-family:monospace">'+pad(s.no)+'</td><td style="padding:4px;border:1px solid #BAC7CE">'+fmtDT(s.ts)+'</td><td style="padding:4px;border:1px solid #BAC7CE">'+esc(s.client.name)+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right">'+nf(s.total+(s.igtf||0))+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right;font-weight:700;color:#1842B8">'+nf(s.rate||S.cfg.rate)+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right">'+nf((s.total+(s.igtf||0))*(s.rate||S.cfg.rate))+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:center;color:#1D6F39;font-weight:700">100% CONFORME BCV</td></tr>').join('');
+  const rowsHtml=ok.map(s=>'<tr><td style="padding:4px;border:1px solid #BAC7CE;font-family:monospace">'+pad(s.no)+'</td><td style="padding:4px;border:1px solid #BAC7CE">'+fmtDT(s.ts)+'</td><td style="padding:4px;border:1px solid #BAC7CE">'+esc(s.client.name)+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right">'+nf(s.total+(s.igtf||0))+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right;font-weight:700;color:#1842B8">'+nf(s.rate||S.cfg.rate)+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right">'+nf((s.total+(s.igtf||0))*(s.rate||S.cfg.rate))+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:center;color:#1D6F39;font-weight:700">TASA REGISTRADA · NO CERTIFICADA</td></tr>').join('');
   const html='<div style="font-size:12px">'+
-    '<div style="background:#EBF7EE;border:1px solid #BEE7C8;padding:10px;border-radius:6px;margin-bottom:12px">'+
+    '<div style="background:#FFF7E6;border:1px solid #F3D08A;padding:10px;border-radius:6px;margin-bottom:12px">'+
       '<h3 style="margin:0 0 4px;font-size:14px;color:#1D6F39">ACTA DE FISCALIZACIÓN Y CONFORMIDAD CAMBIARIA (BANCO CENTRAL DE VENEZUELA)</h3>'+
       '<p style="margin:0;font-size:11.5px;color:#144A75">Se hace constar ante los funcionarios del <b>SENIAT</b> y la <b>SUNDDE</b> que la entidad <b>'+esc(S.cfg.empresa)+'</b> (RIF: '+esc(S.cfg.rif)+') aplica de manera estricta y sin excepciones la <b>Tasa Oficial publicada por el Banco Central de Venezuela (BCV)</b> en todas sus operaciones comerciales y documentos de venta.</p>'+
     '</div>'+
@@ -4912,7 +4912,7 @@ function printVoucherLoteSudeban(l){
     '</div>'+
     '<div style="display:flex;justify-content:space-between;font-size:11px;color:#555"><span>Equiv. Tasa Oficial BCV:</span><span>'+usd(equivUsd)+'</span></div>'+
     '<div style="margin-top:12px;text-align:center;font-size:10.5px;color:#333;border-top:1px dashed #666;padding-top:8px">'+
-      'ESTADO: <b>'+esc(l.estado)+'</b> CON REGISTROS POS<br>CONCILIACIÓN FÍSICA Y ELECTRÓNICA CONFORME<br>CONSERVACIÓN LEGAL 10 AÑOS (SUDEBAN)'+
+      'ESTADO: <b>'+esc(l.estado)+'</b> CON REGISTROS POS<br>CONCILIACIÓN FÍSICA Y ELECTRÓNICA PENDIENTE DE VALIDACIÓN<br>CONSERVAR SEGÚN EL PLAZO LEGAL APLICABLE'+
     '</div>'+
   '</div>';
   printFiscalReport('Voucher de Cierre de Lote — '+l.refLote,html);
@@ -5005,9 +5005,9 @@ function seniatSudebanDlg(initialTab){
 
   const el=h('<div class="form" style="gap:10px">'+
     '<div class="semaforo-bar">'+
-      '<div class="semaforo-dot"></div>'+
-      '<div class="semaforo-text"><b>CONTROL FISCAL & SUDEBAN CONFORME</b> &middot; Tasa Oficial BCV en vigencia ('+nf(S.cfg.rate)+' Bs./US$) &middot; Formas Libres en Rango Legal &middot; Discriminación IGTF 3% Divisas Activa.</div>'+
-      '<span class="fiscal-seal">SENIAT &middot; SUDEBAN OK</span>'+
+      '<div class="semaforo-dot" style="background:#D97706"></div>'+
+      '<div class="semaforo-text"><b>ESTADO FISCAL: REVISIÓN PENDIENTE</b> &middot; Indicadores auxiliares del sistema; verifique documentos, autorizaciones y reglas tributarias vigentes con el contador. Este panel no certifica cumplimiento.</div>'+
+      '<span class="fiscal-seal">NO CERTIFICADO</span>'+
     '</div>'+
     '<div class="tabs" id="snTabs">'+
       '<button class="tab '+(activeTab==='resumen'?'active':'')+'" data-tab="resumen">Panel de Control Fiscal</button>'+
@@ -5094,11 +5094,11 @@ function seniatSudebanDlg(initialTab){
     '</div>'+
     '<div class="cierre" style="margin-top:6px">'+
       '<table class="sumt"><thead><tr><th>Verificaciones del Sistema (Semáforo SENIAT / SUDEBAN)</th><th class="c" style="width:110px">Estado</th></tr></thead><tbody>'+
-        '<tr><td><b>Tasa Oficial Cambiaria BCV</b>: Aplicada rigurosamente en todas las ventas ('+nf(rate)+' Bs./US$). Sin sobreprecios.</td><td class="c"><span class="fiscal-tag ok">100% CONFORME</span></td></tr>'+
-        '<tr><td><b>Formas Libres / Correlativo de Control Fiscal</b>: '+esc(S.cfg.ctrlPrefix)+pad(S.cfg.ctrlNext||1043,8)+' (Rango aut. hasta '+esc(S.cfg.ctrlRangoHasta)+').</td><td class="c"><span class="fiscal-tag ok">48.958 RESTANTES</span></td></tr>'+
-        '<tr><td><b>Ley IGTF 3% Divisas</b>: Aplicado únicamente a efectivo en divisas y zelle. Cobros en Bs. 100% exentos.</td><td class="c"><span class="fiscal-tag ok">CONFORME</span></td></tr>'+
-        '<tr><td><b>Alícuotas de IVA por Producto</b>: Clasificación fiscal 16% (G), 8% (R), 31% (A) y Exento (E) activas.</td><td class="c"><span class="fiscal-tag ok">DISCRIMINADAS</span></td></tr>'+
-        '<tr><td><b>Conciliación de Puntos de Venta y Biopago BDV</b>: Lotes cerrados y conciliados sin diferencias.</td><td class="c"><span class="fiscal-tag ok">CUADRADOS</span></td></tr>'+
+        '<tr><td><b>Tasa de cambio registrada</b>: cada operación conserva su tasa; confirme fuente, fecha y aplicabilidad del tipo de cambio.</td><td class="c"><span class="fiscal-tag warn">REGISTRO LOCAL</span></td></tr>'+
+        '<tr><td><b>Numeración y control fiscal</b>: secuencia local '+esc(S.cfg.ctrlPrefix)+pad(S.cfg.ctrlNext||1,8)+'. El rango y la autorización deben comprobarse contra la constancia vigente.</td><td class="c"><span class="fiscal-tag warn">NO VALIDADO</span></td></tr>'+
+        '<tr><td><b>IGTF</b>: el hecho imponible y la tasa deben evaluarse por sujeto, medio de pago y operación conforme a la regla vigente.</td><td class="c"><span class="fiscal-tag warn">POR VALIDAR</span></td></tr>'+
+        '<tr><td><b>Clasificación de IVA por producto</b>: se conserva la clasificación registrada; validar alícuota, exención y vigencia por fecha de operación.</td><td class="c"><span class="fiscal-tag warn">POR VALIDAR</span></td></tr>'+
+        '<tr><td><b>Conciliación de medios electrónicos</b>: el registro POS es auxiliar; la conciliación requiere extracto o reporte bancario externo.</td><td class="c"><span class="fiscal-tag warn">NO CONFIRMADA</span></td></tr>'+
       '</tbody></table>'+
       '<table class="sumt"><thead><tr><th>Ficha Fiscal de la Empresa</th><th>Valor Registrado</th></tr></thead><tbody>'+
         '<tr><td>Razón Social</td><td><b>'+esc(S.cfg.empresa)+'</b></td></tr>'+
