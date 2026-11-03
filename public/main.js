@@ -2461,7 +2461,7 @@ function comprasDlg(initialTab){
     v.innerHTML=
       '<div class="gridwrap invwrap"><table class="grid" style="min-width:1250px"><thead><tr><th>Código</th><th>Razón Social / Proveedor</th><th>RIF</th><th>Teléfono</th><th>Condición habitual</th><th>Sujeto a retención IVA</th><th>Agente de percepción IVA</th><th>Aplicabilidad de retención</th><th>Referencia verificada</th></tr></thead><tbody>'+
         S.suppliers.map(s=>'<tr><td class="mono">'+esc(s.id)+'</td><td><b>'+esc(s.name)+'</b></td><td class="mono">'+esc(s.rif)+'</td><td>'+esc(s.tel)+'</td><td>'+esc(s.cond)+'</td>'+
-          '<td><select class="fld" data-ret-iva="'+esc(s.id)+'" aria-label="Proveedor sujeto a retención">'+options(s.retieneIva===true?'si':'no',[['no','No / verificar'],['si','Sí, confirmado']])+'</select></td>'+
+          '<td><select class="fld" data-ret-iva="'+esc(s.id)+'" aria-label="Proveedor sujeto a retención">'+options(s.retieneIvaStatus||(s.retieneIva===true?'yes':'unknown'),[['unknown','Por verificar'],['yes','Sí, confirmado'],['no','No, verificado']])+'</select></td>'+
           '<td><select class="fld" data-ret-perception="'+esc(s.id)+'" aria-label="Proveedor agente de percepción IVA">'+options(s.ivaPerceptionAgentStatus||'unknown',[['unknown','Por verificar'],['yes','Sí'],['no','No']])+'</select></td>'+
           '<td><select class="fld" data-ret-eligibility="'+esc(s.id)+'" aria-label="Aplicabilidad de retención IVA">'+options(s.retencionExclusionStatus||'unknown',[['unknown','Por verificar'],['eligible','Aplicable verificada'],['excluded','Excluida']])+'</select></td>'+
           '<td><input class="fld" data-ret-ref="'+esc(s.id)+'" value="'+esc(s.retencionReglaRef||'')+'" placeholder="Soporte / referencia"></td></tr>').join('')+
@@ -2471,7 +2471,7 @@ function comprasDlg(initialTab){
         '<div class="f wide"><label for="nsName">Razón Social</label><input class="fld" id="nsName" placeholder="Nombre de la distribuidora o fabricante"></div>'+
         '<div class="f"><label for="nsTel">Teléfono</label><input class="fld" id="nsTel"></div>'+
         '<div class="f"><label for="nsCond">Condición</label><select class="fld" id="nsCond"><option>Contado</option><option selected>15 días</option><option>30 días</option></select></div>'+
-        '<div class="f"><label for="nsRetIva">Sujeto a retención de IVA</label><select class="fld" id="nsRetIva"><option value="no" selected>No / por verificar</option><option value="si">Sí, confirmado</option></select></div>'+
+        '<div class="f"><label for="nsRetIva">Sujeto a retención de IVA</label><select class="fld" id="nsRetIva"><option value="unknown" selected>Por verificar</option><option value="yes">Sí, confirmado</option><option value="no">No, verificado</option></select></div>'+
         '<div class="f"><label for="nsPerception">¿Agente de percepción IVA?</label><select class="fld" id="nsPerception"><option value="unknown" selected>Por verificar</option><option value="yes">Sí, confirmado</option><option value="no">No, verificado</option></select></div>'+
         '<div class="f"><label for="nsRetentionEligibility">Aplicabilidad de retención</label><select class="fld" id="nsRetentionEligibility"><option value="unknown" selected>Por verificar</option><option value="eligible">Aplicable, verificada</option><option value="excluded">Excluida por norma</option></select></div>'+
         '<div class="f wide"><label for="nsTaxBasis">Referencia / soporte de verificación</label><input class="fld" id="nsTaxBasis" placeholder="Providencia, constancia o documento revisado"></div>'+
@@ -2481,7 +2481,7 @@ function comprasDlg(initialTab){
       if(!id)return;
       const sup=S.suppliers.find(x=>x.id===id.dataset.retIva||x.id===id.dataset.retPerception||x.id===id.dataset.retEligibility||x.id===id.dataset.retRef);
       if(!sup)return;
-      if(id.dataset.retIva)sup.retieneIva=id.value==='si';
+      if(id.dataset.retIva){sup.retieneIvaStatus=id.value;sup.retieneIva=id.value==='yes';}
       if(id.dataset.retPerception)sup.ivaPerceptionAgentStatus=id.value;
       if(id.dataset.retEligibility)sup.retencionExclusionStatus=id.value;
       if(id.dataset.retRef)sup.retencionReglaRef=id.value.trim();
@@ -2496,7 +2496,8 @@ function comprasDlg(initialTab){
         if(eligibility==='eligible'&&!basis){msg('Indique el soporte que justifica la aplicabilidad de la retención.','bad');return;}
         S.suppliers.push({
           id:'PRV-'+two(S.suppliers.length+1),name,rif,tel:$('#nsTel',v).value.trim(),cond:$('#nsCond',v).value,
-          retieneIva:$('#nsRetIva',v).value==='si',
+          retieneIva:$('#nsRetIva',v).value==='yes',
+          retieneIvaStatus:$('#nsRetIva',v).value,
           ivaPerceptionAgentStatus:$('#nsPerception',v).value,
           retencionExclusionStatus:eligibility,
           retencionSupuestoVerificado:eligibility==='eligible',
@@ -2550,7 +2551,7 @@ function comprasDlg(initialTab){
     const total=r8(base+iva);
     const dueTs=ts+creditDays*86400000;
     const retPct=[75,100].includes(Number(S.cfg.retIvaPct))?Number(S.cfg.retIvaPct):0; /* No asumir tasa si el contador no la configuró. */
-    const aplicarRetencion=!!(iva>0&&retPct>0&&S.cfg.retIvaPctConfirmed===true&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true&&sup.ivaPerceptionAgentStatus==='no'&&sup.retencionExclusionStatus==='eligible'&&sup.retencionReglaRef);
+    const aplicarRetencion=!!(iva>0&&retPct>0&&S.cfg.retIvaPctConfirmed===true&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true&&sup.retieneIvaStatus==='yes'&&sup.ivaPerceptionAgentStatus==='no'&&sup.retencionExclusionStatus==='eligible'&&sup.retencionReglaRef);
     const retUsd=aplicarRetencion?r2(iva*(retPct/100)):0;
     const retBs=r2(retUsd*S.cfg.rate);
     const payableTotal=r2(Math.max(0,total-retUsd));
@@ -4985,7 +4986,7 @@ function newRetencionIvaDlg(onDone){
         if(!S.cfg.contribEspecial||S.cfg.retencionHabilitadaConfirmada!==true){
           msg('No se puede preparar el borrador: confirme primero la designación vigente de la empresa como agente de retención.','bad');return false;
         }
-        if(!sup||sup.retieneIva!==true||sup.ivaPerceptionAgentStatus!=='no'||sup.retencionExclusionStatus!=='eligible'||!sup.retencionReglaRef){msg('El proveedor debe tener condición de sujeto, agente de percepción descartado y supuesto de retención verificado con soporte.','bad');return false;}
+        if(!sup||sup.retieneIva!==true||sup.retieneIvaStatus!=='yes'||sup.ivaPerceptionAgentStatus!=='no'||sup.retencionExclusionStatus!=='eligible'||!sup.retencionReglaRef){msg('El proveedor debe tener condición de sujeto, agente de percepción descartado y supuesto de retención verificado con soporte.','bad');return false;}
         if(!docProv||!ctrlProv||!docDate||!(base>0)||!(iva>0)||![75,100].includes(pct)||!basis||!(rate>0)){
           msg('Faltan datos reales de la factura, importes, porcentaje, fundamento o tasa. No se usarán datos de demostración.','bad');return false;
         }
