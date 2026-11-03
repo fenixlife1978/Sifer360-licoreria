@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { convertMinorUnits, buildBimonetaryLines } from "../src/accounting/bimonetary.mjs";
 
 test("convierte VES a USD usando tasa racional exacta y redondeo half-up", () => {
-  assert.equal(convertMinorUnits(8747320, { rateNumerator: 1, rateDenominator: 874732, fromDecimals: 2, toDecimals: 2 }), 100);
+  assert.equal(convertMinorUnits(8747320, { rateNumerator: 1, rateDenominator: 874732, fromDecimals: 2, toDecimals: 2 }), 10);
   assert.equal(convertMinorUnits(875, { rateNumerator: 1, rateDenominator: 2, fromDecimals: 2, toDecimals: 2 }), 438);
 });
 
