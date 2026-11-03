@@ -15,7 +15,8 @@ test("el panel fiscal no presenta conformidad ni conciliaciones no verificadas c
     "SENIAT/DAF/2022/981",
     "SNAT/2023/000412",
     "Z4A7719204",
-    "00-00050000"
+    "00-00050000",
+    "00-00000001"
   ]) assert.ok(!main.includes(phrase), "Se detectó afirmación fiscal no sustentada: " + phrase);
   const retStart = main.indexOf("function newRetencionIvaDlg");
   const retEnd = main.indexOf("function seniatSudebanDlg", retStart);
