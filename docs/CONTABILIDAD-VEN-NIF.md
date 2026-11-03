@@ -67,3 +67,11 @@ La pestaña **Contabilidad VEN-NIF** del módulo de control fiscal permite guard
 El esquema no asigna una moneda funcional ni un marco contable por defecto. La pantalla no genera asientos desde ventas, compras o movimientos de inventario. El usuario Administrador o Contador puede registrar la configuración, pero la validación del rol aún depende del modelo de sesión del renderer y no debe considerarse una frontera de seguridad equivalente a autenticación de servidor. El IPC contable valida el origen de la ventana y expone métodos específicos, nunca el objeto `ipcRenderer` completo.
 
 Los períodos se crean inicialmente abiertos; el cierre formal, el plan de cuentas, saldos de apertura, los asientos y los reportes contables se implementarán en fases separadas. No modificar manualmente la base SQLite para simular aprobación o contabilización.
+
+## Captura transaccional de operaciones POS
+
+La persistencia de app_state en Electron compara el estado comercial anterior y el nuevo. Si detecta altas, cambios o eliminaciones en ventas, compras, CxC/CxP, cierres, Kardex, conteos, devoluciones, anulaciones, Cashea, movimientos de divisas o retenciones, genera eventos de origen deterministas e idempotentes en accounting_source_events.
+
+La escritura del estado POS y los eventos contables ocurre dentro de una única transacción BEGIN IMMEDIATE. Cuando se captura al menos un evento, la base SQLite se persiste inmediatamente al archivo para evitar que la ventana de 80 ms de guardado diferido deje una venta sin su evidencia contable después de un cierre abrupto. La recepción de operaciones LAN y la sincronización de snapshots también registran los eventos dentro de la transacción que actualiza el estado del servidor.
+
+La pestaña Contabilidad VEN-NIF muestra el resumen y las últimas operaciones capturadas. Los eventos permanecen en estado pending; todavía no se traducen a asientos, no actualizan balances y no se consideran contabilizados. La selección de cuentas, la clasificación de impuestos, la política de reconocimiento y la aprobación del contador son fases posteriores.
