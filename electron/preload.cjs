@@ -15,5 +15,11 @@ contextBridge.exposeInMainWorld('posDesktop', {
   networkStartServer: options => ipcRenderer.invoke('network:configure-server', options),
   networkStopServer: () => ipcRenderer.invoke('network:stop-server'),
   networkConfigureClient: options => ipcRenderer.invoke('network:configure-client', options),
-  networkSyncNow: state => ipcRenderer.invoke('network:sync-now', state)
+  networkSyncNow: state => ipcRenderer.invoke('network:sync-now', state),
+  accountingGetSettings: () => ipcRenderer.invoke('accounting:get-settings'),
+  accountingSaveSettings: settings => ipcRenderer.invoke('accounting:save-settings', settings),
+  accountingGetProfile: () => ipcRenderer.invoke('accounting:get-profile'),
+  accountingSaveProfile: profile => ipcRenderer.invoke('accounting:save-profile', profile),
+  accountingListPeriods: () => ipcRenderer.invoke('accounting:list-periods'),
+  accountingSavePeriod: period => ipcRenderer.invoke('accounting:save-period', period)
 });
