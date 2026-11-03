@@ -5535,7 +5535,8 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="accPeriodStart">Desde</label><input class="fld" id="accPeriodStart" type="date"></div>'+
       '<div class="f"><label for="accPeriodEnd">Hasta</label><input class="fld" id="accPeriodEnd" type="date"></div>'+
       '</div><button class="btn" id="btnSaveAccountingPeriod" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Crear / actualizar período abierto</button><div id="accPeriodsList" class="hint">Cargando períodos...</div></section>'+
-      '<div class="hint">Pendiente de fases siguientes: plan de cuentas, saldos de apertura, asientos, diario, mayor, balance de comprobación y reglas fiscales versionadas. Las operaciones del POS aún no se contabilizan automáticamente.</div>'+
+      '<section class="cierre"><h3>4. Operaciones recibidas por el motor contable</h3><div id="accSourceSummary" class="hint">Cargando eventos...</div><div id="accSourceEvents" class="hint">Leyendo eventos de origen...</div><p class="hint">Estos eventos son evidencia de operaciones del POS. Permanecen pendientes de revisión y todavía no generan asientos ni modifican saldos contables.</p></section>'+
+      '<div class="hint">Pendiente de fases siguientes: plan de cuentas, saldos de apertura, asientos, diario, mayor, balance de comprobación y reglas fiscales versionadas.</div>'+
       '</div>';
   };
   const loadAccountingTab=async()=>{
@@ -5543,10 +5544,12 @@ function seniatSudebanDlg(initialTab){
     if(!content||activeTab!=='contabilidad')return;
     if(!window.posDesktop)return;
     try{
-      const [settings,profile,periods]=await Promise.all([
+      const [settings,profile,periods,sourceEvents,sourceSummary]=await Promise.all([
         window.posDesktop.accountingGetSettings(),
         window.posDesktop.accountingGetProfile(),
-        window.posDesktop.accountingListPeriods()
+        window.posDesktop.accountingListPeriods(),
+        window.posDesktop.accountingListSourceEvents(),
+        window.posDesktop.accountingSourceEventSummary()
       ]);
       const set=(id,value)=>{const node=$('#'+id,el);if(node&&value!==null&&value!==undefined)node.value=String(value);};
       const check=(id,value)=>{const node=$('#'+id,el);if(node)node.checked=!!value;};
@@ -5566,6 +5569,10 @@ function seniatSudebanDlg(initialTab){
       }
       const list=$('#accPeriodsList',el);
       if(list)list.innerHTML=periods.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Período</th><th>Desde</th><th>Hasta</th><th>Estado</th></tr></thead><tbody>'+periods.map(p=>'<tr><td>'+esc(p.label)+'</td><td>'+esc(p.startDate)+'</td><td>'+esc(p.endDate)+'</td><td>'+esc(p.status==='closed'?'Cerrado':'Abierto')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay períodos contables definidos.';
+      const summaryNode=$('#accSourceSummary',el);
+      if(summaryNode)summaryNode.textContent='Total: '+sourceSummary.total+' · Pendientes: '+sourceSummary.pending+' · Revisión: '+sourceSummary.needs_review+' · Procesados: '+sourceSummary.processed+' · Rechazados: '+sourceSummary.rejected;
+      const eventsNode=$('#accSourceEvents',el);
+      if(eventsNode)eventsNode.innerHTML=sourceEvents.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Origen</th><th>Operación</th><th>Estado</th></tr></thead><tbody>'+sourceEvents.slice(0,40).map(item=>'<tr><td>'+esc(item.occurredAt)+'</td><td>'+esc(item.sourceType)+' / '+esc(item.sourceId)+'</td><td>'+esc(item.payload?.action||item.eventType.split('.')[0])+'</td><td>'+esc(({pending:'Pendiente',processed:'Procesado',needs_review:'Revisión',rejected:'Rechazado'})[item.processingStatus]||item.processingStatus)+'</td></tr>').join('')+'</tbody></table></div>':'No hay operaciones capturadas todavía.';
     }catch(error){msg('No se pudo leer la configuración contable: '+(error.message||error),'bad');}
   };
   const accountingActorInput=()=>{
