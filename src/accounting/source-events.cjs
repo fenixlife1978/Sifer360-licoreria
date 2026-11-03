@@ -24,7 +24,8 @@ function digest(value) {
 }
 function stableIdentity(record, collection) {
   const raw = ID_FIELDS.map(key => record && record[key]).find(value => value !== undefined && value !== null && String(value).trim() !== "");
-  const id = raw === undefined ? "anonymous-" + digest(JSON.stringify(record)).slice(0, 24) : String(raw);
+  if (raw === undefined) return null;
+  const id = String(raw).trim();
   return BOX_SCOPED.has(collection) ? String(record.cashbox || "sin-caja") + ":" + id : id;
 }
 function eventDate(record, fallback) {
@@ -45,7 +46,8 @@ function asMap(items, collection) {
   const map = new Map();
   for (const item of Array.isArray(items) ? items : []) {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-    map.set(stableIdentity(item, collection), item);
+    const identity = stableIdentity(item, collection);
+    if (identity) map.set(identity, item);
   }
   return map;
 }
