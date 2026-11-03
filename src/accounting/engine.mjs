@@ -77,13 +77,14 @@ export function postJournalEntry(entry, period, { actorId, postedAt = new Date()
   validateJournalLines(entry.lines);
   return { ...entry, status: "posted", postedAt, postedBy: actorId };
 }
-export function reverseJournalEntry(entry, { id, reason, actorId, createdAt = new Date().toISOString() }) {
+export function reverseJournalEntry(entry, { id, reason, actorId, reversalDate, reversalPeriodId, createdAt = new Date().toISOString() }) {
   assert(entry && entry.status === "posted", "Solo se reversan asientos contabilizados.");
   text(id, "ID del reverso"); text(reason, "Motivo"); text(actorId, "Usuario responsable");
+  text(reversalDate, "Fecha del reverso"); text(reversalPeriodId, "Período abierto del reverso");
   const lines = entry.lines.map(line => ({ ...line, debitMinor: line.creditMinor, creditMinor: line.debitMinor, description: "Reverso: " + reason }));
   return { ...createJournalEntry({
-    id, sourceType: "journal_reversal", sourceId: entry.id, entryDate: createdAt.slice(0,10),
-    periodId: entry.periodId, currency: entry.currency, ruleVersion: entry.ruleVersion,
+    id, sourceType: "journal_reversal", sourceId: entry.id, entryDate: reversalDate,
+    periodId: reversalPeriodId, currency: entry.currency, ruleVersion: entry.ruleVersion,
     description: "Reverso del asiento " + entry.id + ": " + reason, lines, createdAt, createdBy: actorId
   }), reversesEntryId: entry.id };
 }
