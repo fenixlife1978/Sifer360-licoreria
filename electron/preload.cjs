@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('posDesktop', {
   accountingListAccounts: () => ipcRenderer.invoke('accounting:list-accounts'),
   accountingSaveAccount: account => ipcRenderer.invoke('accounting:save-account', account),
   accountingListJournalEntries: () => ipcRenderer.invoke('accounting:list-journal-entries'),
+  accountingListExchangeRates: () => ipcRenderer.invoke('accounting:list-exchange-rates'),
   accountingGetTrialBalance: () => ipcRenderer.invoke('accounting:get-trial-balance'),
   accountingCreateJournalEntry: entry => ipcRenderer.invoke('accounting:create-journal-entry', entry),
   accountingApproveJournalEntry: entry => ipcRenderer.invoke('accounting:approve-journal-entry', entry),
