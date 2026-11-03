@@ -34,6 +34,15 @@ test("las nuevas ventas no inventan números de control ni se clasifican como fa
   assert.ok(main.includes("el POS no genera números de control"));
 });
 
+test("la retención automática no presume 75% y la configuración permite 75% o 100% bajo validación", () => {
+  assert.ok(main.includes("const retPct=[75,100].includes(Number(S.cfg.retIvaPct))?Number(S.cfg.retIvaPct):0"));
+  assert.ok(main.includes('value="75"'));
+  assert.ok(main.includes('value="100"'));
+  assert.ok(main.includes("S.cfg.retIvaPct=Number($('#fPctRet',el).value)||0"));
+  assert.ok(main.includes("No configurado / uso interno"));
+  assert.ok(main.includes("Proveedor tecnológico autorizado"));
+});
+
 test("retenciones manuales son borradores sin números aleatorios ni datos precargados", () => {
   const retStart = main.indexOf("function newRetencionIvaDlg");
   const retEnd = main.indexOf("function seniatSudebanDlg", retStart);
