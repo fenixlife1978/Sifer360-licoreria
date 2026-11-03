@@ -6,6 +6,7 @@ const dgram = require('dgram');
 const os = require('os');
 const crypto = require('crypto');
 const initSqlJs = require('sql.js');
+const { buildAccountingSourceEvents } = require('../src/accounting/source-events.cjs');
 
 let db;
 let dbConfigPath;
@@ -137,6 +138,16 @@ function all(sql, params = []) {
     return rows;
   } finally { stmt.free(); }
 }
+
+function insertAccountingSourceEvents(events) {
+  for (const event of events || []) {
+    run(`INSERT OR IGNORE INTO accounting_source_events
+      (event_id,source_type,source_id,event_type,occurred_at,payload_hash,payload_json,processing_status)
+      VALUES(?,?,?,?,?,?,?,'pending')`,
+      [event.eventId,event.sourceType,event.sourceId,event.eventType,event.occurredAt,event.payloadHash,event.payloadJson]);
+  }
+}
+
 function initializeSchema() {
   db.run(`
     PRAGMA foreign_keys = ON;
@@ -280,7 +291,7 @@ async function startLanServer(requestedPort) {
             const allowedCollections = new Set(['sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','casheaMovimientos','casheaLiquidaciones','cambiosDivisas','retencionesIva','retentions','returns','voids']);
             if (allowedCollections.has(collection) && record && typeof record === 'object' && !Array.isArray(record)) {
               const stateRow = one('SELECT payload FROM app_state WHERE id=1');
-              const state = stateRow ? JSON.parse(stateRow.payload) : {};
+              let state = stateRow ? JSON.parse(stateRow.payload) : {};
               const records = Array.isArray(state[collection]) ? state[collection] : [];
               const recordId = String(ev.entityId);
               const boxScopedCollections = new Set(['sales','cxc','cortesZ','openings','movements','returns','voids']);
@@ -293,7 +304,9 @@ async function startLanServer(requestedPort) {
                 : recordId;
               const existingRecord = records.find(item => item && recordIdentity(item) === incomingIdentity);
               if (!existingRecord) {
-                state[collection] = [...records, record];
+                const nextState = { ...state, [collection]: [...records, record] };
+                insertAccountingSourceEvents(buildAccountingSourceEvents(state, nextState, { deviceId: String(ev.deviceId) }));
+                state = nextState;
                 run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(state)]);
               } else if (JSON.stringify(existingRecord) !== JSON.stringify(record)) {
                 conflicts.push({ eventId: String(ev.eventId), reason: 'entity-already-exists-with-different-data', entityType: collection, entityId: recordId });
@@ -317,11 +330,17 @@ async function startLanServer(requestedPort) {
         if (!body || typeof body.state !== 'object' || !body.deviceId) return sendJson(res, 400, { error: 'Paquete incompleto' });
         const incoming = body.state;
         const existing = one('SELECT payload FROM app_state WHERE id=1');
-        const current = existing ? JSON.parse(existing.payload) : null;
+        const current = existing ? JSON.parse(existing.payload) : {};
         const merged = mergeStateRecords(current, incoming);
-        run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(merged)]);
+        const accountingEvents = buildAccountingSourceEvents(current, merged, { deviceId: String(body.deviceId) });
         const eventId = String(body.deviceId) + '-' + crypto.createHash('sha256').update(JSON.stringify(incoming)).digest('hex');
-        run('INSERT OR IGNORE INTO network_sync_events(event_id,device_id,created_at,payload) VALUES(?,?,?,?)', [eventId, String(body.deviceId), new Date().toISOString(), JSON.stringify({ state: incoming })]);
+        db.run('BEGIN IMMEDIATE');
+        try {
+          run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(merged)]);
+          insertAccountingSourceEvents(accountingEvents);
+          run('INSERT OR IGNORE INTO network_sync_events(event_id,device_id,created_at,payload) VALUES(?,?,?,?)', [eventId, String(body.deviceId), new Date().toISOString(), JSON.stringify({ state: incoming })]);
+          db.run('COMMIT');
+        } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
         persistDb();
         return sendJson(res, 200, { ok: true, state: merged, serverDeviceId: networkConfig.deviceId, updatedAt: new Date().toISOString() });
       } catch (error) { return sendJson(res, 400, { error: error.message || 'Error sincronizando' }); }
@@ -521,6 +540,23 @@ function registerAccountingIpc() {
     persistDb();
     return one('SELECT * FROM fiscal_entity_profile WHERE id=1');
   });
+  ipcMain.handle('accounting:list-source-events', event => {
+    assertTrustedAccountingSender(event);
+    return all(`SELECT event_id AS eventId,source_type AS sourceType,source_id AS sourceId,event_type AS eventType,
+      occurred_at AS occurredAt,processing_status AS processingStatus,error_message AS errorMessage,payload_json AS payloadJson
+      FROM accounting_source_events ORDER BY occurred_at DESC LIMIT 100`).map(row => {
+        let payload = null; try { payload = JSON.parse(row.payloadJson); } catch {}
+        delete row.payloadJson;
+        return { ...row, payload };
+      });
+  });
+  ipcMain.handle('accounting:source-event-summary', event => {
+    assertTrustedAccountingSender(event);
+    const rows = all('SELECT processing_status AS status,COUNT(*) AS total FROM accounting_source_events GROUP BY processing_status');
+    const summary = { pending: 0, processed: 0, rejected: 0, needs_review: 0, total: 0 };
+    for (const row of rows) { summary[row.status] = Number(row.total); summary.total += Number(row.total); }
+    return summary;
+  });
   ipcMain.handle('accounting:list-periods', event => {
     assertTrustedAccountingSender(event);
     return all('SELECT id,label,start_date AS startDate,end_date AS endDate,status,closed_at AS closedAt,closed_by AS closedBy FROM accounting_periods ORDER BY start_date');
@@ -555,11 +591,25 @@ function registerIpc() {
   });
   ipcMain.handle('posdb:save-state', (_e, state) => {
     if (databaseMode !== 'sqlite') throw new Error('SQLite local no está seleccionado.');
+    if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('Estado POS inválido.');
     const payload = JSON.stringify(state);
-    run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, updated_at=CURRENT_TIMESTAMP', [payload]);
+    const currentRow = one('SELECT payload FROM app_state WHERE id=1');
+    const previousState = currentRow ? JSON.parse(currentRow.payload) : {};
+    const accountingEvents = buildAccountingSourceEvents(previousState, state, { deviceId: networkConfig.deviceId });
+    db.run('BEGIN IMMEDIATE');
+    try {
+      run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, updated_at=CURRENT_TIMESTAMP', [payload]);
+      insertAccountingSourceEvents(accountingEvents);
+      db.run('COMMIT');
+    } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(persistDb, 80);
-    return { ok: true };
+    if (accountingEvents.length) {
+      // Operación comercial y su evento contable se escriben juntos y se fuerzan al archivo SQLite.
+      persistDb();
+    } else {
+      saveTimer = setTimeout(persistDb, 80);
+    }
+    return { ok: true, accountingEventsCaptured: accountingEvents.length };
   });
   ipcMain.handle('posdb:list-documents', (_e, filter = {}) => {
     if (databaseMode !== 'sqlite') return [];
