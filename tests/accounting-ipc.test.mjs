@@ -113,4 +113,5 @@ test("reutiliza tasas idénticas y rechaza referencias repetidas con valor disti
   assert.ok(main.includes("rateRecordExists=true"));
   assert.ok(main.includes("if(rateId&&!rateRecordExists)"));
   assert.ok(main.includes("Documenta la corrección con una referencia distinta."));
+  assert.ok(main.includes("String(existingRate.sourceName)!==sourceName"));
 });
