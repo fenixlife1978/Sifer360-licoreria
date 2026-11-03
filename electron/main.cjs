@@ -704,6 +704,7 @@ function registerAccountingIpc() {
     db.run('BEGIN IMMEDIATE');
     try {
       run("UPDATE journal_entries SET status='approved',approved_at=?,approved_by=? WHERE id=? AND status='draft'",[now,actor.actorId,entry.id]);
+      if (db.getRowsModified() !== 1) throw new Error('El asiento cambió de estado antes de ser aprobado.');
       run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
         [crypto.randomUUID(),'journal_entry',entry.id,'approve',actor.actorId,now,JSON.stringify({status:entry.status}),JSON.stringify({status:'approved'})]);
       db.run('COMMIT');
@@ -721,6 +722,7 @@ function registerAccountingIpc() {
     const { postJournalEntry }=await loadAccountingEngine();
     const posted=postJournalEntry(entry,periodRow,{actorId:actor.actorId});
     const settings=one('SELECT accounting_framework,functional_currency FROM accounting_settings WHERE id=1');
+    if (!settings || settings.functional_currency !== entry.currency) throw new Error('La moneda funcional cambió después de crear el borrador; revisa y vuelve a emitir el asiento.');
     for(const line of entry.lines){
       const account=one('SELECT active,accepts_posting,framework_scope FROM chart_of_accounts WHERE code=?',[line.accountCode]);
       if(!account||Number(account.active)!==1||Number(account.accepts_posting)!==1||(account.framework_scope!=='both'&&account.framework_scope!==settings.accounting_framework))throw new Error('La cuenta '+line.accountCode+' ya no está habilitada para contabilizar.');
@@ -729,6 +731,7 @@ function registerAccountingIpc() {
     db.run('BEGIN IMMEDIATE');
     try {
       run("UPDATE journal_entries SET status='posted',posted_at=?,posted_by=? WHERE id=? AND status='approved'",[now,actor.actorId,entry.id]);
+      if (db.getRowsModified() !== 1) throw new Error('El asiento cambió de estado antes de ser contabilizado.');
       if(entry.reversesEntryId){
         const original=one('SELECT status FROM journal_entries WHERE id=?',[entry.reversesEntryId]);
         if(!original||original.status!=='posted')throw new Error('El asiento original ya no está disponible para reverso.');
@@ -756,6 +759,8 @@ function registerAccountingIpc() {
     const reversal=reverseJournalEntry(original,{id:crypto.randomUUID(),reason,actorId:actor.actorId,reversalDate,reversalPeriodId});
     db.run('BEGIN IMMEDIATE');
     try {
+      const currentOriginal=one('SELECT status FROM journal_entries WHERE id=?',[original.id]);
+      if(!currentOriginal||currentOriginal.status!=='posted')throw new Error('El asiento original ya no está contabilizado.');
       insertJournalEntry(reversal);
       run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,reason,before_json,after_json) VALUES(?,?,?,?,?,?,?,?,?)',
         [crypto.randomUUID(),'journal_entry',reversal.id,'create_reversal_draft',actor.actorId,reversal.createdAt,reason,JSON.stringify({originalEntryId:original.id,status:original.status}),JSON.stringify({reversalEntryId:reversal.id,status:'draft',reversalDate,reversalPeriodId})]);
