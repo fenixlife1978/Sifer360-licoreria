@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { convertMinorUnits, buildBimonetaryLines, decimalRateToRational } from "../src/accounting/bimonetary.mjs";
+import { reverseJournalEntry } from "../src/accounting/engine.mjs";
 
 test("convierte VES a USD usando tasa racional exacta y redondeo half-up", () => {
   assert.equal(convertMinorUnits(8747320, { rateNumerator: 1, rateDenominator: 874732, fromDecimals: 2, toDecimals: 2 }), 10);
@@ -48,4 +49,32 @@ test("interpreta tasas decimales sin errores de coma flotante", () => {
   assert.deepEqual(decimalRateToRational("0,001143"), { rateNumerator: 1143, rateDenominator: 1000000 });
   assert.deepEqual(decimalRateToRational("874.7321"), { rateNumerator: 8747321, rateDenominator: 10000 });
   assert.throws(() => decimalRateToRational("0"), /mayor que cero/);
+});
+
+test("el reverso conserva la tasa y revierte los importes de presentación", () => {
+  const original = {
+    id: "J-001", sourceType: "manual", sourceId: "J-001", entryDate: "2026-11-03",
+    periodId: "2026-11", currency: "VES", presentationCurrency: "USD",
+    exchangeRateId: "FX-001", exchangeRateNumerator: 1, exchangeRateDenominator: 874732,
+    exchangeRateType: "official", exchangeRateSource: "BCV · referencia 2026-11-03",
+    presentationDebitMinor: 100, presentationCreditMinor: 100,
+    ruleVersion: "VEN-NIF-v1", description: "Asiento original", status: "posted",
+    debitMinor: 87473200, creditMinor: 87473200,
+    lines: [
+      { accountCode: "1.1", debitMinor: 87473200, creditMinor: 0, presentationDebitMinor: 100, presentationCreditMinor: 0 },
+      { accountCode: "4.1", debitMinor: 0, creditMinor: 87473200, presentationDebitMinor: 0, presentationCreditMinor: 100 }
+    ]
+  };
+  const reversal = reverseJournalEntry(original, {
+    id: "REV-001", reason: "Corrección documentada", actorId: "contador-1",
+    reversalDate: "2026-11-04", reversalPeriodId: "2026-11"
+  });
+  assert.equal(reversal.reversesEntryId, "J-001");
+  assert.equal(reversal.exchangeRateId, "FX-001");
+  assert.equal(reversal.exchangeRateNumerator, 1);
+  assert.equal(reversal.exchangeRateDenominator, 874732);
+  assert.equal(reversal.presentationDebitMinor, 100);
+  assert.equal(reversal.presentationCreditMinor, 100);
+  assert.equal(reversal.lines[0].presentationCreditMinor, 100);
+  assert.equal(reversal.lines[1].presentationDebitMinor, 100);
 });
