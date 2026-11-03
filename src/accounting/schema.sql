@@ -113,6 +113,11 @@ CREATE TABLE IF NOT EXISTS journal_entries (
  id TEXT PRIMARY KEY, source_type TEXT NOT NULL, source_id TEXT NOT NULL, entry_date TEXT NOT NULL,
  period_id TEXT NOT NULL REFERENCES accounting_periods(id), functional_currency TEXT NOT NULL,
  rule_version TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+ presentation_currency TEXT, exchange_rate_id TEXT,
+ exchange_rate_numerator INTEGER NOT NULL DEFAULT 1 CHECK(exchange_rate_numerator>0),
+ exchange_rate_denominator INTEGER NOT NULL DEFAULT 1 CHECK(exchange_rate_denominator>0),
+ exchange_rate_type TEXT, exchange_rate_source TEXT,
+ presentation_debit_minor INTEGER, presentation_credit_minor INTEGER,
  status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved','posted','reversed')),
  debit_minor INTEGER NOT NULL CHECK(debit_minor>0), credit_minor INTEGER NOT NULL CHECK(credit_minor>0),
  created_at TEXT NOT NULL, created_by TEXT, approved_at TEXT, approved_by TEXT, posted_at TEXT, posted_by TEXT,
@@ -124,7 +129,9 @@ CREATE INDEX IF NOT EXISTS idx_journal_entries_period ON journal_entries(period_
 CREATE TABLE IF NOT EXISTS journal_lines (
  id TEXT PRIMARY KEY, entry_id TEXT NOT NULL REFERENCES journal_entries(id), line_no INTEGER NOT NULL,
  account_code TEXT NOT NULL REFERENCES chart_of_accounts(code), debit_minor INTEGER NOT NULL DEFAULT 0 CHECK(debit_minor>=0),
- credit_minor INTEGER NOT NULL DEFAULT 0 CHECK(credit_minor>=0), description TEXT NOT NULL DEFAULT '',
+ credit_minor INTEGER NOT NULL DEFAULT 0 CHECK(credit_minor>=0),
+ presentation_debit_minor INTEGER, presentation_credit_minor INTEGER,
+ description TEXT NOT NULL DEFAULT '',
  third_party_id TEXT, cost_center TEXT, UNIQUE(entry_id,line_no),
  CHECK((debit_minor>0 AND credit_minor=0) OR (credit_minor>0 AND debit_minor=0))
 );
