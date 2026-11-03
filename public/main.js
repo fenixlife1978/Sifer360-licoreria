@@ -5575,7 +5575,14 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label><input type="checkbox" id="accAccountActive" checked> Cuenta activa</label></div>'+
       '</div><button class="btn primary" id="btnSaveAccountingAccount" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar cuenta contable</button><div id="accAccountsList" class="hint">Cargando plan de cuentas...</div></section>'+
       '<section class="cierre"><h3>5. Operaciones recibidas por el motor contable</h3><div id="accSourceSummary" class="hint">Cargando eventos...</div><div id="accSourceEvents" class="hint">Leyendo eventos de origen...</div><p class="hint">Estos eventos son evidencia de operaciones del POS. Permanecen pendientes de revisión y todavía no generan asientos ni modifican saldos contables.</p></section>'+
-      '<div class="hint">Pendiente de fases siguientes: saldos de apertura, mapeo de operaciones, borradores de asientos, diario, mayor, balance de comprobación y reglas fiscales versionadas.</div>'+
+      '<section class="cierre"><h3>6. Asientos manuales</h3><p class="hint">Crea borradores de ajustes con cuentas activas y contabilizables. El Debe y el Haber deben cuadrar. El creador no puede aprobar su propio asiento; solo el Contador puede aprobar y contabilizar. La integración automática de ventas y compras sigue separada.</p><div class="newgrid">'+
+      '<div class="f"><label for="accJournalDate">Fecha del asiento</label><input class="fld" id="accJournalDate" type="date" value="'+isoD(Date.now())+'"></div>'+
+      '<div class="f"><label for="accJournalPeriod">Período abierto</label><select class="fld" id="accJournalPeriod"><option value="">Seleccionar período</option></select></div>'+
+      '<div class="f"><label>Moneda funcional</label><b id="accJournalCurrency" class="hint">No configurada</b></div>'+
+      '<div class="f wide"><label for="accJournalDescription">Descripción / fundamento</label><input class="fld" id="accJournalDescription" maxlength="500" placeholder="Ajuste contable y soporte"></div>'+
+      '</div><div id="accJournalLines"></div><div class="row" style="gap:8px"><button class="btn" id="btnAddJournalLine">Añadir renglón</button><button class="btn primary" id="btnCreateJournalEntry" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar borrador de asiento</button></div><div id="accJournalEntries" class="hint">Cargando asientos...</div></section>'+
+      '<section class="cierre"><h3>7. Balance de comprobación</h3><p class="hint">Solo considera asientos contabilizados y sus reversos. Los borradores y aprobados no afectan este balance.</p><div id="accTrialBalance" class="hint">Calculando balance...</div></section>'+
+      '<div class="hint">Pendiente: mapeo aprobado de operaciones POS, contabilización automática supervisada, saldos de apertura, diario y mayor detallados, reportes financieros y libros fiscales oficiales.</div>'+
       '</div>';
   };
   const loadAccountingTab=async()=>{
