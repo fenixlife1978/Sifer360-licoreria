@@ -5533,8 +5533,18 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="accPeriodStart">Desde</label><input class="fld" id="accPeriodStart" type="date"></div>'+
       '<div class="f"><label for="accPeriodEnd">Hasta</label><input class="fld" id="accPeriodEnd" type="date"></div>'+
       '</div><button class="btn" id="btnSaveAccountingPeriod" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Crear / actualizar período abierto</button><div id="accPeriodsList" class="hint">Cargando períodos...</div></section>'+
-      '<section class="cierre"><h3>4. Operaciones recibidas por el motor contable</h3><div id="accSourceSummary" class="hint">Cargando eventos...</div><div id="accSourceEvents" class="hint">Leyendo eventos de origen...</div><p class="hint">Estos eventos son evidencia de operaciones del POS. Permanecen pendientes de revisión y todavía no generan asientos ni modifican saldos contables.</p></section>'+
-      '<div class="hint">Pendiente de fases siguientes: plan de cuentas, saldos de apertura, asientos, diario, mayor, balance de comprobación y reglas fiscales versionadas.</div>'+
+      '<section class="cierre"><h3>4. Plan de cuentas VEN-NIF</h3><p class="hint">No se carga un catálogo universal automáticamente. Registra el plan aprobado por el contador para el marco configurado. Los códigos se mantienen estables y no se pueden eliminar si tienen trazabilidad.</p><div class="newgrid">'+
+      '<div class="f"><label for="accAccountCode">Código</label><input class="fld" id="accAccountCode" maxlength="30" placeholder="1.1.01"></div>'+
+      '<div class="f wide"><label for="accAccountName">Nombre de la cuenta</label><input class="fld" id="accAccountName" maxlength="150" placeholder="Caja principal"></div>'+
+      '<div class="f"><label for="accAccountType">Clasificación</label><select class="fld" id="accAccountType"><option value="">Seleccionar</option><option value="asset">Activo</option><option value="liability">Pasivo</option><option value="equity">Patrimonio</option><option value="income">Ingreso</option><option value="expense">Gasto</option><option value="memorandum">Orden / memorando</option></select></div>'+
+      '<div class="f"><label for="accNormalBalance">Saldo normal</label><select class="fld" id="accNormalBalance"><option value="">Seleccionar</option><option value="debit">Debe</option><option value="credit">Haber</option></select></div>'+
+      '<div class="f"><label for="accParentCode">Cuenta padre (opcional)</label><input class="fld" id="accParentCode" maxlength="30" placeholder="1.1"></div>'+
+      '<div class="f"><label for="accFrameworkScope">Aplicabilidad</label><select class="fld" id="accFrameworkScope"><option value="both">Ambos marcos</option><option value="VEN_NIF_PYME">Solo PYME</option><option value="VEN_NIF_GE">Solo GE</option></select></div>'+
+      '<div class="f"><label><input type="checkbox" id="accAcceptsPosting" checked> Acepta contabilizaciones</label></div>'+
+      '<div class="f"><label><input type="checkbox" id="accAccountActive" checked> Cuenta activa</label></div>'+
+      '</div><button class="btn primary" id="btnSaveAccountingAccount" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar cuenta contable</button><div id="accAccountsList" class="hint">Cargando plan de cuentas...</div></section>'+
+      '<section class="cierre"><h3>5. Operaciones recibidas por el motor contable</h3><div id="accSourceSummary" class="hint">Cargando eventos...</div><div id="accSourceEvents" class="hint">Leyendo eventos de origen...</div><p class="hint">Estos eventos son evidencia de operaciones del POS. Permanecen pendientes de revisión y todavía no generan asientos ni modifican saldos contables.</p></section>'+
+      '<div class="hint">Pendiente de fases siguientes: saldos de apertura, mapeo de operaciones, borradores de asientos, diario, mayor, balance de comprobación y reglas fiscales versionadas.</div>'+
       '</div>';
   };
   const loadAccountingTab=async()=>{
@@ -5542,10 +5552,11 @@ function seniatSudebanDlg(initialTab){
     if(!content||activeTab!=='contabilidad')return;
     if(!window.posDesktop)return;
     try{
-      const [settings,profile,periods,sourceEvents,sourceSummary]=await Promise.all([
+      const [settings,profile,periods,accounts,sourceEvents,sourceSummary]=await Promise.all([
         window.posDesktop.accountingGetSettings(),
         window.posDesktop.accountingGetProfile(),
         window.posDesktop.accountingListPeriods(),
+        window.posDesktop.accountingListAccounts(),
         window.posDesktop.accountingListSourceEvents(),
         window.posDesktop.accountingSourceEventSummary()
       ]);
@@ -5567,6 +5578,8 @@ function seniatSudebanDlg(initialTab){
       }
       const list=$('#accPeriodsList',el);
       if(list)list.innerHTML=periods.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Período</th><th>Desde</th><th>Hasta</th><th>Estado</th></tr></thead><tbody>'+periods.map(p=>'<tr><td>'+esc(p.label)+'</td><td>'+esc(p.startDate)+'</td><td>'+esc(p.endDate)+'</td><td>'+esc(p.status==='closed'?'Cerrado':'Abierto')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay períodos contables definidos.';
+      const accountList=$('#accAccountsList',el);
+      if(accountList)accountList.innerHTML=accounts.length?'<div class="hint">'+accounts.length+' cuentas registradas</div><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>Cuenta</th><th>Padre</th><th>Clasificación</th><th>Saldo normal</th><th>Uso</th><th>Estado</th></tr></thead><tbody>'+accounts.map(a=>'<tr><td>'+esc(a.code)+'</td><td>'+esc(a.name)+'</td><td>'+esc(a.parentCode||'—')+'</td><td>'+esc(({asset:'Activo',liability:'Pasivo',equity:'Patrimonio',income:'Ingreso',expense:'Gasto',memorandum:'Orden'})[a.accountType]||a.accountType)+'</td><td>'+esc(a.normalBalance==='debit'?'Debe':'Haber')+'</td><td>'+esc(Number(a.acceptsPosting)?'Contabilizable':'Agrupación')+'</td><td>'+esc(Number(a.active)?'Activa':'Inactiva')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay cuentas. Carga el plan aprobado antes de generar asientos.';
       const summaryNode=$('#accSourceSummary',el);
       if(summaryNode)summaryNode.textContent='Total: '+sourceSummary.total+' · Pendientes: '+sourceSummary.pending+' · Revisión: '+sourceSummary.needs_review+' · Procesados: '+sourceSummary.processed+' · Rechazados: '+sourceSummary.rejected;
       const eventsNode=$('#accSourceEvents',el);
@@ -5764,6 +5777,18 @@ function seniatSudebanDlg(initialTab){
             await window.posDesktop.accountingMarkSourceEventReview({...accountingActorInput(),eventId:ev.target.dataset.sourceEventReview,reason});
             msg('Evento marcado para revisión. Se registró el responsable y el motivo en la auditoría.');
             await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveAccountingAccount'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            const result=await window.posDesktop.accountingSaveAccount({...actor,
+              code:$('#accAccountCode',el).value,name:$('#accAccountName',el).value,
+              accountType:$('#accAccountType',el).value,normalBalance:$('#accNormalBalance',el).value,
+              parentCode:$('#accParentCode',el).value,frameworkScope:$('#accFrameworkScope',el).value,
+              acceptsPosting:$('#accAcceptsPosting',el).checked,active:$('#accAccountActive',el).checked
+            });
+            msg('Cuenta '+result.code+' guardada y auditada.');await loadAccountingTab();
           }catch(error){msg(error.message||String(error),'bad');}})();
         }
         if(ev.target.id==='btnSaveAccountingSettings'){
