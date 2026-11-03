@@ -28,7 +28,7 @@ function stableIdentity(record, collection) {
   return BOX_SCOPED.has(collection) ? String(record.cashbox || "sin-caja") + ":" + id : id;
 }
 function eventDate(record, fallback) {
-  if (record && Number.isFinite(Number(record.ts)) && record.ts !== "") {
+  if (record && record.ts !== undefined && record.ts !== null && record.ts !== "" && Number.isFinite(Number(record.ts))) {
     let value = Number(record.ts);
     if (value > 0 && value < 1e12) value *= 1000;
     const parsed = new Date(value);
