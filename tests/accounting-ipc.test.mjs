@@ -7,12 +7,12 @@ const preload = fs.readFileSync(new URL("../electron/preload.cjs", import.meta.u
 const renderer = fs.readFileSync(new URL("../public/main.js", import.meta.url), "utf8");
 
 test("las operaciones contables usan IPC acotado y validan el origen del renderer", () => {
-  for (const channel of ["accounting:get-settings","accounting:save-settings","accounting:get-profile","accounting:save-profile","accounting:list-periods","accounting:save-period","accounting:list-source-events","accounting:source-event-summary"]) {
-    assert.ok(main.includes("ipcMain.handle('" + channel + "'"), "Falta IPC " + channel);
-  }
+  const channels = ["accounting:get-settings","accounting:save-settings","accounting:get-profile","accounting:save-profile","accounting:list-periods","accounting:save-period","accounting:list-source-events","accounting:source-event-summary","accounting:mark-source-event-review"];
+  for (const channel of channels) assert.ok(main.includes("ipcMain.handle('" + channel + "'"), "Falta IPC " + channel);
   assert.ok(!preload.includes("ipcRenderer:"));
   assert.ok(preload.includes("accountingSaveSettings: settings => ipcRenderer.invoke('accounting:save-settings', settings)"));
   assert.ok(preload.includes("accountingListSourceEvents: () => ipcRenderer.invoke('accounting:list-source-events')"));
+  assert.ok(preload.includes("accountingMarkSourceEventReview: review => ipcRenderer.invoke('accounting:mark-source-event-review', review)"));
 });
 
 test("los cambios de configuración generan auditoría y evitan solapamiento de períodos", () => {
@@ -33,6 +33,14 @@ test("las operaciones POS y sus eventos contables se capturan en la misma transa
   assert.ok(main.includes("const accountingEvents = buildAccountingSourceEvents(current, merged"));
   assert.ok(renderer.includes("const result = await window.posDesktop.saveState(state)"));
   assert.ok(renderer.includes("SQLite no confirmó el guardado del estado POS."));
+});
+
+test("la revisión manual de eventos exige motivo y deja auditoría", () => {
+  assert.ok(main.includes("mark_needs_review"));
+  assert.ok(main.includes("Solo se pueden marcar eventos pendientes o ya en revisión."));
+  assert.ok(main.includes("Selecciona el evento e indica el motivo de revisión."));
+  assert.ok(renderer.includes("data-source-event-review"));
+  assert.ok(renderer.includes("accountingMarkSourceEventReview"));
 });
 
 test("la interfaz muestra eventos pendientes sin presentarlos como asientos", () => {
