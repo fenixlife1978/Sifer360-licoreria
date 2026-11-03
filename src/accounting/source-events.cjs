@@ -7,6 +7,7 @@ const SOURCE_COLLECTIONS = Object.freeze({
   cxp: "payable",
   cortesZ: "cash_close",
   openings: "cash_opening",
+  movimientosCaja: "cash_movement",
   movements: "inventory_movement",
   movimientosCaja: "cash_movement",
   held: "held_sale",
