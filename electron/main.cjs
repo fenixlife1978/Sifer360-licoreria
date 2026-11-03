@@ -726,7 +726,7 @@ function registerAccountingIpc() {
     });
     const presentationCurrency=String(settings.presentation_currency||'').trim().toUpperCase();
     if(!/^[A-Z]{3}$/.test(presentationCurrency))throw new Error('Configura la moneda de presentación antes de crear asientos.');
-    let rate={rateNumerator:1,rateDenominator:1},rateType=null,rateSource=null,rateId=null;
+    let rate={rateNumerator:1,rateDenominator:1},rateType=null,rateSource=null,rateId=null,rateRecordExists=false;
     if(settings.functional_currency!==presentationCurrency){
       rate=decimalRateToRational(input.exchangeRate);
       rateType=String(input.exchangeRateType||'');
@@ -735,7 +735,13 @@ function registerAccountingIpc() {
       if(!['official','market','contractual','accounting_adjustment'].includes(rateType)||!sourceName||!sourceReference)
         throw new Error('La tasa bimonetaria exige tipo, fuente y referencia documental.');
       rateSource=sourceName+' · '+sourceReference;
-      rateId=crypto.randomUUID();
+      const existingRate=one('SELECT id,rate_numerator AS rateNumerator,rate_denominator AS rateDenominator FROM accounting_exchange_rates WHERE rate_date=? AND from_currency=? AND to_currency=? AND rate_type=? AND source_reference=?',
+        [entryDate,settings.functional_currency,presentationCurrency,rateType,sourceReference]);
+      if(existingRate){
+        if(Number(existingRate.rateNumerator)!==rate.rateNumerator||Number(existingRate.rateDenominator)!==rate.rateDenominator)
+          throw new Error('Ya existe una tasa con esa fecha, par, tipo y referencia documental, pero con otro valor. Documenta la corrección con una referencia distinta.');
+        rateId=existingRate.id;rateRecordExists=true;
+      }else rateId=crypto.randomUUID();
     }
     const converted=buildBimonetaryLines({lines,functionalCurrency:settings.functional_currency,presentationCurrency,
       functionalDecimals:Number(settings.monetary_decimals),presentationDecimals:Number(settings.monetary_decimals),
@@ -749,7 +755,7 @@ function registerAccountingIpc() {
     entry.lines=converted.lines;
     db.run('BEGIN IMMEDIATE');
     try {
-      if(rateId)run('INSERT INTO accounting_exchange_rates(id,rate_date,from_currency,to_currency,rate_numerator,rate_denominator,rate_type,source_name,source_reference,recorded_at,recorded_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+      if(rateId&&!rateRecordExists)run('INSERT INTO accounting_exchange_rates(id,rate_date,from_currency,to_currency,rate_numerator,rate_denominator,rate_type,source_name,source_reference,recorded_at,recorded_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
         [rateId,entryDate,settings.functional_currency,presentationCurrency,rate.rateNumerator,rate.rateDenominator,rateType,
           String(input.exchangeRateSourceName).trim().slice(0,120),String(input.exchangeRateSourceReference).trim().slice(0,180),entry.createdAt,actor.actorId]);
       insertJournalEntry(entry);
