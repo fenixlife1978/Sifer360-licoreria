@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { convertMinorUnits, buildBimonetaryLines } from "../src/accounting/bimonetary.mjs";
+import { convertMinorUnits, buildBimonetaryLines, decimalRateToRational } from "../src/accounting/bimonetary.mjs";
 
 test("convierte VES a USD usando tasa racional exacta y redondeo half-up", () => {
   assert.equal(convertMinorUnits(8747320, { rateNumerator: 1, rateDenominator: 874732, fromDecimals: 2, toDecimals: 2 }), 10);
@@ -43,3 +43,5 @@ test("no oculta diferencias por redondeo entre renglones", () => {
     ]
   }), /diferencia en moneda de presentación/);
 });
+
+test("interpreta tasas decimales sin errores de coma flotante", () => {\n  assert.deepEqual(decimalRateToRational("0,001143"), { rateNumerator: 1143, rateDenominator: 1000000 });\n  assert.deepEqual(decimalRateToRational("874.7321"), { rateNumerator: 8747321, rateDenominator: 10000 });\n  assert.throws(() => decimalRateToRational("0"), /mayor que cero/);\n});\n
