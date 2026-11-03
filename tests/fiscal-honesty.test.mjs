@@ -42,6 +42,10 @@ test("la retención automática no presume 75% y la configuración permite 75% o
   assert.ok(main.includes("No configurado / uso interno"));
   assert.ok(main.includes("retIvaPctConfirmed!==true"));
   assert.ok(main.includes("S.cfg.retIvaPctConfirmed=[75,100].includes(S.cfg.retIvaPct)"));
+  assert.ok(main.includes("sup.ivaPerceptionAgentStatus==='no'"));
+  assert.ok(main.includes("sup.retencionExclusionStatus==='eligible'"));
+  assert.ok(main.includes("nsPerception"));
+  assert.ok(main.includes("nsRetentionEligibility"));
   assert.ok(main.includes("Proveedor tecnológico autorizado"));
 });
 
