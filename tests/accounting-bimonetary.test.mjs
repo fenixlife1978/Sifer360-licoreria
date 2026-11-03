@@ -78,3 +78,22 @@ test("el reverso conserva la tasa y revierte los importes de presentación", () 
   assert.equal(reversal.lines[0].presentationCreditMinor, 100);
   assert.equal(reversal.lines[1].presentationDebitMinor, 100);
 });
+
+test("rechaza renglones inválidos y sumas fuera del rango entero seguro", () => {
+  assert.throws(() => buildBimonetaryLines({
+    functionalCurrency: "VES", presentationCurrency: "USD",
+    lines: [
+      { accountCode: "1.1", debitMinor: 10, creditMinor: 1 },
+      { accountCode: "4.1", debitMinor: 0, creditMinor: 11 }
+    ]
+  }), /nunca ambos/);
+  assert.throws(() => buildBimonetaryLines({
+    functionalCurrency: "VES", presentationCurrency: "USD",
+    lines: [
+      { accountCode: "1.1", debitMinor: Number.MAX_SAFE_INTEGER, creditMinor: 0 },
+      { accountCode: "1.2", debitMinor: 1, creditMinor: 0 },
+      { accountCode: "4.1", debitMinor: 0, creditMinor: Number.MAX_SAFE_INTEGER },
+      { accountCode: "4.2", debitMinor: 0, creditMinor: 1 }
+    ]
+  }), /rango seguro/);
+});
