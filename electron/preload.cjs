@@ -21,5 +21,7 @@ contextBridge.exposeInMainWorld('posDesktop', {
   accountingGetProfile: () => ipcRenderer.invoke('accounting:get-profile'),
   accountingSaveProfile: profile => ipcRenderer.invoke('accounting:save-profile', profile),
   accountingListPeriods: () => ipcRenderer.invoke('accounting:list-periods'),
+  accountingListSourceEvents: () => ipcRenderer.invoke('accounting:list-source-events'),
+  accountingSourceEventSummary: () => ipcRenderer.invoke('accounting:source-event-summary'),
   accountingSavePeriod: period => ipcRenderer.invoke('accounting:save-period', period)
 });
