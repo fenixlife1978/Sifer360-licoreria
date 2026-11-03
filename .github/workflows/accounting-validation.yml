@@ -1,0 +1,54 @@
+name: Accounting foundation validation
+
+on:
+  push:
+    branches:
+      - feat/ven-nif-accounting-foundation
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/accounting/**"
+      - "electron/**"
+      - "public/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - "electron-builder.json"
+      - ".github/workflows/accounting-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Unit and integration tests
+        run: npm test
+      - name: TypeScript validation
+        run: npm run lint
+      - name: Web production build
+        run: npm run build
+      - name: Windows installer and portable build
+        run: npm run build:exe
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sifer360-licoreria-windows-${{ github.sha }}
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
+          if-no-files-found: error
+          retention-days: 14
