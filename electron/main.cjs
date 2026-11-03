@@ -467,7 +467,7 @@ function accountingActor(input) {
   return { actorId, actorRole };
 }
 function isValidIsoDate(value) {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value || ''))) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
   const date = new Date(String(value) + 'T00:00:00.000Z');
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
@@ -517,7 +517,7 @@ function registerAccountingIpc() {
     const classification = String(input.taxpayerClassification || 'unknown');
     const activity = String(input.businessActivityScope || 'unknown');
     const emission = String(input.invoiceEmissionMode || 'internal_only');
-    if (!/^[JGVEP]-?\\d{8}-?\\d$/.test(rif)) throw new Error('El RIF debe tener formato válido, por ejemplo J-12345678-9.');
+    if (!/^[JGVEP]-?\d{8}-?\d$/.test(rif)) throw new Error('El RIF debe tener formato válido, por ejemplo J-12345678-9.');
     if (!legalName || legalName.length > 180) throw new Error('Indica la razón social registrada en el RIF.');
     if (!['unknown','ordinary','formal','special'].includes(classification)) throw new Error('Clasificación tributaria no válida.');
     if (!['unknown','retail','wholesale','importer','manufacturer','producer','mixed'].includes(activity)) throw new Error('Actividad económica no válida.');
@@ -593,7 +593,7 @@ function registerAccountingIpc() {
     const label = String(input.label || '').trim();
     const startDate = String(input.startDate || '');
     const endDate = String(input.endDate || '');
-    if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(id) || !isValidIsoDate(startDate) || !isValidIsoDate(endDate) || startDate > endDate || !label || startDate.slice(0,7)!==id || endDate.slice(0,7)!==id) throw new Error('Período inválido: el identificador AAAA-MM debe coincidir con las fechas de inicio y fin.');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(id) || !isValidIsoDate(startDate) || !isValidIsoDate(endDate) || startDate > endDate || !label || startDate.slice(0,7)!==id || endDate.slice(0,7)!==id) throw new Error('Período inválido: el identificador AAAA-MM debe coincidir con las fechas de inicio y fin.');
     const overlap = one('SELECT id FROM accounting_periods WHERE id<>? AND start_date<=? AND end_date>=? LIMIT 1', [id,endDate,startDate]);
     if (overlap) throw new Error('El período se solapa con el período contable ' + overlap.id + '.');
     const existing = one('SELECT status FROM accounting_periods WHERE id=?', [id]);
