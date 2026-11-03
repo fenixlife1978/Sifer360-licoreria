@@ -5570,7 +5570,7 @@ function seniatSudebanDlg(initialTab){
       const summaryNode=$('#accSourceSummary',el);
       if(summaryNode)summaryNode.textContent='Total: '+sourceSummary.total+' · Pendientes: '+sourceSummary.pending+' · Revisión: '+sourceSummary.needs_review+' · Procesados: '+sourceSummary.processed+' · Rechazados: '+sourceSummary.rejected;
       const eventsNode=$('#accSourceEvents',el);
-      if(eventsNode)eventsNode.innerHTML=sourceEvents.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Origen</th><th>Operación</th><th>Estado</th></tr></thead><tbody>'+sourceEvents.slice(0,40).map(item=>'<tr><td>'+esc(item.occurredAt)+'</td><td>'+esc(item.sourceType)+' / '+esc(item.sourceId)+'</td><td>'+esc(item.payload?.action||item.eventType.split('.')[0])+'</td><td>'+esc(({pending:'Pendiente',processed:'Procesado',needs_review:'Revisión',rejected:'Rechazado'})[item.processingStatus]||item.processingStatus)+'</td></tr>').join('')+'</tbody></table></div>':'No hay operaciones capturadas todavía.';
+      if(eventsNode)eventsNode.innerHTML=sourceEvents.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Origen</th><th>Operación</th><th>Estado</th></tr></thead><tbody>'+sourceEvents.slice(0,40).map(item=>'<tr><td>'+esc(item.occurredAt)+'</td><td>'+esc(item.sourceType)+' / '+esc(item.sourceId)+'</td><td>'+esc(item.payload?.action||item.eventType.split('.')[0])+'</td><td>'+esc(({pending:'Pendiente',processed:'Procesado',needs_review:'Revisión',rejected:'Rechazado'})[item.processingStatus]||item.processingStatus)+(item.processingStatus==='pending'&&['admin','contador'].includes(String((activeUser()||{}).role||''))?' <button class="btn mini" data-source-event-review="'+esc(item.eventId)+'">Marcar revisión</button>':'')+'</td></tr>').join('')+'</tbody></table></div>':'No hay operaciones capturadas todavía.';
     }catch(error){msg('No se pudo leer la configuración contable: '+(error.message||error),'bad');}
   };
   const accountingActorInput=()=>{
@@ -5757,6 +5757,15 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnGotoVentas'){activeTab='ventas';$('.tab[data-tab="ventas"]',el)?.click();}
         if(ev.target.id==='btnGotoIgtf'){activeTab='igtf';$('.tab[data-tab="igtf"]',el)?.click();}
 
+        if(ev.target.dataset.sourceEventReview){
+          (async()=>{try{
+            const reason=prompt('Indica por qué esta operación requiere revisión contable:');
+            if(reason===null)return;
+            await window.posDesktop.accountingMarkSourceEventReview({...accountingActorInput(),eventId:ev.target.dataset.sourceEventReview,reason});
+            msg('Evento marcado para revisión. Se registró el responsable y el motivo en la auditoría.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
         if(ev.target.id==='btnSaveAccountingSettings'){
           (async()=>{try{
             const actor=accountingActorInput();
