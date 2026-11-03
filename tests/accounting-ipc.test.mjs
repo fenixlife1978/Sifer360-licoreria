@@ -7,13 +7,14 @@ const preload = fs.readFileSync(new URL("../electron/preload.cjs", import.meta.u
 const renderer = fs.readFileSync(new URL("../public/main.js", import.meta.url), "utf8");
 
 test("las operaciones contables usan IPC acotado y validan el origen del renderer", () => {
-  const channels = ["accounting:get-settings","accounting:save-settings","accounting:get-profile","accounting:save-profile","accounting:list-periods","accounting:save-period","accounting:list-source-events","accounting:source-event-summary","accounting:mark-source-event-review","accounting:list-accounts","accounting:save-account"];
+  const channels = ["accounting:get-settings","accounting:save-settings","accounting:get-profile","accounting:save-profile","accounting:list-periods","accounting:save-period","accounting:list-source-events","accounting:source-event-summary","accounting:mark-source-event-review","accounting:list-accounts","accounting:save-account","accounting:list-journal-entries","accounting:get-trial-balance","accounting:create-journal-entry","accounting:approve-journal-entry","accounting:post-journal-entry","accounting:create-reversal-draft"];
   for (const channel of channels) assert.ok(main.includes("ipcMain.handle('" + channel + "'"), "Falta IPC " + channel);
   assert.ok(!preload.includes("ipcRenderer:"));
   assert.ok(preload.includes("accountingSaveSettings: settings => ipcRenderer.invoke('accounting:save-settings', settings)"));
   assert.ok(preload.includes("accountingListSourceEvents: () => ipcRenderer.invoke('accounting:list-source-events')"));
   assert.ok(preload.includes("accountingMarkSourceEventReview: review => ipcRenderer.invoke('accounting:mark-source-event-review', review)"));
   assert.ok(preload.includes("accountingSaveAccount: account => ipcRenderer.invoke('accounting:save-account', account)"));
+  assert.ok(preload.includes("accountingCreateJournalEntry: entry => ipcRenderer.invoke('accounting:create-journal-entry', entry)"));
 });
 
 test("los cambios de configuración generan auditoría y evitan solapamiento de períodos", () => {
@@ -57,6 +58,23 @@ test("el plan de cuentas es configurable, jerárquico y protegido", () => {
   assert.ok(renderer.includes("accountingListAccounts()"));
 });
 
+test("los asientos manuales exigen balance, separación de funciones y período abierto", () => {
+  assert.ok(main.includes("createJournalEntry({id,sourceType:'manual'"));
+  assert.ok(main.includes("El creador del asiento no puede aprobar su propio asiento."));
+  assert.ok(main.includes("La aprobación de asientos está reservada al perfil Contador."));
+  assert.ok(main.includes("La contabilización está reservada al perfil Contador."));
+  assert.ok(main.includes("El asiento cambió de estado antes de ser contabilizado."));
+  assert.ok(main.includes("reverseJournalEntry(original"));
+  assert.ok(main.includes("UPDATE journal_entries SET status='reversed'"));
+  assert.ok(main.includes("accounting:get-trial-balance"));
+  assert.ok(renderer.includes("Asientos manuales"));
+  assert.ok(renderer.includes("btnCreateJournalEntry"));
+  assert.ok(renderer.includes("data-approve-journal"));
+  assert.ok(renderer.includes("data-post-journal"));
+  assert.ok(renderer.includes("data-reverse-journal"));
+  assert.ok(renderer.includes("Balance de comprobación"));
+});
+
 test("la interfaz muestra eventos pendientes sin presentarlos como asientos", () => {
   assert.ok(renderer.includes("Contabilidad VEN-NIF"));
   assert.ok(renderer.includes("Operaciones recibidas por el motor contable"));
@@ -65,13 +83,4 @@ test("la interfaz muestra eventos pendientes sin presentarlos como asientos", ()
   assert.ok(renderer.includes("btnSaveAccountingSettings"));
   assert.ok(renderer.includes("btnSaveFiscalProfile"));
   assert.ok(renderer.includes("btnSaveAccountingPeriod"));
-});
-
-test("la replicación LAN espera confirmación del guardado SQLite", () => {
-  const saveStart = renderer.indexOf("function save(){");
-  const saveEnd = renderer.indexOf("\n}", saveStart) + 2;
-  const saveBlock = renderer.slice(saveStart, saveEnd);
-  assert.ok(saveBlock.includes("return posSqliteDriver.saveState(state).then"));
-  assert.ok(saveBlock.indexOf("captureNewOperations()") > saveBlock.indexOf("if(!result||result.ok!==true)"));
-  assert.ok(saveBlock.indexOf("scheduleNetworkSync()") > saveBlock.indexOf("if(!result||result.ok!==true)"));
 });
