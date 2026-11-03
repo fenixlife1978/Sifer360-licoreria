@@ -7,11 +7,12 @@ const preload = fs.readFileSync(new URL("../electron/preload.cjs", import.meta.u
 const renderer = fs.readFileSync(new URL("../public/main.js", import.meta.url), "utf8");
 
 test("las operaciones contables usan IPC acotado y validan el origen del renderer", () => {
-  const channels = ["accounting:get-settings","accounting:save-settings","accounting:get-profile","accounting:save-profile","accounting:list-periods","accounting:save-period","accounting:list-source-events","accounting:source-event-summary","accounting:mark-source-event-review","accounting:list-accounts","accounting:save-account","accounting:list-journal-entries","accounting:get-trial-balance","accounting:create-journal-entry","accounting:approve-journal-entry","accounting:post-journal-entry","accounting:create-reversal-draft"];
+  const channels = ["accounting:get-settings","accounting:save-settings","accounting:get-profile","accounting:save-profile","accounting:list-periods","accounting:save-period","accounting:list-source-events","accounting:source-event-summary","accounting:mark-source-event-review","accounting:list-accounts","accounting:save-account","accounting:list-journal-entries","accounting:list-exchange-rates","accounting:get-trial-balance","accounting:create-journal-entry","accounting:approve-journal-entry","accounting:post-journal-entry","accounting:create-reversal-draft"];
   for (const channel of channels) assert.ok(main.includes("ipcMain.handle('" + channel + "'"), "Falta IPC " + channel);
   assert.ok(!preload.includes("ipcRenderer:"));
   assert.ok(preload.includes("accountingSaveSettings: settings => ipcRenderer.invoke('accounting:save-settings', settings)"));
   assert.ok(preload.includes("accountingListSourceEvents: () => ipcRenderer.invoke('accounting:list-source-events')"));
+  assert.ok(preload.includes("accountingListExchangeRates: () => ipcRenderer.invoke('accounting:list-exchange-rates')"));
   assert.ok(preload.includes("accountingMarkSourceEventReview: review => ipcRenderer.invoke('accounting:mark-source-event-review', review)"));
   assert.ok(preload.includes("accountingSaveAccount: account => ipcRenderer.invoke('accounting:save-account', account)"));
   assert.ok(preload.includes("accountingCreateJournalEntry: entry => ipcRenderer.invoke('accounting:create-journal-entry', entry)"));
@@ -96,4 +97,13 @@ test("los asientos y el balance conservan moneda funcional y de presentación", 
   assert.ok(renderer.includes("accJournalExchangeRateSource"));
   assert.ok(renderer.includes("accJournalPresentationCurrency"));
   assert.ok(renderer.includes("presentationCreditMinor"));
+});
+
+test("el historial de tasas expone snapshots documentados y se muestra en contabilidad", () => {
+  assert.ok(main.includes("accounting:list-exchange-rates"));
+  assert.ok(main.includes("formatAccountingRate(row.rateNumerator,row.rateDenominator)"));
+  assert.ok(main.includes("ORDER BY rate_date DESC,recorded_at DESC LIMIT 100"));
+  assert.ok(renderer.includes("accountingListExchangeRates()"));
+  assert.ok(renderer.includes("accExchangeRates"));
+  assert.ok(renderer.includes("rate.sourceReference"));
 });
