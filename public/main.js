@@ -4782,53 +4782,34 @@ function exportIgtfCsv(sales){
   msg('Reporte de Percepción IGTF exportado a CSV con éxito.');
 }
 
-function exportSeniatTxt(periodo){
-  if(!periodo){const d=new Date();periodo=String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');}
-  const rifAgente=S.cfg.rif.replace(/[^A-Za-z0-9]/g,'').toUpperCase();
-  const list=S.retencionesIva||[];
-  if(!list.length){
-    msg('No hay registros de retención IVA para el período '+periodo+'.','bad');
-    return;
-  }
-  const lines=list.map(r=>{
-    const rifProv=(r.supplier.rif||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase();
-    const fec=new Date(r.ts).toISOString().slice(0,10);
-    const numFac=(r.docProv||'0001').replace(/[^A-Za-z0-9-]/g,'').slice(0,20);
-    const numCtrl=(r.ctrlProv||'00-00000001').replace(/[^A-Za-z0-9-]/g,'').slice(0,20);
-    const totBs=r2((r.base+r.iva)*(r.rate||S.cfg.rate)).toFixed(2);
-    const baseBs=r2(r.base*(r.rate||S.cfg.rate)).toFixed(2);
-    const retBs=r2(r.retainedBs||(r.iva*0.75*(r.rate||S.cfg.rate))).toFixed(2);
-    const numComp=r.id||(periodo+pad(r.purchaseNo||1,8));
-    return `${rifAgente}\t${periodo}\t${fec}\tC\t01\t${rifProv}\t${numFac}\t${numCtrl}\t${totBs}\t${baseBs}\t${retBs}\t0\t${numComp}\t0.00\t16.00\t0`;
-  });
-  const txt=lines.join('\r\n');
-  downloadBlob(`RetencionesIVA_${rifAgente}_${periodo}.txt`,txt,'text/plain;charset=utf-8;');
-  msg('Archivo de trabajo exportado. El contador debe validar formato y datos antes de cualquier carga o declaración ante el SENIAT.');
+function exportSeniatTxt(){
+  msg('Exportación TXT deshabilitada: la estructura oficial vigente no está validada en esta versión. Los borradores internos no pueden exportarse como comprobantes o declaraciones SENIAT.','bad');
+  return;
 }
 
 function printComprobanteRetencion(r){
-  const rate=r.rate||S.cfg.rate;
-  const totBs=r2((r.base+r.iva)*rate);
-  const baseBs=r2(r.base*rate);
-  const ivaBs=r2(r.iva*rate);
-  const retBs=r2(r.retainedBs||(r.iva*0.75*rate));
-  const html='<div style="padding:10px;border:1px solid #10222B;border-radius:6px">'+
-    '<div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:8px">COMPROBANTE DE RETENCIÓN DEL IMPUESTO AL VALOR AGREGADO (I.V.A.)</div>'+
-    '<div style="text-align:center;font-size:11.5px;color:#444;margin-bottom:14px">Ley de IVA &middot; Artículos 11 y Providencia Administrativa SNAT/2015/0049 para Sujetos Pasivos Especiales</div>'+
+  const rate=Number(r.rate)||0;
+  const totBs=r2((Number(r.base)||0)+(Number(r.iva)||0))*rate;
+  const baseBs=r2((Number(r.base)||0)*rate);
+  const ivaBs=r2((Number(r.iva)||0)*rate);
+  const retBs=r2((Number(r.retainedBs)||0));
+  const html='<div style="padding:10px;border:2px solid #B45309;border-radius:6px">'+
+    '<div style="text-align:center;font-weight:800;font-size:15px;color:#92400E;margin-bottom:8px">BORRADOR INTERNO — NO VÁLIDO COMO COMPROBANTE OFICIAL</div>'+
+    '<div style="text-align:center;font-size:11.5px;color:#444;margin-bottom:14px">Documento de trabajo para revisión del contador. Referencia: Providencia SNAT/2025/000054.</div>'+
     '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">'+
-      '<tr><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5;width:25%"><b>Nº Comprobante:</b></td><td style="padding:4px;border:1px solid #BAC7CE;font-family:monospace;font-weight:700">'+esc(r.id)+'</td><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5;width:20%"><b>Fecha Emisión:</b></td><td style="padding:4px;border:1px solid #BAC7CE">'+fmtD(new Date(r.ts))+'</td></tr>'+
-      '<tr><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5"><b>Agente de Retención:</b></td><td style="padding:4px;border:1px solid #BAC7CE">'+esc(S.cfg.empresa)+' ('+esc(S.cfg.rif)+')</td><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5"><b>Período Fiscal:</b></td><td style="padding:4px;border:1px solid #BAC7CE">'+esc(r.periodo||'202610')+'</td></tr>'+
-      '<tr><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5"><b>Proveedor Sujeto:</b></td><td style="padding:4px;border:1px solid #BAC7CE" colspan="3">'+esc(r.supplier.name)+' &middot; <b>RIF:</b> '+esc(r.supplier.rif)+'</td></tr>'+
+      '<tr><td><b>ID interno:</b></td><td style="font-family:monospace;font-weight:700">'+esc(r.id)+'</td><td><b>Fecha del borrador:</b></td><td>'+fmtD(new Date(r.ts))+'</td></tr>'+
+      '<tr><td><b>Agente:</b></td><td>'+esc(S.cfg.empresa)+' ('+esc(S.cfg.rif)+')</td><td><b>Período:</b></td><td>'+esc(r.periodo||'No indicado')+'</td></tr>'+
+      '<tr><td><b>Proveedor:</b></td><td colspan="3">'+esc(r.supplier?.name||'')+' · RIF: '+esc(r.supplier?.rif||'')+'</td></tr>'+
     '</table>'+
     '<table style="width:100%;border-collapse:collapse;font-size:11.5px;text-align:right">'+
-      '<thead><tr style="background:#10222B;color:#fff"><th style="padding:5px;text-align:center">Operación</th><th style="padding:5px;text-align:center">Nº Factura</th><th style="padding:5px;text-align:center">Nº Control</th><th style="padding:5px">Total Bs.</th><th style="padding:5px">Base Imponible Bs.</th><th style="padding:5px">IVA 16% Bs.</th><th style="padding:5px;text-align:center">% Ret.</th><th style="padding:5px">IVA Retenido Bs.</th></tr></thead>'+
-      '<tbody><tr><td style="padding:6px;border:1px solid #BAC7CE;text-align:center">01-COMPRA</td><td style="padding:6px;border:1px solid #BAC7CE;text-align:center;font-family:monospace">'+esc(r.docProv)+'</td><td style="padding:6px;border:1px solid #BAC7CE;text-align:center;font-family:monospace">'+esc(r.ctrlProv)+'</td><td style="padding:6px;border:1px solid #BAC7CE">'+nf(totBs)+'</td><td style="padding:6px;border:1px solid #BAC7CE">'+nf(baseBs)+'</td><td style="padding:6px;border:1px solid #BAC7CE">'+nf(ivaBs)+'</td><td style="padding:6px;border:1px solid #BAC7CE;text-align:center;font-weight:700">'+fq(r.pct||75)+'%</td><td style="padding:6px;border:1px solid #BAC7CE;font-weight:700;color:#1842B8">'+nf(retBs)+'</td></tr></tbody>'+
+      '<thead><tr style="background:#10222B;color:#fff"><th>Factura</th><th>Control</th><th>Total Bs.</th><th>Base Bs.</th><th>IVA Bs.</th><th>% Ret.</th><th>Retención Bs.</th></tr></thead>'+
+      '<tbody><tr><td>'+esc(r.docProv||'')+'</td><td>'+esc(r.ctrlProv||'')+'</td><td>'+nf(totBs)+'</td><td>'+nf(baseBs)+'</td><td>'+nf(ivaBs)+'</td><td>'+fq(Number(r.pct)||0)+'%</td><td><b>'+nf(retBs)+'</b></td></tr></tbody>'+
     '</table>'+
-    '<div style="margin-top:16px;padding:8px;background:#EDF7F0;border:1px solid #BEE7C8;border-radius:4px;font-size:11.5px;color:#1D6F39">'+
-      '<b>Monto Retenido en Letras:</b> Retención del 75% correspondiente al impuesto facturado por un total de <b>'+nf(retBs)+' Bolívares</b> (Equivalente: US$ '+nf(r.retainedUsd||(r.iva*0.75))+').'+
-    '</div>'+
-  '</div>';
-  printFiscalReport('Comprobante de Retención IVA — '+r.id,html);
+    '<p><b>Fundamento registrado:</b> '+esc(r.basis||'Pendiente de documentar')+'</p>'+
+    '<div style="margin-top:14px;padding:8px;background:#FFF7E6;border:1px solid #F3D08A;border-radius:4px;font-size:11.5px;color:#92400E">'+
+      'Este borrador no tiene número oficial, no acredita retención practicada y no sustituye el comprobante emitido conforme al medio autorizado. Retención preliminar: '+nf(retBs)+' Bs. ('+usd(Number(r.retainedUsd)||0)+').'+
+    '</div></div>';
+  printFiscalReport('BORRADOR INTERNO DE RETENCIÓN IVA — '+r.id,html);
 }
 
 function printActaBcv(sales){
@@ -4919,77 +4900,70 @@ function printVoucherLoteSudeban(l){
 }
 
 function newRetencionIvaDlg(onDone){
-  const supOpts=(S.suppliers||[]).map((s,i)=>'<option value="'+i+'">'+esc(s.name)+' ('+esc(s.rif)+')</option>').join('');
-  const rate=S.cfg.rate;
+  const supOpts=(S.suppliers||[]).map((x,i)=>'<option value="'+i+'">'+esc(x.name)+' ('+esc(x.rif)+')</option>').join('');
+  const rate=Number(S.cfg.rate)||0;
   const el=h('<div class="form"><div class="newgrid">'+
-    '<div class="f wide"><label for="retSup">Proveedor Sujeto Pasivo</label><select class="fld" id="retSup">'+supOpts+'</select></div>'+
-    '<div class="f"><label for="retDocProv">Nº Factura Proveedor</label><input class="fld mono" id="retDocProv" value="00048912" placeholder="00012345"></div>'+
-    '<div class="f"><label for="retCtrlProv">Nº de Control Proveedor</label><input class="fld mono" id="retCtrlProv" value="00-'+pad(Math.floor(Math.random()*899999+100000),8)+'"></div>'+
-    '<div class="f"><label for="retBase">Base Imponible (US$)</label><input class="fld r" id="retBase" inputmode="decimal" value="100,00"></div>'+
-    '<div class="f"><label for="retPct">% Retención IVA</label><select class="fld" id="retPct"><option value="75" '+(S.cfg.retIvaPct===75?'selected':'')+'>75 % (Estándar)</option><option value="100" '+(S.cfg.retIvaPct===100?'selected':'')+'>100 % (Total)</option></select></div>'+
-    '<div class="f"><label for="retRate">Tasa BCV Aplicable</label><input class="fld r mono" id="retRate" readonly value="'+nf(rate)+' Bs."></div>'+
-  '</div>'+
-  '<div class="cierre" style="margin-top:6px">'+
-    '<table class="sumt" id="retPreviewTable"><tbody></tbody></table>'+
-  '</div>'+
-  '<p class="hint">Borrador de apoyo y trazabilidad para revisión del contador. Referencia normativa: Providencia Administrativa SNAT/2025/000054. Este POS no declara, no paga ni certifica por sí mismo la retención ante el SENIAT; el contador debe validar datos, excepciones y formalidades antes de emitir o declarar.</p></div>');
-
+    '<div class="f wide"><label for="retSup">Proveedor sujeto a retención (confirmado)</label><select class="fld" id="retSup"><option value="">Seleccionar proveedor</option>'+supOpts+'</select></div>'+
+    '<div class="f"><label for="retDocProv">Nº factura del proveedor</label><input class="fld mono" id="retDocProv" value="" placeholder="Transcribir factura real"></div>'+
+    '<div class="f"><label for="retCtrlProv">Nº control del proveedor</label><input class="fld mono" id="retCtrlProv" value="" placeholder="Transcribir control real"></div>'+
+    '<div class="f"><label for="retDocDate">Fecha de la factura</label><input class="fld" type="date" id="retDocDate" value=""></div>'+
+    '<div class="f"><label for="retBase">Base imponible (US$)</label><input class="fld r" id="retBase" inputmode="decimal" value="" placeholder="Según factura"></div>'+
+    '<div class="f"><label for="retIvaAmount">IVA facturado (US$)</label><input class="fld r" id="retIvaAmount" inputmode="decimal" value="" placeholder="Según factura"></div>'+
+    '<div class="f"><label for="retPct">% de retención</label><select class="fld" id="retPct"><option value="" selected>Seleccionar tras validar supuesto</option><option value="75">75 %</option><option value="100">100 % (requiere supuesto legal específico)</option></select></div>'+
+    '<div class="f"><label for="retBasis">Fundamento / observación del contador</label><input class="fld" id="retBasis" value="" placeholder="Describa el supuesto verificado"></div>'+
+    '<div class="f"><label for="retRate">Tasa BCV registrada</label><input class="fld r mono" id="retRate" readonly value="'+nf(rate)+' Bs."></div>'+
+  '</div><div class="cierre" style="margin-top:6px"><table class="sumt" id="retPreviewTable"><tbody></tbody></table></div>'+
+  '<p class="hint">Se guarda únicamente un BORRADOR INTERNO. No asigna número oficial, no emite un comprobante fiscal, no declara ni paga la retención. El contador debe verificar la designación del agente, la condición del proveedor, exclusiones, porcentaje y documento original conforme a la Providencia SNAT/2025/000054.</p></div>');
   const upd=()=>{
-    const base=pn($('#retBase',el).value);
-    const pct=parseInt($('#retPct',el).value)||75;
-    const ivaUsd=r2(base*0.16);
-    const retUsd=r2(ivaUsd*(pct/100));
-    const baseBs=r2(base*rate);
-    const ivaBs=r2(ivaUsd*rate);
-    const retBs=r2(retUsd*rate);
+    const base=pn($('#retBase',el).value), ivaUsd=pn($('#retIvaAmount',el).value), pct=Number($('#retPct',el).value);
+    if(!(base>0)||!(ivaUsd>0)||![75,100].includes(pct)||!(rate>0)){
+      $('#retPreviewTable',el).innerHTML='<tr><td class="hint">Complete los importes reales, seleccione un porcentaje después de verificar el supuesto y configure una tasa válida para ver el cálculo preliminar.</td></tr>';
+      return;
+    }
+    const retUsd=r2(ivaUsd*pct/100), retBs=r2(retUsd*rate);
     $('#retPreviewTable',el).innerHTML=
-      '<tr><td>Base Imponible:</td><td class="r">'+usd(base)+' ('+bsf(baseBs)+')</td></tr>'+
-      '<tr><td>IVA Facturado (16 %):</td><td class="r">'+usd(ivaUsd)+' ('+bsf(ivaBs)+')</td></tr>'+
-      '<tr class="tot"><td><b>Monto a Retener al Proveedor ('+pct+' %):</b></td><td class="r" style="color:#1842B8;font-size:14px"><b>'+bsf(retBs)+'</b> ('+usd(retUsd)+')</td></tr>';
+      '<tr><td>Base imponible de la factura:</td><td class="r">'+usd(base)+' ('+bsf(r2(base*rate))+')</td></tr>'+
+      '<tr><td>IVA transcrito de la factura:</td><td class="r">'+usd(ivaUsd)+' ('+bsf(r2(ivaUsd*rate))+')</td></tr>'+
+      '<tr class="tot"><td><b>Retención preliminar ('+pct+' %):</b></td><td class="r"><b>'+bsf(retBs)+' ('+usd(retUsd)+')</b></td></tr>';
   };
   el.addEventListener('input',upd);
   el.addEventListener('change',upd);
   upd();
-
   openWin({
-    title:'Emitir Comprobante de Retención de IVA (SENIAT)',
-    w:620,
+    title:'Preparar borrador interno de retención IVA',
+    w:680,
     body:el,
     foot:[
       {label:'Cancelar'},
-      {label:'Emitir y Guardar',primary:true,fn:()=>{
-        const base=pn($('#retBase',el).value);
-        if(!base){msg('Indique una base imponible válida.','bad');return false;}
-        const supIdx=parseInt($('#retSup',el).value)||0;
-        const sup=S.suppliers[supIdx]||S.suppliers[0];
-        const docProv=$('#retDocProv',el).value.trim()||'0001';
-        const ctrlProv=$('#retCtrlProv',el).value.trim()||('00-'+pad(Math.floor(Math.random()*899999+100000),8));
-        const pct=parseInt($('#retPct',el).value)||75;
-        const iva=r2(base*0.16);
-        const retUsd=r2(iva*(pct/100));
-        const retBs=r2(retUsd*rate);
-        const seq=(S.retencionesIva||[]).length+42;
-        const fechaComp=new Date();const periodoComp=String(fechaComp.getFullYear())+String(fechaComp.getMonth()+1).padStart(2,'0');
-        const compId=periodoComp+pad(seq,8);
+      {label:'Guardar borrador para revisión',primary:true,fn:()=>{
+        const base=pn($('#retBase',el).value), iva=pn($('#retIvaAmount',el).value), pct=Number($('#retPct',el).value);
+        const supIdx=$('#retSup',el).value;
+        const sup=supIdx!==''?S.suppliers[Number(supIdx)]:null;
+        const docProv=$('#retDocProv',el).value.trim(), ctrlProv=$('#retCtrlProv',el).value.trim();
+        const docDate=$('#retDocDate',el).value, basis=$('#retBasis',el).value.trim();
+        if(!S.cfg.contribEspecial||S.cfg.retencionHabilitadaConfirmada!==true){
+          msg('No se puede preparar el borrador: confirme primero la designación vigente de la empresa como agente de retención.','bad');return false;
+        }
+        if(!sup||sup.retieneIva!==true){msg('Seleccione un proveedor cuya condición de sujeto a retención haya sido verificada.','bad');return false;}
+        if(!docProv||!ctrlProv||!docDate||!(base>0)||!(iva>0)||![75,100].includes(pct)||!basis||!(rate>0)){
+          msg('Faltan datos reales de la factura, importes, porcentaje, fundamento o tasa. No se usarán datos de demostración.','bad');return false;
+        }
+        const now=new Date(), periodo=String(now.getFullYear())+String(now.getMonth()+1).padStart(2,'0');
+        const prefix='BORRADOR-RET-'+periodo+'-';
+        const seq=(S.retencionesIva||[]).filter(x=>String(x.id||'').startsWith(prefix)).length+1;
+        const retainedUsd=r2(iva*pct/100), retainedBs=r2(retainedUsd*rate);
         const retEntry={
-          id:compId,
-          ts:Date.now(),
-          periodo:periodoComp,
-          supplier:Object.assign({},sup),
-          docProv,
-          ctrlProv,
-          base,
-          iva,
-          pct,
-          rate,
-          retainedUsd:retUsd,
-          retainedBs:retBs
+          id:prefix+pad(seq,5), ts:Date.now(), periodo, docDateTs:parseIsoD(docDate),
+          supplier:Object.assign({},sup), docProv, ctrlProv, base, iva, pct, basis, rate,
+          retainedUsd, retainedBs, estado:'Borrador interno pendiente de aprobación',
+          declarada:false, pagada:false, comprobanteEntregado:false,
+          comprobanteOficial:false, numeroComprobante:null,
+          observaciones:'No es comprobante oficial. Pendiente de revisión y emisión por el medio autorizado.'
         };
         if(!S.retencionesIva)S.retencionesIva=[];
         S.retencionesIva.push(retEntry);
         save();
-        retEntry.estado='Borrador para revisión del contador';retEntry.declarada=false;retEntry.pagada=false;retEntry.comprobanteEntregado=false;retEntry.observaciones='Registro interno del POS; validar antes de emitir/declarar ante SENIAT.';
-        msg('Registro de retención guardado como borrador para revisión del contador.');
+        msg('Borrador interno guardado. No se ha emitido ni declarado un comprobante oficial.');
         if(onDone)onDone();
         printComprobanteRetencion(retEntry);
         return false;
