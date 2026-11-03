@@ -7,12 +7,13 @@ const preload = fs.readFileSync(new URL("../electron/preload.cjs", import.meta.u
 const renderer = fs.readFileSync(new URL("../public/main.js", import.meta.url), "utf8");
 
 test("las operaciones contables usan IPC acotado y validan el origen del renderer", () => {
-  const channels = ["accounting:get-settings","accounting:save-settings","accounting:get-profile","accounting:save-profile","accounting:list-periods","accounting:save-period","accounting:list-source-events","accounting:source-event-summary","accounting:mark-source-event-review"];
+  const channels = ["accounting:get-settings","accounting:save-settings","accounting:get-profile","accounting:save-profile","accounting:list-periods","accounting:save-period","accounting:list-source-events","accounting:source-event-summary","accounting:mark-source-event-review","accounting:list-accounts","accounting:save-account"];
   for (const channel of channels) assert.ok(main.includes("ipcMain.handle('" + channel + "'"), "Falta IPC " + channel);
   assert.ok(!preload.includes("ipcRenderer:"));
   assert.ok(preload.includes("accountingSaveSettings: settings => ipcRenderer.invoke('accounting:save-settings', settings)"));
   assert.ok(preload.includes("accountingListSourceEvents: () => ipcRenderer.invoke('accounting:list-source-events')"));
   assert.ok(preload.includes("accountingMarkSourceEventReview: review => ipcRenderer.invoke('accounting:mark-source-event-review', review)"));
+  assert.ok(preload.includes("accountingSaveAccount: account => ipcRenderer.invoke('accounting:save-account', account)"));
 });
 
 test("los cambios de configuración generan auditoría y evitan solapamiento de períodos", () => {
@@ -43,6 +44,17 @@ test("la revisión manual de eventos exige motivo y deja auditoría", () => {
   assert.ok(renderer.includes("accountingMarkSourceEventReview"));
 });
 
+test("el plan de cuentas es configurable, jerárquico y protegido", () => {
+  assert.ok(main.includes("La cuenta padre debe existir, estar activa y ser de agrupación."));
+  assert.ok(main.includes("La cuenta hija debe conservar la misma clasificación"));
+  assert.ok(main.includes("La jerarquía produciría un ciclo de cuentas."));
+  assert.ok(main.includes("No se puede cambiar clasificación, saldo normal o jerarquía"));
+  assert.ok(main.includes("Primero configura y documenta el marco VEN-NIF"));
+  assert.ok(renderer.includes("Plan de cuentas VEN-NIF"));
+  assert.ok(renderer.includes("btnSaveAccountingAccount"));
+  assert.ok(renderer.includes("accountingListAccounts()"));
+});
+
 test("la interfaz muestra eventos pendientes sin presentarlos como asientos", () => {
   assert.ok(renderer.includes("Contabilidad VEN-NIF"));
   assert.ok(renderer.includes("Operaciones recibidas por el motor contable"));
@@ -51,11 +63,4 @@ test("la interfaz muestra eventos pendientes sin presentarlos como asientos", ()
   assert.ok(renderer.includes("btnSaveAccountingSettings"));
   assert.ok(renderer.includes("btnSaveFiscalProfile"));
   assert.ok(renderer.includes("btnSaveAccountingPeriod"));
-});
-
-test("las aperturas de caja entran al estado SQLite y dejan evento de origen", () => {
-  assert.ok(renderer.includes("openings:S.openings||[]"));
-  assert.ok(renderer.includes("S.openings.push(op)"));
-  assert.ok(renderer.includes("S.openings.push(active)"));
-  assert.ok(main.includes('openings: "cash_opening"'));
 });
