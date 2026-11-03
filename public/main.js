@@ -371,12 +371,10 @@ const posSqliteDriver = {
   async saveState(state) {
     const payload = JSON.stringify(state);
     if (window.posDesktop) {
-      try {
-        await window.posDesktop.saveState(state);
-      } catch (e) {
-        persistenceError(e);
-      }
-      return { ok: true };
+      // No ocultar fallos del IPC: el guardado comercial y su evento contable deben confirmarse juntos.
+      const result = await window.posDesktop.saveState(state);
+      if (!result || result.ok !== true) throw new Error('SQLite no confirmó el guardado del estado POS.');
+      return result;
     }
     if (sqliteDb) {
       try {
