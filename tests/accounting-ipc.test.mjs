@@ -52,3 +52,10 @@ test("la interfaz muestra eventos pendientes sin presentarlos como asientos", ()
   assert.ok(renderer.includes("btnSaveFiscalProfile"));
   assert.ok(renderer.includes("btnSaveAccountingPeriod"));
 });
+
+test("las aperturas de caja entran al estado SQLite y dejan evento de origen", () => {
+  assert.ok(renderer.includes("openings:S.openings||[]"));
+  assert.ok(renderer.includes("S.openings.push(op)"));
+  assert.ok(renderer.includes("S.openings.push(active)"));
+  assert.ok(main.includes('openings: "cash_opening"'));
+});
