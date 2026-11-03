@@ -5579,7 +5579,13 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="accJournalDate">Fecha del asiento</label><input class="fld" id="accJournalDate" type="date" value="'+isoD(Date.now())+'"></div>'+
       '<div class="f"><label for="accJournalPeriod">Período abierto</label><select class="fld" id="accJournalPeriod"><option value="">Seleccionar período</option></select></div>'+
       '<div class="f"><label>Moneda funcional</label><b id="accJournalCurrency" class="hint">No configurada</b></div>'+
+      '<div class="f"><label>Moneda de presentación</label><b id="accJournalPresentationCurrency" class="hint">No configurada</b></div>'+
+      '<div class="f"><label for="accJournalExchangeRate">Tasa (presentación por 1 funcional)</label><input class="fld r" id="accJournalExchangeRate" inputmode="decimal" placeholder="Ej. 0,001143"></div>'+
+      '<div class="f"><label for="accJournalExchangeRateType">Tipo de tasa</label><select class="fld" id="accJournalExchangeRateType"><option value="official">Oficial</option><option value="market">Mercado</option><option value="contractual">Contractual</option><option value="accounting_adjustment">Ajuste contable</option></select></div>'+
+      '<div class="f"><label for="accJournalExchangeRateSource">Fuente de la tasa</label><input class="fld" id="accJournalExchangeRateSource" maxlength="120" placeholder="Ej. BCV"></div>'+
+      '<div class="f"><label for="accJournalExchangeRateReference">Referencia / soporte</label><input class="fld" id="accJournalExchangeRateReference" maxlength="180" placeholder="Publicación, fecha o documento"></div>'+
       '<div class="f wide"><label for="accJournalDescription">Descripción / fundamento</label><input class="fld" id="accJournalDescription" maxlength="500" placeholder="Ajuste contable y soporte"></div>'+
+      '<p class="hint wide">La tasa se expresa en moneda de presentación por cada unidad de moneda funcional. Debe corresponder a la fecha y política aplicable; el sistema no inventa ni descarga tasas automáticamente. La tasa y su fuente quedan congeladas en el asiento.</p>'+
       '</div><div id="accJournalLines"></div><div class="row" style="gap:8px"><button class="btn" id="btnAddJournalLine">Añadir renglón</button><button class="btn primary" id="btnCreateJournalEntry" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar borrador de asiento</button></div><div id="accJournalEntries" class="hint">Cargando asientos...</div></section>'+
       '<section class="cierre"><h3>7. Balance de comprobación</h3><p class="hint">Solo considera asientos contabilizados y sus reversos. Los borradores y aprobados no afectan este balance.</p><div id="accTrialBalance" class="hint">Calculando balance...</div></section>'+
       '<div class="hint">Pendiente: mapeo aprobado de operaciones POS, contabilización automática supervisada, saldos de apertura, diario y mayor detallados, reportes financieros y libros fiscales oficiales.</div>'+
@@ -5619,6 +5625,10 @@ function seniatSudebanDlg(initialTab){
       }
       const journalCurrency=$('#accJournalCurrency',el);
       if(journalCurrency)journalCurrency.textContent=settings?.functionalCurrency||'No configurada';
+      const journalPresentationCurrency=$('#accJournalPresentationCurrency',el);
+      if(journalPresentationCurrency)journalPresentationCurrency.textContent=settings?.presentationCurrency||'No configurada';
+      const exchangeRateLabel=$('#accJournalExchangeRate',el);
+      if(exchangeRateLabel)exchangeRateLabel.placeholder=settings?.functionalCurrency===settings?.presentationCurrency?'1 (monedas iguales)':'Tasa '+(settings?.presentationCurrency||'')+' por 1 '+(settings?.functionalCurrency||'');
       const periodSelect=$('#accJournalPeriod',el);
       if(periodSelect)periodSelect.innerHTML='<option value="">Seleccionar período abierto</option>'+periods.filter(p=>p.status==='open').map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+' ('+esc(p.startDate)+' a '+esc(p.endDate)+')</option>').join('');
       renderAccountingJournalLines();
@@ -5629,18 +5639,18 @@ function seniatSudebanDlg(initialTab){
       const canReviewJournals=String((activeUser()||{}).role||'')==='contador';
       const journalNode=$('#accJournalEntries',el);
       const journalStatus={draft:'Borrador',approved:'Aprobado',posted:'Contabilizado',reversed:'Reversado'};
-      if(journalNode)journalNode.innerHTML=journalEntries.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Asiento</th><th>Descripción</th><th>Período</th><th>Debe</th><th>Haber</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>'+journalEntries.map(entry=>{
+      if(journalNode)journalNode.innerHTML=journalEntries.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Asiento</th><th>Descripción</th><th>Período</th><th>Debe ('+esc(settings?.functionalCurrency||'')+')</th><th>Haber ('+esc(settings?.functionalCurrency||'')+')</th><th>Debe ('+esc(settings?.presentationCurrency||'')+')</th><th>Haber ('+esc(settings?.presentationCurrency||'')+')</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>'+journalEntries.map(entry=>{
         const actions=[];
         if(canReviewJournals&&entry.status==='draft')actions.push('<button class="btn mini" data-approve-journal="'+esc(entry.id)+'">Aprobar</button>');
         if(canReviewJournals&&entry.status==='approved')actions.push('<button class="btn mini primary" data-post-journal="'+esc(entry.id)+'">Contabilizar</button>');
         if(canReviewJournals&&entry.status==='posted')actions.push('<button class="btn mini" data-reverse-journal="'+esc(entry.id)+'">Reversar</button>');
-        return '<tr><td>'+esc(entry.entryDate)+'</td><td class="mono">'+esc(entry.id.slice(0,8))+'</td><td>'+esc(entry.description)+'</td><td>'+esc(entry.periodId)+'</td><td class="r">'+esc(fmtJournalMinor(entry.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(entry.creditMinor,settings?.monetaryDecimals??2))+'</td><td>'+esc(journalStatus[entry.status]||entry.status)+'</td><td>'+actions.join(' ')+'</td></tr>';
+        return '<tr><td>'+esc(entry.entryDate)+'</td><td class="mono">'+esc(entry.id.slice(0,8))+'</td><td>'+esc(entry.description)+'</td><td>'+esc(entry.periodId)+'</td><td class="r">'+esc(fmtJournalMinor(entry.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(entry.creditMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(entry.presentationDebitMinor??entry.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(entry.presentationCreditMinor??entry.creditMinor,settings?.monetaryDecimals??2))+'</td><td>'+esc(journalStatus[entry.status]||entry.status)+'</td><td>'+actions.join(' ')+'</td></tr>';
       }).join('')+'</tbody></table></div>':'Todavía no hay asientos manuales.';
       const trialNode=$('#accTrialBalance',el);
       if(trialNode){
         const totalDebit=trialBalance.reduce((sum,row)=>sum+Number(row.debitMinor||0),0);
         const totalCredit=trialBalance.reduce((sum,row)=>sum+Number(row.creditMinor||0),0);
-        trialNode.innerHTML=trialBalance.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Cuenta</th><th>Nombre</th><th>Debe</th><th>Haber</th></tr></thead><tbody>'+trialBalance.map(row=>'<tr><td class="mono">'+esc(row.code)+'</td><td>'+esc(row.name)+'</td><td class="r">'+esc(fmtJournalMinor(row.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.creditMinor,settings?.monetaryDecimals??2))+'</td></tr>').join('')+'<tr><th colspan="2">Totales</th><th class="r">'+esc(fmtJournalMinor(totalDebit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(totalCredit,settings?.monetaryDecimals??2))+'</th></tr></tbody></table></div><p class="hint">'+(totalDebit===totalCredit?'Balance cuadrado.':'Diferencia: '+esc(fmtJournalMinor(Math.abs(totalDebit-totalCredit),settings?.monetaryDecimals??2)))+'</p>':'No hay cuentas en el plan contable.';
+        trialNode.innerHTML=trialBalance.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Cuenta</th><th>Nombre</th><th>Debe ('+esc(settings?.functionalCurrency||'')+')</th><th>Haber ('+esc(settings?.functionalCurrency||'')+')</th><th>Debe ('+esc(settings?.presentationCurrency||'')+')</th><th>Haber ('+esc(settings?.presentationCurrency||'')+')</th></tr></thead><tbody>'+trialBalance.map(row=>'<tr><td class="mono">'+esc(row.code)+'</td><td>'+esc(row.name)+'</td><td class="r">'+esc(fmtJournalMinor(row.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.creditMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.presentationDebitMinor??0,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.presentationCreditMinor??0,settings?.monetaryDecimals??2))+'</td></tr>').join('')+'<tr><th colspan="2">Totales</th><th class="r">'+esc(fmtJournalMinor(totalDebit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(totalCredit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(trialBalance.reduce((sum,row)=>sum+Number(row.presentationDebitMinor||0),0),settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(trialBalance.reduce((sum,row)=>sum+Number(row.presentationCreditMinor||0),0),settings?.monetaryDecimals??2))+'</th></tr></tbody></table></div><p class="hint">'+(totalDebit===totalCredit?'Balance cuadrado.':'Diferencia: '+esc(fmtJournalMinor(Math.abs(totalDebit-totalCredit),settings?.monetaryDecimals??2)))+'</p>':'No hay cuentas en el plan contable.';
       }
       const summaryNode=$('#accSourceSummary',el);
       if(summaryNode)summaryNode.textContent='Total: '+sourceSummary.total+' · Pendientes: '+sourceSummary.pending+' · Revisión: '+sourceSummary.needs_review+' · Procesados: '+sourceSummary.processed+' · Rechazados: '+sourceSummary.rejected;
@@ -5862,7 +5872,11 @@ function seniatSudebanDlg(initialTab){
             const lines=collectAccountingJournalLines();
             const result=await window.posDesktop.accountingCreateJournalEntry({...actor,
               entryDate:$('#accJournalDate',el).value,periodId:$('#accJournalPeriod',el).value,
-              description:$('#accJournalDescription',el).value,lines
+              description:$('#accJournalDescription',el).value,lines,
+              exchangeRate:$('#accJournalExchangeRate',el).value,
+              exchangeRateType:$('#accJournalExchangeRateType',el).value,
+              exchangeRateSourceName:$('#accJournalExchangeRateSource',el).value,
+              exchangeRateSourceReference:$('#accJournalExchangeRateReference',el).value
             });
             msg('Borrador de asiento '+result.id.slice(0,8)+' guardado. Aún no afecta el balance.');
             accountingJournalLines=Array.from({length:4},()=>({accountCode:'',description:'',debit:'',credit:''}));
