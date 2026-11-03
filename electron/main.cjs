@@ -471,6 +471,32 @@ function isValidIsoDate(value) {
   const date = new Date(String(value) + 'T00:00:00.000Z');
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
+let accountingEngineModule;
+async function loadAccountingEngine() {
+  if (!accountingEngineModule) accountingEngineModule = await import('../src/accounting/engine.mjs');
+  return accountingEngineModule;
+}
+function accountingJournalWithLines(entryId) {
+  const row = one('SELECT * FROM journal_entries WHERE id=?', [entryId]);
+  if (!row) return null;
+  const lines = all('SELECT account_code AS accountCode,debit_minor AS debitMinor,credit_minor AS creditMinor,description,third_party_id AS thirdPartyId,cost_center AS costCenter FROM journal_lines WHERE entry_id=? ORDER BY line_no', [entryId]);
+  return {
+    id:row.id,sourceType:row.source_type,sourceId:row.source_id,entryDate:row.entry_date,periodId:row.period_id,
+    currency:row.functional_currency,ruleVersion:row.rule_version,description:row.description,status:row.status,
+    debitMinor:Number(row.debit_minor),creditMinor:Number(row.credit_minor),createdAt:row.created_at,createdBy:row.created_by,
+    approvedAt:row.approved_at,approvedBy:row.approved_by,postedAt:row.posted_at,postedBy:row.posted_by,
+    reversesEntryId:row.reverses_entry_id,lines
+  };
+}
+function insertJournalEntry(entry) {
+  run(`INSERT INTO journal_entries(id,source_type,source_id,entry_date,period_id,functional_currency,rule_version,description,status,debit_minor,credit_minor,created_at,created_by,approved_at,approved_by,posted_at,posted_by,reverses_entry_id)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [entry.id,entry.sourceType,entry.sourceId,entry.entryDate,entry.periodId,entry.currency,entry.ruleVersion,entry.description,entry.status,
+      entry.debitMinor,entry.creditMinor,entry.createdAt,entry.createdBy,entry.approvedAt,entry.approvedBy,entry.postedAt,entry.postedBy,entry.reversesEntryId]);
+  entry.lines.forEach((line,index)=>run('INSERT INTO journal_lines(id,entry_id,line_no,account_code,debit_minor,credit_minor,description,third_party_id,cost_center) VALUES(?,?,?,?,?,?,?,?,?)',
+    [crypto.randomUUID(),entry.id,index+1,line.accountCode,line.debitMinor,line.creditMinor,line.description||'',line.thirdPartyId||null,line.costCenter||null]));
+}
+
 function registerAccountingIpc() {
   ipcMain.handle('accounting:get-settings', event => {
     assertTrustedAccountingSender(event);
@@ -608,6 +634,135 @@ function registerAccountingIpc() {
     } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
     persistDb();
     return one('SELECT id,label,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?', [id]);
+  });
+
+  ipcMain.handle('accounting:list-journal-entries', event => {
+    assertTrustedAccountingSender(event);
+    return all(`SELECT id,source_type AS sourceType,source_id AS sourceId,entry_date AS entryDate,period_id AS periodId,
+      functional_currency AS currency,description,status,debit_minor AS debitMinor,credit_minor AS creditMinor,
+      created_by AS createdBy,approved_by AS approvedBy,posted_by AS postedBy,reverses_entry_id AS reversesEntryId
+      FROM journal_entries ORDER BY entry_date DESC,created_at DESC LIMIT 100`);
+  });
+  ipcMain.handle('accounting:get-trial-balance', event => {
+    assertTrustedAccountingSender(event);
+    return all(`SELECT a.code,a.name,a.account_type AS accountType,a.normal_balance AS normalBalance,
+      COALESCE(SUM(CASE WHEN j.status IN ('posted','reversed') THEN l.debit_minor ELSE 0 END),0) AS debitMinor,
+      COALESCE(SUM(CASE WHEN j.status IN ('posted','reversed') THEN l.credit_minor ELSE 0 END),0) AS creditMinor
+      FROM chart_of_accounts a LEFT JOIN journal_lines l ON l.account_code=a.code
+      LEFT JOIN journal_entries j ON j.id=l.entry_id
+      GROUP BY a.code,a.name,a.account_type,a.normal_balance ORDER BY a.code`);
+  });
+  ipcMain.handle('accounting:create-journal-entry', async (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor = accountingActor(input);
+    const settings = one('SELECT accounting_framework,functional_currency,monetary_decimals,policy_version FROM accounting_settings WHERE id=1');
+    if (!settings || !settings.accounting_framework || !settings.functional_currency) throw new Error('Configura primero el marco VEN-NIF y la moneda funcional.');
+    const entryDate = String(input.entryDate || '');
+    const periodId = String(input.periodId || '');
+    const description = String(input.description || '').trim().slice(0,500);
+    if (!isValidIsoDate(entryDate) || !periodId || !description) throw new Error('Fecha, período y descripción son obligatorios.');
+    const period = one('SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?',[periodId]);
+    if (!period || period.status !== 'open') throw new Error('El asiento requiere un período contable abierto.');
+    if (entryDate < period.startDate || entryDate > period.endDate) throw new Error('La fecha del asiento está fuera del período seleccionado.');
+    if (!Array.isArray(input.lines) || input.lines.length < 2 || input.lines.length > 100) throw new Error('El asiento debe contener entre 2 y 100 renglones.');
+    const { createJournalEntry, decimalToMinorUnits } = await loadAccountingEngine();
+    const lines = input.lines.map(line => {
+      const code = String(line.accountCode || '').trim();
+      const account = one('SELECT active,accepts_posting,framework_scope FROM chart_of_accounts WHERE code=?',[code]);
+      if (!account || Number(account.active)!==1 || Number(account.accepts_posting)!==1) throw new Error('La cuenta '+code+' no existe, está inactiva o es de agrupación.');
+      if (account.framework_scope!=='both' && account.framework_scope!==settings.accounting_framework) throw new Error('La cuenta '+code+' no aplica al marco VEN-NIF configurado.');
+      return {
+        accountCode:code,
+        debitMinor:decimalToMinorUnits(String(line.debit || '0'),Number(settings.monetary_decimals)),
+        creditMinor:decimalToMinorUnits(String(line.credit || '0'),Number(settings.monetary_decimals)),
+        description:String(line.description||'').trim().slice(0,180)
+      };
+    });
+    const id=crypto.randomUUID();
+    const entry=createJournalEntry({id,sourceType:'manual',sourceId:id,entryDate,periodId,currency:settings.functional_currency,
+      ruleVersion:String(settings.policy_version)+' / MANUAL-v1',description,lines,createdAt:new Date().toISOString(),createdBy:actor.actorId});
+    db.run('BEGIN IMMEDIATE');
+    try {
+      insertJournalEntry(entry);
+      run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,after_json) VALUES(?,?,?,?,?,?,?)',
+        [crypto.randomUUID(),'journal_entry',id,'create_draft',actor.actorId,entry.createdAt,JSON.stringify({sourceType:entry.sourceType,entryDate,periodId,description,debitMinor:entry.debitMinor,creditMinor:entry.creditMinor})]);
+      db.run('COMMIT');
+    } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
+    persistDb();
+    return accountingJournalWithLines(id);
+  });
+  ipcMain.handle('accounting:approve-journal-entry', async (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor=accountingActor(input);
+    if(actor.actorRole!=='contador')throw new Error('La aprobación de asientos está reservada al perfil Contador.');
+    const entry=accountingJournalWithLines(String(input.entryId||''));
+    if(!entry)throw new Error('El asiento no existe.');
+    if(entry.createdBy===actor.actorId)throw new Error('El creador del asiento no puede aprobar su propio asiento.');
+    const { approveJournalEntry }=await loadAccountingEngine();
+    const approved=approveJournalEntry(entry,{actorId:actor.actorId,actorRole:actor.actorRole});
+    const now=approved.approvedAt;
+    db.run('BEGIN IMMEDIATE');
+    try {
+      run("UPDATE journal_entries SET status='approved',approved_at=?,approved_by=? WHERE id=? AND status='draft'",[now,actor.actorId,entry.id]);
+      run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
+        [crypto.randomUUID(),'journal_entry',entry.id,'approve',actor.actorId,now,JSON.stringify({status:entry.status}),JSON.stringify({status:'approved'})]);
+      db.run('COMMIT');
+    } catch(error){try{db.run('ROLLBACK')}catch{}throw error;}
+    persistDb();
+    return accountingJournalWithLines(entry.id);
+  });
+  ipcMain.handle('accounting:post-journal-entry', async (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor=accountingActor(input);
+    if(actor.actorRole!=='contador')throw new Error('La contabilización está reservada al perfil Contador.');
+    const entry=accountingJournalWithLines(String(input.entryId||''));
+    if(!entry)throw new Error('El asiento no existe.');
+    const periodRow=one('SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?',[entry.periodId]);
+    const { postJournalEntry }=await loadAccountingEngine();
+    const posted=postJournalEntry(entry,periodRow,{actorId:actor.actorId});
+    const settings=one('SELECT accounting_framework,functional_currency FROM accounting_settings WHERE id=1');
+    for(const line of entry.lines){
+      const account=one('SELECT active,accepts_posting,framework_scope FROM chart_of_accounts WHERE code=?',[line.accountCode]);
+      if(!account||Number(account.active)!==1||Number(account.accepts_posting)!==1||(account.framework_scope!=='both'&&account.framework_scope!==settings.accounting_framework))throw new Error('La cuenta '+line.accountCode+' ya no está habilitada para contabilizar.');
+    }
+    const now=posted.postedAt;
+    db.run('BEGIN IMMEDIATE');
+    try {
+      run("UPDATE journal_entries SET status='posted',posted_at=?,posted_by=? WHERE id=? AND status='approved'",[now,actor.actorId,entry.id]);
+      if(entry.reversesEntryId){
+        const original=one('SELECT status FROM journal_entries WHERE id=?',[entry.reversesEntryId]);
+        if(!original||original.status!=='posted')throw new Error('El asiento original ya no está disponible para reverso.');
+        run("UPDATE journal_entries SET status='reversed' WHERE id=? AND status='posted'",[entry.reversesEntryId]);
+      }
+      run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
+        [crypto.randomUUID(),'journal_entry',entry.id,'post',actor.actorId,now,JSON.stringify({status:entry.status}),JSON.stringify({status:'posted',reversesEntryId:entry.reversesEntryId})]);
+      db.run('COMMIT');
+    } catch(error){try{db.run('ROLLBACK')}catch{}throw error;}
+    persistDb();
+    return accountingJournalWithLines(entry.id);
+  });
+  ipcMain.handle('accounting:create-reversal-draft', async (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor=accountingActor(input);
+    if(actor.actorRole!=='contador')throw new Error('La creación de reversos está reservada al perfil Contador.');
+    const original=accountingJournalWithLines(String(input.entryId||''));
+    if(!original||original.status!=='posted')throw new Error('Solo se puede reversar un asiento contabilizado.');
+    const reason=String(input.reason||'').trim().slice(0,500);
+    const reversalDate=String(input.reversalDate||'');
+    const reversalPeriodId=String(input.reversalPeriodId||'');
+    const period=one('SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?',[reversalPeriodId]);
+    if(!reason||!isValidIsoDate(reversalDate)||!period||period.status!=='open'||reversalDate<period.startDate||reversalDate>period.endDate)throw new Error('Motivo, fecha y período abierto del reverso son obligatorios y deben ser coherentes.');
+    const { reverseJournalEntry }=await loadAccountingEngine();
+    const reversal=reverseJournalEntry(original,{id:crypto.randomUUID(),reason,actorId:actor.actorId,reversalDate,reversalPeriodId});
+    db.run('BEGIN IMMEDIATE');
+    try {
+      insertJournalEntry(reversal);
+      run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,reason,before_json,after_json) VALUES(?,?,?,?,?,?,?,?,?)',
+        [crypto.randomUUID(),'journal_entry',reversal.id,'create_reversal_draft',actor.actorId,reversal.createdAt,reason,JSON.stringify({originalEntryId:original.id,status:original.status}),JSON.stringify({reversalEntryId:reversal.id,status:'draft',reversalDate,reversalPeriodId})]);
+      db.run('COMMIT');
+    } catch(error){try{db.run('ROLLBACK')}catch{}throw error;}
+    persistDb();
+    return accountingJournalWithLines(reversal.id);
   });
   ipcMain.handle('accounting:list-accounts', event => {
     assertTrustedAccountingSender(event);
