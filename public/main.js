@@ -172,7 +172,7 @@ function seed(){
     products:[],
     clients:[{name:'Consumidor final',rif:'',tel:''}],
     suppliers:[],
-    sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],movimientosCaja:[],kardex:[],counts:[],
+    sales:[],held:[],openings:[],purchases:[],cxc:[],cxp:[],cortesZ:[],movimientosCaja:[],kardex:[],counts:[],
     lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
@@ -182,7 +182,7 @@ function seed(){
 function stateSnapshot(){
   return {
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
-    sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],movimientosCaja:S.movimientosCaja||[],
+    sales:S.sales,held:S.held,openings:S.openings||[],purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,cambiosDivisas:S.cambiosDivisas,
     casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
@@ -632,6 +632,7 @@ function load(){
     if(Array.isArray(d.suppliers)&&d.suppliers.length)S.suppliers=d.suppliers;
     S.sales=Array.isArray(d.sales)?d.sales:S.sales;
     S.held=Array.isArray(d.held)?d.held:[];
+    S.openings=Array.isArray(d.openings)?d.openings:[];
     if(Array.isArray(d.purchases))S.purchases=d.purchases;
     if(Array.isArray(d.cxc))S.cxc=d.cxc;
     if(Array.isArray(d.cxp))S.cxp=d.cxp;
@@ -6015,6 +6016,7 @@ function openCashboxDlg(){
     const all=(()=>{try{return JSON.parse(localStorage.getItem('sifer360_openings')||'[]')||[];}catch(e){return [];}})();
     const openedAt=new Date().toISOString(),op={id:'OPEN-'+Date.now(),invoiceStart:'FAC-'+String(currentCajaInvoice()).padStart(8,'0'),cashier:user.name||user.username,username:user.username,cashbox:box,bs,usd,rate,openedAt,status:'abierta'};
     all.push(op);localStorage.setItem('sifer360_openings',JSON.stringify(all));localStorage.setItem('sifer360_bcv_rate',String(rate));
+    if(!Array.isArray(S.openings))S.openings=[];S.openings.push(op);
     const context={username:user.username,name:user.name||user.username,role:user.role,cashbox:box,openingId:op.id,openedAt,bs,usd,rate,status:'abierta'};
     sessionStorage.setItem('sifer360_active_box',JSON.stringify(context));localStorage.setItem('sifer360_active_box',JSON.stringify(context));sessionStorage.setItem('sifer360_active_opening',JSON.stringify(op));localStorage.setItem('sifer360_active_opening',JSON.stringify(op));S.cfg.rate=rate;save();
     showPosScreen();msg('Apertura de caja '+box+' registrada. Ya puedes operar en el POS.','ok');return true;
@@ -6343,6 +6345,8 @@ function corteZDlg(){
       const now=Date.now();
       active={id:'OPEN-'+box.replace(/\W/g,'')+'-'+now,cashbox:box,cashier:currentCajero(),openedAt:now,bs:r2(bs),usd:r2(usdOpening),status:'abierta'};
       writeActiveOpening(active);
+      if(!Array.isArray(S.openings))S.openings=[];S.openings.push(active);
+      save();
       const ctx=Object.assign(cajaContext(),{cashbox:box,name:currentCajero(),status:'abierta',openedAt:now});
       sessionStorage.setItem('sifer360_active_box',JSON.stringify(ctx));localStorage.setItem('sifer360_active_box',JSON.stringify(ctx));
       msg('Turno abierto para la caja '+box+'. Registre el arqueo real antes de cerrar.');
