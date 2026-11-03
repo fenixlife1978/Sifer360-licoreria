@@ -518,6 +518,15 @@ function insertJournalEntry(entry) {
     [crypto.randomUUID(),entry.id,index+1,line.accountCode,line.debitMinor,line.creditMinor,line.presentationDebitMinor??line.debitMinor,line.presentationCreditMinor??line.creditMinor,line.description||'',line.thirdPartyId||null,line.costCenter||null]));
 }
 
+function formatAccountingRate(numerator, denominator) {
+  const n=BigInt(numerator), d=BigInt(denominator);
+  if(n<=0n||d<=0n)return '—';
+  const scale=100000000n;
+  const scaled=(n*scale+d/2n)/d;
+  const whole=scaled/scale;
+  const fraction=String(scaled%scale).padStart(8,'0').replace(/0+$/,'');
+  return fraction?String(whole)+'.'+fraction:String(whole);
+}
 function registerAccountingIpc() {
   ipcMain.handle('accounting:get-settings', event => {
     assertTrustedAccountingSender(event);
@@ -666,6 +675,15 @@ function registerAccountingIpc() {
       description,status,debit_minor AS debitMinor,credit_minor AS creditMinor,
       created_by AS createdBy,approved_by AS approvedBy,posted_by AS postedBy,reverses_entry_id AS reversesEntryId
       FROM journal_entries ORDER BY entry_date DESC,created_at DESC LIMIT 100`);
+  });
+  ipcMain.handle('accounting:list-exchange-rates', event => {
+    assertTrustedAccountingSender(event);
+    return all(`SELECT id,rate_date AS rateDate,from_currency AS fromCurrency,to_currency AS toCurrency,
+      rate_numerator AS rateNumerator,rate_denominator AS rateDenominator,rate_type AS rateType,
+      source_name AS sourceName,source_reference AS sourceReference,recorded_at AS recordedAt,recorded_by AS recordedBy
+      FROM accounting_exchange_rates ORDER BY rate_date DESC,recorded_at DESC LIMIT 100`).map(row=>({
+        ...row,rate:formatAccountingRate(row.rateNumerator,row.rateDenominator)
+      }));
   });
   ipcMain.handle('accounting:get-trial-balance', event => {
     assertTrustedAccountingSender(event);
