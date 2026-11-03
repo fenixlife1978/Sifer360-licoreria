@@ -4,7 +4,7 @@
 Se incorpora una base técnica aislada y comprobable. No activa aún la contabilización automática en producción ni declara cumplimiento fiscal o VEN-NIF. Los módulos operativos existentes del POS no se modifican.
 
 ## Decisiones
-- Marco inicial configurable VEN-NIF PYME; opción VEN-NIF GE cuando la clasificación de la entidad lo exija.
+- Marco contable configurable: VEN-NIF PYME o VEN-NIF GE según la clasificación de la entidad; no se preselecciona ninguno.
 - Automatización supervisada: los eventos generan borradores; un usuario contador o super-admin aprueba y contabiliza.
 - Dinero en unidades menores enteras, moneda explícita y sin coma flotante binaria. La moneda funcional y de presentación no se presuponen: deben configurarse tras análisis del contador.
 - El perfil fiscal conserva clasificación del contribuyente, designaciones de agente, actividad económica (incluida la actividad de bebidas alcohólicas), licencias y medio autorizado de emisión.
