@@ -69,7 +69,7 @@ test('dashboard and management layouts are responsive', () => {
 test('the liquor-store build contains no automotive master catalog or OEM form fields', () => {
   assert.doesNotMatch(main, /CATÁLOGO MAESTRO AUTOMOTRIZ|MASTER_CURATED_CATALOG|AUTO_MODELS_MATRIX|VERIFIED_OEM_MAP|masterCatalogBrowserDlg|btnMasterCat|pfOem|Código OEM/);
   assert.match(main, /products:\[\]/);
-  assert.match(main, /sales:\[\],held:\[\],purchases:\[\],cxc:\[\],cxp:\[\]/);
+  assert.match(main, /sales:\[\],held:\[\],openings:\[\],purchases:\[\],cxc:\[\],cxp:\[\]/);
   assert.match(main, /Bebidas alcohólicas/);
   assert.match(main, /Botella 750 ml/);
   assert.match(main, /Contenido neto \(ml\)/);
