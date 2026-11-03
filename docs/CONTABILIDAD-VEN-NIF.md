@@ -50,3 +50,7 @@ Las licencias, tasas y obligaciones municipales dependen de la ordenanza del mun
 La Providencia SNAT/2026/00093 fue publicada en la Gaceta Oficial N.º 43.484 del 21 de octubre de 2026 y establece una vacatio de 180 días continuos. La fecha de entrada en vigencia resultante es el 19 de abril de 2027. Hasta entonces el sistema debe respetar el régimen vigente aplicable; después deberá soportar portal/aplicación oficial, proveedor tecnológico autorizado o máquina fiscal autorizada, con contingencia y series documentales controladas. La opción de proveedor autorizado se registra como modalidad futura, pero no se considera activa antes de la vigencia ni sin autorización real.
 
 La Providencia SNAT/2025/000054 establece retención ordinaria del 75 % y supuestos específicos del 100 %, además de exclusiones que deben evaluarse por proveedor y operación. Por eso el POS exige porcentaje explícito y confirmación; no presume una tasa al activar la condición de agente.
+
+## Retenciones a proveedores: condición y exclusiones
+
+El perfil del proveedor distingue si está sujeto a retención de IVA, si es agente de percepción y si la operación concreta ha sido revisada como aplicable o excluida. La retención automática exige que estos datos estén confirmados y que exista referencia de soporte; la ausencia de información no equivale a una confirmación negativa. El borrador manual usa la misma validación. Esto es especialmente relevante para compras de bebidas alcohólicas, por las exclusiones previstas en la Providencia SNAT/2025/000054.
