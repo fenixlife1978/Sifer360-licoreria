@@ -153,3 +153,28 @@ CREATE TRIGGER IF NOT EXISTS trg_immutable_active_tax_rule_set
 BEFORE UPDATE OF authority,tax_code,version,effective_from,effective_to,source_reference
 ON tax_rule_sets WHEN OLD.status='active'
 BEGIN SELECT RAISE(ABORT,'Una regla tributaria activa no se reescribe; cree una nueva versión.'); END;
+
+CREATE TRIGGER IF NOT EXISTS trg_immutable_approved_journal_fields
+BEFORE UPDATE OF source_type,source_id,entry_date,period_id,functional_currency,rule_version,description,
+debit_minor,credit_minor,created_at,created_by,approved_at,approved_by,reverses_entry_id
+ON journal_entries WHEN OLD.status IN ('approved','posted','reversed')
+BEGIN SELECT RAISE(ABORT,'Un asiento aprobado no puede cambiar sus datos ni sus importes.'); END;
+
+CREATE TRIGGER IF NOT EXISTS trg_immutable_posted_journal_row
+BEFORE UPDATE ON journal_entries WHEN OLD.status IN ('posted','reversed')
+BEGIN SELECT RAISE(ABORT,'Un asiento contabilizado es inmutable; use un reverso auditado.'); END;
+
+CREATE TRIGGER IF NOT EXISTS trg_no_insert_lines_after_approval
+BEFORE INSERT ON journal_lines
+WHEN EXISTS(SELECT 1 FROM journal_entries WHERE id=NEW.entry_id AND status IN ('approved','posted','reversed'))
+BEGIN SELECT RAISE(ABORT,'No se pueden agregar renglones a un asiento aprobado o contabilizado.'); END;
+
+CREATE TRIGGER IF NOT EXISTS trg_no_update_lines_after_approval
+BEFORE UPDATE ON journal_lines
+WHEN EXISTS(SELECT 1 FROM journal_entries WHERE id=OLD.entry_id AND status IN ('approved','posted','reversed'))
+BEGIN SELECT RAISE(ABORT,'No se pueden modificar renglones de un asiento aprobado o contabilizado.'); END;
+
+CREATE TRIGGER IF NOT EXISTS trg_no_delete_lines_after_approval
+BEFORE DELETE ON journal_lines
+WHEN EXISTS(SELECT 1 FROM journal_entries WHERE id=OLD.entry_id AND status IN ('approved','posted','reversed'))
+BEGIN SELECT RAISE(ABORT,'No se pueden borrar renglones de un asiento aprobado o contabilizado.'); END;
