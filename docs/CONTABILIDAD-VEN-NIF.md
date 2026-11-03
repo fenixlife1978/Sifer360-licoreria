@@ -75,3 +75,7 @@ La persistencia de app_state en Electron compara el estado comercial anterior y 
 La escritura del estado POS y los eventos contables ocurre dentro de una única transacción BEGIN IMMEDIATE. Cuando se captura al menos un evento, la base SQLite se persiste inmediatamente al archivo para evitar que la ventana de 80 ms de guardado diferido deje una venta sin su evidencia contable después de un cierre abrupto. La recepción de operaciones LAN y la sincronización de snapshots también registran los eventos dentro de la transacción que actualiza el estado del servidor.
 
 La pestaña Contabilidad VEN-NIF muestra el resumen y las últimas operaciones capturadas. Los eventos permanecen en estado pending; todavía no se traducen a asientos, no actualizan balances y no se consideran contabilizados. La selección de cuentas, la clasificación de impuestos, la política de reconocimiento y la aprobación del contador son fases posteriores.
+
+La captura incluye también aperturas de caja, movimientos de inventario heredados y ventas suspendidas. El guardado Electron ya no oculta los errores de IPC: si SQLite no confirma la escritura, el fallo se propaga al manejador de persistencia de la interfaz.
+
+El contador o administrador puede marcar un evento pendiente como **needs_review**, indicando el motivo. La transición se realiza en una transacción y queda registrada en la bitácora de auditoría. Esta marca no equivale a aprobación ni contabilización.
