@@ -62,6 +62,8 @@ test("retenciones manuales son borradores sin números aleatorios ni datos preca
   assert.ok(!retForm.includes('value="00048912"'));
   assert.ok(retForm.includes("retIvaAmount"));
   assert.ok(main.includes("Exportación TXT deshabilitada"));
+  assert.ok(main.includes("const retPrefix='BORRADOR-RET-'+periodo+'-'"));
+  assert.ok(!main.includes("const retDoc=periodo+pad(retSeq,8)"));
   assert.ok(main.includes("TXT oficial no habilitado"));
   assert.ok(!main.includes("COMPROBANTE DE RETENCIÓN DEL IMPUESTO AL VALOR AGREGADO"));
 });
