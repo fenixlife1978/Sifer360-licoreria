@@ -2529,8 +2529,8 @@ function comprasDlg(initialTab){
     const iva=r8(lines.reduce((a,l)=>a+(l.iva||0),0));
     const total=r8(base+iva);
     const dueTs=ts+creditDays*86400000;
-    const retPct=Number(S.cfg.retIvaPct)===100?100:75; /* Aplicar solo si la designación y el proveedor están confirmados. */
-    const aplicarRetencion=!!(iva>0&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true);
+    const retPct=[75,100].includes(Number(S.cfg.retIvaPct))?Number(S.cfg.retIvaPct):0; /* No asumir tasa si el contador no la configuró. */
+    const aplicarRetencion=!!(iva>0&&retPct>0&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true);
     const retUsd=aplicarRetencion?r2(iva*(retPct/100)):0;
     const retBs=r2(retUsd*S.cfg.rate);
     const payableTotal=r2(Math.max(0,total-retUsd));
@@ -5099,7 +5099,7 @@ function seniatSudebanDlg(initialTab){
         '<tr><td>Razón Social</td><td><b>'+esc(S.cfg.empresa)+'</b></td></tr>'+
         '<tr><td>RIF de la Empresa</td><td><b class="mono">'+esc(S.cfg.rif)+'</b></td></tr>'+
         '<tr><td>Condición Tributaria</td><td>'+(S.cfg.contribEspecial?'<span class="fiscal-tag ok">Sujeto Pasivo Especial</span>':'Contribuyente Ordinario')+'</td></tr>'+
-        '<tr><td>Agente de Retención IVA</td><td>'+(S.cfg.contribEspecial?'Alícuota del '+S.cfg.retIvaPct+'%':'No aplica')+'</td></tr>'+
+        '<tr><td>Agente de Retención IVA</td><td>'+(S.cfg.contribEspecial&&[75,100].includes(Number(S.cfg.retIvaPct))?'Porcentaje configurado: '+S.cfg.retIvaPct+'%':'No configurado / requiere validación')+'</td></tr>'+
         '<tr><td>Nº Providencia Notificación</td><td>'+esc(S.cfg.provEspecial||'No registrada')+'</td></tr>'+
         '<tr><td>Imprenta Autorizada</td><td>'+esc(S.cfg.imprentaRif)+' ('+esc(S.cfg.imprentaAut)+')</td></tr>'+
       '</tbody></table>'+
@@ -5454,9 +5454,9 @@ function seniatSudebanDlg(initialTab){
       '<div class="f wide"><label for="fEmp">Razón Social</label><input class="fld" id="fEmp" value="'+esc(c.empresa)+'"></div>'+
       '<div class="f"><label for="fRif">RIF de la Empresa</label><input class="fld" id="fRif" value="'+esc(c.rif)+'"></div>'+
       '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
-      '<div class="f"><label for="fTipo">Modalidad de Facturación</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option></select></div>'+
+      '<div class="f"><label for="fTipo">Medio de emisión fiscal</label><select class="fld" id="fTipo"><option value="NO_CONFIGURADO" '+(c.fiscalTipo==='NO_CONFIGURADO'?'selected':'')+'>No configurado / uso interno</option><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas libres autorizadas (régimen vigente)</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Máquina fiscal homologada y autorizada</option><option value="PORTAL_OFICIAL" '+(c.fiscalTipo==='PORTAL_OFICIAL'?'selected':'')+'>Portal o aplicación oficial</option><option value="PROVEEDOR_AUTORIZADO" '+(c.fiscalTipo==='PROVEEDOR_AUTORIZADO'?'selected':'')+'>Proveedor tecnológico autorizado (según vigencia PA 2026/00093)</option><option value="CONTINGENCIA" '+(c.fiscalTipo==='CONTINGENCIA'?'selected':'')+'>Contingencia documentada</option></select></div>'+
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
-      '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
+      '<div class="f"><label for="fPctRet">Porcentaje de retención (solo tras validar supuesto)</label><select class="fld" id="fPctRet"><option value="0" '+(![75,100].includes(Number(c.retIvaPct))?'selected':'')+'>No configurado</option><option value="75" '+(Number(c.retIvaPct)===75?'selected':'')+'>75 % (supuesto general aplicable)</option><option value="100" '+(Number(c.retIvaPct)===100?'selected':'')+'>100 % (solo supuestos específicos de la norma)</option></select></div>'+
       '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
       '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'')+'"></div>'+
       '<div class="f"><label for="fCtrlPref">Prefijo Nº Control Fiscal</label><input class="fld mono" id="fCtrlPref" value="'+esc(c.ctrlPrefix||'')+'"></div>'+
@@ -5466,7 +5466,7 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="fImpRif">RIF Imprenta Digital Autorizada</label><input class="fld" id="fImpRif" value="'+esc(c.imprentaRif||'')+'"></div>'+
       '<div class="f"><label for="fImpAut">Nº Providencia Imprenta</label><input class="fld" id="fImpAut" value="'+esc(c.imprentaAut||'')+'"></div>'+
       '<div class="f"><label for="fSerial">Serial Máquina / Memoria Fiscal</label><input class="fld mono" id="fSerial" value="'+esc(c.serialFiscal||'')+'"></div>'+
-    '</div><p class="hint">Los números de control asignados son correlativos y consecutivos conforme a la Providencia SENIAT 0071 sobre emisión de facturas y otros documentos.</p>';
+    '</div><p class="hint">El sistema no asigna números oficiales sin validar la autorización, el rango y el medio de emisión. La Providencia SNAT/2026/00093 establece una transición normativa; no se activa antes de su entrada en vigencia ni sustituye la integración con un proveedor o máquina autorizados.</p>';
   };
 
   const drawBankOps=()=>{const xs=(S.fiscalBankOperations||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));return '<h3>Registro auxiliar de operaciones bancarias sin nuevo documento fiscal</h3><p class="hint">Registro de control solicitado por el usuario/contador. Estas operaciones no se incorporan al Libro de Ventas ni al Libro de Compras, no generan IVA/IGTF automáticamente y no sustituyen facturas, comprobantes o soportes fiscales. Cada fila conserva su referencia interna de control.</p><div class="gridwrap"><table class="grid" style="min-width:850px"><thead><tr><th>Fecha</th><th>Referencia</th><th>Descripción</th><th>Cuenta banco</th><th>Contrapartida</th><th>Moneda</th><th class="r">Monto original</th><th class="r">Equiv. USD</th><th>Referencia contable</th><th>Motivo / tratamiento</th></tr></thead><tbody>'+xs.map(x=>'<tr><td>'+esc(x.date||'—')+'</td><td>'+esc(x.reference||'—')+'</td><td>'+esc(x.description||'—')+'</td><td>'+esc(x.accountCode||'—')+'</td><td>'+esc(x.counterpartAccount||'—')+'</td><td>'+esc(x.currency||'—')+'</td><td class="r">'+nf(x.amount||0)+'</td><td class="r">'+nf(x.amountUsd||0)+'</td><td>'+esc(x.accountingEntryId||'—')+'</td><td>'+esc((x.fiscalTreatment==='LIQUIDACION_SIN_NUEVO_DOCUMENTO'?'LIQUIDACIÓN AGREGADA · Sin nueva factura · ':'NO GRAVABLE · ')+(x.fiscalReason||'Requiere soporte')+(x.fiscalReference?' · Soporte: '+x.fiscalReference:''))+'</td></tr>').join('')+'</tbody></table></div>'+(xs.length?'':'<p class="hint">Todavía no hay operaciones bancarias auxiliares. Aquí aparecerán operaciones no gravables y liquidaciones agregadas, con sus referencias internas de control.</p>');};
@@ -5645,7 +5645,7 @@ function seniatSudebanDlg(initialTab){
           S.cfg.dir=$('#fDir',el).value.trim();
           S.cfg.fiscalTipo=$('#fTipo',el).value;
           S.cfg.contribEspecial=$('#fEsp',el).value==='1';
-          S.cfg.retIvaPct=75;
+          S.cfg.retIvaPct=Number($('#fPctRet',el).value)||0;
           S.cfg.retencionHabilitadaConfirmada=$('#fRetConfirm',el).checked===true;
           if(!S.cfg.contribEspecial)S.cfg.retencionHabilitadaConfirmada=false;
           S.cfg.provEspecial=$('#fProvEsp',el).value.trim();
