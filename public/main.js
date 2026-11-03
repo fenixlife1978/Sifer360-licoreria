@@ -663,15 +663,15 @@ function load(){
     if(!S.cfg.provEspecial)S.cfg.provEspecial='';
     if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='00-';
     if(!S.cfg.ctrlNext)S.cfg.ctrlNext=1043;
-    if(!S.cfg.ctrlRangoDesde)S.cfg.ctrlRangoDesde='00-00000001';
-    if(!S.cfg.ctrlRangoHasta)S.cfg.ctrlRangoHasta='00-00050000';
-    if(!S.cfg.imprentaRif)S.cfg.imprentaRif='J-31009988-4';
-    if(!S.cfg.imprentaAut)S.cfg.imprentaAut='SENIAT/DAF/2022/981';
-    if(!S.cfg.serialFiscal)S.cfg.serialFiscal='Z4A7719204';
+    
+    
+    
+    
+    
     (S.sales||[]).forEach(s=>{
-      if(!s.ctrlNo)s.ctrlNo=(S.cfg.ctrlPrefix||'00-')+pad(s.no,8);
-      if(!s.docType)s.docType='01-FACTURA';
-      if(!s.transType)s.transType=s.void?'03-ANUL':'01-REG';
+      if(!s.ctrlNo)s.ctrlNo='';
+      if(!s.docType)s.docType='NO_CLASIFICADO';
+      if(!s.transType)s.transType=s.void?'03-ANUL':'NO_CLASIFICADO';
       if(s.baseG16===undefined)s.baseG16=s.base||0;
     });
     (S.purchases||[]).forEach(p=>{
@@ -4496,7 +4496,7 @@ function ticketText(s){
   const L=[];
   if(s.void)L.push(dln,ctr('*** VENTA ANULADA ***'),dln);
   L.push(ctr(cut(S.cfg.empresa.toUpperCase(),Wd)),ctr('RIF: '+S.cfg.rif));
-  L.push(dln,row('RECIBO / TICKET: '+pad(s.no),fmtDT(s.ts)),row('Nº Control: '+(s.ctrlNo||('00-'+pad(s.no,8))),'Tasa BCV: '+nf(s.rate||S.cfg.rate)+' Bs.'),row('Cajero: '+S.cfg.cajero,'Caja '+S.cfg.caja),'Cliente: '+cut(s.client.name,Wd-9),'RIF/C.I.: '+s.client.rif,ln,row('CANT·U.M. x PRECIO (IVA)','SUBTOTAL US$'),ln);
+  L.push(dln,row('RECIBO / TICKET: '+pad(s.no),fmtDT(s.ts)),row('Nº Control: '+(s.ctrlNo||'NO REGISTRADO'),'Tasa BCV: '+nf(s.rate||S.cfg.rate)+' Bs.'),row('Cajero: '+S.cfg.cajero,'Caja '+S.cfg.caja),'Cliente: '+cut(s.client.name,Wd-9),'RIF/C.I.: '+s.client.rif,ln,row('CANT·U.M. x PRECIO (IVA)','SUBTOTAL US$'),ln);
   s.lines.forEach(l=>{
     const uLabel=(l.unit||'und').toUpperCase();
     const tTag=l.taxRate===0?'(E 0%)':(l.taxRate===8?'(R 8%)':(l.taxRate===31?'(A 31%)':'(G 16%)'));
@@ -4709,7 +4709,7 @@ function exportLibroVentasCsv(sales){
       `"${s.client.rif}"`,
       `"${s.client.name.replace(/"/g,'""')}"`,
       pad(s.no),
-      s.ctrlNo||('00-'+pad(s.no,8)),
+      s.ctrlNo||'NO REGISTRADO',
       s.void?(s.voidDoc||('NC-'+pad(s.no,8))):'',
       s.void?pad(s.no):'',
       s.transType||(s.void?'03-ANUL':'01-REG'),
@@ -5105,7 +5105,7 @@ function seniatSudebanDlg(initialTab){
         '<tr><td>RIF de la Empresa</td><td><b class="mono">'+esc(S.cfg.rif)+'</b></td></tr>'+
         '<tr><td>Condición Tributaria</td><td>'+(S.cfg.contribEspecial?'<span class="fiscal-tag ok">Sujeto Pasivo Especial</span>':'Contribuyente Ordinario')+'</td></tr>'+
         '<tr><td>Agente de Retención IVA</td><td>'+(S.cfg.contribEspecial?'Alícuota del '+S.cfg.retIvaPct+'%':'No aplica')+'</td></tr>'+
-        '<tr><td>Nº Providencia Notificación</td><td>'+esc(S.cfg.provEspecial||'SNAT/2023/000412')+'</td></tr>'+
+        '<tr><td>Nº Providencia Notificación</td><td>'+esc(S.cfg.provEspecial||'No registrada')+'</td></tr>'+
         '<tr><td>Imprenta Autorizada</td><td>'+esc(S.cfg.imprentaRif)+' ('+esc(S.cfg.imprentaAut)+')</td></tr>'+
       '</tbody></table>'+
     '</div>';
@@ -5138,7 +5138,7 @@ function seniatSudebanDlg(initialTab){
         '<td class="mono">'+esc(s.client.rif)+'</td>'+
         '<td><b>'+esc(s.client.name)+'</b></td>'+
         '<td class="mono c"><b>'+pad(s.no)+'</b></td>'+
-        '<td class="mono c">'+esc(s.ctrlNo||('00-'+pad(s.no,8)))+'</td>'+
+        '<td class="mono c">'+esc(s.ctrlNo||'NO REGISTRADO')+'</td>'+
         '<td class="mono c">'+(s.void?esc(s.voidDoc||('NC-'+pad(s.no,8))):'—')+'</td>'+
         '<td class="c">'+(s.void?'<span class="fiscal-tag bad">03-ANUL</span>':'<span class="fiscal-tag ok">01-REG</span>')+'</td>'+
         '<td class="r">'+nf(due)+'</td>'+
@@ -5299,7 +5299,7 @@ function seniatSudebanDlg(initialTab){
       return '<tr class="'+(s.void?'void':'')+'">'+
         '<td class="mono c"><b>'+pad(s.no)+'</b></td>'+
         '<td class="c">'+fmtDT(s.ts)+'</td>'+
-        '<td class="mono c">'+esc(s.ctrlNo||('00-'+pad(s.no,8)))+'</td>'+
+        '<td class="mono c">'+esc(s.ctrlNo||'NO REGISTRADO')+'</td>'+
         '<td><b>'+esc(s.client.name)+'</b> ('+esc(s.client.rif)+')</td>'+
         '<td class="r">'+nf(dueUsd)+'</td>'+
         '<td class="r" style="font-weight:700;color:#1842B8">'+nf(rate)+'</td>'+
@@ -5463,14 +5463,14 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
       '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
       '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
-      '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'SNAT/2023/000412')+'"></div>'+
+      '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'')+'"></div>'+
       '<div class="f"><label for="fCtrlPref">Prefijo Nº Control Fiscal</label><input class="fld mono" id="fCtrlPref" value="'+esc(c.ctrlPrefix||'00-')+'"></div>'+
       '<div class="f"><label for="fCtrlNext">Próximo Nº de Control</label><input class="fld mono r" id="fCtrlNext" value="'+(c.ctrlNext||1043)+'"></div>'+
       '<div class="f"><label for="fRangoD">Rango Autorizado (Desde)</label><input class="fld mono" id="fRangoD" value="'+esc(c.ctrlRangoDesde||'00-00000001')+'"></div>'+
       '<div class="f"><label for="fRangoH">Rango Autorizado (Hasta)</label><input class="fld mono" id="fRangoH" value="'+esc(c.ctrlRangoHasta||'00-00050000')+'"></div>'+
-      '<div class="f"><label for="fImpRif">RIF Imprenta Digital Autorizada</label><input class="fld" id="fImpRif" value="'+esc(c.imprentaRif||'J-31009988-4')+'"></div>'+
-      '<div class="f"><label for="fImpAut">Nº Providencia Imprenta</label><input class="fld" id="fImpAut" value="'+esc(c.imprentaAut||'SENIAT/DAF/2022/981')+'"></div>'+
-      '<div class="f"><label for="fSerial">Serial Máquina / Memoria Fiscal</label><input class="fld mono" id="fSerial" value="'+esc(c.serialFiscal||'Z4A7719204')+'"></div>'+
+      '<div class="f"><label for="fImpRif">RIF Imprenta Digital Autorizada</label><input class="fld" id="fImpRif" value="'+esc(c.imprentaRif||'')+'"></div>'+
+      '<div class="f"><label for="fImpAut">Nº Providencia Imprenta</label><input class="fld" id="fImpAut" value="'+esc(c.imprentaAut||'')+'"></div>'+
+      '<div class="f"><label for="fSerial">Serial Máquina / Memoria Fiscal</label><input class="fld mono" id="fSerial" value="'+esc(c.serialFiscal||'')+'"></div>'+
     '</div><p class="hint">Los números de control asignados son correlativos y consecutivos conforme a la Providencia SENIAT 0071 sobre emisión de facturas y otros documentos.</p>';
   };
 
