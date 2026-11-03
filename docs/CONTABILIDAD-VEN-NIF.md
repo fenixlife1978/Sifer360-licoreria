@@ -38,3 +38,9 @@ Antes de activar el puente operativo deben definirse IDs estables de operaciones
 ## Emisión de documentos fiscales
 
 Hasta que se configure y valide el medio autorizado de emisión de esta empresa (portal oficial, proveedor tecnológico autorizado, máquina fiscal o contingencia aplicable), las ventas nuevas se conservan como documentos internos auxiliares. El POS no inventa números de control ni afirma que un ticket sea factura fiscal. Los borradores de retención tampoco son comprobantes oficiales y la exportación TXT permanece deshabilitada mientras no se valide la especificación SENIAT aplicable.
+
+## Particularidad del ramo de licores
+
+La Ley de Impuesto sobre Alcohol y Especies Alcohólicas no debe traducirse en un recargo genérico por cada venta minorista. Su texto distingue impuestos ligados a producción, importación y expedición desde establecimientos productores/aduanas, y asigna a productores o importadores el pago de determinados gravámenes; además impone deberes de libros y documentos a comerciantes y exige licencia de expendio y patente. Por ello el sistema debe distinguir comercio minorista, mayorista, importador, productor o actividad mixta y conservar factura del proveedor, guías, origen, especie, volumen, graduación alcohólica, bandas y licencias. La aplicación de un impuesto nacional específico a una operación minorista requiere verificar el hecho imponible y la obligación concreta antes de contabilizarlo.
+
+Las licencias, tasas y obligaciones municipales dependen de la ordenanza del municipio donde opera el establecimiento. No se deben programar importes municipales universales ni presumir que una licencia de otro municipio sea aplicable.
