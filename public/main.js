@@ -4985,7 +4985,7 @@ function newRetencionIvaDlg(onDone){
         if(!S.cfg.contribEspecial||S.cfg.retencionHabilitadaConfirmada!==true){
           msg('No se puede preparar el borrador: confirme primero la designación vigente de la empresa como agente de retención.','bad');return false;
         }
-        if(!sup||sup.retieneIva!==true){msg('Seleccione un proveedor cuya condición de sujeto a retención haya sido verificada.','bad');return false;}
+        if(!sup||sup.retieneIva!==true||sup.ivaPerceptionAgentStatus!=='no'||sup.retencionExclusionStatus!=='eligible'||!sup.retencionReglaRef){msg('El proveedor debe tener condición de sujeto, agente de percepción descartado y supuesto de retención verificado con soporte.','bad');return false;}
         if(!docProv||!ctrlProv||!docDate||!(base>0)||!(iva>0)||![75,100].includes(pct)||!basis||!(rate>0)){
           msg('Faltan datos reales de la factura, importes, porcentaje, fundamento o tasa. No se usarán datos de demostración.','bad');return false;
         }
