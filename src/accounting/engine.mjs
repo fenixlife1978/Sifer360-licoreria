@@ -86,7 +86,19 @@ export function reverseJournalEntry(entry, { id, reason, actorId, reversalDate, 
     id, sourceType: "journal_reversal", sourceId: entry.id, entryDate: reversalDate,
     periodId: reversalPeriodId, currency: entry.currency, ruleVersion: entry.ruleVersion,
     description: "Reverso del asiento " + entry.id + ": " + reason, lines, createdAt, createdBy: actorId
-  }), reversesEntryId: entry.id };
+  }), reversesEntryId: entry.id,
+    presentationCurrency: entry.presentationCurrency || entry.currency,
+    exchangeRateId: entry.exchangeRateId || null,
+    exchangeRateNumerator: entry.exchangeRateNumerator || 1,
+    exchangeRateDenominator: entry.exchangeRateDenominator || 1,
+    exchangeRateType: entry.exchangeRateType || null,
+    exchangeRateSource: entry.exchangeRateSource || null,
+    presentationDebitMinor: entry.presentationCreditMinor ?? entry.creditMinor,
+    presentationCreditMinor: entry.presentationDebitMinor ?? entry.debitMinor,
+    lines: lines.map((line, index) => ({ ...line,
+      presentationDebitMinor: entry.lines[index].presentationCreditMinor ?? entry.lines[index].creditMinor,
+      presentationCreditMinor: entry.lines[index].presentationDebitMinor ?? entry.lines[index].debitMinor
+    })) };
 }
 export function assertSourceNotPosted(entries, sourceType, sourceId) {
   const duplicate = entries.find(x => x.sourceType === sourceType && x.sourceId === sourceId && ["approved","posted"].includes(x.status));
