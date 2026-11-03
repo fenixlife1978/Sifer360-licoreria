@@ -10,7 +10,12 @@ test("el panel fiscal no presenta conformidad ni conciliaciones no verificadas c
     "48.958 RESTANTES",
     "100% CONFORME BCV",
     "CONCILIACIÓN FÍSICA Y ELECTRÓNICA CONFORME",
-    "Lotes cerrados y conciliados sin diferencias"
+    "Lotes cerrados y conciliados sin diferencias",
+    "J-31009988-4",
+    "SENIAT/DAF/2022/981",
+    "SNAT/2023/000412",
+    "Z4A7719204",
+    "00-00050000"
   ]) assert.ok(!main.includes(phrase), "Se detectó afirmación fiscal no sustentada: " + phrase);
   assert.ok(html.includes("SENIAT / SUDEBAN: Revisión pendiente"));
 });
