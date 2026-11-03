@@ -2564,8 +2564,9 @@ function comprasDlg(initialTab){
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
       const periodo=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
-      const retSeq=(S.retencionesIva||[]).filter(r=>String(r.periodo)===periodo).reduce((m,r)=>Math.max(m,Number(String(r.id||'').slice(-8))||0),0)+1;
-      const retDoc=periodo+pad(retSeq,8);
+      const retPrefix='BORRADOR-RET-'+periodo+'-';
+      const retSeq=(S.retencionesIva||[]).filter(r=>String(r.id||'').startsWith(retPrefix)).length+1;
+      const retDoc=retPrefix+pad(retSeq,5);
       comp.retIvaDoc=retDoc;
       if(!S.retencionesIva)S.retencionesIva=[];
       S.retencionesIva.push({
