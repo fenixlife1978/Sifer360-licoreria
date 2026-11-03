@@ -87,3 +87,11 @@ La interfaz permite registrar y actualizar cuentas sin precargar un plan univers
 La cola LAN y la notificación de estado guardado se activan únicamente después de que el IPC SQLite confirma la persistencia local. Si la escritura falla, se muestra el error y no se inicia esa replicación desde el flujo de guardado.
 
 La jerarquía impide inactivar una cuenta padre con subcuentas activas y evita que una cuenta hija tenga un alcance normativo más amplio que su padre. Si ya existen movimientos, también se protegen el ámbito normativo y la condición de cuenta agrupadora/contabilizable.
+
+## Asientos manuales, aprobación y balance de comprobación
+
+La interfaz permite crear asientos manuales en borrador usando cuentas activas y contabilizables del plan configurado, dentro de un período abierto y en la moneda funcional vigente. Los importes se convierten a unidades menores enteras según los decimales configurados y el motor rechaza asientos descuadrados.
+
+El flujo separa funciones: el creador no puede aprobar su propio asiento; la aprobación y contabilización están reservadas al perfil Contador. Los cambios de estado y los reversos se registran en auditoría. Un reverso se crea como asiento nuevo en un período abierto y solo al contabilizarlo cambia el asiento original a estado reversed. Nunca se borra ni reescribe el contenido de un asiento contabilizado.
+
+El balance de comprobación suma exclusivamente renglones de asientos contabilizados y sus reversos. Los borradores y aprobados no afectan los totales. Todavía no hay asientos automáticos desde ventas/compras, mapeo de medios de pago, reconocimiento de costo de ventas ni generación de estados financieros.
