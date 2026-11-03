@@ -8,6 +8,7 @@ const SOURCE_COLLECTIONS = Object.freeze({
   cortesZ: "cash_close",
   openings: "cash_opening",
   movements: "inventory_movement",
+  movimientosCaja: "cash_movement",
   held: "held_sale",
   kardex: "inventory_movement",
   movements: "inventory_movement",
@@ -22,7 +23,7 @@ const SOURCE_COLLECTIONS = Object.freeze({
   retencionesIva: "iva_retention",
   retentions: "retention"
 });
-const BOX_SCOPED = new Set(["sales", "cxc", "cortesZ", "openings", "movements", "returns", "voids"]);
+const BOX_SCOPED = new Set(["sales", "cxc", "cortesZ", "openings", "movements", "movimientosCaja", "kardex", "returns", "voids"]);
 const ID_FIELDS = ["id", "uuid", "eventId", "no", "number", "ctrlNo", "code"];
 
 function digest(value) {
@@ -30,7 +31,13 @@ function digest(value) {
 }
 function stableIdentity(record, collection) {
   const raw = ID_FIELDS.map(key => record && record[key]).find(value => value !== undefined && value !== null && String(value).trim() !== "");
-  if (raw === undefined) return null;
+  if (raw === undefined) {
+    // Suspended sales in the current POS schema are identified by timestamp and cart snapshot.
+    if (collection === "held" && record && record.ts !== undefined) {
+      return "held:" + String(record.ts) + ":" + digest(JSON.stringify(record)).slice(0, 16);
+    }
+    return null;
+  }
   const id = String(raw).trim();
   return BOX_SCOPED.has(collection) ? String(record.cashbox || "sin-caja") + ":" + id : id;
 }
