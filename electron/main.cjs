@@ -219,6 +219,20 @@ function initializeSchema() {
   db.run('BEGIN IMMEDIATE');
   try {
     db.run(fs.readFileSync(accountingSchemaPath, 'utf8'));
+    const ensureColumn = (table, column, definition) => {
+      const columns = all('PRAGMA table_info(' + table + ')');
+      if (!columns.some(item => item.name === column)) db.run('ALTER TABLE ' + table + ' ADD COLUMN ' + column + ' ' + definition);
+    };
+    ensureColumn('journal_entries','presentation_currency','TEXT');
+    ensureColumn('journal_entries','exchange_rate_id','TEXT');
+    ensureColumn('journal_entries','exchange_rate_numerator','INTEGER NOT NULL DEFAULT 1');
+    ensureColumn('journal_entries','exchange_rate_denominator','INTEGER NOT NULL DEFAULT 1');
+    ensureColumn('journal_entries','exchange_rate_type','TEXT');
+    ensureColumn('journal_entries','exchange_rate_source','TEXT');
+    ensureColumn('journal_entries','presentation_debit_minor','INTEGER');
+    ensureColumn('journal_entries','presentation_credit_minor','INTEGER');
+    ensureColumn('journal_lines','presentation_debit_minor','INTEGER');
+    ensureColumn('journal_lines','presentation_credit_minor','INTEGER');
     db.run('COMMIT');
   } catch (error) {
     try { db.run('ROLLBACK'); } catch {}
@@ -479,22 +493,29 @@ async function loadAccountingEngine() {
 function accountingJournalWithLines(entryId) {
   const row = one('SELECT * FROM journal_entries WHERE id=?', [entryId]);
   if (!row) return null;
-  const lines = all('SELECT account_code AS accountCode,debit_minor AS debitMinor,credit_minor AS creditMinor,description,third_party_id AS thirdPartyId,cost_center AS costCenter FROM journal_lines WHERE entry_id=? ORDER BY line_no', [entryId]);
+  const lines = all('SELECT account_code AS accountCode,debit_minor AS debitMinor,credit_minor AS creditMinor,presentation_debit_minor AS presentationDebitMinor,presentation_credit_minor AS presentationCreditMinor,description,third_party_id AS thirdPartyId,cost_center AS costCenter FROM journal_lines WHERE entry_id=? ORDER BY line_no', [entryId]).map(line => ({...line,debitMinor:Number(line.debitMinor),creditMinor:Number(line.creditMinor),presentationDebitMinor:line.presentationDebitMinor==null?null:Number(line.presentationDebitMinor),presentationCreditMinor:line.presentationCreditMinor==null?null:Number(line.presentationCreditMinor)}));
   return {
     id:row.id,sourceType:row.source_type,sourceId:row.source_id,entryDate:row.entry_date,periodId:row.period_id,
-    currency:row.functional_currency,ruleVersion:row.rule_version,description:row.description,status:row.status,
+    currency:row.functional_currency,presentationCurrency:row.presentation_currency||row.functional_currency,
+    exchangeRateId:row.exchange_rate_id||null,exchangeRateNumerator:Number(row.exchange_rate_numerator||1),
+    exchangeRateDenominator:Number(row.exchange_rate_denominator||1),exchangeRateType:row.exchange_rate_type||null,
+    exchangeRateSource:row.exchange_rate_source||null,presentationDebitMinor:row.presentation_debit_minor==null?null:Number(row.presentation_debit_minor),
+    presentationCreditMinor:row.presentation_credit_minor==null?null:Number(row.presentation_credit_minor),
+    ruleVersion:row.rule_version,description:row.description,status:row.status,
     debitMinor:Number(row.debit_minor),creditMinor:Number(row.credit_minor),createdAt:row.created_at,createdBy:row.created_by,
     approvedAt:row.approved_at,approvedBy:row.approved_by,postedAt:row.posted_at,postedBy:row.posted_by,
     reversesEntryId:row.reverses_entry_id,lines
   };
 }
 function insertJournalEntry(entry) {
-  run(`INSERT INTO journal_entries(id,source_type,source_id,entry_date,period_id,functional_currency,rule_version,description,status,debit_minor,credit_minor,created_at,created_by,approved_at,approved_by,posted_at,posted_by,reverses_entry_id)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [entry.id,entry.sourceType,entry.sourceId,entry.entryDate,entry.periodId,entry.currency,entry.ruleVersion,entry.description,entry.status,
-      entry.debitMinor,entry.creditMinor,entry.createdAt,entry.createdBy,entry.approvedAt,entry.approvedBy,entry.postedAt,entry.postedBy,entry.reversesEntryId]);
-  entry.lines.forEach((line,index)=>run('INSERT INTO journal_lines(id,entry_id,line_no,account_code,debit_minor,credit_minor,description,third_party_id,cost_center) VALUES(?,?,?,?,?,?,?,?,?)',
-    [crypto.randomUUID(),entry.id,index+1,line.accountCode,line.debitMinor,line.creditMinor,line.description||'',line.thirdPartyId||null,line.costCenter||null]));
+  run(`INSERT INTO journal_entries(id,source_type,source_id,entry_date,period_id,functional_currency,presentation_currency,exchange_rate_id,exchange_rate_numerator,exchange_rate_denominator,exchange_rate_type,exchange_rate_source,presentation_debit_minor,presentation_credit_minor,rule_version,description,status,debit_minor,credit_minor,created_at,created_by,approved_at,approved_by,posted_at,posted_by,reverses_entry_id)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [entry.id,entry.sourceType,entry.sourceId,entry.entryDate,entry.periodId,entry.currency,entry.presentationCurrency||entry.currency,
+      entry.exchangeRateId||null,entry.exchangeRateNumerator||1,entry.exchangeRateDenominator||1,entry.exchangeRateType||null,entry.exchangeRateSource||null,
+      entry.presentationDebitMinor??entry.debitMinor,entry.presentationCreditMinor??entry.creditMinor,
+      entry.ruleVersion,entry.description,entry.status,entry.debitMinor,entry.creditMinor,entry.createdAt,entry.createdBy,entry.approvedAt,entry.approvedBy,entry.postedAt,entry.postedBy,entry.reversesEntryId]);
+  entry.lines.forEach((line,index)=>run('INSERT INTO journal_lines(id,entry_id,line_no,account_code,debit_minor,credit_minor,presentation_debit_minor,presentation_credit_minor,description,third_party_id,cost_center) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+    [crypto.randomUUID(),entry.id,index+1,line.accountCode,line.debitMinor,line.creditMinor,line.presentationDebitMinor??line.debitMinor,line.presentationCreditMinor??line.creditMinor,line.description||'',line.thirdPartyId||null,line.costCenter||null]));
 }
 
 function registerAccountingIpc() {
@@ -639,7 +660,10 @@ function registerAccountingIpc() {
   ipcMain.handle('accounting:list-journal-entries', event => {
     assertTrustedAccountingSender(event);
     return all(`SELECT id,source_type AS sourceType,source_id AS sourceId,entry_date AS entryDate,period_id AS periodId,
-      functional_currency AS currency,description,status,debit_minor AS debitMinor,credit_minor AS creditMinor,
+      functional_currency AS currency,presentation_currency AS presentationCurrency,
+      exchange_rate_numerator AS exchangeRateNumerator,exchange_rate_denominator AS exchangeRateDenominator,
+      presentation_debit_minor AS presentationDebitMinor,presentation_credit_minor AS presentationCreditMinor,
+      description,status,debit_minor AS debitMinor,credit_minor AS creditMinor,
       created_by AS createdBy,approved_by AS approvedBy,posted_by AS postedBy,reverses_entry_id AS reversesEntryId
       FROM journal_entries ORDER BY entry_date DESC,created_at DESC LIMIT 100`);
   });
@@ -647,7 +671,9 @@ function registerAccountingIpc() {
     assertTrustedAccountingSender(event);
     return all(`SELECT a.code,a.name,a.account_type AS accountType,a.normal_balance AS normalBalance,
       COALESCE(SUM(CASE WHEN j.status IN ('posted','reversed') THEN l.debit_minor ELSE 0 END),0) AS debitMinor,
-      COALESCE(SUM(CASE WHEN j.status IN ('posted','reversed') THEN l.credit_minor ELSE 0 END),0) AS creditMinor
+      COALESCE(SUM(CASE WHEN j.status IN ('posted','reversed') THEN l.credit_minor ELSE 0 END),0) AS creditMinor,
+      COALESCE(SUM(CASE WHEN j.status IN ('posted','reversed') THEN l.presentation_debit_minor ELSE 0 END),0) AS presentationDebitMinor,
+      COALESCE(SUM(CASE WHEN j.status IN ('posted','reversed') THEN l.presentation_credit_minor ELSE 0 END),0) AS presentationCreditMinor
       FROM chart_of_accounts a LEFT JOIN journal_lines l ON l.account_code=a.code
       LEFT JOIN journal_entries j ON j.id=l.entry_id
       GROUP BY a.code,a.name,a.account_type,a.normal_balance ORDER BY a.code`);
@@ -655,7 +681,7 @@ function registerAccountingIpc() {
   ipcMain.handle('accounting:create-journal-entry', async (event, input = {}) => {
     assertTrustedAccountingSender(event);
     const actor = accountingActor(input);
-    const settings = one('SELECT accounting_framework,functional_currency,monetary_decimals,policy_version FROM accounting_settings WHERE id=1');
+    const settings = one('SELECT accounting_framework,functional_currency,presentation_currency,monetary_decimals,policy_version FROM accounting_settings WHERE id=1');
     if (!settings || !settings.accounting_framework || !settings.functional_currency) throw new Error('Configura primero el marco VEN-NIF y la moneda funcional.');
     const entryDate = String(input.entryDate || '');
     const periodId = String(input.periodId || '');
@@ -666,6 +692,7 @@ function registerAccountingIpc() {
     if (entryDate < period.startDate || entryDate > period.endDate) throw new Error('La fecha del asiento está fuera del período seleccionado.');
     if (!Array.isArray(input.lines) || input.lines.length < 2 || input.lines.length > 100) throw new Error('El asiento debe contener entre 2 y 100 renglones.');
     const { createJournalEntry, decimalToMinorUnits } = await loadAccountingEngine();
+    const { buildBimonetaryLines, decimalRateToRational } = await import('../src/accounting/bimonetary.mjs');
     const lines = input.lines.map(line => {
       const code = String(line.accountCode || '').trim();
       const account = one('SELECT active,accepts_posting,framework_scope FROM chart_of_accounts WHERE code=?',[code]);
@@ -678,11 +705,33 @@ function registerAccountingIpc() {
         description:String(line.description||'').trim().slice(0,180)
       };
     });
+    const presentationCurrency=String(settings.presentation_currency||'').trim().toUpperCase();
+    if(!/^[A-Z]{3}$/.test(presentationCurrency))throw new Error('Configura la moneda de presentación antes de crear asientos.');
+    let rate={rateNumerator:1,rateDenominator:1},rateType=null,rateSource=null,rateId=null;
+    if(settings.functional_currency!==presentationCurrency){
+      rate=decimalRateToRational(input.exchangeRate);
+      rateType=String(input.exchangeRateType||'');
+      const sourceName=String(input.exchangeRateSourceName||'').trim().slice(0,120);
+      const sourceReference=String(input.exchangeRateSourceReference||'').trim().slice(0,180);
+      if(!['official','market','contractual','accounting_adjustment'].includes(rateType)||!sourceName||!sourceReference)
+        throw new Error('La tasa bimonetaria exige tipo, fuente y referencia documental.');
+      rateSource=sourceName+' · '+sourceReference;
+      rateId=crypto.randomUUID();
+    }
+    const converted=buildBimonetaryLines({lines,functionalCurrency:settings.functional_currency,presentationCurrency,
+      functionalDecimals:Number(settings.monetary_decimals),presentationDecimals:Number(settings.monetary_decimals),
+      rateNumerator:rate.rateNumerator,rateDenominator:rate.rateDenominator});
     const id=crypto.randomUUID();
     const entry=createJournalEntry({id,sourceType:'manual',sourceId:id,entryDate,periodId,currency:settings.functional_currency,
-      ruleVersion:String(settings.policy_version)+' / MANUAL-v1',description,lines,createdAt:new Date().toISOString(),createdBy:actor.actorId});
+      ruleVersion:String(settings.policy_version)+' / MANUAL-v1',description,lines:converted.lines,createdAt:new Date().toISOString(),createdBy:actor.actorId});
+    Object.assign(entry,{presentationCurrency,exchangeRateId:rateId,exchangeRateNumerator:rate.rateNumerator,
+      exchangeRateDenominator:rate.rateDenominator,exchangeRateType:rateType,exchangeRateSource:rateSource,
+      presentationDebitMinor:converted.presentationDebitMinor,presentationCreditMinor:converted.presentationCreditMinor});
     db.run('BEGIN IMMEDIATE');
     try {
+      if(rateId)run('INSERT INTO accounting_exchange_rates(id,rate_date,from_currency,to_currency,rate_numerator,rate_denominator,rate_type,source_name,source_reference,recorded_at,recorded_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+        [rateId,entryDate,settings.functional_currency,presentationCurrency,rate.rateNumerator,rate.rateDenominator,rateType,
+          String(input.exchangeRateSourceName).trim().slice(0,120),String(input.exchangeRateSourceReference).trim().slice(0,180),entry.createdAt,actor.actorId]);
       insertJournalEntry(entry);
       run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,after_json) VALUES(?,?,?,?,?,?,?)',
         [crypto.randomUUID(),'journal_entry',id,'create_draft',actor.actorId,entry.createdAt,JSON.stringify({sourceType:entry.sourceType,entryDate,periodId,description,debitMinor:entry.debitMinor,creditMinor:entry.creditMinor})]);
