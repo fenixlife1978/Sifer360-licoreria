@@ -84,3 +84,16 @@ test("la interfaz muestra eventos pendientes sin presentarlos como asientos", ()
   assert.ok(renderer.includes("btnSaveFiscalProfile"));
   assert.ok(renderer.includes("btnSaveAccountingPeriod"));
 });
+
+test("los asientos y el balance conservan moneda funcional y de presentación", () => {
+  assert.ok(main.includes("buildBimonetaryLines"));
+  assert.ok(main.includes("decimalRateToRational(input.exchangeRate)"));
+  assert.ok(main.includes("exchange_rate_numerator"));
+  assert.ok(main.includes("presentation_debit_minor"));
+  assert.ok(main.includes("accounting_exchange_rates"));
+  assert.ok(main.includes("presentationDebitMinor"));
+  assert.ok(renderer.includes("accJournalExchangeRate"));
+  assert.ok(renderer.includes("accJournalExchangeRateSource"));
+  assert.ok(renderer.includes("accJournalPresentationCurrency"));
+  assert.ok(renderer.includes("presentationCreditMinor"));
+});
