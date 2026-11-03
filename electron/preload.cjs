@@ -26,5 +26,11 @@ contextBridge.exposeInMainWorld('posDesktop', {
   accountingMarkSourceEventReview: review => ipcRenderer.invoke('accounting:mark-source-event-review', review),
   accountingListAccounts: () => ipcRenderer.invoke('accounting:list-accounts'),
   accountingSaveAccount: account => ipcRenderer.invoke('accounting:save-account', account),
+  accountingListJournalEntries: () => ipcRenderer.invoke('accounting:list-journal-entries'),
+  accountingGetTrialBalance: () => ipcRenderer.invoke('accounting:get-trial-balance'),
+  accountingCreateJournalEntry: entry => ipcRenderer.invoke('accounting:create-journal-entry', entry),
+  accountingApproveJournalEntry: entry => ipcRenderer.invoke('accounting:approve-journal-entry', entry),
+  accountingPostJournalEntry: entry => ipcRenderer.invoke('accounting:post-journal-entry', entry),
+  accountingCreateReversalDraft: entry => ipcRenderer.invoke('accounting:create-reversal-draft', entry),
   accountingSavePeriod: period => ipcRenderer.invoke('accounting:save-period', period)
 });
