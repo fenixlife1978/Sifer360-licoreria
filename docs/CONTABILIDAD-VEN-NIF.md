@@ -13,7 +13,7 @@ Se incorpora una base técnica aislada y comprobable. No activa aún la contabil
 - Los períodos cerrados bloquean contabilizaciones.
 
 ## Integración prevista
-La aplicación de escritorio usa SQLite mediante sql.js en Electron y mantiene parte del estado operativo en app_state. El nuevo esquema está preparado para integrarse en la misma base local dentro de una migración transaccional; no debe crearse una base contable desconectada.
+La aplicación de escritorio usa SQLite mediante sql.js en Electron y mantiene parte del estado operativo en app_state. El esquema se aplica al iniciar Electron como migración aditiva e idempotente, dentro de una transacción SQLite en la misma base local. El empaquetado Windows incluye expresamente el archivo SQL; no se crea una base contable desconectada.
 
 Antes de activar el puente operativo deben definirse IDs estables de operaciones POS, reglas por evento, moneda funcional, tasas de cambio con fecha/fuente, mapeo de productos y costos, y manejo de reintentos/reversos en LAN multi-caja.
 
