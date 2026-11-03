@@ -62,3 +62,13 @@ test("incluye aperturas de caja, movimientos de inventario y ventas retenidas", 
   assert.equal(events.length, 3);
   assert.deepEqual(new Set(events.map(event => event.sourceType)), new Set(["cash_opening", "inventory_movement", "held_sale"]));
 });
+
+test("captura movimientos reales de caja y ventas suspendidas sin id explícito", () => {
+  const state = {
+    movimientosCaja: [{ id: "MOV-01-123", cashbox: "01", amount: 10, direction: "OUT", ts: 1793700000000 }],
+    held: [{ ts: 1793700000100, cart: [{ code: "LIC-1", qty: 2 }], client: { name: "Consumidor final" } }]
+  };
+  const events = buildAccountingSourceEvents({}, state, { deviceId: "pc-01" });
+  assert.equal(events.length, 2);
+  assert.deepEqual(new Set(events.map(event => event.sourceType)), new Set(["cash_movement", "held_sale"]));
+});
