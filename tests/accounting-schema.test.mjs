@@ -22,3 +22,18 @@ test("el esquema contable se crea en SQLite y activa restricciones de integridad
   assert.throws(() => db.run("DELETE FROM journal_entries WHERE id='A1'"), /No se permite borrar asientos/);
   db.close();
 });
+
+test("la cola de eventos de origen conserva idempotencia y estados permitidos", async () => {
+  const SQL = await initSqlJs({ locateFile: file => require.resolve("sql.js/dist/" + file) });
+  const db = new SQL.Database();
+  db.run(fs.readFileSync(new URL("../src/accounting/schema.sql", import.meta.url), "utf8"));
+  const insert = "INSERT OR IGNORE INTO accounting_source_events(event_id,source_type,source_id,event_type,occurred_at,payload_hash,payload_json) VALUES(?,?,?,?,?,?,?)";
+  const row = ["evt-1","sale","Caja 01:V-1","created.abcd","2026-11-03T10:00:00.000Z","hash-1",JSON.stringify({ action: "created" })];
+  db.run(insert, row);
+  db.run(insert, row);
+  const count = db.exec("SELECT COUNT(*) FROM accounting_source_events");
+  assert.equal(count[0].values[0][0], 1);
+  assert.equal(db.exec("SELECT processing_status FROM accounting_source_events WHERE event_id='evt-1'")[0].values[0][0], "pending");
+  assert.throws(() => db.run("UPDATE accounting_source_events SET processing_status='invented' WHERE event_id='evt-1'"));
+  db.close();
+});
