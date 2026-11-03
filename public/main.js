@@ -4989,10 +4989,10 @@ function seniatSudebanDlg(initialTab){
       '<button class="tab '+(activeTab==='compras'?'active':'')+'" data-tab="compras">Libro de Compras</button>'+
       '<button class="tab '+(activeTab==='bancarias'?'active':'')+'" data-tab="bancarias">Operaciones bancarias auxiliares</button>'+
       '<button class="tab '+(activeTab==='inventario'?'active':'')+'" data-tab="inventario">Libro de Inventario</button>'+
-      '<button class="tab '+(activeTab==='igtf'?'active':'')+'" data-tab="igtf">Percepción de IGTF (3%)</button>'+
+      '<button class="tab '+(activeTab==='igtf'?'active':'')+'" data-tab="igtf">Percepción de IGTF</button>'+
       '<button class="tab '+(activeTab==='auditoria'?'active':'')+'" data-tab="auditoria">Auditoría Ventas & Tasa BCV</button>'+
       '<button class="tab '+(activeTab==='sudeban'?'active':'')+'" data-tab="sudeban">Conciliación POS / SUDEBAN</button>'+
-      '<button class="tab '+(activeTab==='retenciones'?'active':'')+'" data-tab="retenciones">Retenciones IVA & TXT</button>'+
+      '<button class="tab '+(activeTab==='retenciones'?'active':'')+'" data-tab="retenciones">Retenciones IVA (borradores)</button>'+
       '<button class="tab '+(activeTab==='pagoSeniat'?'active':'')+'" data-tab="pagoSeniat">Preparar Pago SENIAT</button>'+
       '<button class="tab '+(activeTab==='config'?'active':'')+'" data-tab="config">Parámetros Fiscales</button>'+
     '</div>'+
@@ -5375,7 +5375,7 @@ function seniatSudebanDlg(initialTab){
     return '<div class="semaforo-bar">'+
       '<div class="semaforo-dot"></div>'+
       '<div class="semaforo-text"><b>CONTROL Y TRAZABILIDAD DE RETENCIONES IVA</b> &middot; Reporte interno de apoyo al contador bajo referencia SNAT/2025/000054. El POS no declara ni paga; valide la normativa, las excepciones y el formato vigente antes de usar cualquier archivo.</div>'+ 
-      '<button class="btn mini2 primary" id="btnNewManualRet" style="margin-left:auto;flex:none">+ Emitir Retención de IVA</button>'+
+      '<button class="btn mini2 primary" id="btnNewManualRet" style="margin-left:auto;flex:none">+ Preparar borrador de retención</button>'+
     '</div>'+
     '<div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1050px">'+
       '<thead><tr>'+
@@ -5485,13 +5485,13 @@ function seniatSudebanDlg(initialTab){
     }else if(activeTab==='sudeban'){
       footL.innerHTML='<button class="btn mini2 primary" id="btnQuickLote">+ Cierre de Lote POS</button>';
     }else if(activeTab==='retenciones'){
-      footL.innerHTML='<button class="btn mini2 primary" id="btnTxtSeniat">Descargar TXT para SENIAT</button>';
+      footL.innerHTML='<button class="btn mini2" id="btnTxtSeniat" disabled>TXT oficial no habilitado</button>';
     }else if(activeTab==='pagoSeniat'){
       footL.innerHTML='<span class="hint">Borrador informativo; la planilla oficial se obtiene en el SENIAT.</span>';
     }else if(activeTab==='config'){
       footL.innerHTML='<button class="btn mini2 primary" id="btnSaveF">Guardar Parámetros Fiscales</button>';
     }else{
-      footL.innerHTML='<button class="btn mini2" id="btnGotoVentas">Ver Libro de Ventas</button><button class="btn mini2" id="btnGotoIgtf">Ver IGTF 3%</button>';
+      footL.innerHTML='<button class="btn mini2" id="btnGotoVentas">Ver Libro de Ventas</button><button class="btn mini2" id="btnGotoIgtf">Ver IGTF</button>';
     }
   };
 
