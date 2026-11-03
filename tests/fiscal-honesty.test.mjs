@@ -48,6 +48,8 @@ test("la retención automática no presume 75% y la configuración permite 75% o
   assert.ok(main.includes("retieneIvaStatus"));
   assert.ok(main.includes("Por verificar"));
   assert.ok(main.includes("nsRetentionEligibility"));
+  assert.ok(main.includes("retencion100PorcientoVerificada"));
+  assert.ok(main.includes("nsRet100"));
   assert.ok(main.includes("Proveedor tecnológico autorizado"));
 });
 
