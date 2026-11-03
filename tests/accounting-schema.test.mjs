@@ -1,0 +1,21 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import initSqlJs from "sql.js";
+const require = createRequire(import.meta.url);
+test("el esquema contable se crea en SQLite y activa restricciones de integridad", async () => {
+  const SQL = await initSqlJs({ locateFile: file => require.resolve("sql.js/dist/" + file) });
+  const db = new SQL.Database();
+  db.run(fs.readFileSync(new URL("../src/accounting/schema.sql", import.meta.url), "utf8"));
+  const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
+  const names = new Set(tables[0].values.map(row => row[0]));
+  for (const name of ["accounting_settings","accounting_periods","accounting_exchange_rates","chart_of_accounts","tax_rule_sets","tax_rules","journal_entries","journal_lines","accounting_source_events","accounting_audit_log"]) assert.ok(names.has(name), "Falta tabla " + name);
+  const triggers = db.exec("SELECT name FROM sqlite_master WHERE type='trigger'");
+  assert.ok(triggers[0].values.length >= 3, "No se instalaron las salvaguardas de inmutabilidad");
+  db.run("INSERT INTO accounting_periods(id,label,start_date,end_date) VALUES('2026-11','Noviembre 2026','2026-11-01','2026-11-30')");
+  db.run("INSERT INTO chart_of_accounts(code,name,account_type,normal_balance,created_at,updated_at) VALUES('1.1','Caja','asset','debit','now','now')");
+  db.run("INSERT INTO journal_entries(id,source_type,source_id,entry_date,period_id,functional_currency,rule_version,status,debit_minor,credit_minor,created_at) VALUES('A1','sale','V1','2026-11-03','2026-11','VES','v1','posted',100,100,'now')");
+  assert.throws(() => db.run("DELETE FROM journal_entries WHERE id='A1'"), /No se permite borrar asientos/);
+  db.close();
+});
