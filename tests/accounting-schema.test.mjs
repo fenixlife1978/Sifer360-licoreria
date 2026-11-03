@@ -17,6 +17,9 @@ test("el esquema contable se crea en SQLite y activa restricciones de integridad
   const lineColumns = new Set(db.exec("PRAGMA table_info(journal_lines)")[0].values.map(row => row[1]));
   for (const name of ["presentation_currency","exchange_rate_numerator","exchange_rate_denominator","exchange_rate_type","exchange_rate_source","presentation_debit_minor","presentation_credit_minor"]) assert.ok(entryColumns.has(name), "Falta columna bimonetaria " + name);
   for (const name of ["presentation_debit_minor","presentation_credit_minor"]) assert.ok(lineColumns.has(name), "Falta importe bimonetario por renglón " + name);
+  const exchangeRateForeignKey = db.exec("PRAGMA foreign_key_list(journal_entries)")[0].values;
+  assert.ok(exchangeRateForeignKey.some(row => row[2] === "accounting_exchange_rates" && row[3] === "exchange_rate_id"), "El asiento debe referenciar la tasa documentada.");
+  assert.ok(db.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='journal_lines'")[0].values[0][0].includes("presentation_debit_minor INTEGER CHECK"), "Los importes de presentación deben rechazar valores negativos.");
   db.run("INSERT INTO accounting_periods(id,label,start_date,end_date) VALUES('2026-11','Noviembre 2026','2026-11-01','2026-11-30')");
   db.run("INSERT INTO accounting_settings(id,policy_version,updated_at) VALUES(1,'pending-review','now')");
   const settings = db.exec("SELECT accounting_framework,functional_currency,presentation_currency FROM accounting_settings WHERE id=1");
