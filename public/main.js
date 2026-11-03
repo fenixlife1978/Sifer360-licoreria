@@ -5440,8 +5440,8 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'')+'"></div>'+
       '<div class="f"><label for="fCtrlPref">Prefijo Nº Control Fiscal</label><input class="fld mono" id="fCtrlPref" value="'+esc(c.ctrlPrefix||'00-')+'"></div>'+
       '<div class="f"><label for="fCtrlNext">Próximo Nº de Control</label><input class="fld mono r" id="fCtrlNext" value="'+(c.ctrlNext||1043)+'"></div>'+
-      '<div class="f"><label for="fRangoD">Rango Autorizado (Desde)</label><input class="fld mono" id="fRangoD" value="'+esc(c.ctrlRangoDesde||'00-00000001')+'"></div>'+
-      '<div class="f"><label for="fRangoH">Rango Autorizado (Hasta)</label><input class="fld mono" id="fRangoH" value="'+esc(c.ctrlRangoHasta||'00-00050000')+'"></div>'+
+      '<div class="f"><label for="fRangoD">Rango Autorizado (Desde)</label><input class="fld mono" id="fRangoD" value="'+esc(c.ctrlRangoDesde||'')+'"></div>'+
+      '<div class="f"><label for="fRangoH">Rango Autorizado (Hasta)</label><input class="fld mono" id="fRangoH" value="'+esc(c.ctrlRangoHasta||'')+'"></div>'+
       '<div class="f"><label for="fImpRif">RIF Imprenta Digital Autorizada</label><input class="fld" id="fImpRif" value="'+esc(c.imprentaRif||'')+'"></div>'+
       '<div class="f"><label for="fImpAut">Nº Providencia Imprenta</label><input class="fld" id="fImpAut" value="'+esc(c.imprentaAut||'')+'"></div>'+
       '<div class="f"><label for="fSerial">Serial Máquina / Memoria Fiscal</label><input class="fld mono" id="fSerial" value="'+esc(c.serialFiscal||'')+'"></div>'+
