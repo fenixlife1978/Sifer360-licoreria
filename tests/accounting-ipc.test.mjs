@@ -24,6 +24,9 @@ test("los cambios de configuración generan auditoría y evitan solapamiento de 
   assert.ok(main.includes("BEGIN IMMEDIATE"));
   assert.ok(main.includes("El período se solapa con el período contable"));
   assert.ok(main.includes("Un período cerrado no puede modificarse."));
+  assert.ok(main.includes("La clasificación especial debe coincidir con la notificación expresa verificada."));
+  assert.ok(main.includes("startDate.slice(0,7)!==id"));
+  assert.ok(main.includes("No se puede activar agente de retención IVA sin designación especial confirmada."));
 });
 
 test("la interfaz advierte que la configuración no activa asientos automáticos", () => {
