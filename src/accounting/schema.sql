@@ -13,6 +13,16 @@ CREATE TABLE IF NOT EXISTS accounting_periods (
  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed')), closed_at TEXT, closed_by TEXT,
  CHECK(start_date<=end_date)
 );
+CREATE TABLE IF NOT EXISTS accounting_exchange_rates (
+ id TEXT PRIMARY KEY, rate_date TEXT NOT NULL, from_currency TEXT NOT NULL, to_currency TEXT NOT NULL,
+ rate_numerator INTEGER NOT NULL CHECK(rate_numerator>0),
+ rate_denominator INTEGER NOT NULL CHECK(rate_denominator>0),
+ rate_type TEXT NOT NULL CHECK(rate_type IN ('official','market','contractual','accounting_adjustment')),
+ source_name TEXT NOT NULL, source_reference TEXT NOT NULL, recorded_at TEXT NOT NULL, recorded_by TEXT,
+ UNIQUE(rate_date,from_currency,to_currency,rate_type,source_reference)
+);
+CREATE INDEX IF NOT EXISTS idx_accounting_exchange_rates_date
+ ON accounting_exchange_rates(rate_date,from_currency,to_currency);
 CREATE TABLE IF NOT EXISTS chart_of_accounts (
  code TEXT PRIMARY KEY, parent_code TEXT REFERENCES chart_of_accounts(code), name TEXT NOT NULL,
  account_type TEXT NOT NULL CHECK(account_type IN ('asset','liability','equity','income','expense','memorandum')),
