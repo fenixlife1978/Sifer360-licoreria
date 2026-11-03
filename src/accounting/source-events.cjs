@@ -82,7 +82,9 @@ function buildAccountingSourceEvents(previousState, nextState, options = {}) {
         capturedAt
       };
       const payloadJson = JSON.stringify(body);
-      const payloadHash = digest(payloadJson);
+      // The idempotency fingerprint excludes transport metadata (device and capture time):
+      // the same commercial fact replicated by another terminal remains one source event.
+      const payloadHash = digest(JSON.stringify({ sourceCollection: collection, action, record: record || previousRecord, previousRecord }));
       const eventType = action + "." + payloadHash.slice(0, 20);
       const eventId = digest(sourceType + "|" + sourceId + "|" + eventType);
       events.push({
