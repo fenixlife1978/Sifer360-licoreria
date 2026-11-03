@@ -64,3 +64,12 @@ test("la interfaz muestra eventos pendientes sin presentarlos como asientos", ()
   assert.ok(renderer.includes("btnSaveFiscalProfile"));
   assert.ok(renderer.includes("btnSaveAccountingPeriod"));
 });
+
+test("la replicación LAN espera confirmación del guardado SQLite", () => {
+  const saveStart = renderer.indexOf("function save(){");
+  const saveEnd = renderer.indexOf("\n}", saveStart) + 2;
+  const saveBlock = renderer.slice(saveStart, saveEnd);
+  assert.ok(saveBlock.includes("return posSqliteDriver.saveState(state).then"));
+  assert.ok(saveBlock.indexOf("captureNewOperations()") > saveBlock.indexOf("if(!result||result.ok!==true)"));
+  assert.ok(saveBlock.indexOf("scheduleNetworkSync()") > saveBlock.indexOf("if(!result||result.ok!==true)"));
+});
