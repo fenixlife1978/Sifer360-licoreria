@@ -165,8 +165,8 @@ function seed(){
   S={
     cfg:{
       empresa:'',rif:'',dir:'',cajero:'',caja:'01',rate:0,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
-      fiscalTipo:'FORMA_LIBRE',contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:75,provEspecial:'',
-      ctrlPrefix:'00-',ctrlNext:1,ctrlRangoDesde:'',ctrlRangoHasta:'',
+      fiscalTipo:'NO_CONFIGURADO',contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:0,provEspecial:'',
+      ctrlPrefix:'',ctrlNext:0,ctrlRangoDesde:'',ctrlRangoHasta:'',
       imprentaRif:'',imprentaAut:'',serialFiscal:''
     },
     products:[],
@@ -656,13 +656,35 @@ function load(){
     else if(!Array.isArray(S.casheaLiquidaciones))S.casheaLiquidaciones=[];
     if(Array.isArray(d.cambiosDivisas))S.cambiosDivisas=d.cambiosDivisas;
     else if(!S.cambiosDivisas)S.cambiosDivisas=[];
-    if(!S.cfg.fiscalTipo)S.cfg.fiscalTipo='FORMA_LIBRE';
+    if(!S.cfg.fiscalTipo)S.cfg.fiscalTipo='NO_CONFIGURADO';
     if(S.cfg.contribEspecial===undefined)S.cfg.contribEspecial=false;
     if(S.cfg.retencionHabilitadaConfirmada===undefined)S.cfg.retencionHabilitadaConfirmada=false;
-    if(!S.cfg.retIvaPct)S.cfg.retIvaPct=75;
+    if(S.cfg.retIvaPct===undefined||S.cfg.retIvaPct===null)S.cfg.retIvaPct=0;
     if(!S.cfg.provEspecial)S.cfg.provEspecial='';
-    if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='00-';
-    if(!S.cfg.ctrlNext)S.cfg.ctrlNext=1043;
+    if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='';
+    if(S.cfg.ctrlNext===undefined||S.cfg.ctrlNext===null)S.cfg.ctrlNext=0;
+    const hadLegacyFiscalDemo = S.cfg.ctrlRangoDesde==='00-00000001' ||
+      S.cfg.ctrlRangoHasta==='00-00050000' ||
+      S.cfg.imprentaRif==='J-31009988-4' ||
+      S.cfg.imprentaAut==='SENIAT/DAF/2022/981' ||
+      S.cfg.serialFiscal==='Z4A7719204' ||
+      S.cfg.provEspecial==='SNAT/2023/000412';
+    if(hadLegacyFiscalDemo){
+      if(S.cfg.ctrlRangoDesde==='00-00000001')S.cfg.ctrlRangoDesde='';
+      if(S.cfg.ctrlRangoHasta==='00-00050000')S.cfg.ctrlRangoHasta='';
+      if(S.cfg.imprentaRif==='J-31009988-4')S.cfg.imprentaRif='';
+      if(S.cfg.imprentaAut==='SENIAT/DAF/2022/981')S.cfg.imprentaAut='';
+      if(S.cfg.serialFiscal==='Z4A7719204')S.cfg.serialFiscal='';
+      if(S.cfg.provEspecial==='SNAT/2023/000412')S.cfg.provEspecial='';
+      if(S.cfg.ctrlPrefix==='00-')S.cfg.ctrlPrefix='';
+      if(Number(S.cfg.ctrlNext)===1043)S.cfg.ctrlNext=0;
+      if(S.cfg.fiscalTipo==='FORMA_LIBRE')S.cfg.fiscalTipo='NO_CONFIGURADO';
+      (S.sales||[]).forEach(s=>{
+        const generated='00-'+String(s.cashbox||'').replace(/\W/g,'').slice(-4)+'-'+pad(s.no,8);
+        if(s.ctrlNo===generated)s.ctrlNo='';
+      });
+    }
+
     
     
     
@@ -675,7 +697,7 @@ function load(){
       if(s.baseG16===undefined)s.baseG16=s.base||0;
     });
     (S.purchases||[]).forEach(p=>{
-      if(!p.ctrlProv)p.ctrlProv='00-'+pad(p.no+4400,8);
+      if(!p.ctrlProv||p.ctrlProv==='00-'+pad(p.no+4400,8))p.ctrlProv='';
     });
     S.invoice=d.invoice||S.invoice;
     S.purchaseSeq=d.purchaseSeq||S.purchaseSeq;
@@ -4382,12 +4404,11 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
   if(creditAmt>0){
     pays.push({id:'credito',name:'Crédito CxC ('+cDays+' días)',cur:'USD',amount:creditAmt});
   }
-  const ctrlPrefix=S.cfg.ctrlPrefix||'00-';
-  const seqs=cajaSeqs(),boxSeq=seqs[currentCaja()]||(seqs[currentCaja()]={invoice:1,void:1,refund:1,cxc:1,movement:1,z:1});
-  const ctrlNext=Number(boxSeq.ctrl||1);boxSeq.ctrl=ctrlNext+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
-  const ctrlNo=ctrlPrefix+String(currentCaja()).replace(/\W/g,'').slice(-4)+'-'+pad(ctrlNext,8);
+  // Sin integración con imprenta digital autorizada o máquina fiscal validada,
+  // el POS conserva la operación como documento interno y no inventa un número de control.
+  const ctrlNo='';
   const sale={
-    no:invNo,ctrlNo,docType:'01-FACTURA',transType:'01-REG',
+    no:invNo,ctrlNo,docType:'DOCUMENTO_INTERNO',transType:'AUXILIAR',fiscalStatus:'NO_CONFIGURADO',
     ts,cashbox:currentCaja(),cashier:currentCajero(),client:Object.assign({},S.client),lines,
     sub:t.sub,disc:t.disc,base:t.base,
     baseG16:t.baseG16,baseR8:t.baseR8,baseA31:t.baseA31,baseEx:t.baseEx,
@@ -4665,12 +4686,12 @@ function printFiscalReport(title,html){
       '<div style="text-align:right">'+
         '<div style="font-weight:700;font-size:14px;color:#1842B8">'+esc(title)+'</div>'+
         '<div style="font-size:11px;color:#555">Fecha de Emisión: '+fmtDT(Date.now())+'</div>'+
-        '<div style="font-size:11px;color:#555">Control Fiscal: '+esc(S.cfg.ctrlPrefix||'00-')+' &middot; Rango Aut. Imprenta</div>'+
+        '<div style="font-size:11px;color:#92400E">Numeración fiscal: no configurada ni validada en esta instalación. Este reporte es auxiliar.</div>'+
       '</div>'+
     '</div>'+
     html+
     '<div style="margin-top:24px;border-top:1px dashed #888;padding-top:10px;display:flex;justify-content:space-between;font-size:10.5px;color:#555">'+
-      '<div>Documento generado por SIFER 360 &middot; Sistema Administrativo y de Control Fiscal</div>'+
+      '<div>Documento auxiliar generado por SIFER 360 &middot; No sustituye factura emitida por medio autorizado</div>'+
       '<div>Firma Contador / Administrador: _____________________________</div>'+
     '</div>'+
   '</div>';
@@ -5438,8 +5459,8 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
       '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
       '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'')+'"></div>'+
-      '<div class="f"><label for="fCtrlPref">Prefijo Nº Control Fiscal</label><input class="fld mono" id="fCtrlPref" value="'+esc(c.ctrlPrefix||'00-')+'"></div>'+
-      '<div class="f"><label for="fCtrlNext">Próximo Nº de Control</label><input class="fld mono r" id="fCtrlNext" value="'+(c.ctrlNext||1043)+'"></div>'+
+      '<div class="f"><label for="fCtrlPref">Prefijo Nº Control Fiscal</label><input class="fld mono" id="fCtrlPref" value="'+esc(c.ctrlPrefix||'')+'"></div>'+
+      '<div class="f"><label for="fCtrlNext">Próximo Nº de Control</label><input class="fld mono r" id="fCtrlNext" value="'+(c.ctrlNext||0)+'"></div>'+
       '<div class="f"><label for="fRangoD">Rango Autorizado (Desde)</label><input class="fld mono" id="fRangoD" value="'+esc(c.ctrlRangoDesde||'')+'"></div>'+
       '<div class="f"><label for="fRangoH">Rango Autorizado (Hasta)</label><input class="fld mono" id="fRangoH" value="'+esc(c.ctrlRangoHasta||'')+'"></div>'+
       '<div class="f"><label for="fImpRif">RIF Imprenta Digital Autorizada</label><input class="fld" id="fImpRif" value="'+esc(c.imprentaRif||'')+'"></div>'+
@@ -5628,8 +5649,8 @@ function seniatSudebanDlg(initialTab){
           S.cfg.retencionHabilitadaConfirmada=$('#fRetConfirm',el).checked===true;
           if(!S.cfg.contribEspecial)S.cfg.retencionHabilitadaConfirmada=false;
           S.cfg.provEspecial=$('#fProvEsp',el).value.trim();
-          S.cfg.ctrlPrefix=$('#fCtrlPref',el).value.trim()||'00-';
-          S.cfg.ctrlNext=parseInt($('#fCtrlNext',el).value)||1043;
+          S.cfg.ctrlPrefix=$('#fCtrlPref',el).value.trim()||'';
+          S.cfg.ctrlNext=parseInt($('#fCtrlNext',el).value)||0;
           S.cfg.ctrlRangoDesde=$('#fRangoD',el).value.trim();
           S.cfg.ctrlRangoHasta=$('#fRangoH',el).value.trim();
           S.cfg.imprentaRif=$('#fImpRif',el).value.trim();
