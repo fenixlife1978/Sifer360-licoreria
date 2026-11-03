@@ -62,3 +62,14 @@ test("un asiento aprobado bloquea cambios de cabecera y renglones; uno contabili
   assert.throws(() => db.run("UPDATE journal_entries SET posted_by='otro' WHERE id='J-1'"), /Un asiento contabilizado es inmutable/);
   db.close();
 });
+
+test("la migración de una base anterior puede añadir la referencia de tasa sin reconstruir asientos", async () => {
+  const SQL = await initSqlJs({ locateFile: file => require.resolve("sql.js/dist/" + file) });
+  const db = new SQL.Database();
+  db.run("PRAGMA foreign_keys=ON; CREATE TABLE accounting_exchange_rates(id TEXT PRIMARY KEY); CREATE TABLE journal_entries(id TEXT PRIMARY KEY);");
+  db.run("ALTER TABLE journal_entries ADD COLUMN exchange_rate_id TEXT REFERENCES accounting_exchange_rates(id)");
+  const foreignKeys = db.exec("PRAGMA foreign_key_list(journal_entries)")[0].values;
+  assert.ok(foreignKeys.some(row => row[2] === "accounting_exchange_rates" && row[3] === "exchange_rate_id"));
+  assert.throws(() => db.run("INSERT INTO journal_entries(id,exchange_rate_id) VALUES('legacy-1','missing-rate')"), /FOREIGN KEY constraint failed/);
+  db.close();
+});
