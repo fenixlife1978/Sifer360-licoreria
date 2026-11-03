@@ -16,7 +16,7 @@ function hashPassword(password, salt = crypto.randomBytes(16)) {
 }
 
 function verifyPassword(password, encoded) {
-  if (typeof password !== 'string' || typeof encoded !== 'string') return false;
+  if (typeof password !== 'string' || password.length < 10 || password.length > 128 || typeof encoded !== 'string') return false;
   const parts = encoded.split('$');
   if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
   const n = Number(parts[1]), r = Number(parts[2]), p = Number(parts[3]);
