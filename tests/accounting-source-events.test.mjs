@@ -43,3 +43,11 @@ test("no crea eventos por cambios ajenos a operaciones ni por snapshots idéntic
   assert.equal(buildAccountingSourceEvents(state, { ...state, cfg: { theme: "light" } }).length, 0);
   assert.equal(buildAccountingSourceEvents(state, JSON.parse(JSON.stringify(state))).length, 0);
 });
+
+test("la misma operación replicada desde otro terminal conserva el mismo evento", () => {
+  const state = { sales: [{ id: "V-99", cashbox: "01", total: 88, ts: 1793700000000 }] };
+  const first = buildAccountingSourceEvents({}, state, { deviceId: "terminal-01", capturedAt: "2026-11-03T12:00:00.000Z" });
+  const replica = buildAccountingSourceEvents({}, state, { deviceId: "terminal-02", capturedAt: "2026-11-03T12:05:00.000Z" });
+  assert.equal(first[0].eventId, replica[0].eventId);
+  assert.equal(first[0].payloadHash, replica[0].payloadHash);
+});
