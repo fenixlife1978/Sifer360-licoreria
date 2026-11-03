@@ -224,7 +224,7 @@ function initializeSchema() {
       if (!columns.some(item => item.name === column)) db.run('ALTER TABLE ' + table + ' ADD COLUMN ' + column + ' ' + definition);
     };
     ensureColumn('journal_entries','presentation_currency','TEXT');
-    ensureColumn('journal_entries','exchange_rate_id','TEXT');
+    ensureColumn('journal_entries','exchange_rate_id','TEXT REFERENCES accounting_exchange_rates(id)');
     ensureColumn('journal_entries','exchange_rate_numerator','INTEGER NOT NULL DEFAULT 1');
     ensureColumn('journal_entries','exchange_rate_denominator','INTEGER NOT NULL DEFAULT 1');
     ensureColumn('journal_entries','exchange_rate_type','TEXT');
