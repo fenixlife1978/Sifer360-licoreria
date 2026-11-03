@@ -10,7 +10,7 @@ test("el esquema contable se crea en SQLite y activa restricciones de integridad
   db.run(fs.readFileSync(new URL("../src/accounting/schema.sql", import.meta.url), "utf8"));
   const tables = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
   const names = new Set(tables[0].values.map(row => row[0]));
-  for (const name of ["accounting_settings","accounting_periods","accounting_exchange_rates","chart_of_accounts","fiscal_entity_profile","fiscal_document_series","tax_rule_sets","tax_rules","journal_entries","journal_lines","accounting_source_events","accounting_audit_log"]) assert.ok(names.has(name), "Falta tabla " + name);
+  for (const name of ["accounting_settings","accounting_periods","accounting_exchange_rates","chart_of_accounts","fiscal_entity_profile","fiscal_document_series","alcohol_product_profiles","alcohol_traceability_movements","tax_rule_sets","tax_rules","journal_entries","journal_lines","accounting_source_events","accounting_audit_log"]) assert.ok(names.has(name), "Falta tabla " + name);
   const triggers = db.exec("SELECT name FROM sqlite_master WHERE type='trigger'");
   assert.ok(triggers[0].values.length >= 3, "No se instalaron las salvaguardas de inmutabilidad");
   db.run("INSERT INTO accounting_periods(id,label,start_date,end_date) VALUES('2026-11','Noviembre 2026','2026-11-01','2026-11-30')");
