@@ -79,3 +79,7 @@ La pestaña Contabilidad VEN-NIF muestra el resumen y las últimas operaciones c
 La captura incluye también aperturas de caja, movimientos de inventario heredados y ventas suspendidas. El guardado Electron ya no oculta los errores de IPC: si SQLite no confirma la escritura, el fallo se propaga al manejador de persistencia de la interfaz.
 
 El contador o administrador puede marcar un evento pendiente como **needs_review**, indicando el motivo. La transición se realiza en una transacción y queda registrada en la bitácora de auditoría. Esta marca no equivale a aprobación ni contabilización.
+
+## Plan de cuentas configurable
+
+La interfaz permite registrar y actualizar cuentas sin precargar un plan universal. Exige que el marco VEN-NIF ya esté configurado; valida código, clasificación, saldo normal, alcance PYME/GE y jerarquía. Una cuenta padre debe estar activa y ser de agrupación; no se admiten ciclos ni subcuentas de distinta clasificación. Si una cuenta ya tiene renglones contables, no se permite cambiar su clasificación, saldo normal o jerarquía. Cada alta o cambio se registra en la bitácora. No hay borrado de cuentas desde esta pantalla.
