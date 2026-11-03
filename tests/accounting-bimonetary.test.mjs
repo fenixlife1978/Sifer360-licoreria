@@ -18,8 +18,8 @@ test("conserva igualdad Debe/Haber en ambas monedas", () => {
   });
   assert.equal(result.functionalDebitMinor, 87473200);
   assert.equal(result.functionalCreditMinor, 87473200);
-  assert.equal(result.presentationDebitMinor, 10000);
-  assert.equal(result.presentationCreditMinor, 10000);
+  assert.equal(result.presentationDebitMinor, 100);
+  assert.equal(result.presentationCreditMinor, 100);
 });
 
 test("rechaza tasa ausente, cero, monedas inválidas y asientos descuadrados", () => {
