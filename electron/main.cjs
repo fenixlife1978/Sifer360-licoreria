@@ -609,6 +609,69 @@ function registerAccountingIpc() {
     persistDb();
     return one('SELECT id,label,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?', [id]);
   });
+  ipcMain.handle('accounting:list-accounts', event => {
+    assertTrustedAccountingSender(event);
+    return all(`SELECT code,parent_code AS parentCode,name,account_type AS accountType,normal_balance AS normalBalance,
+      accepts_posting AS acceptsPosting,active,framework_scope AS frameworkScope,updated_at AS updatedAt
+      FROM chart_of_accounts ORDER BY code`);
+  });
+  ipcMain.handle('accounting:save-account', (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor = accountingActor(input);
+    const code = String(input.code || '').trim();
+    const name = String(input.name || '').trim();
+    const accountType = String(input.accountType || '');
+    const normalBalance = String(input.normalBalance || '');
+    const parentCode = String(input.parentCode || '').trim() || null;
+    const frameworkScope = String(input.frameworkScope || 'both');
+    const acceptsPosting = input.acceptsPosting === true ? 1 : 0;
+    const active = input.active === false ? 0 : 1;
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(code)) throw new Error('Código inválido: usa hasta 30 caracteres alfanuméricos, punto, guion o guion bajo.');
+    if (!name || name.length > 150) throw new Error('El nombre de la cuenta es obligatorio y admite hasta 150 caracteres.');
+    if (!['asset','liability','equity','income','expense','memorandum'].includes(accountType)) throw new Error('Selecciona una clasificación contable válida.');
+    if (!['debit','credit'].includes(normalBalance)) throw new Error('Selecciona el saldo normal Debe o Haber.');
+    if (!['both','VEN_NIF_PYME','VEN_NIF_GE'].includes(frameworkScope)) throw new Error('Ámbito VEN-NIF no válido.');
+    const settings = one('SELECT accounting_framework FROM accounting_settings WHERE id=1');
+    if (!settings || !settings.accounting_framework) throw new Error('Primero configura y documenta el marco VEN-NIF de la entidad.');
+    if (frameworkScope !== 'both' && frameworkScope !== settings.accounting_framework) throw new Error('El ámbito de la cuenta no coincide con el marco contable configurado.');
+    if (parentCode === code) throw new Error('Una cuenta no puede ser su propia cuenta padre.');
+    const before = one('SELECT * FROM chart_of_accounts WHERE code=?', [code]);
+    const hasLines = Number(one('SELECT COUNT(*) AS total FROM journal_lines WHERE account_code=?', [code]).total) > 0;
+    const children = Number(one('SELECT COUNT(*) AS total FROM chart_of_accounts WHERE parent_code=?', [code]).total);
+    if (hasLines && before && (before.account_type !== accountType || before.normal_balance !== normalBalance || (before.parent_code || null) !== parentCode)) {
+      throw new Error('No se puede cambiar clasificación, saldo normal o jerarquía de una cuenta que ya tiene movimientos contables.');
+    }
+    if (children > 0 && acceptsPosting) throw new Error('Una cuenta con subcuentas debe ser de agrupación y no aceptar contabilizaciones.');
+    if (parentCode) {
+      const parent = one('SELECT code,account_type,accepts_posting,active FROM chart_of_accounts WHERE code=?', [parentCode]);
+      if (!parent || Number(parent.active) !== 1 || Number(parent.accepts_posting) !== 0) throw new Error('La cuenta padre debe existir, estar activa y ser de agrupación.');
+      if (parent.account_type !== accountType) throw new Error('La cuenta hija debe conservar la misma clasificación de su cuenta padre.');
+      const visited = new Set([code]);
+      let cursor = parentCode;
+      while (cursor) {
+        if (visited.has(cursor)) throw new Error('La jerarquía produciría un ciclo de cuentas.');
+        visited.add(cursor);
+        const ancestor = one('SELECT parent_code FROM chart_of_accounts WHERE code=?', [cursor]);
+        cursor = ancestor && ancestor.parent_code ? String(ancestor.parent_code) : null;
+      }
+    }
+    const now = new Date().toISOString();
+    db.run('BEGIN IMMEDIATE');
+    try {
+      run(`INSERT INTO chart_of_accounts(code,parent_code,name,account_type,normal_balance,accepts_posting,active,framework_scope,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(code) DO UPDATE SET parent_code=excluded.parent_code,name=excluded.name,account_type=excluded.account_type,
+          normal_balance=excluded.normal_balance,accepts_posting=excluded.accepts_posting,active=excluded.active,
+          framework_scope=excluded.framework_scope,updated_at=excluded.updated_at`,
+        [code,parentCode,name,accountType,normalBalance,acceptsPosting,active,frameworkScope,now,now]);
+      run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
+        [crypto.randomUUID(),'chart_of_account',code,before?'update':'create',actor.actorId,now,before?JSON.stringify(before):null,JSON.stringify({code,parentCode,name,accountType,normalBalance,acceptsPosting,active,frameworkScope})]);
+      db.run('COMMIT');
+    } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
+    persistDb();
+    return one('SELECT code,parent_code AS parentCode,name,account_type AS accountType,normal_balance AS normalBalance,accepts_posting AS acceptsPosting,active,framework_scope AS frameworkScope FROM chart_of_accounts WHERE code=?',[code]);
+  });
+
 }
 
 function registerIpc() {
