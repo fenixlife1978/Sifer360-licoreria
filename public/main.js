@@ -5589,14 +5589,17 @@ function seniatSudebanDlg(initialTab){
     const content=$('#snContent',el);
     if(!content||activeTab!=='contabilidad')return;
     if(!window.posDesktop)return;
+    renderAccountingJournalLines();
     try{
-      const [settings,profile,periods,accounts,sourceEvents,sourceSummary]=await Promise.all([
+      const [settings,profile,periods,accounts,sourceEvents,sourceSummary,journalEntries,trialBalance]=await Promise.all([
         window.posDesktop.accountingGetSettings(),
         window.posDesktop.accountingGetProfile(),
         window.posDesktop.accountingListPeriods(),
         window.posDesktop.accountingListAccounts(),
         window.posDesktop.accountingListSourceEvents(),
-        window.posDesktop.accountingSourceEventSummary()
+        window.posDesktop.accountingSourceEventSummary(),
+        window.posDesktop.accountingListJournalEntries(),
+        window.posDesktop.accountingGetTrialBalance()
       ]);
       const set=(id,value)=>{const node=$('#'+id,el);if(node&&value!==null&&value!==undefined)node.value=String(value);};
       const check=(id,value)=>{const node=$('#'+id,el);if(node)node.checked=!!value;};
@@ -5614,15 +5617,40 @@ function seniatSudebanDlg(initialTab){
         set('accMunicipalLicense',profile.municipal_license_reference);set('accProviderRif',profile.provider_rif);
         set('accProviderAuth',profile.provider_authorization_reference);set('accMachineSerial',profile.fiscal_machine_serial);
       }
+      const journalCurrency=$('#accJournalCurrency',el);
+      if(journalCurrency)journalCurrency.textContent=settings?.functionalCurrency||'No configurada';
+      const periodSelect=$('#accJournalPeriod',el);
+      if(periodSelect)periodSelect.innerHTML='<option value="">Seleccionar período abierto</option>'+periods.filter(p=>p.status==='open').map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+' ('+esc(p.startDate)+' a '+esc(p.endDate)+')</option>').join('');
+      renderAccountingJournalLines();
       const list=$('#accPeriodsList',el);
       if(list)list.innerHTML=periods.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Período</th><th>Desde</th><th>Hasta</th><th>Estado</th></tr></thead><tbody>'+periods.map(p=>'<tr><td>'+esc(p.label)+'</td><td>'+esc(p.startDate)+'</td><td>'+esc(p.endDate)+'</td><td>'+esc(p.status==='closed'?'Cerrado':'Abierto')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay períodos contables definidos.';
       const accountList=$('#accAccountsList',el);
       if(accountList)accountList.innerHTML=accounts.length?'<div class="hint">'+accounts.length+' cuentas registradas</div><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>Cuenta</th><th>Padre</th><th>Clasificación</th><th>Saldo normal</th><th>Uso</th><th>Estado</th></tr></thead><tbody>'+accounts.map(a=>'<tr><td>'+esc(a.code)+'</td><td>'+esc(a.name)+'</td><td>'+esc(a.parentCode||'—')+'</td><td>'+esc(({asset:'Activo',liability:'Pasivo',equity:'Patrimonio',income:'Ingreso',expense:'Gasto',memorandum:'Orden'})[a.accountType]||a.accountType)+'</td><td>'+esc(a.normalBalance==='debit'?'Debe':'Haber')+'</td><td>'+esc(Number(a.acceptsPosting)?'Contabilizable':'Agrupación')+'</td><td>'+esc(Number(a.active)?'Activa':'Inactiva')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay cuentas. Carga el plan aprobado antes de generar asientos.';
+      const canReviewJournals=String((activeUser()||{}).role||'')==='contador';
+      const journalNode=$('#accJournalEntries',el);
+      const journalStatus={draft:'Borrador',approved:'Aprobado',posted:'Contabilizado',reversed:'Reversado'};
+      if(journalNode)journalNode.innerHTML=journalEntries.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Asiento</th><th>Descripción</th><th>Período</th><th>Debe</th><th>Haber</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>'+journalEntries.map(entry=>{
+        const actions=[];
+        if(canReviewJournals&&entry.status==='draft')actions.push('<button class="btn mini" data-approve-journal="'+esc(entry.id)+'">Aprobar</button>');
+        if(canReviewJournals&&entry.status==='approved')actions.push('<button class="btn mini primary" data-post-journal="'+esc(entry.id)+'">Contabilizar</button>');
+        if(canReviewJournals&&entry.status==='posted')actions.push('<button class="btn mini" data-reverse-journal="'+esc(entry.id)+'">Reversar</button>');
+        return '<tr><td>'+esc(entry.entryDate)+'</td><td class="mono">'+esc(entry.id.slice(0,8))+'</td><td>'+esc(entry.description)+'</td><td>'+esc(entry.periodId)+'</td><td class="r">'+esc(fmtJournalMinor(entry.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(entry.creditMinor,settings?.monetaryDecimals??2))+'</td><td>'+esc(journalStatus[entry.status]||entry.status)+'</td><td>'+actions.join(' ')+'</td></tr>';
+      }).join('')+'</tbody></table></div>':'Todavía no hay asientos manuales.';
+      const trialNode=$('#accTrialBalance',el);
+      if(trialNode){
+        const totalDebit=trialBalance.reduce((sum,row)=>sum+Number(row.debitMinor||0),0);
+        const totalCredit=trialBalance.reduce((sum,row)=>sum+Number(row.creditMinor||0),0);
+        trialNode.innerHTML=trialBalance.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Cuenta</th><th>Nombre</th><th>Debe</th><th>Haber</th></tr></thead><tbody>'+trialBalance.map(row=>'<tr><td class="mono">'+esc(row.code)+'</td><td>'+esc(row.name)+'</td><td class="r">'+esc(fmtJournalMinor(row.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.creditMinor,settings?.monetaryDecimals??2))+'</td></tr>').join('')+'<tr><th colspan="2">Totales</th><th class="r">'+esc(fmtJournalMinor(totalDebit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(totalCredit,settings?.monetaryDecimals??2))+'</th></tr></tbody></table></div><p class="hint">'+(totalDebit===totalCredit?'Balance cuadrado.':'Diferencia: '+esc(fmtJournalMinor(Math.abs(totalDebit-totalCredit),settings?.monetaryDecimals??2)))+'</p>':'No hay cuentas en el plan contable.';
+      }
       const summaryNode=$('#accSourceSummary',el);
       if(summaryNode)summaryNode.textContent='Total: '+sourceSummary.total+' · Pendientes: '+sourceSummary.pending+' · Revisión: '+sourceSummary.needs_review+' · Procesados: '+sourceSummary.processed+' · Rechazados: '+sourceSummary.rejected;
       const eventsNode=$('#accSourceEvents',el);
       if(eventsNode)eventsNode.innerHTML=sourceEvents.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Origen</th><th>Operación</th><th>Estado</th></tr></thead><tbody>'+sourceEvents.slice(0,40).map(item=>'<tr><td>'+esc(item.occurredAt)+'</td><td>'+esc(item.sourceType)+' / '+esc(item.sourceId)+'</td><td>'+esc(item.payload?.action||item.eventType.split('.')[0])+'</td><td>'+esc(({pending:'Pendiente',processed:'Procesado',needs_review:'Revisión',rejected:'Rechazado'})[item.processingStatus]||item.processingStatus)+(item.processingStatus==='pending'&&['admin','contador'].includes(String((activeUser()||{}).role||''))?' <button class="btn mini" data-source-event-review="'+esc(item.eventId)+'">Marcar revisión</button>':'')+'</td></tr>').join('')+'</tbody></table></div>':'No hay operaciones capturadas todavía.';
     }catch(error){msg('No se pudo leer la configuración contable: '+(error.message||error),'bad');}
+  };
+  const fmtJournalMinor=(value,decimals)=>{
+    const places=Math.max(0,Math.min(6,Number(decimals)||0));
+    return new Intl.NumberFormat('es-VE',{minimumFractionDigits:places,maximumFractionDigits:places}).format(Number(value||0)/(10**places));
   };
   const accountingActorInput=()=>{
     const user=activeUser()||{};
