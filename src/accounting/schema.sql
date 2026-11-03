@@ -2,8 +2,8 @@
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS accounting_settings (
  id INTEGER PRIMARY KEY CHECK(id=1),
- accounting_framework TEXT NOT NULL DEFAULT 'VEN_NIF_PYME' CHECK(accounting_framework IN ('VEN_NIF_PYME','VEN_NIF_GE')),
- functional_currency TEXT NOT NULL DEFAULT 'VES', presentation_currency TEXT NOT NULL DEFAULT 'VES',
+ accounting_framework TEXT CHECK(accounting_framework IS NULL OR accounting_framework IN ('VEN_NIF_PYME','VEN_NIF_GE')),
+ functional_currency TEXT, presentation_currency TEXT,
  monetary_decimals INTEGER NOT NULL DEFAULT 2 CHECK(monetary_decimals BETWEEN 0 AND 6),
  automation_mode TEXT NOT NULL DEFAULT 'supervised' CHECK(automation_mode IN ('supervised','suggest_only')),
  policy_version TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT
