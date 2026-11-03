@@ -573,10 +573,17 @@ function scheduleNetworkSync(){
 }
 function save(){
   const state=stateSnapshot();
-  posSqliteDriver.saveState(state).catch(e=>persistenceError(e));
-  captureNewOperations();
-  scheduleNetworkSync();
-  try{window.dispatchEvent(new Event('sifer:state-saved'));}catch(e){}
+  // Do not enqueue LAN replication or announce a completed save until SQLite confirms persistence.
+  return posSqliteDriver.saveState(state).then(result=>{
+    if(!result||result.ok!==true)throw new Error('SQLite no confirmó el guardado del estado POS.');
+    captureNewOperations();
+    scheduleNetworkSync();
+    try{window.dispatchEvent(new Event('sifer:state-saved'));}catch(e){}
+    return result;
+  }).catch(error=>{
+    persistenceError(error);
+    return {ok:false,error:(error&&error.message)||String(error)};
+  });
 }
 setInterval(()=>{if(window.posDesktop&&typeof window.posDesktop.networkSyncNow==='function')networkSyncAttempt()},20000);
 
