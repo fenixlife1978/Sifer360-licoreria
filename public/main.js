@@ -5845,6 +5845,58 @@ function seniatSudebanDlg(initialTab){
             await loadAccountingTab();
           }catch(error){msg(error.message||String(error),'bad');}})();
         }
+        if(ev.target.id==='btnAddJournalLine'){
+          accountingJournalLines=collectAccountingJournalLines();
+          accountingJournalLines.push({accountCode:'',description:'',debit:'',credit:''});
+          renderAccountingJournalLines();
+        }
+        if(ev.target.dataset.removeJournalLine!==undefined){
+          accountingJournalLines=collectAccountingJournalLines();
+          const removeIndex=Number(ev.target.dataset.removeJournalLine);
+          if(accountingJournalLines.length>2&&Number.isInteger(removeIndex))accountingJournalLines.splice(removeIndex,1);
+          renderAccountingJournalLines();
+        }
+        if(ev.target.id==='btnCreateJournalEntry'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            const lines=collectAccountingJournalLines();
+            const result=await window.posDesktop.accountingCreateJournalEntry({...actor,
+              entryDate:$('#accJournalDate',el).value,periodId:$('#accJournalPeriod',el).value,
+              description:$('#accJournalDescription',el).value,lines
+            });
+            msg('Borrador de asiento '+result.id.slice(0,8)+' guardado. Aún no afecta el balance.');
+            accountingJournalLines=Array.from({length:4},()=>({accountCode:'',description:'',debit:'',credit:''}));
+            $('#accJournalDescription',el).value='';
+            renderAccountingJournalLines();
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.approveJournal){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingApproveJournalEntry({...accountingActorInput(),entryId:ev.target.dataset.approveJournal});
+            msg('Asiento '+result.id.slice(0,8)+' aprobado. Falta contabilizarlo.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.postJournal){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingPostJournalEntry({...accountingActorInput(),entryId:ev.target.dataset.postJournal});
+            msg('Asiento '+result.id.slice(0,8)+' contabilizado.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.reverseJournal){
+          (async()=>{try{
+            const reason=prompt('Indica el motivo y soporte del reverso:');
+            if(reason===null)return;
+            const result=await window.posDesktop.accountingCreateReversalDraft({...accountingActorInput(),
+              entryId:ev.target.dataset.reverseJournal,reason,
+              reversalDate:$('#accJournalDate',el).value,reversalPeriodId:$('#accJournalPeriod',el).value
+            });
+            msg('Borrador de reverso '+result.id.slice(0,8)+' creado. Debe aprobarse y contabilizarse por separado.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
         if(ev.target.id==='btnSaveAccountingAccount'){
           (async()=>{try{
             const actor=accountingActorInput();
