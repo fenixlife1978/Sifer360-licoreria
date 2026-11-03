@@ -5,7 +5,7 @@ Se incorpora una base técnica aislada y comprobable. No activa aún la contabil
 
 ## Decisiones
 - Marco contable configurable: VEN-NIF PYME o VEN-NIF GE según la clasificación de la entidad; no se preselecciona ninguno.
-- Automatización supervisada: los eventos generan borradores; un usuario contador o super-admin aprueba y contabiliza.
+- Automatización supervisada prevista: los eventos POS se capturan como evidencia; solo después de aprobar reglas de correspondencia podrán convertirse en borradores. Un usuario Contador deberá aprobar y contabilizar.
 - Dinero en unidades menores enteras, moneda explícita y sin coma flotante binaria. La moneda funcional y de presentación no se presuponen: deben configurarse tras análisis del contador.
 - El perfil fiscal conserva clasificación del contribuyente, designaciones de agente, actividad económica (incluida la actividad de bebidas alcohólicas), licencias y medio autorizado de emisión.
 - Las series de documentos fiscales exigen rango, autorización, vigencia y proveedor o máquina autorizada; no se generan números de control ficticios.
@@ -90,8 +90,18 @@ La jerarquía impide inactivar una cuenta padre con subcuentas activas y evita q
 
 ## Asientos manuales, aprobación y balance de comprobación
 
-La interfaz permite crear asientos manuales en borrador usando cuentas activas y contabilizables del plan configurado, dentro de un período abierto y en la moneda funcional vigente. Los importes se convierten a unidades menores enteras según los decimales configurados y el motor rechaza asientos descuadrados.
+La interfaz permite crear asientos manuales en borrador usando cuentas activas y contabilizables del plan configurado, dentro de un período abierto, con importes en moneda funcional y su equivalente documentado en moneda de presentación. Los importes se convierten a unidades menores enteras según los decimales configurados y el motor rechaza asientos descuadrados.
 
 El flujo separa funciones: el creador no puede aprobar su propio asiento; la aprobación y contabilización están reservadas al perfil Contador. Los cambios de estado y los reversos se registran en auditoría. Un reverso se crea como asiento nuevo en un período abierto y solo al contabilizarlo cambia el asiento original a estado reversed. Nunca se borra ni reescribe el contenido de un asiento contabilizado.
 
 El balance de comprobación suma exclusivamente renglones de asientos contabilizados y sus reversos. Los borradores y aprobados no afectan los totales. Todavía no hay asientos automáticos desde ventas/compras, mapeo de medios de pago, reconocimiento de costo de ventas ni generación de estados financieros.
+
+## Contabilidad bimonetaria
+
+La moneda funcional y la moneda de presentación son independientes y deben configurarse tras el análisis de la realidad económica de la entidad. No se fuerza VES como moneda funcional ni USD como moneda de presentación.
+
+Cuando son distintas, el asiento manual requiere una tasa positiva expresada como unidades de moneda de presentación por cada unidad funcional, tipo de tasa, fuente y referencia documental. La tasa se registra en el historial y se congela junto con los importes equivalentes del asiento. Las conversiones se calculan con fracciones racionales y unidades menores enteras; el redondeo no se oculta. Si los importes convertidos no cuadran, el asiento no se guarda hasta documentar un ajuste explícito.
+
+El balance de comprobación presenta Debe y Haber en ambas monedas. Los reversos conservan la tasa y revierten ambos importes. Los asientos históricos sin equivalencia quedan señalados como pendientes; no se inventan tasas retroactivas.
+
+**Límite contable vigente:** esto incorpora captura bimonetaria de asientos manuales y su balance, pero no completa todavía la traducción de estados financieros cuando la moneda funcional difiere de la de presentación. Faltan políticas por tipo de partida (tasas de cierre, históricas y de transacción), diferencias de conversión y el tratamiento correspondiente en patrimonio/otro resultado integral conforme al marco aplicable. Tampoco se han convertido automáticamente los eventos POS a asientos bimonetarios. La aprobación de esas políticas corresponde al Contador antes de activar reportes financieros definitivos.
