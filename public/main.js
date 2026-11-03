@@ -165,7 +165,7 @@ function seed(){
   S={
     cfg:{
       empresa:'',rif:'',dir:'',cajero:'',caja:'01',rate:0,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
-      fiscalTipo:'NO_CONFIGURADO',contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:0,provEspecial:'',
+      fiscalTipo:'NO_CONFIGURADO',contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:0,retIvaPctConfirmed:false,provEspecial:'',
       ctrlPrefix:'',ctrlNext:0,ctrlRangoDesde:'',ctrlRangoHasta:'',
       imprentaRif:'',imprentaAut:'',serialFiscal:''
     },
@@ -660,6 +660,7 @@ function load(){
     if(S.cfg.contribEspecial===undefined)S.cfg.contribEspecial=false;
     if(S.cfg.retencionHabilitadaConfirmada===undefined)S.cfg.retencionHabilitadaConfirmada=false;
     if(S.cfg.retIvaPct===undefined||S.cfg.retIvaPct===null)S.cfg.retIvaPct=0;
+    if(S.cfg.retIvaPctConfirmed!==true)S.cfg.retIvaPct=0;
     if(!S.cfg.provEspecial)S.cfg.provEspecial='';
     if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='';
     if(S.cfg.ctrlNext===undefined||S.cfg.ctrlNext===null)S.cfg.ctrlNext=0;
@@ -2530,7 +2531,7 @@ function comprasDlg(initialTab){
     const total=r8(base+iva);
     const dueTs=ts+creditDays*86400000;
     const retPct=[75,100].includes(Number(S.cfg.retIvaPct))?Number(S.cfg.retIvaPct):0; /* No asumir tasa si el contador no la configuró. */
-    const aplicarRetencion=!!(iva>0&&retPct>0&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true);
+    const aplicarRetencion=!!(iva>0&&retPct>0&&S.cfg.retIvaPctConfirmed===true&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true);
     const retUsd=aplicarRetencion?r2(iva*(retPct/100)):0;
     const retBs=r2(retUsd*S.cfg.rate);
     const payableTotal=r2(Math.max(0,total-retUsd));
@@ -5646,6 +5647,7 @@ function seniatSudebanDlg(initialTab){
           S.cfg.fiscalTipo=$('#fTipo',el).value;
           S.cfg.contribEspecial=$('#fEsp',el).value==='1';
           S.cfg.retIvaPct=Number($('#fPctRet',el).value)||0;
+          S.cfg.retIvaPctConfirmed=[75,100].includes(S.cfg.retIvaPct);
           S.cfg.retencionHabilitadaConfirmada=$('#fRetConfirm',el).checked===true;
           if(!S.cfg.contribEspecial)S.cfg.retencionHabilitadaConfirmada=false;
           S.cfg.provEspecial=$('#fProvEsp',el).value.trim();
