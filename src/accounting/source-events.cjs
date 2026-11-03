@@ -7,6 +7,9 @@ const SOURCE_COLLECTIONS = Object.freeze({
   cxp: "payable",
   cortesZ: "cash_close",
   kardex: "inventory_movement",
+  movements: "inventory_movement",
+  openings: "cash_opening",
+  held: "held_sale",
   counts: "inventory_count",
   returns: "return",
   voids: "void",
@@ -16,7 +19,7 @@ const SOURCE_COLLECTIONS = Object.freeze({
   retencionesIva: "iva_retention",
   retentions: "retention"
 });
-const BOX_SCOPED = new Set(["sales", "cxc", "cortesZ", "returns", "voids"]);
+const BOX_SCOPED = new Set(["sales", "cxc", "cortesZ", "openings", "movements", "returns", "voids"]);
 const ID_FIELDS = ["id", "uuid", "eventId", "no", "number", "ctrlNo", "code"];
 
 function digest(value) {
