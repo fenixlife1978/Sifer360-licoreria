@@ -161,8 +161,9 @@ BEFORE UPDATE OF authority,tax_code,version,effective_from,effective_to,source_r
 ON tax_rule_sets WHEN OLD.status='active'
 BEGIN SELECT RAISE(ABORT,'Una regla tributaria activa no se reescribe; cree una nueva versión.'); END;
 
-CREATE TRIGGER IF NOT EXISTS trg_immutable_approved_journal_fields
-BEFORE UPDATE OF source_type,source_id,entry_date,period_id,functional_currency,rule_version,description,
+DROP TRIGGER IF EXISTS trg_immutable_approved_journal_fields;
+CREATE TRIGGER trg_immutable_approved_journal_fields
+BEFORE UPDATE OF source_type,source_id,entry_date,period_id,functional_currency,presentation_currency,exchange_rate_id,exchange_rate_numerator,exchange_rate_denominator,exchange_rate_type,exchange_rate_source,presentation_debit_minor,presentation_credit_minor,rule_version,description,
 debit_minor,credit_minor,created_at,created_by,approved_at,approved_by,reverses_entry_id
 ON journal_entries WHEN OLD.status IN ('approved','posted','reversed')
 BEGIN SELECT RAISE(ABORT,'Un asiento aprobado no puede cambiar sus datos ni sus importes.'); END;
