@@ -31,6 +31,7 @@ test("las nuevas ventas no inventan números de control ni se clasifican como fa
   assert.ok(main.includes("docType:'DOCUMENTO_INTERNO',transType:'AUXILIAR'"));
   assert.ok(!main.includes("const ctrlNo=ctrlPrefix+String(currentCaja())"));
   assert.ok(main.includes("Numeración fiscal: no configurada ni validada"));
+  assert.ok(main.includes("el POS no genera números de control"));
 });
 
 test("retenciones manuales son borradores sin números aleatorios ni datos precargados", () => {
