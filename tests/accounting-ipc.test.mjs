@@ -49,6 +49,8 @@ test("el plan de cuentas es configurable, jerárquico y protegido", () => {
   assert.ok(main.includes("La cuenta hija debe conservar la misma clasificación"));
   assert.ok(main.includes("La jerarquía produciría un ciclo de cuentas."));
   assert.ok(main.includes("No se puede cambiar clasificación, saldo normal o jerarquía"));
+  assert.ok(main.includes("No se puede inactivar una cuenta que conserva subcuentas activas."));
+  assert.ok(main.includes("La cuenta hija no puede tener un alcance VEN-NIF más amplio que su cuenta padre."));
   assert.ok(main.includes("Primero configura y documenta el marco VEN-NIF"));
   assert.ok(renderer.includes("Plan de cuentas VEN-NIF"));
   assert.ok(renderer.includes("btnSaveAccountingAccount"));
