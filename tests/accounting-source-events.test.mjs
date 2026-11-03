@@ -51,3 +51,14 @@ test("la misma operación replicada desde otro terminal conserva el mismo evento
   assert.equal(first[0].eventId, replica[0].eventId);
   assert.equal(first[0].payloadHash, replica[0].payloadHash);
 });
+
+test("incluye aperturas de caja, movimientos de inventario y ventas retenidas", () => {
+  const next = {
+    openings: [{ id: "AP-1", cashbox: "01", amount: 200 }],
+    movements: [{ id: "M-1", cashbox: "01", quantity: 3 }],
+    held: [{ id: "H-1", amount: 75 }]
+  };
+  const events = buildAccountingSourceEvents({}, next, { deviceId: "pc-03" });
+  assert.equal(events.length, 3);
+  assert.deepEqual(new Set(events.map(event => event.sourceType)), new Set(["cash_opening", "inventory_movement", "held_sale"]));
+});
