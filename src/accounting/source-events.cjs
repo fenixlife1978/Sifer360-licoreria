@@ -9,12 +9,8 @@ const SOURCE_COLLECTIONS = Object.freeze({
   openings: "cash_opening",
   movimientosCaja: "cash_movement",
   movements: "inventory_movement",
-  movimientosCaja: "cash_movement",
   held: "held_sale",
   kardex: "inventory_movement",
-  movements: "inventory_movement",
-  openings: "cash_opening",
-  held: "held_sale",
   counts: "inventory_count",
   returns: "return",
   voids: "void",
@@ -23,7 +19,7 @@ const SOURCE_COLLECTIONS = Object.freeze({
   cambiosDivisas: "currency_movement",
   retencionesIva: "iva_retention",
   retentions: "retention"
-});
+});;
 const BOX_SCOPED = new Set(["sales", "cxc", "cortesZ", "openings", "movements", "movimientosCaja", "kardex", "returns", "voids"]);
 const ID_FIELDS = ["id", "uuid", "eventId", "no", "number", "ctrlNo", "code"];
 
