@@ -51,19 +51,26 @@ export function buildBimonetaryLines({
   if (functionalCurrency === presentationCurrency) {
     assert(rateNumerator === 1 && rateDenominator === 1, "Si ambas monedas son iguales, la tasa debe ser 1:1.");
   }
-  const converted = lines.map((line, index) => ({
-    ...line,
-    presentationDebitMinor: convertMinorUnits(line.debitMinor, {
-      rateNumerator, rateDenominator, fromDecimals: functionalDecimals, toDecimals: presentationDecimals
-    }),
-    presentationCreditMinor: convertMinorUnits(line.creditMinor, {
-      rateNumerator, rateDenominator, fromDecimals: functionalDecimals, toDecimals: presentationDecimals
-    })
-  }));
+  const converted = lines.map((line, index) => {
+    assert(Number.isSafeInteger(line.debitMinor) && line.debitMinor >= 0, "Debe inválido en renglón " + (index + 1) + ".");
+    assert(Number.isSafeInteger(line.creditMinor) && line.creditMinor >= 0, "Haber inválido en renglón " + (index + 1) + ".");
+    assert((line.debitMinor > 0) !== (line.creditMinor > 0), "Cada renglón debe contener Debe o Haber, nunca ambos ni ninguno.");
+    return {
+      ...line,
+      presentationDebitMinor: convertMinorUnits(line.debitMinor, {
+        rateNumerator, rateDenominator, fromDecimals: functionalDecimals, toDecimals: presentationDecimals
+      }),
+      presentationCreditMinor: convertMinorUnits(line.creditMinor, {
+        rateNumerator, rateDenominator, fromDecimals: functionalDecimals, toDecimals: presentationDecimals
+      })
+    };
+  });
   const functionalDebit = lines.reduce((sum, line) => sum + line.debitMinor, 0);
   const functionalCredit = lines.reduce((sum, line) => sum + line.creditMinor, 0);
   const presentationDebit = converted.reduce((sum, line) => sum + line.presentationDebitMinor, 0);
   const presentationCredit = converted.reduce((sum, line) => sum + line.presentationCreditMinor, 0);
+  assert(Number.isSafeInteger(functionalDebit) && Number.isSafeInteger(functionalCredit), "Totales funcionales fuera del rango seguro.");
+  assert(Number.isSafeInteger(presentationDebit) && Number.isSafeInteger(presentationCredit), "Totales de presentación fuera del rango seguro.");
   assert(functionalDebit === functionalCredit, "El asiento no cuadra en moneda funcional.");
   assert(presentationDebit === presentationCredit,
     "El redondeo de conversión deja una diferencia en moneda de presentación. Registra un renglón explícito de ajuste por conversión antes de continuar.");
