@@ -5503,6 +5503,29 @@ function seniatSudebanDlg(initialTab){
   };
 
 
+
+  let accountingJournalLines=Array.from({length:4},()=>({accountCode:'',description:'',debit:'',credit:''}));
+  const collectAccountingJournalLines=()=>{
+    const rows=$('.acc-journal-row',el);
+    if(!rows.length)return accountingJournalLines;
+    return rows.map(row=>({
+      accountCode:$('[data-journal-account]',row)?.value||'',
+      description:$('[data-journal-description]',row)?.value||'',
+      debit:$('[data-journal-debit]',row)?.value||'0',
+      credit:$('[data-journal-credit]',row)?.value||'0'
+    }));
+  };
+  const renderAccountingJournalLines=()=>{
+    const node=$('#accJournalLines',el);
+    if(!node)return;
+    node.innerHTML=accountingJournalLines.map((line,index)=>'<div class="newgrid acc-journal-row" data-line-index="'+index+'">'+
+      '<div class="f"><label>Cuenta</label><input class="fld mono" data-journal-account value="'+esc(line.accountCode)+'" placeholder="Código contable"></div>'+
+      '<div class="f wide"><label>Concepto del renglón</label><input class="fld" data-journal-description value="'+esc(line.description)+'" placeholder="Descripción"></div>'+
+      '<div class="f"><label>Debe ('+esc($('#accJournalCurrency',el)?.textContent||'moneda')+')</label><input class="fld r" data-journal-debit inputmode="decimal" value="'+esc(line.debit)+'" placeholder="0,00"></div>'+
+      '<div class="f"><label>Haber</label><input class="fld r" data-journal-credit inputmode="decimal" value="'+esc(line.credit)+'" placeholder="0,00"></div>'+
+      '<div class="f"><button type="button" class="btn mini" data-remove-journal-line="'+index+'" '+(accountingJournalLines.length<=2?'disabled':'')+'>Quitar renglón</button></div>'+
+      '</div>').join('');
+  };
   const drawAccountingTab=()=>{
     const user=activeUser()||{};
     const canEdit=['admin','contador'].includes(String(user.role||''));
