@@ -40,6 +40,8 @@ test("la retención automática no presume 75% y la configuración permite 75% o
   assert.ok(main.includes('value="100"'));
   assert.ok(main.includes("S.cfg.retIvaPct=Number($('#fPctRet',el).value)||0"));
   assert.ok(main.includes("No configurado / uso interno"));
+  assert.ok(main.includes("retIvaPctConfirmed!==true"));
+  assert.ok(main.includes("S.cfg.retIvaPctConfirmed=[75,100].includes(S.cfg.retIvaPct)"));
   assert.ok(main.includes("Proveedor tecnológico autorizado"));
 });
 
