@@ -14,6 +14,9 @@ test("el esquema contable se crea en SQLite y activa restricciones de integridad
   const triggers = db.exec("SELECT name FROM sqlite_master WHERE type='trigger'");
   assert.ok(triggers[0].values.length >= 3, "No se instalaron las salvaguardas de inmutabilidad");
   db.run("INSERT INTO accounting_periods(id,label,start_date,end_date) VALUES('2026-11','Noviembre 2026','2026-11-01','2026-11-30')");
+  db.run("INSERT INTO accounting_settings(id,policy_version,updated_at) VALUES(1,'pending-review','now')");
+  const settings = db.exec("SELECT accounting_framework,functional_currency,presentation_currency FROM accounting_settings WHERE id=1");
+  assert.deepEqual(settings[0].values[0], [null, null, null], "No debe presumirse VEN-NIF PYME ni moneda funcional VES");
   db.run("INSERT INTO chart_of_accounts(code,name,account_type,normal_balance,created_at,updated_at) VALUES('1.1','Caja','asset','debit','now','now')");
   db.run("INSERT INTO journal_entries(id,source_type,source_id,entry_date,period_id,functional_currency,rule_version,status,debit_minor,credit_minor,created_at) VALUES('A1','sale','V1','2026-11-03','2026-11','VES','v1','posted',100,100,'now')");
   assert.throws(() => db.run("DELETE FROM journal_entries WHERE id='A1'"), /No se permite borrar asientos/);
