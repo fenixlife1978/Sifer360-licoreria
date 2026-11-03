@@ -198,6 +198,21 @@ function initializeSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_received_operations_device_seq ON network_received_operations(device_id, device_seq);
   `);
+
+  // Migración contable aditiva e idempotente sobre la misma base SQLite local.
+  // El archivo se incluye expresamente en el paquete Windows.
+  const accountingSchemaPath = path.join(app.getAppPath(), 'src', 'accounting', 'schema.sql');
+  if (!fs.existsSync(accountingSchemaPath)) {
+    throw new Error('No se encontró el esquema contable incluido en la aplicación: ' + accountingSchemaPath);
+  }
+  db.run('BEGIN IMMEDIATE');
+  try {
+    db.run(fs.readFileSync(accountingSchemaPath, 'utf8'));
+    db.run('COMMIT');
+  } catch (error) {
+    try { db.run('ROLLBACK'); } catch {}
+    throw new Error('No se pudo aplicar la migración contable SQLite; la transacción fue revertida. Detalle: ' + (error && error.message ? error.message : String(error)));
+  }
   persistDb();
 }
 async function initializeDatabase() {
