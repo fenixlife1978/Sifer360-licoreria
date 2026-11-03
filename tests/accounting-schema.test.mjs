@@ -13,6 +13,10 @@ test("el esquema contable se crea en SQLite y activa restricciones de integridad
   for (const name of ["accounting_settings","accounting_periods","accounting_exchange_rates","chart_of_accounts","fiscal_entity_profile","fiscal_document_series","alcohol_product_profiles","alcohol_traceability_movements","tax_rule_sets","tax_rules","journal_entries","journal_lines","accounting_source_events","accounting_audit_log"]) assert.ok(names.has(name), "Falta tabla " + name);
   const triggers = db.exec("SELECT name FROM sqlite_master WHERE type='trigger'");
   assert.ok(triggers[0].values.length >= 3, "No se instalaron las salvaguardas de inmutabilidad");
+  const entryColumns = new Set(db.exec("PRAGMA table_info(journal_entries)")[0].values.map(row => row[1]));
+  const lineColumns = new Set(db.exec("PRAGMA table_info(journal_lines)")[0].values.map(row => row[1]));
+  for (const name of ["presentation_currency","exchange_rate_numerator","exchange_rate_denominator","exchange_rate_type","exchange_rate_source","presentation_debit_minor","presentation_credit_minor"]) assert.ok(entryColumns.has(name), "Falta columna bimonetaria " + name);
+  for (const name of ["presentation_debit_minor","presentation_credit_minor"]) assert.ok(lineColumns.has(name), "Falta importe bimonetario por renglón " + name);
   db.run("INSERT INTO accounting_periods(id,label,start_date,end_date) VALUES('2026-11','Noviembre 2026','2026-11-01','2026-11-30')");
   db.run("INSERT INTO accounting_settings(id,policy_version,updated_at) VALUES(1,'pending-review','now')");
   const settings = db.exec("SELECT accounting_framework,functional_currency,presentation_currency FROM accounting_settings WHERE id=1");
