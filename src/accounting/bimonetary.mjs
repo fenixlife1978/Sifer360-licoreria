@@ -14,7 +14,7 @@ function power10(decimals, label) {
 }
 export function decimalRateToRational(value) {
   const raw = String(value ?? "").trim().replace(",", ".");
-  const match = /^(\d+)(?:\\.(\d{1,8}))?$/.exec(raw);
+  const match = /^(\d+)(?:\.(\d{1,8}))?$/.exec(raw);
   assert(match, "La tasa debe ser un decimal positivo con hasta 8 decimales.");
   const fraction = match[2] || "";
   let numerator = BigInt(match[1] + fraction);
