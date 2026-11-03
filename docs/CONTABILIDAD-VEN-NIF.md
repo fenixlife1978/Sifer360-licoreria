@@ -54,3 +54,16 @@ La Providencia SNAT/2025/000054 establece retención ordinaria del 75 % y supues
 ## Retenciones a proveedores: condición y exclusiones
 
 El perfil del proveedor distingue si está sujeto a retención de IVA, si es agente de percepción y si la operación concreta ha sido revisada como aplicable o excluida. La retención automática exige que estos datos estén confirmados y que exista referencia de soporte; la ausencia de información no equivale a una confirmación negativa. El borrador manual usa la misma validación. Esto es especialmente relevante para compras de bebidas alcohólicas, por las exclusiones previstas en la Providencia SNAT/2025/000054.
+
+## Configuración en la aplicación de escritorio
+
+La pestaña **Contabilidad VEN-NIF** del módulo de control fiscal permite guardar en SQLite local, con bitácora de auditoría:
+- marco contable seleccionado (PYME o GE);
+- moneda funcional y de presentación indicadas expresamente por el contador;
+- decimales y modo de automatización supervisada;
+- perfil tributario de la entidad, actividad licorera, designaciones y licencias;
+- períodos contables mensuales sin solapamientos.
+
+El esquema no asigna una moneda funcional ni un marco contable por defecto. La pantalla no genera asientos desde ventas, compras o movimientos de inventario. El usuario Administrador o Contador puede registrar la configuración, pero la validación del rol aún depende del modelo de sesión del renderer y no debe considerarse una frontera de seguridad equivalente a autenticación de servidor. El IPC contable valida el origen de la ventana y expone métodos específicos, nunca el objeto `ipcRenderer` completo.
+
+Los períodos se crean inicialmente abiertos; el cierre formal, el plan de cuentas, saldos de apertura, los asientos y los reportes contables se implementarán en fases separadas. No modificar manualmente la base SQLite para simular aprobación o contabilización.
