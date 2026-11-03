@@ -12,6 +12,21 @@ function power10(decimals, label) {
   assert(Number.isInteger(decimals) && decimals >= 0 && decimals <= 6, label + " debe estar entre 0 y 6.");
   return 10n ** BigInt(decimals);
 }
+export function decimalRateToRational(value) {
+  const raw = String(value ?? "").trim().replace(",", ".");
+  const match = /^(\\d+)(?:\\.(\\d{1,8}))?$/.exec(raw);
+  assert(match, "La tasa debe ser un decimal positivo con hasta 8 decimales.");
+  const fraction = match[2] || "";
+  let numerator = BigInt(match[1] + fraction);
+  let denominator = 10n ** BigInt(fraction.length);
+  assert(numerator > 0n, "La tasa debe ser mayor que cero.");
+  let a = numerator, b = denominator;
+  while (b) { const r = a % b; a = b; b = r; }
+  numerator /= a; denominator /= a;
+  const n = Number(numerator), d = Number(denominator);
+  assert(Number.isSafeInteger(n) && Number.isSafeInteger(d), "La tasa excede el rango seguro.");
+  return { rateNumerator: n, rateDenominator: d };
+}
 export function convertMinorUnits(amountMinor, {
   rateNumerator, rateDenominator, fromDecimals = 2, toDecimals = 2
 }) {
