@@ -62,6 +62,42 @@ CREATE TABLE IF NOT EXISTS fiscal_document_series (
 );
 CREATE INDEX IF NOT EXISTS idx_fiscal_series_status
  ON fiscal_document_series(status,document_type,valid_from,valid_to);
+CREATE TABLE IF NOT EXISTS alcohol_product_profiles (
+ product_code TEXT PRIMARY KEY,
+ species_category TEXT NOT NULL,
+ origin_type TEXT NOT NULL DEFAULT 'unknown'
+   CHECK(origin_type IN ('unknown','national','imported','artisanal')),
+ volume_ml INTEGER CHECK(volume_ml IS NULL OR volume_ml>0),
+ alcohol_degree_milli INTEGER CHECK(alcohol_degree_milli IS NULL OR alcohol_degree_milli BETWEEN 0 AND 100000),
+ exemption_status TEXT NOT NULL DEFAULT 'unknown'
+   CHECK(exemption_status IN ('unknown','taxable','exempt','exonerated','not_subject')),
+ exemption_reference TEXT,
+ producer_rif TEXT, importer_rif TEXT, supplier_rif TEXT,
+ band_serial TEXT,
+ band_status TEXT NOT NULL DEFAULT 'unknown'
+   CHECK(band_status IN ('unknown','present','missing','not_applicable')),
+ source_invoice_id TEXT, source_guide_number TEXT,
+ traceability_status TEXT NOT NULL DEFAULT 'needs_review'
+   CHECK(traceability_status IN ('needs_review','complete','incomplete','blocked')),
+ updated_at TEXT NOT NULL, updated_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_alcohol_profile_origin
+ ON alcohol_product_profiles(origin_type,species_category,traceability_status);
+CREATE TABLE IF NOT EXISTS alcohol_traceability_movements (
+ id TEXT PRIMARY KEY, product_code TEXT NOT NULL REFERENCES alcohol_product_profiles(product_code),
+ movement_type TEXT NOT NULL CHECK(movement_type IN ('purchase','sale','return','transfer','adjustment')),
+ quantity_milli INTEGER NOT NULL CHECK(quantity_milli>0),
+ unit_code TEXT NOT NULL, occurred_at TEXT NOT NULL,
+ supplier_rif TEXT, customer_rif TEXT,
+ invoice_number TEXT, guide_number TEXT, batch_number TEXT,
+ band_serial TEXT, source_operation_id TEXT NOT NULL,
+ document_status TEXT NOT NULL DEFAULT 'needs_review'
+   CHECK(document_status IN ('needs_review','verified','missing','rejected')),
+ created_at TEXT NOT NULL, created_by TEXT,
+ UNIQUE(source_operation_id,product_code,movement_type)
+);
+CREATE INDEX IF NOT EXISTS idx_alcohol_traceability_product
+ ON alcohol_traceability_movements(product_code,occurred_at);
 CREATE TABLE IF NOT EXISTS tax_rule_sets (
  id TEXT PRIMARY KEY, jurisdiction TEXT NOT NULL DEFAULT 'VE', authority TEXT NOT NULL, tax_code TEXT NOT NULL,
  version TEXT NOT NULL, effective_from TEXT NOT NULL, effective_to TEXT NOT NULL,
