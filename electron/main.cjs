@@ -673,7 +673,8 @@ function registerAccountingIpc() {
       COALESCE(SUM(CASE WHEN j.status IN ('posted','reversed') THEN l.debit_minor ELSE 0 END),0) AS debitMinor,
       COALESCE(SUM(CASE WHEN j.status IN ('posted','reversed') THEN l.credit_minor ELSE 0 END),0) AS creditMinor,
       COALESCE(SUM(CASE WHEN j.status IN ('posted','reversed') THEN l.presentation_debit_minor ELSE 0 END),0) AS presentationDebitMinor,
-      COALESCE(SUM(CASE WHEN j.status IN ('posted','reversed') THEN l.presentation_credit_minor ELSE 0 END),0) AS presentationCreditMinor
+      COALESCE(SUM(CASE WHEN j.status IN ('posted','reversed') THEN l.presentation_credit_minor ELSE 0 END),0) AS presentationCreditMinor,
+      (SELECT COUNT(*) FROM journal_entries legacy WHERE legacy.status IN ('posted','reversed') AND legacy.presentation_debit_minor IS NULL) AS unconvertedEntryCount
       FROM chart_of_accounts a LEFT JOIN journal_lines l ON l.account_code=a.code
       LEFT JOIN journal_entries j ON j.id=l.entry_id
       GROUP BY a.code,a.name,a.account_type,a.normal_balance ORDER BY a.code`);
@@ -727,6 +728,7 @@ function registerAccountingIpc() {
     Object.assign(entry,{presentationCurrency,exchangeRateId:rateId,exchangeRateNumerator:rate.rateNumerator,
       exchangeRateDenominator:rate.rateDenominator,exchangeRateType:rateType,exchangeRateSource:rateSource,
       presentationDebitMinor:converted.presentationDebitMinor,presentationCreditMinor:converted.presentationCreditMinor});
+    entry.lines=converted.lines;
     db.run('BEGIN IMMEDIATE');
     try {
       if(rateId)run('INSERT INTO accounting_exchange_rates(id,rate_date,from_currency,to_currency,rate_numerator,rate_denominator,rate_type,source_name,source_reference,recorded_at,recorded_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
