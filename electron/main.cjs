@@ -426,6 +426,124 @@ function registerNetworkIpc() {
     return { ok: true, state: result.state, role: 'client', updatedAt: result.updatedAt };
   });
 }
+
+function assertTrustedAccountingSender(event) {
+  const rawUrl = event && event.senderFrame && event.senderFrame.url;
+  let parsed;
+  try { parsed = new URL(String(rawUrl || '')); } catch { throw new Error('Origen IPC no válido.'); }
+  if (app.isPackaged) {
+    if (parsed.protocol !== 'file:' || !parsed.pathname.replace(/\\\\/g, '/').endsWith('/dist/index.html')) {
+      throw new Error('Se rechazó una solicitud contable desde un origen no autorizado.');
+    }
+  } else if (parsed.protocol !== 'http:' || !['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+    throw new Error('Se rechazó una solicitud contable desde un origen no autorizado.');
+  }
+}
+function accountingActor(input) {
+  const actorId = String(input && input.actorId || '').trim().slice(0, 100);
+  const actorRole = String(input && input.actorRole || '').trim();
+  if (!actorId || !['admin', 'contador'].includes(actorRole)) {
+    throw new Error('Esta operación requiere un usuario Administrador o Contador identificado.');
+  }
+  return { actorId, actorRole };
+}
+function registerAccountingIpc() {
+  ipcMain.handle('accounting:get-settings', event => {
+    assertTrustedAccountingSender(event);
+    return one('SELECT accounting_framework AS accountingFramework,functional_currency AS functionalCurrency,presentation_currency AS presentationCurrency,monetary_decimals AS monetaryDecimals,automation_mode AS automationMode,policy_version AS policyVersion,updated_at AS updatedAt,updated_by AS updatedBy FROM accounting_settings WHERE id=1');
+  });
+  ipcMain.handle('accounting:save-settings', (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor = accountingActor(input);
+    const framework = String(input.accountingFramework || '');
+    const functionalCurrency = String(input.functionalCurrency || '').trim().toUpperCase();
+    const presentationCurrency = String(input.presentationCurrency || '').trim().toUpperCase();
+    const decimals = Number(input.monetaryDecimals);
+    const automation = String(input.automationMode || 'supervised');
+    const policyVersion = String(input.policyVersion || '').trim();
+    if (!['VEN_NIF_PYME', 'VEN_NIF_GE'].includes(framework)) throw new Error('Selecciona VEN-NIF PYME o VEN-NIF GE según la clasificación documentada.');
+    if (!/^[A-Z]{3}$/.test(functionalCurrency) || !/^[A-Z]{3}$/.test(presentationCurrency)) throw new Error('Indica códigos ISO 4217 válidos para moneda funcional y de presentación.');
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 6) throw new Error('Los decimales monetarios deben estar entre 0 y 6.');
+    if (!['supervised', 'suggest_only'].includes(automation)) throw new Error('Modo de automatización no válido.');
+    if (!policyVersion || policyVersion.length > 80) throw new Error('Indica la versión de política contable aprobada.');
+    const now = new Date().toISOString();
+    const before = one('SELECT * FROM accounting_settings WHERE id=1');
+    db.run('BEGIN IMMEDIATE');
+    try {
+      run(`INSERT INTO accounting_settings(id,accounting_framework,functional_currency,presentation_currency,monetary_decimals,automation_mode,policy_version,updated_at,updated_by)
+        VALUES(1,?,?,?,?,?,?,?,?)
+        ON CONFLICT(id) DO UPDATE SET accounting_framework=excluded.accounting_framework,functional_currency=excluded.functional_currency,presentation_currency=excluded.presentation_currency,monetary_decimals=excluded.monetary_decimals,automation_mode=excluded.automation_mode,policy_version=excluded.policy_version,updated_at=excluded.updated_at,updated_by=excluded.updated_by`,
+        [framework, functionalCurrency, presentationCurrency, decimals, automation, policyVersion, now, actor.actorId]);
+      run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
+        [crypto.randomUUID(), 'accounting_settings', '1', 'update', actor.actorId, now, before ? JSON.stringify(before) : null, JSON.stringify({ accountingFramework: framework, functionalCurrency, presentationCurrency, monetaryDecimals: decimals, automationMode: automation, policyVersion })]);
+      db.run('COMMIT');
+    } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
+    persistDb();
+    return one('SELECT accounting_framework AS accountingFramework,functional_currency AS functionalCurrency,presentation_currency AS presentationCurrency,monetary_decimals AS monetaryDecimals,automation_mode AS automationMode,policy_version AS policyVersion,updated_at AS updatedAt,updated_by AS updatedBy FROM accounting_settings WHERE id=1');
+  });
+  ipcMain.handle('accounting:get-profile', event => {
+    assertTrustedAccountingSender(event);
+    return one('SELECT * FROM fiscal_entity_profile WHERE id=1');
+  });
+  ipcMain.handle('accounting:save-profile', (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor = accountingActor(input);
+    const rif = String(input.rif || '').trim().toUpperCase();
+    const legalName = String(input.legalName || '').trim();
+    const classification = String(input.taxpayerClassification || 'unknown');
+    const activity = String(input.businessActivityScope || 'unknown');
+    const emission = String(input.invoiceEmissionMode || 'internal_only');
+    if (!/^[JGVEP]-?\\d{8}-?\\d$/.test(rif)) throw new Error('El RIF debe tener formato válido, por ejemplo J-12345678-9.');
+    if (!legalName || legalName.length > 180) throw new Error('Indica la razón social registrada en el RIF.');
+    if (!['unknown','ordinary','formal','special'].includes(classification)) throw new Error('Clasificación tributaria no válida.');
+    if (!['unknown','retail','wholesale','importer','manufacturer','producer','mixed'].includes(activity)) throw new Error('Actividad económica no válida.');
+    if (!['internal_only','official_portal','authorized_provider','fiscal_machine','contingency'].includes(emission)) throw new Error('Modalidad de emisión no válida.');
+    const special = input.specialSubjectConfirmed === true ? 1 : 0;
+    const withholding = input.ivaWithholdingAgentConfirmed === true ? 1 : 0;
+    const perception = input.ivaPerceptionAgentConfirmed === true ? 1 : 0;
+    if (special && (!String(input.specialNoticeReference || '').trim() || !input.specialNoticeDate)) throw new Error('La condición de sujeto pasivo especial exige referencia y fecha de notificación.');
+    if (emission === 'authorized_provider' && (!String(input.providerRif || '').trim() || !String(input.providerAuthorizationReference || '').trim())) throw new Error('El proveedor tecnológico requiere RIF y autorización verificables.');
+    if (emission === 'fiscal_machine' && !String(input.fiscalMachineSerial || '').trim()) throw new Error('La máquina fiscal requiere serial verificable.');
+    const now = new Date().toISOString();
+    const before = one('SELECT * FROM fiscal_entity_profile WHERE id=1');
+    db.run('BEGIN IMMEDIATE');
+    try {
+      run(`INSERT INTO fiscal_entity_profile(id,rif,legal_name,taxpayer_classification,special_subject_confirmed,special_notice_reference,special_notice_date,iva_withholding_agent_confirmed,iva_perception_agent_confirmed,business_activity_scope,alcohol_license_reference,municipal_license_reference,invoice_emission_mode,provider_rif,provider_authorization_reference,fiscal_machine_serial,valid_from,valid_to,updated_at,updated_by)
+        VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(id) DO UPDATE SET rif=excluded.rif,legal_name=excluded.legal_name,taxpayer_classification=excluded.taxpayer_classification,special_subject_confirmed=excluded.special_subject_confirmed,special_notice_reference=excluded.special_notice_reference,special_notice_date=excluded.special_notice_date,iva_withholding_agent_confirmed=excluded.iva_withholding_agent_confirmed,iva_perception_agent_confirmed=excluded.iva_perception_agent_confirmed,business_activity_scope=excluded.business_activity_scope,alcohol_license_reference=excluded.alcohol_license_reference,municipal_license_reference=excluded.municipal_license_reference,invoice_emission_mode=excluded.invoice_emission_mode,provider_rif=excluded.provider_rif,provider_authorization_reference=excluded.provider_authorization_reference,fiscal_machine_serial=excluded.fiscal_machine_serial,valid_from=excluded.valid_from,valid_to=excluded.valid_to,updated_at=excluded.updated_at,updated_by=excluded.updated_by`,
+        [rif,legalName,classification,special,String(input.specialNoticeReference||''),String(input.specialNoticeDate||''),withholding,perception,activity,String(input.alcoholLicenseReference||''),String(input.municipalLicenseReference||''),emission,String(input.providerRif||''),String(input.providerAuthorizationReference||''),String(input.fiscalMachineSerial||''),String(input.validFrom||''),String(input.validTo||''),now,actor.actorId]);
+      run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
+        [crypto.randomUUID(),'fiscal_entity_profile','1','update',actor.actorId,now,before?JSON.stringify(before):null,JSON.stringify({rif,legalName,taxpayerClassification:classification,specialSubjectConfirmed:special,ivaWithholdingAgentConfirmed:withholding,ivaPerceptionAgentConfirmed:perception,businessActivityScope:activity,invoiceEmissionMode:emission})]);
+      db.run('COMMIT');
+    } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
+    persistDb();
+    return one('SELECT * FROM fiscal_entity_profile WHERE id=1');
+  });
+  ipcMain.handle('accounting:list-periods', event => {
+    assertTrustedAccountingSender(event);
+    return all('SELECT id,label,start_date AS startDate,end_date AS endDate,status,closed_at AS closedAt,closed_by AS closedBy FROM accounting_periods ORDER BY start_date');
+  });
+  ipcMain.handle('accounting:save-period', (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor = accountingActor(input);
+    const id = String(input.id || '').trim();
+    const label = String(input.label || '').trim();
+    const startDate = String(input.startDate || '');
+    const endDate = String(input.endDate || '');
+    if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(id) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(startDate) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(endDate) || startDate > endDate || !label) throw new Error('Período inválido: usa un identificador AAAA-MM y fechas coherentes.');
+    const overlap = one('SELECT id FROM accounting_periods WHERE id<>? AND start_date<=? AND end_date>=? LIMIT 1', [id,endDate,startDate]);
+    if (overlap) throw new Error('El período se solapa con el período contable ' + overlap.id + '.');
+    const existing = one('SELECT status FROM accounting_periods WHERE id=?', [id]);
+    if (existing && existing.status === 'closed') throw new Error('Un período cerrado no puede modificarse.');
+    const now = new Date().toISOString();
+    run('INSERT INTO accounting_periods(id,label,start_date,end_date,status) VALUES(?,?,?,?,\'open\') ON CONFLICT(id) DO UPDATE SET label=excluded.label,start_date=excluded.start_date,end_date=excluded.end_date', [id,label,startDate,endDate]);
+    run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,after_json) VALUES(?,?,?,?,?,?,?)',
+      [crypto.randomUUID(),'accounting_period',id,existing?'update':'create',actor.actorId,now,JSON.stringify({label,startDate,endDate})]);
+    persistDb();
+    return one('SELECT id,label,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?', [id]);
+  });
+}
+
 function registerIpc() {
   ipcMain.handle('posdb:get-mode', () => ({ mode: 'sqlite', databasePath: userDbPath() }));
   ipcMain.handle('posdb:set-mode', () => ({ mode: 'sqlite', databasePath: userDbPath() }));
@@ -491,6 +609,7 @@ app.whenReady().then(async () => {
   await initializeDatabase();
   readNetworkConfig();
   registerIpc();
+  registerAccountingIpc();
   registerNetworkIpc();
   if (networkConfig.role === 'server') { try { await startLanServer(networkConfig.port); } catch (error) { networkConfig.role = 'standalone'; saveNetworkConfig(); } }
   createWindow();
