@@ -17,5 +17,14 @@ test("el panel fiscal no presenta conformidad ni conciliaciones no verificadas c
     "Z4A7719204",
     "00-00050000"
   ]) assert.ok(!main.includes(phrase), "Se detectó afirmación fiscal no sustentada: " + phrase);
+  const retStart = main.indexOf("function newRetencionIvaDlg");
+  const retEnd = main.indexOf("function seniatSudebanDlg", retStart);
+  const retForm = main.slice(retStart, retEnd);
+  assert.ok(retForm.includes("BORRADOR-RET-"));
+  assert.ok(!retForm.includes("Math.random"));
+  assert.ok(!retForm.includes('value="00048912"'));
+  assert.ok(main.includes("Exportación TXT deshabilitada"));
+  assert.ok(main.includes("TXT oficial no habilitado"));
+  assert.ok(!main.includes("COMPROBANTE DE RETENCIÓN DEL IMPUESTO AL VALOR AGREGADO"));
   assert.ok(html.includes("SENIAT / SUDEBAN: Revisión pendiente"));
 });
