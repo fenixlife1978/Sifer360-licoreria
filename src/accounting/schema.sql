@@ -32,6 +32,36 @@ CREATE TABLE IF NOT EXISTS chart_of_accounts (
  framework_scope TEXT NOT NULL DEFAULT 'both' CHECK(framework_scope IN ('both','VEN_NIF_PYME','VEN_NIF_GE')),
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS fiscal_entity_profile (
+ id INTEGER PRIMARY KEY CHECK(id=1),
+ rif TEXT NOT NULL, legal_name TEXT NOT NULL,
+ taxpayer_classification TEXT NOT NULL DEFAULT 'unknown'
+   CHECK(taxpayer_classification IN ('unknown','ordinary','formal','special')),
+ special_subject_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(special_subject_confirmed IN (0,1)),
+ special_notice_reference TEXT, special_notice_date TEXT,
+ iva_withholding_agent_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(iva_withholding_agent_confirmed IN (0,1)),
+ iva_perception_agent_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(iva_perception_agent_confirmed IN (0,1)),
+ business_activity_scope TEXT NOT NULL DEFAULT 'unknown'
+   CHECK(business_activity_scope IN ('unknown','retail','wholesale','importer','manufacturer','producer','mixed')),
+ alcohol_license_reference TEXT, municipal_license_reference TEXT,
+ invoice_emission_mode TEXT NOT NULL DEFAULT 'internal_only'
+   CHECK(invoice_emission_mode IN ('internal_only','official_portal','authorized_provider','fiscal_machine','contingency')),
+ provider_rif TEXT, provider_authorization_reference TEXT, fiscal_machine_serial TEXT,
+ valid_from TEXT, valid_to TEXT, updated_at TEXT NOT NULL, updated_by TEXT
+);
+CREATE TABLE IF NOT EXISTS fiscal_document_series (
+ id TEXT PRIMARY KEY, document_type TEXT NOT NULL,
+ emission_mode TEXT NOT NULL CHECK(emission_mode IN ('official_portal','authorized_provider','fiscal_machine','contingency')),
+ prefix TEXT NOT NULL DEFAULT '', range_start TEXT NOT NULL, range_end TEXT NOT NULL,
+ next_number TEXT NOT NULL, authorization_reference TEXT NOT NULL,
+ authorized_provider_rif TEXT, fiscal_machine_serial TEXT,
+ valid_from TEXT NOT NULL, valid_to TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','active','expired','blocked')),
+ created_at TEXT NOT NULL, created_by TEXT,
+ CHECK(valid_from<=valid_to)
+);
+CREATE INDEX IF NOT EXISTS idx_fiscal_series_status
+ ON fiscal_document_series(status,document_type,valid_from,valid_to);
 CREATE TABLE IF NOT EXISTS tax_rule_sets (
  id TEXT PRIMARY KEY, jurisdiction TEXT NOT NULL DEFAULT 'VE', authority TEXT NOT NULL, tax_code TEXT NOT NULL,
  version TEXT NOT NULL, effective_from TEXT NOT NULL, effective_to TEXT NOT NULL,
