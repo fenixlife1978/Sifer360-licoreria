@@ -736,7 +736,7 @@ function registerAccountingIpc() {
           String(input.exchangeRateSourceName).trim().slice(0,120),String(input.exchangeRateSourceReference).trim().slice(0,180),entry.createdAt,actor.actorId]);
       insertJournalEntry(entry);
       run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,after_json) VALUES(?,?,?,?,?,?,?)',
-        [crypto.randomUUID(),'journal_entry',id,'create_draft',actor.actorId,entry.createdAt,JSON.stringify({sourceType:entry.sourceType,entryDate,periodId,description,debitMinor:entry.debitMinor,creditMinor:entry.creditMinor})]);
+        [crypto.randomUUID(),'journal_entry',id,'create_draft',actor.actorId,entry.createdAt,JSON.stringify({sourceType:entry.sourceType,entryDate,periodId,description,functionalCurrency:entry.currency,presentationCurrency:entry.presentationCurrency,exchangeRateNumerator:entry.exchangeRateNumerator,exchangeRateDenominator:entry.exchangeRateDenominator,exchangeRateType:entry.exchangeRateType,exchangeRateSource:entry.exchangeRateSource,presentationDebitMinor:entry.presentationDebitMinor,presentationCreditMinor:entry.presentationCreditMinor,debitMinor:entry.debitMinor,creditMinor:entry.creditMinor})]);
       db.run('COMMIT');
     } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
     persistDb();
