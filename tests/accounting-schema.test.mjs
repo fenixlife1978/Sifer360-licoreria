@@ -37,3 +37,21 @@ test("la cola de eventos de origen conserva idempotencia y estados permitidos", 
   assert.throws(() => db.run("UPDATE accounting_source_events SET processing_status='invented' WHERE event_id='evt-1'"));
   db.close();
 });
+
+test("un asiento aprobado bloquea cambios de cabecera y renglones; uno contabilizado es inmutable", async () => {
+  const SQL = await initSqlJs({ locateFile: file => require.resolve("sql.js/dist/" + file) });
+  const db = new SQL.Database();
+  db.run(fs.readFileSync(new URL("../src/accounting/schema.sql", import.meta.url), "utf8"));
+  db.run("INSERT INTO accounting_periods(id,label,start_date,end_date) VALUES('2026-12','Diciembre 2026','2026-12-01','2026-12-31')");
+  db.run("INSERT INTO chart_of_accounts(code,name,account_type,normal_balance,created_at,updated_at) VALUES('1.1','Caja','asset','debit','now','now'),('4.1','Ventas','income','credit','now','now')");
+  db.run("INSERT INTO journal_entries(id,source_type,source_id,entry_date,period_id,functional_currency,rule_version,status,debit_minor,credit_minor,created_at) VALUES('J-1','manual','M-1','2026-12-03','2026-12','VES','v1','draft',100,100,'now')");
+  db.run("INSERT INTO journal_lines(id,entry_id,line_no,account_code,debit_minor,credit_minor) VALUES('L-1','J-1',1,'1.1',100,0),('L-2','J-1',2,'4.1',0,100)");
+  db.run("UPDATE journal_entries SET status='approved',approved_at='now',approved_by='contador' WHERE id='J-1'");
+  assert.throws(() => db.run("UPDATE journal_lines SET description='alterado' WHERE id='L-1'"), /No se pueden modificar renglones/);
+  assert.throws(() => db.run("DELETE FROM journal_lines WHERE id='L-1'"), /No se pueden borrar renglones/);
+  assert.throws(() => db.run("INSERT INTO journal_lines(id,entry_id,line_no,account_code,debit_minor,credit_minor) VALUES('L-3','J-1',3,'1.1',1,0)"), /No se pueden agregar renglones/);
+  assert.throws(() => db.run("UPDATE journal_entries SET debit_minor=200 WHERE id='J-1'"), /Un asiento aprobado no puede cambiar/);
+  db.run("UPDATE journal_entries SET status='posted',posted_at='now',posted_by='contador' WHERE id='J-1'");
+  assert.throws(() => db.run("UPDATE journal_entries SET posted_by='otro' WHERE id='J-1'"), /Un asiento contabilizado es inmutable/);
+  db.close();
+});
