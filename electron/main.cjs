@@ -555,6 +555,26 @@ function registerAccountingIpc() {
         return { ...row, payload };
       });
   });
+  ipcMain.handle('accounting:mark-source-event-review', (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor = accountingActor(input);
+    const eventId = String(input.eventId || '').trim();
+    const reason = String(input.reason || '').trim().slice(0, 1000);
+    if (!eventId || !reason) throw new Error('Selecciona el evento e indica el motivo de revisión.');
+    const before = one('SELECT event_id,source_type,source_id,event_type,processing_status FROM accounting_source_events WHERE event_id=?', [eventId]);
+    if (!before) throw new Error('El evento contable no existe.');
+    if (!['pending','needs_review'].includes(before.processing_status)) throw new Error('Solo se pueden marcar eventos pendientes o ya en revisión.');
+    const now = new Date().toISOString();
+    db.run('BEGIN IMMEDIATE');
+    try {
+      run("UPDATE accounting_source_events SET processing_status='needs_review',error_message=? WHERE event_id=?", [reason,eventId]);
+      run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,reason,before_json,after_json) VALUES(?,?,?,?,?,?,?,?,?)',
+        [crypto.randomUUID(),'accounting_source_event',eventId,'mark_needs_review',actor.actorId,now,reason,JSON.stringify(before),JSON.stringify({processingStatus:'needs_review',reason})]);
+      db.run('COMMIT');
+    } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
+    persistDb();
+    return one('SELECT event_id AS eventId,processing_status AS processingStatus,error_message AS errorMessage FROM accounting_source_events WHERE event_id=?',[eventId]);
+  });
   ipcMain.handle('accounting:source-event-summary', event => {
     assertTrustedAccountingSender(event);
     const rows = all('SELECT processing_status AS status,COUNT(*) AS total FROM accounting_source_events GROUP BY processing_status');
