@@ -6,8 +6,18 @@ const sum=(rows,fn)=>rows.reduce((n,x)=>n+(Number(fn(x))||0),0);
 const outstanding=rows=>sum(rows,x=>Math.max(0,Number(x.total||0)-Number(x.paid||0)));
 function show(){
  const bridge=window.SIFERAccountingBridge;
- if(!bridge||typeof bridge.getState!=='function'){alert('El estado local de SQLite todavía no está disponible. Recargue la aplicación.');return;}
- const state=bridge.getState()||{},cfg=state.cfg||{},rate=Number(cfg.rate)||0;
+ const state=bridge&&typeof bridge.getState==='function'?bridge.getState():null;
+ const d=$('#adminDashboard'),main=$('.main'),left=$('.left');
+ if(!d||!main)return;
+ document.body.classList.add('accountant-mode');
+ if(left)left.hidden=true;
+ d.hidden=false;main.classList.add('dashboard-mode');
+ if(!state){
+   d.innerHTML='<div class="acct-loading"><b>Preparando espacio fiscal-contable…</b><span>Esperando la carga de la base de datos local SQLite.</span></div>';
+   if(!window.__SIFER_READY)window.addEventListener('sifer:ready',show,{once:true});
+   return;
+ }
+ const cfg=state.cfg||{},rate=Number(cfg.rate)||0;
  const now=new Date(),monthStart=new Date(now.getFullYear(),now.getMonth(),1).getTime(),nextMonth=new Date(now.getFullYear(),now.getMonth()+1,1).getTime();
  const monthRows=rows=>(Array.isArray(rows)?rows:[]).filter(x=>!x.void&&stamp(x)>=monthStart&&stamp(x)<nextMonth);
  const sales=monthRows(state.sales),purchases=monthRows(state.purchases);
@@ -29,11 +39,6 @@ function show(){
  const fmtPeriod=now.toLocaleDateString('es-VE',{month:'long',year:'numeric'});
  const fmtBs=n=>money(n,'VES'),fmtUsd=n=>money(n,'USD');
  const kpi=(label,value,sub,kind='blue')=>'<article class="acct-kpi"><span class="acct-kpi-label">'+label+'</span><strong class="acct-kpi-value '+kind+'">'+value+'</strong><small>'+sub+'</small></article>';
- const d=$('#adminDashboard'),main=$('.main'),left=$('.left');
- if(!d||!main)return;
- document.body.classList.add('accountant-mode');
- if(left)left.hidden=true;
- d.hidden=false;main.classList.add('dashboard-mode');
  d.innerHTML='<header class="acct-dash-head"><div><div class="acct-eyebrow">SIFER360 · ÁREA PROFESIONAL</div><h1>Dashboard del contador</h1><p>Resumen fiscal y contable · '+fmtPeriod+'</p></div><div class="acct-company"><b>'+String(cfg.empresa||'Empresa sin configurar').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))+'</b><span>RIF: '+String(cfg.rif||'No configurado')+'</span><span>Tasa registrada: '+(rate?rate.toLocaleString('es-VE')+' Bs./US$':'Sin tasa registrada')+'</span></div></header>'+
  '<section class="acct-kpi-grid">'+
  kpi('Ventas facturadas del mes',fmtUsd(sum(sales,x=>x.total)),fmtBs(sum(sales,x=>Number(x.total||0)*Number(x.rate||rate)))+' · '+sales.length+' documentos')+
@@ -48,4 +53,5 @@ function show(){
  '<section class="acct-dash-bottom"><article class="acct-summary-card"><h2>Actividad del período</h2><div class="acct-summary-grid"><div><b>'+sales.length+'</b><span>Facturas de venta</span></div><div><b>'+purchases.length+'</b><span>Compras registradas</span></div><div><b>'+retentions.length+'</b><span>Comprobantes de retención</span></div><div><b>'+pendingRetentions.length+'</b><span>Retenciones por revisar</span></div><div><b>'+posted.length+'</b><span>Asientos contabilizados</span></div><div><b>'+(Array.isArray(state.documents)?state.documents.length:0)+'</b><span>Soportes fiscales adjuntos</span></div></div></article><article class="acct-summary-card acct-guidance"><h2>Control profesional</h2><p>Las cifras se calculan con las operaciones registradas en la base de datos local. Revise los documentos, alícuotas, retenciones y soportes antes de preparar o presentar declaraciones.</p><p class="acct-note">El saldo de IVA es una estimación informativa del período y no sustituye la conciliación de los libros fiscales ni la revisión del contador.</p></article></section>';
 }
 window.SIFERAccountantDashboard={show};
+window.addEventListener('sifer:state-saved',()=>{const session=(()=>{try{return JSON.parse(sessionStorage.getItem('sifer360_session_v1')||'null')}catch{return null}})();const target=$('#adminDashboard');if(session&&session.role==='contador'&&target&&!target.hidden)show();});
 })();
