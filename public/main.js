@@ -2830,7 +2830,7 @@ function cxcDlg(selId){
       item.payments.push({
         ts:Date.now(),method:m.name,cur:m.cur,
         amountUsd:amt,amountBs:r2(amt*S.cfg.rate),
-        ref:$('#abRef',el).value.trim()||'REC-'+pad(item.payments.length+1,4),
+        ref:$('#abRef',el).value.trim(),
         note:$('#abNote',el).value.trim()||'Abono de cliente'
       });
       save();draw();renderStatus();
@@ -2860,7 +2860,7 @@ function cxcDlg(selId){
           cur:m.cur,
           amountUsd:r2(st.usd),
           amountBs:r2(st.bs||st.usd*S.cfg.rate),
-          ref:(st.ref||'').trim()||('MIX-'+pad(batchNo,3)+'-'+(idx+1)),
+          ref:(st.ref||'').trim(),
           note:baseNote
         });
       });
@@ -3144,7 +3144,7 @@ function cxpDlg(selId){
       item.payments.push({
         ts:Date.now(),method:m.name,cur:m.cur,
         amountUsd:amt,amountBs:r2(amt*S.cfg.rate),
-        ref:$('#pgRef',el).value.trim()||'OP-'+pad(item.payments.length+1,4),
+        ref:$('#pgRef',el).value.trim(),
         note:$('#pgNote',el).value.trim()||'Pago a proveedor'
       });
       if(item.purchaseNo){
@@ -3178,7 +3178,7 @@ function cxpDlg(selId){
           cur:m.cur,
           amountUsd:r8(st.usd),
           amountBs:r2(st.bs||st.usd*S.cfg.rate),
-          ref:(st.ref||'').trim()||('OPM-'+pad(batchNo,3)+'-'+(idx+1)),
+          ref:(st.ref||'').trim(),
           note:baseNote
         });
       });
@@ -3713,8 +3713,7 @@ function casheaPaymentAssistantDlg(totalSale, rate, onApplied, onCancel){
   const initialRows = $('#cshInitialRows', el);
   const initialSummary = $('#cshInitialSummary', el);
   const initialMethods = METHODS.filter(m=>m.id!=='cashea');
-  const initialNeedsRef = new Set();
-  initialRows.innerHTML=initialMethods.map(m=>'<tr><td><b>'+esc(m.name)+'</b></td><td class="c">'+(m.cur==='USD'?'US
+  initialRows.innerHTML=initialMethods.map(m=>'<tr><td><b>'+esc(m.name)+'</b></td><td class="c">'+(m.cur==='USD'?'US$':'Bs.')+'</td><td><input class="fld r" type="number" min="0" step="0.01" id="cshInitAmt-'+m.id+'" data-csh-initial-method="'+m.id+'" value="0" style="min-width:105px" aria-label="Importe inicial '+esc(m.name)+'"></td></tr>').join('');
   const ciInp = $('#cshCi', el);
   const tokenInp = $('#cshToken', el);
 
