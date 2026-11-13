@@ -1,0 +1,154 @@
+(function(){
+'use strict';
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>new Intl.NumberFormat('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
+const today=()=>new Date().toISOString().slice(0,10);
+const emptyState=()=>({version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false});
+let activeTab='accounts',filterText='',filterType='TODOS',selectedAccount='',dialog=null;
+function bridge(){return window.SIFERAccountingBridge;}
+function state(){const b=bridge();if(!b)throw new Error('El puente de persistencia de SIFER todavía no está disponible.');const s=b.getState();if(!s)throw new Error('No se pudo leer el estado operativo.');if(!s.accounting||typeof s.accounting!=='object')s.accounting=emptyState();return s.accounting;}
+function save(){bridge().save();}
+async function ensureChart(){
+ const a=state();if(Array.isArray(a.accounts)&&a.accounts.length)return a;
+ const res=await fetch('/data/plan-cuentas-predeterminado-ven-nif.json',{cache:'no-cache'});
+ if(!res.ok)throw new Error('No se pudo cargar el catálogo VEN-NIF ('+res.status+').');
+ const data=await res.json();
+ if(!Array.isArray(data.accounts)||data.accounts.length!==97)throw new Error('El catálogo VEN-NIF no superó la validación de integridad.');
+ const codes=new Set(data.accounts.map(x=>String(x.code)));
+ if(codes.size!==data.accounts.length||data.accounts.some(x=>x.parentCode&&!codes.has(String(x.parentCode))))throw new Error('El catálogo contiene códigos duplicados o padres inexistentes.');
+ a.accounts=data.accounts.map(x=>({...x}));
+ a.catalogSource=data.source||null;a.initialized=true;a.version=1;
+ save();return a;
+}
+function accountMap(){return new Map(state().accounts.map(a=>[String(a.code),a]));}
+function fmtAccount(a){return esc(a.code)+' · '+esc(a.name);}
+function movementAccounts(){return state().accounts.filter(a=>a.isMovement);}
+function totalsFor(entries,accountCode){
+ let dUsd=0,cUsd=0,dBs=0,cBs=0;
+ for(const e of entries)for(const l of e.lines||[])if(String(l.accountCode)===String(accountCode)){
+  dUsd+=Number(l.debitUsd)||0;cUsd+=Number(l.creditUsd)||0;dBs+=Number(l.debitBs)||0;cBs+=Number(l.creditBs)||0;
+ }
+ return {dUsd,cUsd,dBs,cBs,balUsd:dUsd-cUsd,balBs:dBs-cBs};
+}
+function validEntries(){return state().entries.filter(e=>e.status==='posted');}
+function accountRows(){
+ const a=state(),q=filterText.toLowerCase(),accounts=a.accounts.filter(x=>(filterType==='TODOS'||x.type===filterType)&&(!q||(String(x.code)+' '+x.name).toLowerCase().includes(q)));
+ return accounts.map(x=>{const t=totalsFor(validEntries(),x.code);return '<tr><td class="ac-code">'+esc(x.code)+'</td><td style="padding-left:'+Math.max(0,(x.level-1)*13)+'px">'+esc(x.name)+(x.isMovement?'':' <span class="ac-muted">· Agrupadora</span>')+'</td><td>'+esc(x.type)+'</td><td class="ac-num">'+money(t.balUsd)+'</td><td class="ac-num">'+money(t.balBs)+'</td></tr>';}).join('');
+}
+function tabButtons(){return [['accounts','Plan de cuentas'],['journal','Libro diario'],['ledger','Libro mayor'],['trial','Balance de comprobación']].map(([id,label])=>'<button class="ac-tab '+(activeTab===id?'active':'')+'" data-tab="'+id+'">'+label+'</button>').join('');}
+function accountSelect(value=''){
+ return '<select class="ac-input" data-field="account"><option value="">Seleccione cuenta imputable…</option>'+movementAccounts().map(a=>'<option value="'+esc(a.code)+'" '+(String(value)===String(a.code)?'selected':'')+'>'+esc(a.code+' · '+a.name)+'</option>').join('')+'</select>';
+}
+function renderAccounts(){
+ const types=['TODOS',...new Set(state().accounts.map(a=>a.type))];
+ return '<div class="ac-tools"><input class="ac-input" id="acSearch" placeholder="Buscar por código o nombre" value="'+esc(filterText)+'"><select class="ac-input" id="acType">'+types.map(t=>'<option '+(filterType===t?'selected':'')+'>'+esc(t)+'</option>').join('')+'</select><span class="ac-muted">'+state().accounts.length+' cuentas · '+movementAccounts().length+' imputables</span></div><div class="ac-scroll"><table class="ac-table"><thead><tr><th>Código</th><th>Denominación</th><th>Tipo</th><th class="ac-num">Saldo US$</th><th class="ac-num">Saldo Bs.</th></tr></thead><tbody>'+accountRows()+'</tbody></table></div>';
+}
+function renderJournal(){
+ const es=validEntries().slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))||b.sequence-a.sequence);
+ return '<div class="ac-tools"><button class="ac-primary" id="acNewEntry">＋ Nuevo asiento</button><span class="ac-muted">'+es.length+' asientos contabilizados · Los originales no se eliminan</span></div><div class="ac-scroll"><table class="ac-table"><thead><tr><th>Fecha</th><th>Número</th><th>Referencia</th><th>Descripción</th><th class="ac-num">Debe US$</th><th class="ac-num">Haber US$</th><th>Acción</th></tr></thead><tbody>'+ (es.map(e=>'<tr><td>'+esc(e.date)+'</td><td class="ac-code">'+esc(e.number)+'</td><td>'+esc(e.reference||'—')+'</td><td>'+esc(e.description) +(e.reversalOf?'<div class="ac-muted">Reversión de '+esc(e.reversalOf)+'</div>':'')+'</td><td class="ac-num">'+money(e.totalDebitUsd)+'</td><td class="ac-num">'+money(e.totalCreditUsd)+'</td><td><button class="ac-small" data-view-entry="'+esc(e.id)+'">Ver</button> '+(!e.reversalOf&&!es.some(x=>x.reversalOf===e.id)?'<button class="ac-small" data-reverse="'+esc(e.id)+'">Revertir</button>':'')+'</td></tr>').join('')||'<tr><td colspan="7" class="ac-empty">No hay asientos contabilizados. Registre el primero cuando disponga del soporte.</td></tr>')+'</tbody></table></div>';
+}
+function renderLedger(){
+ const accounts=movementAccounts(),chosen=accounts.find(a=>a.code===selectedAccount)||accounts[0];if(chosen)selectedAccount=chosen.code;
+ if(!chosen)return '<p class="ac-empty">No hay cuentas imputables en el catálogo.</p>';
+ const rows=validEntries().flatMap(e=>(e.lines||[]).filter(l=>String(l.accountCode)===String(chosen.code)).map(l=>({e,l}))).sort((a,b)=>String(a.e.date).localeCompare(String(b.e.date))||a.e.sequence-b.e.sequence);
+ let runUsd=0,runBs=0;
+ const html=rows.map(({e,l})=>{runUsd+=Number(l.debitUsd||0)-Number(l.creditUsd||0);runBs+=Number(l.debitBs||0)-Number(l.creditBs||0);return '<tr><td>'+esc(e.date)+'</td><td>'+esc(e.number)+'</td><td>'+esc(e.description)+'</td><td class="ac-num">'+money(l.debitUsd)+'</td><td class="ac-num">'+money(l.creditUsd)+'</td><td class="ac-num">'+money(runUsd)+'</td><td class="ac-num">'+money(runBs)+'</td></tr>';}).join('');
+ return '<div class="ac-tools"><label>Cuenta</label><select class="ac-input" id="acLedgerAccount">'+accounts.map(a=>'<option value="'+esc(a.code)+'" '+(a.code===selectedAccount?'selected':'')+'>'+esc(a.code+' · '+a.name)+'</option>').join('')+'</select></div><div class="ac-scroll"><table class="ac-table"><thead><tr><th>Fecha</th><th>Asiento</th><th>Concepto</th><th class="ac-num">Debe US$</th><th class="ac-num">Haber US$</th><th class="ac-num">Saldo US$</th><th class="ac-num">Saldo Bs.</th></tr></thead><tbody>'+(html||'<tr><td colspan="7" class="ac-empty">Esta cuenta aún no tiene movimientos contabilizados.</td></tr>')+'</tbody></table></div>';
+}
+function renderTrial(){
+ const rows=movementAccounts().map(a=>({a,t:totalsFor(validEntries(),a.code)})).filter(x=>Math.abs(x.t.dUsd)+Math.abs(x.t.cUsd)+Math.abs(x.t.dBs)+Math.abs(x.t.cBs)>0.000001);
+ const totals=rows.reduce((o,x)=>{o.du+=x.t.dUsd;o.cu+=x.t.cUsd;o.db+=x.t.dBs;o.cb+=x.t.cBs;return o;},{du:0,cu:0,db:0,cb:0});
+ return '<div class="ac-tools"><span class="ac-muted">Solo asientos contabilizados. Las cuentas sin movimiento se omiten.</span><button class="ac-small" id="acExportTrial">Exportar CSV</button></div><div class="ac-scroll"><table class="ac-table"><thead><tr><th>Código</th><th>Cuenta</th><th class="ac-num">Debe US$</th><th class="ac-num">Haber US$</th><th class="ac-num">Debe Bs.</th><th class="ac-num">Haber Bs.</th></tr></thead><tbody>'+rows.map(x=>'<tr><td class="ac-code">'+esc(x.a.code)+'</td><td>'+esc(x.a.name)+'</td><td class="ac-num">'+money(x.t.dUsd)+'</td><td class="ac-num">'+money(x.t.cUsd)+'</td><td class="ac-num">'+money(x.t.dBs)+'</td><td class="ac-num">'+money(x.t.cBs)+'</td></tr>').join('')+'<tr class="ac-total"><td colspan="2">TOTALES</td><td class="ac-num">'+money(totals.du)+'</td><td class="ac-num">'+money(totals.cu)+'</td><td class="ac-num">'+money(totals.db)+'</td><td class="ac-num">'+money(totals.cb)+'</td></tr></tbody></table></div><div class="ac-check '+(Math.abs(totals.du-totals.cu)<0.01&&Math.abs(totals.db-totals.cb)<0.01?'ok':'warn')+'">'+(Math.abs(totals.du-totals.cu)<0.01&&Math.abs(totals.db-totals.cb)<0.01?'Cuadrado':'Diferencia detectada')+' · USD: '+money(totals.du-totals.cu)+' · Bs.: '+money(totals.db-totals.cb)+'</div>';
+}
+function render(){
+ if(!dialog)return;
+ const content=$('#acContent',dialog);
+ content.innerHTML=activeTab==='accounts'?renderAccounts():activeTab==='journal'?renderJournal():activeTab==='ledger'?renderLedger():renderTrial();
+ dialog.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===activeTab));
+}
+function addLine(container,values={}){
+ const row=document.createElement('tr');row.className='ac-line';
+ row.innerHTML='<td>'+accountSelect(values.accountCode)+'</td><td><input class="ac-input ac-amount" data-field="debitUsd" inputmode="decimal" placeholder="0,00" value="'+(values.debitUsd??'')+'"></td><td><input class="ac-input ac-amount" data-field="creditUsd" inputmode="decimal" placeholder="0,00" value="'+(values.creditUsd??'')+'"></td><td><input class="ac-input ac-amount" data-field="debitBs" inputmode="decimal" placeholder="0,00" value="'+(values.debitBs??'')+'"></td><td><input class="ac-input ac-amount" data-field="creditBs" inputmode="decimal" placeholder="0,00" value="'+(values.creditBs??'')+'"></td><td><button type="button" class="ac-small" data-remove-line>×</button></td>';
+ container.appendChild(row);return row;
+}
+function parseAmount(v){if(v==null||String(v).trim()==='')return 0;let s=String(v).trim();if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');const n=Number(s);return Number.isFinite(n)&&n>=0?n:NaN;}
+function showEntryForm(prefill=null){
+ const a=state(),el=document.createElement('div');el.className='ac-modal';
+ const lines=prefill?.lines||[{},{},];
+ el.innerHTML='<div class="ac-modal-card"><div class="ac-modal-head"><b>'+(prefill?'Detalle del asiento':'Nuevo asiento contable')+'</b><button class="ac-small" id="acCloseForm">Cerrar</button></div><div class="ac-form-grid"><label>Fecha<input class="ac-input" id="acDate" type="date" value="'+esc(prefill?.date||today())+'" '+(prefill?'disabled':'')+'></label><label>Referencia<input class="ac-input" id="acReference" maxlength="80" placeholder="Factura, comprobante, soporte…" value="'+esc(prefill?.reference||'')+'" '+(prefill?'disabled':'')+'></label><label class="wide">Concepto / descripción<input class="ac-input" id="acDescription" maxlength="240" placeholder="Explique brevemente la operación" value="'+esc(prefill?.description||'')+'" '+(prefill?'disabled':'')+'></label><label>Tasa Bs./US$<input class="ac-input" id="acRate" type="number" min="0.000001" step="0.000001" value="'+esc(prefill?.rate||'')+'" placeholder="Tasa aplicable" '+(prefill?'disabled':'')+'></label></div><div class="ac-scroll"><table class="ac-table ac-entry-table"><thead><tr><th>Cuenta imputable</th><th>Debe US$</th><th>Haber US$</th><th>Debe Bs.</th><th>Haber Bs.</th><th></th></tr></thead><tbody id="acEntryLines"></tbody></table></div><div class="ac-form-foot"><span id="acEntryTotals" class="ac-muted"></span><button class="ac-small" id="acAddLine" '+(prefill?'hidden':'')+'>＋ Agregar renglón</button><button class="ac-primary" id="acPostEntry" '+(prefill?'hidden':'')+'>Contabilizar asiento</button></div><p class="ac-note">Solo se permiten cuentas imputables. Debe y Haber deben cuadrar tanto en USD como en Bs. El asiento contabilizado se conserva; las correcciones se hacen con una reversión.</p></div>';
+ dialog.appendChild(el);
+ const body=$('#acEntryLines',el);
+ lines.forEach(l=>addLine(body,l));
+ if(!prefill&&lines.length===0){addLine(body);addLine(body);}
+ const updateTotals=()=>{let dU=0,cU=0,dB=0,cB=0;body.querySelectorAll('tr').forEach(r=>{const v=f=>parseAmount($('[data-field="'+f+'"]',r).value)||0;dU+=v('debitUsd');cU+=v('creditUsd');dB+=v('debitBs');cB+=v('creditBs');});$('#acEntryTotals',el).textContent='Debe/Haber US$: '+money(dU)+' / '+money(cU)+' · Bs.: '+money(dB)+' / '+money(cB);};
+ body.addEventListener('input',e=>{
+  const field=e.target.dataset.field;if(!field||!field.endsWith('Usd')&&!field.endsWith('Bs'))return;
+  const row=e.target.closest('tr'),rate=Number($('#acRate',el).value)||0;
+  if(rate>0){const counterpart=field.endsWith('Usd')?field.replace('Usd','Bs'):field.replace('Bs','Usd');const parsed=parseAmount(e.target.value);const other=$('[data-field="'+counterpart+'"]',row);if(parsed!==0&&Number.isFinite(parsed))other.value=money(field.endsWith('Usd')?parsed*rate:parsed/rate);}
+  updateTotals();
+ });
+ body.addEventListener('click',e=>{if(e.target.closest('[data-remove-line]')){e.target.closest('tr').remove();updateTotals();}});
+ $('#acAddLine',el)?.addEventListener('click',()=>{addLine(body);updateTotals();});
+ $('#acCloseForm',el).addEventListener('click',()=>el.remove());
+ $('#acPostEntry',el)?.addEventListener('click',()=>{
+  const date=$('#acDate',el).value,reference=$('#acReference',el).value.trim(),description=$('#acDescription',el).value.trim(),rate=Number($('#acRate',el).value);
+  if(!date||!description||!Number.isFinite(rate)||rate<=0){alert('Indique fecha, concepto y tasa válida.');return;}
+  const map=accountMap(),entryLines=[];
+  for(const row of body.querySelectorAll('tr')){
+   const accountCode=$('[data-field="account"]',row).value;
+   const vals={};for(const f of ['debitUsd','creditUsd','debitBs','creditBs'])vals[f]=parseAmount($('[data-field="'+f+'"]',row).value);
+   if(Object.values(vals).some(v=>!Number.isFinite(v))){alert('Hay importes no válidos.');return;}
+   if(!accountCode){if(Object.values(vals).some(v=>v>0)){alert('Seleccione una cuenta imputable para cada renglón con monto.');return;}continue;}
+   const account=map.get(accountCode);if(!account||!account.isMovement){alert('La cuenta seleccionada no admite movimientos.');return;}
+   if(vals.debitUsd+vals.creditUsd+vals.debitBs+vals.creditBs<=0){continue;}
+   if(vals.debitUsd>0&&vals.creditUsd>0||vals.debitBs>0&&vals.creditBs>0){alert('Un renglón no puede tener Debe y Haber simultáneamente en la misma moneda.');return;}
+   entryLines.push({accountCode,accountName:account.name,...vals});
+  }
+  if(entryLines.length<2){alert('El asiento requiere al menos dos renglones imputables.');return;}
+  const sum=f=>entryLines.reduce((n,l)=>n+Number(l[f]||0),0);
+  const dU=sum('debitUsd'),cU=sum('creditUsd'),dB=sum('debitBs'),cB=sum('creditBs');
+  if(Math.abs(dU-cU)>=0.01||Math.abs(dB-cB)>=0.01){alert('El asiento no cuadra. Debe y Haber deben coincidir en USD y Bs.');return;}
+  const sequence=Number(a.nextEntry)||1,id='ACC-'+String(sequence).padStart(6,'0');
+  a.entries.push({id,number:id,sequence,date,reference,description,rate,lines:entryLines,totalDebitUsd:dU,totalCreditUsd:cU,totalDebitBs:dB,totalCreditBs:cB,status:'posted',createdAt:new Date().toISOString(),createdBy:window.SIFERAccountingBridge.getState().cfg?.cajero||'Contador'});
+  a.nextEntry=sequence+1;save();el.remove();render();
+ });
+ if(prefill){const map=accountMap();body.querySelectorAll('tr').forEach((r,i)=>{const l=prefill.lines[i];if(!l)return;const sel=$('[data-field="account"]',r);sel.value=l.accountCode;sel.disabled=true;for(const f of ['debitUsd','creditUsd','debitBs','creditBs'])$('[data-field="'+f+'"]',r).disabled=true;});}
+ updateTotals();
+}
+function reverseEntry(id){
+ const a=state(),original=a.entries.find(e=>e.id===id);if(!original)return;
+ if(a.entries.some(e=>e.reversalOf===id)){alert('Este asiento ya tiene una reversión registrada.');return;}
+ if(!confirm('Se creará un asiento inverso y se conservará el original. ¿Continuar?'))return;
+ const sequence=Number(a.nextEntry)||1,newId='ACC-'+String(sequence).padStart(6,'0');
+ const lines=original.lines.map(l=>({...l,debitUsd:l.creditUsd,creditUsd:l.debitUsd,debitBs:l.creditBs,creditBs:l.debitBs}));
+ a.entries.push({id:newId,number:newId,sequence,date:today(),reference:'REVERSIÓN '+original.number,description:'Reversión de '+original.number+' · '+original.description,rate:original.rate,lines,totalDebitUsd:original.totalCreditUsd,totalCreditUsd:original.totalDebitUsd,totalDebitBs:original.totalCreditBs,totalCreditBs:original.totalDebitBs,status:'posted',reversalOf:id,createdAt:new Date().toISOString(),createdBy:window.SIFERAccountingBridge.getState().cfg?.cajero||'Contador'});
+ a.nextEntry=sequence+1;save();render();
+}
+function exportTrial(){
+ const rows=movementAccounts().map(a=>({a,t:totalsFor(validEntries(),a.code)})).filter(x=>Math.abs(x.t.dUsd)+Math.abs(x.t.cUsd)+Math.abs(x.t.dBs)+Math.abs(x.t.cBs)>0.000001);
+ const csv=['Código,Cuenta,Debe USD,Haber USD,Debe Bs,Haber Bs',...rows.map(x=>[x.a.code,'"'+x.a.name.replace(/"/g,'""')+'"',x.t.dUsd,x.t.cUsd,x.t.dBs,x.t.cBs].join(','))].join('\r\n');
+ const url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='sifer360-balance-comprobacion-'+today()+'.csv';a.click();URL.revokeObjectURL(url);
+}
+function open(){
+ if(!bridge()){alert('El módulo contable no pudo conectarse con la base de datos del POS.');return;}
+ ensureChart().then(()=>{
+  const old=$('#siferAccountingDialog');if(old)old.remove();
+  dialog=document.createElement('section');dialog.id='siferAccountingDialog';dialog.className='ac-overlay';
+  dialog.innerHTML='<div class="ac-window"><header class="ac-header"><div><strong>Contabilidad VEN-NIF</strong><small>Plan de cuentas · Diario · Mayor · Balance</small></div><button id="acClose" class="ac-close">×</button></header><nav class="ac-tabs">'+tabButtons()+'</nav><main id="acContent" class="ac-content"></main><footer class="ac-footer"><span>Catálogo fuente: SICOVEN · 97 cuentas · Persistencia SQLite SIFER</span><button id="acCloseFoot" class="ac-small">Cerrar</button></footer></div>';
+  document.body.appendChild(dialog);
+  dialog.addEventListener('click',e=>{
+   if(e.target===dialog||e.target.closest('#acClose')||e.target.closest('#acCloseFoot')){dialog.remove();dialog=null;return;}
+   const tab=e.target.closest('[data-tab]');if(tab){activeTab=tab.dataset.tab;render();return;}
+   if(e.target.closest('#acNewEntry')){showEntryForm();return;}
+   const rev=e.target.closest('[data-reverse]');if(rev){reverseEntry(rev.dataset.reverse);return;}
+   const view=e.target.closest('[data-view-entry]');if(view){const entry=state().entries.find(x=>x.id===view.dataset.viewEntry);if(entry)showEntryForm(entry);return;}
+   if(e.target.closest('#acExportTrial')){exportTrial();return;}
+  });
+  dialog.addEventListener('input',e=>{if(e.target.id==='acSearch'){filterText=e.target.value;const pos=e.target.selectionStart;render();const input=$('#acSearch',dialog);input.focus();input.setSelectionRange(pos,pos);}});
+  dialog.addEventListener('change',e=>{if(e.target.id==='acType'){filterType=e.target.value;render();}if(e.target.id==='acLedgerAccount'){selectedAccount=e.target.value;render();}});
+  render();
+ }).catch(e=>alert('No se pudo iniciar Contabilidad: '+e.message));
+}
+window.SIFERAccountingApp={open};
+})();
