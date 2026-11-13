@@ -5729,9 +5729,19 @@ function cashboxList(){
 }
 function persistCashboxes(boxes){localStorage.setItem(BOXES_STORAGE_KEY,JSON.stringify(boxes));}
 function showPosScreen(){
+  const session=activeUser();
+  if(session.role==='cajero'){
+    const opening=readActiveOpening();
+    if(!opening||opening.status!=='abierta'||String(opening.cashbox)!==currentCaja()||String(opening.username||'')!==String(session.username||'')){
+      document.body.classList.add('cashier-pending');
+      openCashboxDlg();
+      return;
+    }
+  }
   const d=$('#adminDashboard'),main=$('.main'),left=$('.left');
   if(d)d.hidden=true;if(left)left.hidden=false;
   if(main)main.classList.remove('dashboard-mode');
+  document.body.classList.remove('cashier-pending');
   const b=$('#btnDashboard');if(b)b.setAttribute('aria-pressed','false');
   renderHeader();renderAll();
 }
@@ -5824,16 +5834,28 @@ function adminCajaRequiredDlg(moduleName){
 }
 function openCashboxDlg(){
   const user=activeUser();
-  if(!user||user.role!=='admin'){showPosScreen();return;}
-  if(currentCaja()==='SIN-ASIGNAR'){adminCajaRequiredDlg('Punto de venta');return;}
+  if(!user||!['admin','cajero'].includes(user.role)){showPosScreen();return;}
+  const isCashier=user.role==='cajero';
   const box=currentCaja(),boxes=cashboxList(),boxMeta=boxes.find(b=>String(b.id)===box);
-  if(!boxMeta||boxMeta.active===false){msg('La caja asignada no existe o está deshabilitada. Revise Gestión de Cajas y Gestión de Usuarios.','bad');return;}
+  if(box==='SIN-ASIGNAR'||!boxMeta||boxMeta.active===false){
+    if(isCashier){msg('No tienes una caja activa asignada. Solicita al administrador que te asigne una caja.','bad');return;}
+    adminCajaRequiredDlg('Punto de venta');return;
+  }
   const existing=readActiveOpening();
   if(existing&&existing.status==='abierta'&&String(existing.cashbox)===box){
+    if(isCashier&&String(existing.username||'')!==String(user.username||'')){
+      msg('Esta caja tiene un turno abierto por otro usuario. Solicita al administrador que revise el cierre anterior.','bad');return;
+    }
+    if(isCashier){
+      const context={username:user.username,name:user.name||user.username,role:user.role,cashbox:box,openingId:existing.id,openedAt:existing.openedAt,bs:existing.bs,usd:existing.usd,rate:existing.rate,status:'abierta'};
+      sessionStorage.setItem('sifer360_active_box',JSON.stringify(context));
+      sessionStorage.setItem('sifer360_active_opening',JSON.stringify(existing));
+      applyCashierWorkspace();showPosScreen();return;
+    }
     openWin({title:'Caja ya abierta · '+box,w:430,body:h('<div class="form"><h3>El turno ya está abierto</h3><p class="hint">Caja '+esc(box)+' · Apertura '+esc(fmtDT(existing.openedAt))+'</p><p>Para hacer el arqueo y cerrar la jornada, entra a Corte Z.</p></div>'),foot:[{label:'Ir al POS',primary:true,fn:()=>{showPosScreen();return true;}},{label:'Cerrar'}]});return;
   }
-  const body=h('<div class="form"><div class="hint">Registra y confirma los fondos físicos reales antes de vender. La apertura se asociará exclusivamente al usuario y a la caja asignada.</div><div class="newgrid"><div class="f"><label>Administrador</label><input class="fld" value="'+esc(user.name||user.username)+'" readonly></div><div class="f"><label>Caja asignada</label><input class="fld" value="'+esc(boxMeta.name+' ('+box+')')+'" readonly></div><div class="f"><label for="posOpenBs">Fondo inicial en Bs.</label><input class="fld r" id="posOpenBs" value="0,00" inputmode="decimal"></div><div class="f"><label for="posOpenUsd">Fondo inicial en US$</label><input class="fld r" id="posOpenUsd" value="0,00" inputmode="decimal"></div><div class="f"><label for="posOpenRate">Tasa BCV (Bs./US$)</label><input class="fld r" id="posOpenRate" value="'+esc(nf(Number(S.cfg.rate)||0))+'" inputmode="decimal"></div></div><div class="hint" id="posOpenError" role="status"></div></div>');
-  openWin({title:'POS · Apertura de caja '+box,w:560,body,foot:[{label:'Cancelar'},{label:'Confirmar apertura e ingresar al POS',primary:true,fn:()=>{
+  const body=h('<div class="form"><div class="hint">Registra y confirma los fondos físicos reales antes de vender. La apertura se asociará exclusivamente al usuario y a la caja asignada.</div><div class="newgrid"><div class="f"><label>'+(isCashier?'Cajero':'Administrador')+'</label><input class="fld" value="'+esc(user.name||user.username)+'" readonly></div><div class="f"><label>Caja asignada</label><input class="fld" value="'+esc(boxMeta.name+' ('+box+')')+'" readonly></div><div class="f"><label for="posOpenBs">Fondo inicial en Bs.</label><input class="fld r" id="posOpenBs" value="0,00" inputmode="decimal"></div><div class="f"><label for="posOpenUsd">Fondo inicial en US$</label><input class="fld r" id="posOpenUsd" value="0,00" inputmode="decimal"></div><div class="f"><label for="posOpenRate">Tasa BCV (Bs./US$)</label><input class="fld r" id="posOpenRate" value="'+esc(nf(Number(S.cfg.rate)||0))+'" inputmode="decimal"></div></div><div class="hint" id="posOpenError" role="status"></div></div>');
+  const confirmOpening=()=>{
     const parse=v=>{const raw=String(v||'').trim().replace(/\s/g,'').replace(/\./g,'').replace(',','.');const n=Number(raw);return Number.isFinite(n)&&n>=0?n:null;};
     const bs=parse($('#posOpenBs',body).value),usd=parse($('#posOpenUsd',body).value),rate=parse($('#posOpenRate',body).value);
     if(bs===null||usd===null||rate===null||rate<=0){$('#posOpenError',body).textContent='Ingrese fondos válidos y una tasa BCV mayor que cero.';return false;}
@@ -5841,11 +5863,21 @@ function openCashboxDlg(){
     const openedAt=new Date().toISOString(),op={id:'OPEN-'+Date.now(),invoiceStart:'FAC-'+String(currentCajaInvoice()).padStart(8,'0'),cashier:user.name||user.username,username:user.username,cashbox:box,bs,usd,rate,openedAt,status:'abierta'};
     all.push(op);localStorage.setItem('sifer360_openings',JSON.stringify(all));localStorage.setItem('sifer360_bcv_rate',String(rate));
     const context={username:user.username,name:user.name||user.username,role:user.role,cashbox:box,openingId:op.id,openedAt,bs,usd,rate,status:'abierta'};
-    sessionStorage.setItem('sifer360_active_box',JSON.stringify(context));localStorage.setItem('sifer360_active_box',JSON.stringify(context));sessionStorage.setItem('sifer360_active_opening',JSON.stringify(op));localStorage.setItem('sifer360_active_opening',JSON.stringify(op));S.cfg.rate=rate;save();
-    showPosScreen();msg('Apertura de caja '+box+' registrada. Ya puedes operar en el POS.','ok');return true;
-  }}]});
+    sessionStorage.setItem('sifer360_active_box',JSON.stringify(context));sessionStorage.setItem('sifer360_active_opening',JSON.stringify(op));
+    if(!isCashier){localStorage.setItem('sifer360_active_box',JSON.stringify(context));localStorage.setItem('sifer360_active_opening',JSON.stringify(op));}
+    S.cfg.rate=rate;applyCashierWorkspace();showPosScreen();msg('Apertura de caja '+box+' registrada. Ya puedes operar en el POS.','ok');return true;
+  };
+  openWin({title:(isCashier?'POS · Apertura obligatoria de caja ':'POS · Apertura de caja ')+box,w:560,body,foot:(isCashier?[]:[{label:'Cancelar'}]).concat([{label:'Confirmar apertura e ingresar al POS',primary:true,fn:confirmOpening}]),onClose:isCashier?()=>{}:undefined});
 }
-
+function applyCashierWorkspace(){
+  const user=activeUser();
+  document.body.classList.toggle('cashier-mode',user.role==='cajero');
+  document.body.classList.remove('cashier-pending');
+  const toolbar=$('#toolbar');
+  if(toolbar)toolbar.classList.toggle('cashier-toolbar',user.role==='cajero');
+  if(window.SIFERAccess&&window.SIFERAccess.applyPermissions)window.SIFERAccess.applyPermissions(user);
+}
+window.SIFERCashier={start:function(){document.body.classList.add('cashier-mode','cashier-pending');const access=$('#sifer-access');if(access)access.remove();document.body.classList.remove('sa-locked');openCashboxDlg();}};
 function addAdminToolbarItems(){
   if(!TB.some(t=>Array.isArray(t)&&t[0]==='pos')){const idx=TB.findIndex(t=>Array.isArray(t)&&t[0]==='usuarios');TB.splice(idx<0?TB.length:idx,0,['pos','POS','',openCashboxDlg],['usuarios','Usuarios','',usersManagementDlg],['cajas','Gestión cajas','',cashboxesManagementDlg],'-');}
 }
@@ -6233,7 +6265,7 @@ const TB=[
 function buildChrome(){
   addAdminToolbarItems();
   $('#toolbar').innerHTML=TB.map(t=>t==='-'?'<span class="tsep"></span>':'<button class="tb" data-tb="'+t[0]+'" title="'+esc(t[1])+(t[2]?' ('+t[2]+')':'')+'">'+ico(t[0])+'<b>'+esc(t[1])+'</b><kbd>'+esc(t[2]||' ')+'</kbd>'+(t[0]==='recuperar'?'<span class="badge" id="heldBadge" hidden></span>':'')+(t[0]==='conteo'?'<span class="badge warn" id="conteoBadge" hidden></span>':'')+'</button>').join('');
-  if(window.SIFERAccess&&window.SIFERAccess.applyPermissions)window.SIFERAccess.applyPermissions(activeUser());
+  applyCashierWorkspace();
 }
 
 /* ---------- render ---------- */
@@ -6254,7 +6286,7 @@ function renderHeader(){
   $('#fDate').value=fmtDT(Date.now());
   $('#fClient').value=S.client.name;
   $('#fRif').value=S.client.rif;
-  $('#fCajero').value=c.cajero;
+  $('#fCajero').value=currentCajero();
   if($('#whoUser'))$('#whoUser').textContent=(session.name||c.cajero)+(session.role==='admin'?' · Administrador':'')+(session.cashbox&&session.cashbox!=='—'&&session.cashbox!=='Todas'?' · Caja '+session.cashbox:'');
 }
 function renderCatOptions(){}
@@ -6309,7 +6341,7 @@ function renderCatalog(){}
 function renderDetail(){}
 function renderStatus(){
   const units=S.cart.reduce((a,l)=>a+l.qty,0);
-  $('#sbCajero').textContent='Cajero: '+S.cfg.cajero+' · Caja '+S.cfg.caja;
+  $('#sbCajero').textContent='Cajero: '+currentCajero()+' · Caja '+currentCaja();
   $('#sbRate').textContent='Tasa: '+nf(S.cfg.rate)+' Bs./US$';
   $('#sbCount').textContent='Renglones: '+S.cart.length+' · Unidades: '+fq(r2(units));
   $('#sbClock').textContent=fmtDT(Date.now());
