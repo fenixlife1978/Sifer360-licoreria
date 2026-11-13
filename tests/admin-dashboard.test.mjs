@@ -97,7 +97,7 @@ test('admin POS button opens mandatory opening dialog and logout is visible and 
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /id="btnLogout"/);
   assert.match(main, /const logoutButton=\$\('#btnLogout'\);if\(logoutButton\)logoutButton\.addEventListener\('click'/);
-  assert.match(access, /function logout\(\)\{sessionStorage\.removeItem\(SESSION\)/);
+  assert.match(access, /function logout\(\)\{const current=\(\(\)=>\{[\s\S]*?sessionStorage\.removeItem\(SESSION\)/);
 });
 
 
