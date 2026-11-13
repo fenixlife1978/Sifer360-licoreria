@@ -173,7 +173,7 @@ function seed(){
     clients:[{name:'Consumidor final',rif:'',tel:''}],
     suppliers:[],
     sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],movimientosCaja:[],kardex:[],counts:[],
-    lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],
+    lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],accounting:{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
   };
@@ -184,7 +184,7 @@ function stateSnapshot(){
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
     sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,cambiosDivisas:S.cambiosDivisas,
-    casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],
+    casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],accounting:S.accounting||{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
   };
 }
@@ -643,6 +643,11 @@ function load(){
     if(Array.isArray(d.retencionesIva))S.retencionesIva=d.retencionesIva;
     if(Array.isArray(d.documents))S.documents=d.documents;
     else if(!S.documents)S.documents=[];
+    S.accounting=d.accounting&&typeof d.accounting==='object'?d.accounting:(S.accounting||{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false});
+    if(!Array.isArray(S.accounting.accounts))S.accounting.accounts=[];
+    if(!Array.isArray(S.accounting.entries))S.accounting.entries=[];
+    if(!Array.isArray(S.accounting.fixedAssets))S.accounting.fixedAssets=[];
+    if(!Number.isFinite(Number(S.accounting.nextEntry)))S.accounting.nextEntry=1;
     if(Array.isArray(d.casheaMovimientos)){
       const demoCasheaSignatures=[
         {id:'CSH-MOV-0001',aprobacion:'CSH-782194',ventaNo:1040,clienteCi:'V-12345678',totalVenta:85,financiadoUsd:51},
@@ -5852,6 +5857,7 @@ const MENUS={
  'Compras':[['Registrar compra de mercancía…','F10',()=>comprasDlg('new')],['Historial de compras…','',()=>comprasDlg('hist')],['Directorio de proveedores…','',()=>comprasDlg('sup')],'-',['Cuentas por Pagar (CxP)…','',()=>cxpDlg()]],
   'Inventario':[['Maestro de inventario…','F8',inventoryDlg],['Nuevo producto (Ficha avanzada)…','',()=>productFormDlg(null)],['Generador de etiquetas / Hablador SKU (US$)…','',()=>labelGeneratorDlg()],'-',['Conteo físico de inventario (masivo)…','F11',()=>conteoDlg()],['Ficha / Tarjeta Kardex Profesional…','',()=>kardexDlg()],'-',['Buscar producto','F3',focusEntry]],
  'Finanzas':[['Cuentas por Cobrar (CxC)…','',()=>cxcDlg()],['Cuentas por Pagar (CxP)…','',()=>cxpDlg()],['Operaciones Cambiarias (Compra USD / Zelle)…','',()=>divisasDlg()],['Conciliación CASHEA (BNPL y Cuotas)…','',()=>casheaDlg()],'-',['Ventas del día y cierre de caja…','F9',salesDlg]],
+ 'Contabilidad':[['Contabilidad general VEN-NIF…','',()=>window.SIFERAccountingApp&&window.SIFERAccountingApp.open()]],
  'Control SENIAT/SUDEBAN':[
    ['Módulo Fiscal Integral…','',()=>seniatSudebanDlg()],
    ['Libro de Ventas Fiscal (SENIAT)…','',()=>seniatSudebanDlg('ventas')],
@@ -6207,7 +6213,7 @@ const TB=[
  ['suspender','Suspender','F5',suspend],['recuperar','Recuperar','F6',recoverDlg],['descuento','Descuento','F7',discountDlg],['quitar','Quitar','Supr',removeSel],
  '-',['inventario','Inventario','F8',inventoryDlg],['conteo','Conteo','F11',()=>conteoDlg()],['kardex','Kardex','',()=>kardexDlg()],
  '-',['compras','Compras','F10',()=>comprasDlg('new')],['cxc','CxC','',()=>cxcDlg()],['cxp','CxP','',()=>cxpDlg()],['divisas','USD/Zelle','',()=>divisasDlg()],['cashea','Cashea','',()=>casheaDlg()],
- '-',['ventas','Ventas día','F9',salesDlg],['cortez','Corte Z','',corteZDlg],['seniat','Fiscal','',()=>seniatSudebanDlg()],['documentos','Documentos','',()=>fiscalDocumentsDlg()],['basedatos','Base de datos','',()=>databaseSettingsDlg()],['tasa','Tasa','',()=>cfgDlg('cRate')]
+ '-',['ventas','Ventas día','F9',salesDlg],['cortez','Corte Z','',corteZDlg],['seniat','Fiscal','',()=>seniatSudebanDlg()],['contabilidad','Contabilidad','',()=>window.SIFERAccountingApp&&window.SIFERAccountingApp.open()],['documentos','Documentos','',()=>fiscalDocumentsDlg()],['basedatos','Base de datos','',()=>databaseSettingsDlg()],['tasa','Tasa','',()=>cfgDlg('cRate')]
 ];
 function buildChrome(){
   addAdminToolbarItems();
@@ -6607,7 +6613,7 @@ async function prepareDatabaseBeforeStartup(){
   }
 }
 
-window.SIFERAccountingBridge={getState:()=>S,save:()=>save()};
+window.SIFERAccountingBridge={getState:()=>S,save:()=>save(),setAccounting:data=>{if(!S)throw new Error('Estado POS no inicializado');S.accounting=data;save();return true;}};
 
 /* ---------- arranque ---------- */
 prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(()=>{
