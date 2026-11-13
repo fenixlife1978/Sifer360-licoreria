@@ -439,3 +439,5 @@ body.cashier-pending .topr>#btnLogout{visibility:visible!important;}
  .toolbar{justify-content:flex-start;}
  .toolbar.cashier-toolbar{justify-content:safe center;}
 }
+
+.toolbar{overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:thin;}
