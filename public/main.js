@@ -6399,6 +6399,8 @@ function wire(){
   if(btnDivisasTop)btnDivisasTop.addEventListener('click',()=>divisasDlg());
   const btnSeniatTop=$('#btnSeniatTop');
   if(btnSeniatTop)btnSeniatTop.addEventListener('click',()=>seniatSudebanDlg());
+  const btnAccountingTop=$('#btnAccountingTop');
+  if(btnAccountingTop)btnAccountingTop.addEventListener('click',()=>openAccountingModule());
   const sbDivisas=$('#sbDivisas');
   if(sbDivisas)sbDivisas.addEventListener('click',()=>divisasDlg());
   const sbSeniat=$('#sbSeniat');
