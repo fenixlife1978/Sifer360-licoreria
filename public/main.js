@@ -2518,7 +2518,7 @@ function comprasDlg(initialTab){
     const retBs=r2(retUsd*S.cfg.rate);
     const payableTotal=r2(Math.max(0,total-retUsd));
     const effPaid=cond==='Contado'?payableTotal:Math.min(payableTotal,paidInit);
-    const comp={no,docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
+    const comp={accountingSourceId:'PURCHASE-'+pad(no),no,docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
       const periodo=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
@@ -4368,6 +4368,7 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
       unit:i.p.unit||'und',
       qty:l.qty,
       price:i.p.price,
+      unitCost:i.p.cost,
       disc:l.disc,
       taxRate:i.rate,
       taxType:(i.p.tax&&i.p.tax.type)||'G',
@@ -4392,6 +4393,7 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
   const ctrlNext=Number(boxSeq.ctrl||1);boxSeq.ctrl=ctrlNext+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
   const ctrlNo=ctrlPrefix+String(currentCaja()).replace(/\W/g,'').slice(-4)+'-'+pad(ctrlNext,8);
   const sale={
+    accountingSourceId:'SALE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(invNo),
     no:invNo,ctrlNo,docType:'01-FACTURA',transType:'01-REG',
     ts,cashbox:currentCaja(),cashier:currentCajero(),client:Object.assign({},S.client),lines,
     sub:t.sub,disc:t.disc,base:t.base,
