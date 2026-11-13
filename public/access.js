@@ -181,7 +181,7 @@ function renderLogin(error=''){
   };
   $('#sa-login').onsubmit=e=>{
     e.preventDefault();
-    const username=$('#sa-user').value.trim(),code=$('#sa-code').value,cashbox=$('#sa-cashbox').value;
+    const username=$('#sa-user').value.trim(),code=$('#sa-code').value;let cashbox=$('#sa-cashbox').value;
     const users=initUsers();
     const u=users.find(x=>x.username===username&&x.code===code);
     if(!u){
@@ -191,9 +191,12 @@ function renderLogin(error=''){
     }
     if($('#sa-remember').checked)localStorage.setItem('sifer360_remember_user',username);
     else localStorage.removeItem('sifer360_remember_user');
-    if(u.role==='cajero'&&u.cashbox&&u.cashbox!=='—'&&String(u.cashbox).replace(/^0/,'')!==String(cashbox).replace(/^0/,'')){
-      $('#sa-error').textContent='Este usuario no tiene permiso para la caja seleccionada.';
-      return;
+    if(u.role==='cajero'){
+      if(!u.cashbox||['—','Todas','SIN-ASIGNAR'].includes(String(u.cashbox))){
+        $('#sa-error').textContent='Este usuario no tiene una caja asignada. Solicita al administrador que te asigne una antes de iniciar sesión.';
+        return;
+      }
+      cashbox=String(u.cashbox);
     }
     u.cashbox=cashbox;
     const active={username:u.username,name:u.name,role:u.role,cashbox,loginAt:Date.now()};
