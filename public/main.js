@@ -6504,6 +6504,8 @@ function wire(){
   const logoutButton=$('#btnLogout');if(logoutButton)logoutButton.addEventListener('click',()=>{if(confirm('¿Desea cerrar la sesión actual?')){if(window.SIFERAccess&&window.SIFERAccess.logout)window.SIFERAccess.logout();}});
   $('#toolbar').addEventListener('click',e=>{
     const b=e.target.closest('[data-tb]');if(!b)return;
+    const user=activeUser();
+    if(user.username)try{localStorage.setItem('sifer360_last_module_v1:'+user.username,b.dataset.tb);}catch(err){}
     const t=TB.find(x=>x[0]===b.dataset.tb);if(t){if($('#adminDashboard')&&!$('#adminDashboard').hidden)showPosScreen();t[3]();}
   });
   document.addEventListener('pointerdown',e=>{
@@ -6727,6 +6729,22 @@ async function prepareDatabaseBeforeStartup(){
 window.SIFERAccountingBridge={getState:()=>S,save:()=>save(),setAccounting:data=>{if(!S)throw new Error('Estado POS no inicializado');S.accounting=data;save();return true;}};
 
 /* ---------- arranque ---------- */
+function restoreWorkspaceAfterReload(){
+  const user=activeUser();
+  if(!user||!user.username||!user.role)return;
+  if(user.role==='cajero'){
+    if(window.SIFERCashier&&typeof window.SIFERCashier.start==='function')window.SIFERCashier.start(user);
+    return;
+  }
+  const key='sifer360_last_module_v1:'+user.username;
+  let last='';try{last=localStorage.getItem(key)||'';}catch(e){}
+  const allowed={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','contabilidad','documentos','basedatos','tasa','usuarios','cajas'],contador:['ventas','cortez','seniat','documentos','cxc','cxp','compras','basedatos']};
+  if(last&&(allowed[user.role]||[]).includes(last)){
+    const button=$('#toolbar [data-tb="'+last+'"]');
+    if(button&&!button.hidden){button.click();return;}
+  }
+  if(user.role==='admin')showDashboardScreen();
+}
 prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(()=>{
   init();
   buildChrome();
@@ -6734,6 +6752,7 @@ prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la
   renderAll();
   wire();
   primeOperationBaseline();
+  restoreWorkspaceAfterReload();
   msg(saved?'Base de datos local SQLite de SIFER 360 Licorería cargada con éxito. Sistema listo para operar.':'Base de datos local SQLite de SIFER 360 Licorería inicializada. Listo para operar.');
 });
 })();
