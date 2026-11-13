@@ -1,7 +1,7 @@
 (()=>{'use strict';
 const $=(s,r=document)=>r.querySelector(s);
 const money=(n,currency)=>new Intl.NumberFormat('es-VE',{style:'currency',currency,minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
-const stamp=x=>{const n=Number(x?.ts||x?.timestamp||x?.docDateTs||0);if(n)return n;const p=Date.parse(x?.date||x?.fecha||'');return Number.isFinite(p)?p:0;};
+const stamp=x=>{const n=Number(x?.docDateTs||x?.ts||x?.timestamp||0);if(n)return n;const p=Date.parse(x?.date||x?.fecha||'');return Number.isFinite(p)?p:0;};
 const sum=(rows,fn)=>rows.reduce((n,x)=>n+(Number(fn(x))||0),0);
 const outstanding=rows=>sum(rows,x=>Math.max(0,Number(x.total||0)-Number(x.paid||0)));
 function show(){
