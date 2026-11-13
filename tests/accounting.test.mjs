@@ -46,3 +46,25 @@ test('el módulo contable se carga después del POS y tiene acceso desde menú y
   assert.match(pos, /'Contabilidad':\[\['Contabilidad general VEN-NIF/);
   assert.match(pos, /\['contabilidad','Contabilidad'/);
 });
+
+test('estados financieros usan asientos contabilizados y fecha de corte', () => {
+  assert.match(accounting, /function renderStatements\(\)/);
+  assert.match(accounting, /Estado de situación financiera/);
+  assert.match(accounting, /Estado de resultados acumulado/);
+  assert.match(accounting, /Flujo de efectivo registrado/);
+  assert.match(accounting, /filter\(e=>String\(e\.date\)<=date\)/);
+});
+
+test('activos fijos usan cuentas de depreciación acumulada existentes', () => {
+  for (const code of ['1.2.1.05','1.2.1.06','1.2.1.07','6.1.1.06']) {
+    assert.ok(chart.accounts.some(a => a.code === code && a.isMovement), 'falta cuenta imputable '+code);
+  }
+  assert.match(accounting, /function depreciateAsset\(id\)/);
+  assert.match(accounting, /depreciationPeriod:month/);
+  assert.match(accounting, /lastDepreciationMonth/);
+  assert.match(accounting, /asset\.monthsDepreciated=months\+1/);
+});
+
+test('el módulo impide depreciar dos veces un período', () => {
+  assert.match(accounting, /month<=asset\.lastDepreciationMonth/);
+});
