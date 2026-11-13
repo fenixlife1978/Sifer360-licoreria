@@ -34,7 +34,7 @@ test('cashier opening state is isolated to the authenticated browser session',()
 });
 
 test('cashier toolbar shows only sales workflow actions',()=>{
-  assert.match(access,/cajero:\['nueva','buscar','cliente','suspender','recuperar','descuento','quitar','ventas','cortez','tasa'\]/);
+  assert.match(access,/cajero:\['nueva','buscar','cliente','suspender','recuperar','descuento','quitar','ventas','cortez','tasa','salidas'\]/);
   assert.match(access,/btnAccountingTop/);
   assert.match(access,/btnSeniatTop/);
 });
@@ -76,4 +76,14 @@ test('cashier can register justified collaboration, own consumption and donation
   assert.match(main,/p\.stock=r2\(before-qty\)/);
   assert.match(main,/addKardex\(\{ts,code:p\.code,type:concept,dir:'OUT'/);
   assert.match(main,/cashbox:currentCaja\(\),qty,stockAfter:p\.stock,cost,user:user\.name/);
+});
+
+test('reload preserves authenticated session and restores the last permitted module',()=>{
+  assert.match(access,/const saved=\(\(\)=>\{try\{return JSON\.parse\(sessionStorage\.getItem\(SESSION\)\|\|'null'\)/);
+  assert.doesNotMatch(access,/sessionStorage\.removeItem\(SESSION\);shell\(\);/);
+  assert.match(main,/sifer360_last_module_v1:/);
+  assert.match(main,/localStorage\.setItem\('sifer360_last_module_v1:'\+user\.username,b\.dataset\.tb\)/);
+  assert.match(main,/function restoreWorkspaceAfterReload\(\)/);
+  assert.match(main,/button&&!button\.hidden\)\{button\.click\(\);return;\}/);
+  assert.match(main,/window\.SIFERCashier\.start\(user\)/);
 });
