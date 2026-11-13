@@ -15,7 +15,7 @@ test('cashier login enters the POS opening flow directly instead of the role das
 });
 
 test('cashier POS stays gated until a matching opening belongs to the logged-in cashier and box',()=>{
-  assert.match(main,/session\.role==='cajero'[\s\S]{0,360}opening\.status!=='abierta'[\s\S]{0,220}opening\.username\|\|''\)\)!==String\(session\.username/);
+  assert.match(main,/session\.role==='cajero'[\s\S]{0,360}opening\.status!=='abierta'[\s\S]{0,220}opening\.username\|\|''\)!==String\(session\.username/);
   assert.match(main,/if\(isCashier&&String\(existing\.username\|\|''\)!==String\(user\.username\|\|''\)\)/);
   assert.match(main,/sessionStorage\.setItem\('sifer360_active_opening',JSON\.stringify\(op\)\)/);
 });
@@ -34,8 +34,8 @@ test('cashier session does not inherit another role’s stale active cashbox',()
 test('toolbars scroll horizontally without shrinking labels or overlapping buttons',()=>{
   assert.match(css,/\.topr\{[^}]*overflow-x:auto/s);
   assert.match(css,/\.toolbar\{[^}]*overflow-x:auto/s);
-  assert.match(css,/\.toolbar>\.tb,\.toolbar>\.tsep\{flex:0 0 auto\}/);
-  assert.match(css,/\.topr>\.menubtn,\.topr>\.linkbtn\{flex:0 0 auto;white-space:nowrap\}/);
-  assert.match(css,/\.toolbar\.cashier-toolbar\{justify-content:safe center\}/);
+  assert.match(css,/\.toolbar>\.tb,\.toolbar>\.tsep\{flex:0 0 auto;/);
+  assert.match(css,/\.topr>\.menubtn,\.topr>\.linkbtn\{flex:0 0 auto;white-space:nowrap;/);
+  assert.match(css,/\.toolbar\.cashier-toolbar\{justify-content:safe center;/);
   assert.match(css,/body\.cashier-pending #toolbar,body\.cashier-pending \.main\{visibility:hidden/);
 });
