@@ -47,9 +47,11 @@ test('el corte Z requiere autorización y cierra la apertura activa', () => {
 });
 
 test('el contexto activo de caja se prioriza por sesión de usuario', () => {
-  assert.match(main, /const active=JSON\.parse\(sessionStorage\.getItem\('sifer360_active_box'\)\|\|'null'\)/);\n  assert.match(main, /if\(session\.role==='cajero'\)return \{username:session\.username,name:session\.name,role:'cajero',cashbox:session\.cashbox\}/);\n  assert.match(main, /return JSON\.parse\(localStorage\.getItem\('sifer360_active_box'\)\|\|'null'\)\|\|active\|\|\{\}/);
-  assert.match(access, /sessionStorage\.setItem\('sifer360_active_box'/);
-  assert.match(access, /sessionStorage\.removeItem\('sifer360_active_box'\)/);
+  assert.match(main, /const active=JSON\\.parse\\(sessionStorage\\.getItem\\('sifer360_active_box'\\)\\|\\|'null'\\)/);
+  assert.match(main, /if\\(session\\.role==='cajero'\\)return \\{username:session\\.username,name:session\\.name,role:'cajero',cashbox:session\\.cashbox\\}/);
+  assert.match(main, /return JSON\\.parse\\(localStorage\\.getItem\\('sifer360_active_box'\\)\\|\\|'null'\\)\\|\\|active\\|\\|\\{\\}/);
+  assert.match(access, /sessionStorage\\.setItem\\('sifer360_active_box'/);
+  assert.match(access, /sessionStorage\\.removeItem\\('sifer360_active_box'\\)/);
 });
 
 test('la apertura de caja es obligatoria para finalizar ventas de cajero', () => {
