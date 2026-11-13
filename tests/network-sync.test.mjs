@@ -125,10 +125,10 @@ test('la liquidación CASHEA exige depósito real conciliado y guarda trazabilid
 
 
 test('el cobro solo exige aprobación real para CASHEA', () => {
-  assert.match(pos, /const refPrompts=\\{cashea:/);
-  assert.doesNotMatch(pos, /const refPrompts=\\{zelle:/);
-  assert.match(pos, /Aprobación CASHEA/);
-  assert.match(pos, /finalize\\(last,enteredAmts,isCred,cDays,enteredRefs,el\\)/);
+  assert.ok(pos.includes("const refPrompts={cashea:"));
+  assert.ok(!pos.includes("const refPrompts={zelle:"));
+  assert.ok(pos.includes("Aprobación CASHEA"));
+  assert.ok(pos.includes("finalize(last,enteredAmts,isCred,cDays,enteredRefs,el)"));
 });
 
 test('el asistente Cashea vuelve al modal de pago y conserva el plan aplicado', () => {
