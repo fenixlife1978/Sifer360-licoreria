@@ -403,3 +403,39 @@ button.sp:hover{background:var(--sel)}
 .sale-completion-note{font-size:12px;line-height:1.5;color:var(--muted);max-width:310px;margin:2px auto}
 .sale-completion-ticket{width:100%;padding:10px 12px;background:var(--alt);border:1px solid var(--lo);border-radius:7px;font-size:12px;color:var(--tx)}
 @media(max-width:480px){.sale-completion{padding:6px 0}.sale-completion-amount{font-size:29px}.sale-completion-label{font-size:13px}}
+
+/* Navegación adaptable: los textos nunca se montan y cada barra se desplaza por separado. */
+.top{min-width:0;}
+.brand{flex:0 0 auto;}
+.topr{flex:1 1 auto;min-width:0;max-width:100%;overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:thin;overscroll-behavior-x:contain;}
+.topr>.menubtn,.topr>.linkbtn{flex:0 0 auto;white-space:nowrap;}
+.topr>.who{flex:0 0 auto;}
+.toolbar{min-width:0;max-width:100%;overscroll-behavior-x:contain;touch-action:pan-x;}
+.toolbar>.tb,.toolbar>.tsep{flex:0 0 auto;}
+.toolbar>.tb{white-space:nowrap;}
+.toolbar.cashier-toolbar{justify-content:safe center;}
+body.cashier-mode .topr>#btnDashboard,
+body.cashier-mode .topr>#btnCasheaTop,
+body.cashier-mode .topr>#btnDivisasTop,
+body.cashier-mode .topr>#btnAccountingTop,
+body.cashier-mode .topr>#btnSeniatTop,
+body.cashier-mode .topr>#btnMenu{display:none!important;}
+body.cashier-mode .topr{justify-content:flex-end;}
+body.cashier-pending #toolbar,body.cashier-pending .main{visibility:hidden!important;pointer-events:none!important;}
+body.cashier-pending .topr>#btnLogout{visibility:visible!important;}
+@media(max-width:900px){
+ .top{gap:8px;padding-inline:8px;}
+ .brand{max-width:44%;}
+ .topr{gap:7px;}
+ .who{max-width:120px;}
+}
+@media(max-width:600px){
+ .brand{max-width:36%;gap:6px;}
+ .mark{width:28px;height:28px;}
+ .bname strong{font-size:16px;}
+ .bname span{display:none;}
+ .topr{gap:5px;}
+ .topr>.menubtn{padding:5px 8px;font-size:11px;}
+ .toolbar{justify-content:flex-start;}
+ .toolbar.cashier-toolbar{justify-content:safe center;}
+}
