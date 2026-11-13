@@ -5877,7 +5877,7 @@ function applyCashierWorkspace(){
   if(toolbar)toolbar.classList.toggle('cashier-toolbar',user.role==='cajero');
   if(window.SIFERAccess&&window.SIFERAccess.applyPermissions)window.SIFERAccess.applyPermissions(user);
 }
-window.SIFERCashier={start:function(){document.body.classList.add('cashier-mode','cashier-pending');const access=$('#sifer-access');if(access)access.remove();document.body.classList.remove('sa-locked');openCashboxDlg();}};
+window.SIFERCashier={start:function(user){document.body.classList.add('cashier-mode','cashier-pending');const access=$('#sifer-access');if(access)access.remove();document.body.classList.remove('sa-locked');if(window.SIFERAccess&&window.SIFERAccess.applyPermissions)window.SIFERAccess.applyPermissions(user||activeUser());document.body.classList.add('cashier-pending');openCashboxDlg();}};
 function addAdminToolbarItems(){
   if(!TB.some(t=>Array.isArray(t)&&t[0]==='pos')){const idx=TB.findIndex(t=>Array.isArray(t)&&t[0]==='usuarios');TB.splice(idx<0?TB.length:idx,0,['pos','POS','',openCashboxDlg],['usuarios','Usuarios','',usersManagementDlg],['cajas','Gestión cajas','',cashboxesManagementDlg],'-');}
 }
