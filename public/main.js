@@ -173,7 +173,7 @@ function seed(){
     clients:[{name:'Consumidor final',rif:'',tel:''}],
     suppliers:[],
     sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],movimientosCaja:[],kardex:[],counts:[],
-    lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],accounting:{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
+    lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],rateAudit:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],accounting:{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
   };
@@ -183,7 +183,7 @@ function stateSnapshot(){
   return {
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
     sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],movimientosCaja:S.movimientosCaja||[],
-    kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,cambiosDivisas:S.cambiosDivisas,
+    kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,cambiosDivisas:S.cambiosDivisas,rateAudit:S.rateAudit||[],
     casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],accounting:S.accounting||{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
   };
@@ -589,6 +589,7 @@ function load(){
     if(!d||d.v!==1||!Array.isArray(d.products)||!d.cfg)return false;
     const seedMap={};SEED.forEach(sp=>{seedMap[sp.code]=sp;});
     S.cfg=Object.assign(S.cfg,d.cfg);
+    S.rateAudit=Array.isArray(d.rateAudit)?d.rateAudit:[];
     S.cortesZ=Array.isArray(d.cortesZ)?d.cortesZ:[];
     S.movimientosCaja=Array.isArray(d.movimientosCaja)?d.movimientosCaja:[];
     const legacyCaja=String(S.cfg.caja||'01');
