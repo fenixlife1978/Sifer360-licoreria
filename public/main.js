@@ -5864,8 +5864,7 @@ function openCashboxDlg(){
     all.push(op);localStorage.setItem('sifer360_openings',JSON.stringify(all));localStorage.setItem('sifer360_bcv_rate',String(rate));
     const context={username:user.username,name:user.name||user.username,role:user.role,cashbox:box,openingId:op.id,openedAt,bs,usd,rate,status:'abierta'};
     sessionStorage.setItem('sifer360_active_box',JSON.stringify(context));sessionStorage.setItem('sifer360_active_opening',JSON.stringify(op));
-    localStorage.setItem('sifer360_active_opening',JSON.stringify(op));
-    if(!isCashier)localStorage.setItem('sifer360_active_box',JSON.stringify(context));
+    if(!isCashier){localStorage.setItem('sifer360_active_box',JSON.stringify(context));localStorage.setItem('sifer360_active_opening',JSON.stringify(op));}
     S.cfg.rate=rate;applyCashierWorkspace();showPosScreen();msg('Apertura de caja '+box+' registrada. Ya puedes operar en el POS.','ok');return true;
   };
   openWin({title:(isCashier?'POS · Apertura obligatoria de caja ':'POS · Apertura de caja ')+box,w:560,body,foot:(isCashier?[]:[{label:'Cancelar'}]).concat([{label:'Confirmar apertura e ingresar al POS',primary:true,fn:confirmOpening}]),onClose:isCashier?()=>{}:undefined});
@@ -6013,7 +6012,14 @@ function zOperationalTotals(sales,start,end,box){
 }
 function readActiveOpening(){
   try{
+    const user=activeUser();
     const sessionValue=JSON.parse(sessionStorage.getItem('sifer360_active_opening')||'null');
+    if(user.role==='cajero'){
+      if(!sessionValue||sessionValue.status!=='abierta')return null;
+      if(String(sessionValue.username||'')!==String(user.username||''))return null;
+      if(String(sessionValue.cashbox||'')!==String(user.cashbox||''))return null;
+      return sessionValue;
+    }
     if(sessionValue&&sessionValue.status==='abierta')return sessionValue;
     const localValue=JSON.parse(localStorage.getItem('sifer360_active_opening')||'null');
     return localValue||sessionValue||null;
@@ -6021,8 +6027,8 @@ function readActiveOpening(){
 }
 function writeActiveOpening(opening){
   const value=JSON.stringify(opening);
-  localStorage.setItem('sifer360_active_opening',value);
   sessionStorage.setItem('sifer360_active_opening',value);
+  if(activeUser().role!=='cajero')localStorage.setItem('sifer360_active_opening',value);
 }
 function zExpectedByMethod(sales,opening){
   const out={};
