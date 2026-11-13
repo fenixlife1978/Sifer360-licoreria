@@ -5035,6 +5035,7 @@ function newRetencionIvaDlg(onDone){
 }
 
 function seniatSudebanDlg(initialTab){
+  if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir el módulo Fiscal.','bad');return;}
   let activeTab=initialTab||'resumen';
   let curPeriod='mes'; /* 'quincena1' | 'quincena2' | 'mes' | 'todo' */
   let qText='';
@@ -5779,6 +5780,7 @@ function cashboxList(){
 function persistCashboxes(boxes){localStorage.setItem(BOXES_STORAGE_KEY,JSON.stringify(boxes));}
 function showPosScreen(){
   const session=activeUser();
+  if(session.role==='contador'){window.SIFERAccountantDashboard.show();return;}
   if(session.role==='cajero'){
     const opening=readActiveOpening();
     if(!opening||opening.status!=='abierta'||String(opening.cashbox)!==currentCaja()||String(opening.username||'')!==String(session.username||'')){
@@ -5795,6 +5797,7 @@ function showPosScreen(){
   renderHeader();renderAll();
 }
 function showDashboardScreen(){
+  if(activeUser().role==='contador'){window.SIFERAccountantDashboard.show();return;}
   const d=$('#adminDashboard'),main=$('.main'),left=$('.left');
   if(!d||!main)return;
   if(left)left.hidden=true; // Ocultar toda el área de venta; la cabecera y la toolbar están fuera de .main y permanecen visibles.
@@ -5935,6 +5938,7 @@ window.SIFERDashboard={show:showDashboardScreen,showPos:showPosScreen,refresh:sh
 /* ---------- menús y barra de herramientas ---------- */
 const focusEntry=()=>$('#entry').focus();
 function openAccountingModule(){
+  if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir Contabilidad.','bad');return;}
   const app=window.SIFERAccountingApp;
   if(!app||typeof app.open!=='function'){
     console.error('SIFERAccountingApp no está disponible. Verifique que /accounting.js haya cargado sin errores.');
@@ -6506,7 +6510,7 @@ function wire(){
     const b=e.target.closest('[data-tb]');if(!b)return;
     const user=activeUser();
     if(user.username)try{localStorage.setItem('sifer360_last_module_v1:'+user.username,b.dataset.tb);}catch(err){}
-    const t=TB.find(x=>x[0]===b.dataset.tb);if(t){if($('#adminDashboard')&&!$('#adminDashboard').hidden)showPosScreen();t[3]();}
+    const t=TB.find(x=>x[0]===b.dataset.tb);if(t){if(!window.SIFERAccess||!window.SIFERAccess.canAccess||!window.SIFERAccess.canAccess(b.dataset.tb,user)){msg('Tu perfil no tiene autorización para abrir este módulo.','bad');return;}if($('#adminDashboard')&&!$('#adminDashboard').hidden&&user.role!=='contador')showPosScreen();t[3]();}
   });
   document.addEventListener('pointerdown',e=>{
     if(menuEl&&!e.target.closest('.menu')&&!e.target.closest('#btnMenu'))closeMenu();
@@ -6516,7 +6520,7 @@ function wire(){
   document.addEventListener('keydown',e=>{
     if(W){if(e.key==='Escape'){e.preventDefault();closeWin();}return;}
     if(e.key==='Escape'&&menuEl){closeMenu();if($('#btnMenu'))$('#btnMenu').focus();return;}
-    if(fk[e.key]){e.preventDefault();closeMenu();fk[e.key]();return;}
+    if(fk[e.key]){e.preventDefault();const session=activeUser();if(session.role==='contador'&&e.key!=='F1'){msg('El perfil contador solo tiene acceso a Fiscal y Contabilidad.','bad');return;}closeMenu();fk[e.key]();return;}
     const tag=document.activeElement?document.activeElement.tagName:'';
     if(/INPUT|SELECT|TEXTAREA/.test(tag))return;
     if(e.key==='Delete'){e.preventDefault();removeSel();}
@@ -6738,12 +6742,12 @@ function restoreWorkspaceAfterReload(){
   }
   const key='sifer360_last_module_v1:'+user.username;
   let last='';try{last=localStorage.getItem(key)||'';}catch(e){}
-  const allowed={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','contabilidad','documentos','basedatos','tasa','usuarios','cajas'],contador:['ventas','cortez','seniat','documentos','cxc','cxp','compras','basedatos']};
+  const allowed={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','contabilidad','documentos','basedatos','tasa','usuarios','cajas'],contador:['seniat','contabilidad']};
   if(last&&(allowed[user.role]||[]).includes(last)){
     const button=$('#toolbar [data-tb="'+last+'"]');
     if(button&&!button.hidden){button.click();return;}
   }
-  if(user.role==='admin')showDashboardScreen();
+  if(user.role==='admin')showDashboardScreen();else if(user.role==='contador'&&window.SIFERAccountantDashboard)window.SIFERAccountantDashboard.show();
 }
 prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(()=>{
   init();
