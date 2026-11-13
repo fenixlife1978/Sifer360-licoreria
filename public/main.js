@@ -6842,9 +6842,7 @@ prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la
           for(const m of initialMethods){
             const amount=r2(Math.max(0,Number($('#cshInitAmt-'+m.id,el).value)||0));
             if(amount<=0)continue;
-            const refInput=$('#cshInitRef-'+m.id,el);
-            const ref=refInput?refInput.value.trim():'';
-            if(initialNeedsRef.has(m.id)&&!ref){msg('Ingrese la referencia o autorización de '+m.name+' para registrar la inicial.','bad');return false;}
+            const ref='';
             paidInitialUsd+=m.cur==='USD'?amount/(1+IGTF):amount/rate;
             initialPayments.push({id:m.id,name:m.name,cur:m.cur,amount,ref});
           }
@@ -7330,7 +7328,7 @@ function payDlg(draft){
   const rowsHtml=METHODS.map(m=>{
     const isBio=m.id==='biopago';
     const isCashea=m.id==='cashea';
-    const hasRef=['biopago','punto','pmovil','transf','zelle','cashea'].includes(m.id);
+    const hasRef=m.id==='cashea';
     return '<tr>'+
       '<td><b>'+esc(m.name)+'</b>'+(isBio?' <span class="fiscal-tag ok" style="font-size:10px;padding:1px 5px;margin-left:4px">BDV Huella</span>':'')+(isCashea?' <span class="badge-cashea" style="margin-left:4px">3 Cuotas BNPL</span>':'')+'</td>'+
       '<td class="c mono" style="font-weight:600">'+(m.cur==='USD'?'US$':'Bs.')+'</td>'+
@@ -7346,7 +7344,7 @@ function payDlg(draft){
       '<label class="chk"><input type="checkbox" id="payCreditChk"> Enviar saldo pendiente a <b>Cuentas por Cobrar (CxC)</b></label>'+
       '<span id="payCreditDaysWrap" class="row" style="margin-left:auto" hidden><label for="payCreditDays">Plazo crédito (días):</label><input class="fld r" id="payCreditDays" value="15" style="width:64px" inputmode="numeric"></span>'+
     '</div>'+
-    '<div class="gridwrap paywrap"><table class="grid"><thead><tr><th>Forma de pago</th><th class="c">Moneda</th><th class="r">Monto recibido</th><th></th><th>Ref. Bancaria / Aprob.</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div><p class="hint">Trazabilidad: Zelle, tarjeta/Punto, Biopago, Pago Móvil, transferencia y Cashea requieren referencia o autorización real. El efectivo no requiere referencia. Los pagos en divisas (efectivo US$ y Zelle) generan IGTF de 3 %; valide la aplicación fiscal según la operación real.</p></div>');
+    '<div class="gridwrap paywrap"><table class="grid"><thead><tr><th>Forma de pago</th><th class="c">Moneda</th><th class="r">Monto recibido</th><th></th><th>Aprobación CASHEA</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div><p class="hint">Solo CASHEA exige un token o aprobación real verificable. Los demás medios de pago no requieren referencia para confirmar la venta. Los pagos en divisas (efectivo US$ y Zelle) generan IGTF de 3 %; valide la aplicación fiscal según la operación real.</p></div>');
   const amts=()=>{const o={};METHODS.forEach(m=>{o[m.id]=pn($('#pm-'+m.id,el).value);});return o;};
   const refs=()=>{const o={};METHODS.forEach(m=>{const inp=$('#pref-'+m.id,el);o[m.id]=inp?inp.value.trim():'';});return o;};
   let last=null;
@@ -7402,7 +7400,7 @@ function payDlg(draft){
       const isCred=$('#payCreditChk',el).checked;
       if(!last||(last.pending>=0.01&&!isCred))return false;
       const enteredAmts=amts(),enteredRefs=refs();
-      const refPrompts={zelle:'confirmación o referencia de Zelle',punto:'voucher o código de autorización de la tarjeta',biopago:'número de operación/autorización de Biopago',pmovil:'referencia del pago móvil',transf:'referencia de la transferencia',cashea:'código real de aprobación de Cashea'};
+      const refPrompts={cashea:'código real de aprobación de Cashea'};
       for(const m of METHODS){if((enteredAmts[m.id]||0)>0&&refPrompts[m.id]&&!enteredRefs[m.id]){msg('Complete la '+refPrompts[m.id]+' para registrar la trazabilidad de '+m.name+'.','bad');const ri=$('#pref-'+m.id,el);if(ri)ri.focus();return false;}}
       if(enteredAmts.cashea>0&&el._casheaTx&&Math.abs(enteredAmts.cashea-el._casheaTx.financiadoUsd)>0.01){msg('El importe financiado no coincide con el plan Cashea aplicado. Vuelva al asistente.','bad');return false;}
       if(isCred&&last.pending>=0.01&&S.client.rif==='V-00000000'){
