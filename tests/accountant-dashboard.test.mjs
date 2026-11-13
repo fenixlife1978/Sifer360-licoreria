@@ -32,7 +32,8 @@ test('los accesos superiores ajenos al contador se ocultan y el dashboard perman
 test('el dashboard calcula IVA, retenciones, IGTF, CxC y CxP desde el estado operativo',()=>{
  for(const term of ['state.sales','state.purchases','state.retencionesIva','retainedUsd','retainedBs','ivaDebitBs','ivaCreditBs','igtfBs','state.cxc','state.cxp','accounting.entries'])assert.ok(dashboard.includes(term),term);
  assert.match(dashboard,/SIFERAccountantDashboard/);
- assert.match(dashboard,/estimación informativa/);\n assert.match(dashboard,/docDateTs\\|\\|x\\?\\.ts/);
+ assert.match(dashboard,/estimación informativa/);
+ assert.match(dashboard,/docDateTs\|\|x\?\.ts/);
  assert.match(dashboard,/Soportes fiscales adjuntos/i);
 });
 test('dashboard y toolbar del contador se adaptan a pantallas pequeñas',()=>{
