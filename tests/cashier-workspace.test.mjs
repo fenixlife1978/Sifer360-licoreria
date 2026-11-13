@@ -50,5 +50,5 @@ test('cashier opening is session-scoped and never falls back to shared local act
   assert.match(block,/String\(sessionValue\.username\|\|''\)!==String\(user\.username\|\|''\)/);
   assert.match(block,/String\(sessionValue\.cashbox\|\|''\)!==String\(user\.cashbox\|\|''\)/);
   assert.match(block,/if\(activeUser\(\)\.role!=='cajero'\)localStorage\.setItem/);
-  assert.doesNotMatch(block,/if\(user\.role==='cajero'\)[\s\S]*?localStorage\.getItem/);
+  const cashierBranch=block.slice(block.indexOf("if(user.role==='cajero'){"),block.indexOf("if(sessionValue&&sessionValue.status"));\n  assert.doesNotMatch(cashierBranch,/localStorage/);
 });
