@@ -3700,7 +3700,7 @@ function casheaPaymentAssistantDlg(totalSale, rate, onApplied, onCancel){
         '</select>'+
       '</div>'+
       '<div class="f" id="cshCustomPctWrap" hidden><label>% Inicial personalizado</label><input class="fld r" id="cshCustomPct" type="number" min="0" max="95" value="40"></div>'+
-      '<div class="f wide"><label>Distribución del pago inicial entre varios métodos</label><div class="hint">Puede combinar efectivo, tarjeta, Biopago, pago móvil, transferencia o Zelle. Introduzca el importe real de cada método; la suma equivalente debe cubrir exactamente la inicial Cashea.</div><div class="gridwrap"><table class="grid" style="min-width:620px"><thead><tr><th>Método</th><th>Moneda</th><th>Importe de la inicial</th><th>Referencia / autorización</th></tr></thead><tbody id="cshInitialRows"></tbody></table></div><div id="cshInitialSummary" class="hint" style="font-weight:700;margin-top:6px"></div></div>'+
+      '<div class="f wide"><label>Distribución del pago inicial entre varios métodos</label><div class="hint">Puede combinar efectivo, tarjeta, Biopago, pago móvil, transferencia o Zelle. Introduzca el importe real de cada método; la suma equivalente debe cubrir exactamente la inicial Cashea. Solo se exige la aprobación real de Cashea.</div><div class="gridwrap"><table class="grid" style="min-width:470px"><thead><tr><th>Método</th><th>Moneda</th><th>Importe de la inicial</th></tr></thead><tbody id="cshInitialRows"></tbody></table></div><div id="cshInitialSummary" class="hint" style="font-weight:700;margin-top:6px"></div></div>'+
     '</div>'+
     '<div class="cashea-calc-box" id="cshPlanBox"></div>'+
     '<div class="hint">Este asistente calcula y registra el plan en el POS; no consulta ni confirma aprobaciones mediante la API oficial de Cashea. Verifique el token y las condiciones en Cashea antes de confirmar. La inicial se cobra ahora; el saldo financiado queda pendiente de liquidación y debe conciliarse después.</div>'+
@@ -3713,8 +3713,3053 @@ function casheaPaymentAssistantDlg(totalSale, rate, onApplied, onCancel){
   const initialRows = $('#cshInitialRows', el);
   const initialSummary = $('#cshInitialSummary', el);
   const initialMethods = METHODS.filter(m=>m.id!=='cashea');
-  const initialNeedsRef = new Set(['biopago','punto','pmovil','transf','zelle']);
-  initialRows.innerHTML=initialMethods.map(m=>'<tr><td><b>'+esc(m.name)+'</b></td><td class="c">'+(m.cur==='USD'?'US$':'Bs.')+'</td><td><input class="fld r" type="number" min="0" step="0.01" id="cshInitAmt-'+m.id+'" data-csh-initial-method="'+m.id+'" value="0" style="min-width:105px" aria-label="Importe inicial '+esc(m.name)+'"></td><td>'+(initialNeedsRef.has(m.id)?'<input class="fld mini mono" id="cshInitRef-'+m.id+'" placeholder="Referencia / autorización" style="min-width:150px">':'<span class="hint">No aplica</span>')+'</td></tr>').join('');
+  const initialNeedsRef = new Set();
+  initialRows.innerHTML=initialMethods.map(m=>'<tr><td><b>'+esc(m.name)+'</b></td><td class="c">'+(m.cur==='USD'?'US
+  const ciInp = $('#cshCi', el);
+  const tokenInp = $('#cshToken', el);
+
+  function getPct(){
+    if(selLevel.value === 'custom') return Math.max(0, Math.min(100, Number(customPct.value) || 0));
+    return Number(selLevel.value) || 0;
+  }
+  function getCuotasCount(){
+    const opt = selLevel.options[selLevel.selectedIndex];
+    return Number(opt.dataset.cuotas || 3);
+  }
+
+  function renderPlan(){
+    const pct = getPct();
+    const cuotas = getCuotasCount();
+    const inicialUsd = r2(totalSale * (pct / 100));
+    const financiadoUsd = r2(totalSale - inicialUsd);
+    const cuotaUsd = r2(financiadoUsd / cuotas);
+    const now = Date.now(), dayMs = 86400000;
+
+    let cuotasHtml = '';
+    for(let c = 1; c <= cuotas; c++){
+      const fDate = new Date(now + c * 14 * dayMs).toLocaleDateString('es-VE');
+      cuotasHtml += '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.1);font-size:12px">'+
+        '<span>Cuota '+c+' (en '+ (c * 14) +' días · '+fDate+'):</span>'+
+        '<b>'+usd(cuotaUsd)+' <span style="color:#FBBF24;font-size:11px">('+bsf(cuotaUsd*rate)+')</span></b>'+
+      '</div>';
+    }
+
+    planBox.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'+
+      '<div style="background:rgba(255,255,255,0.06);padding:8px 10px;border-radius:6px">'+
+        '<small style="color:#C7D2FE;display:block;font-size:10px">1. PAGO INICIAL EN CAJA ('+pct+'%)</small>'+
+        '<div style="font-size:17px;font-weight:700;color:#A7F3D0">'+usd(inicialUsd)+'</div>'+
+        '<small style="color:#94A3B8">'+bsf(inicialUsd*rate)+'</small>'+
+      '</div>'+
+      '<div style="background:rgba(255,255,255,0.06);padding:8px 10px;border-radius:6px">'+
+        '<small style="color:#C7D2FE;display:block;font-size:10px">2. SALDO FINANCIADO CASHEA</small>'+
+        '<div style="font-size:17px;font-weight:700;color:#FBBF24">'+usd(financiadoUsd)+'</div>'+
+        '<small style="color:#94A3B8">'+bsf(financiadoUsd*rate)+'</small>'+
+      '</div>'+
+    '</div>'+
+    '<div style="font-size:11.5px;color:#C7D2FE;margin-bottom:4px;font-weight:600">Plan de '+cuotas+' cuotas quincenales (sin interés):</div>'+
+    cuotasHtml;
+    let paidInitialUsd=0;
+    initialMethods.forEach(m=>{const amount=Math.max(0,Number($('#cshInitAmt-'+m.id,el).value)||0);paidInitialUsd+=m.cur==='USD'?amount/(1+IGTF):amount/rate;});
+    const delta=r2(paidInitialUsd-inicialUsd);
+    initialSummary.textContent='Inicial requerida: '+usd(inicialUsd)+' · Distribuido: '+usd(paidInitialUsd)+' · Diferencia: '+usd(delta);
+    initialSummary.style.color=Math.abs(delta)<=0.01?'#16A34A':'#B45309';
+  }
+
+  selLevel.addEventListener('change', () => {
+    customWrap.hidden = selLevel.value !== 'custom';
+    renderPlan();
+  });
+  customPct.addEventListener('input', renderPlan);
+  initialRows.addEventListener('input',e=>{if(e.target.matches('[data-csh-initial-method]'))renderPlan();});
+  renderPlan();
+
+  openWin({
+    title: 'Asistente de Financiamiento CASHEA (BNPL)',
+    w: 640,
+    body: el,
+    foot: [
+      { label: 'Volver al pago', fn:()=>{closeWin();if(onCancel)onCancel();return false;} },
+      {
+        label: 'Aplicar a la Venta',
+        primary: true,
+        fn: () => {
+          const token = tokenInp.value.trim();
+          if(!token){ msg('Ingrese el código de aprobación o token de Cashea.', 'bad'); return false; }
+          const ci = ciInp.value.trim() || S.client.rif;
+          const pct = getPct();
+          const cuotas = getCuotasCount();
+          const inicialUsd = r2(totalSale * (pct / 100));
+          const financiadoUsd = r2(totalSale - inicialUsd);
+          const cuotaUsd = r2(financiadoUsd / cuotas);
+          const nivelTxt = selLevel.options[selLevel.selectedIndex].textContent;
+          const initialPayments=[];
+          let paidInitialUsd=0;
+          for(const m of initialMethods){
+            const amount=r2(Math.max(0,Number($('#cshInitAmt-'+m.id,el).value)||0));
+            if(amount<=0)continue;
+            const ref='';
+            paidInitialUsd+=m.cur==='USD'?amount/(1+IGTF):amount/rate;
+            initialPayments.push({id:m.id,name:m.name,cur:m.cur,amount,ref});
+          }
+          if(Math.abs(r2(paidInitialUsd-inicialUsd))>0.01){msg('La inicial debe quedar cubierta exactamente. Requerida: '+usd(inicialUsd)+'; distribuida: '+usd(paidInitialUsd)+'.','bad');return false;}
+          const result={
+            aprobacion: token,
+            ci,
+            nivel: nivelTxt,
+            totalVenta: totalSale,
+            inicialUsd,
+            initialPayments,
+            inicialMetodoId: initialPayments.length===1?initialPayments[0].id:'',
+            inicialMetodoName: initialPayments.map(p=>p.name).join(' + ')||'Sin inicial',
+            financiadoUsd,
+            cuotasCount: cuotas,
+            cuotaUsd
+          };
+          closeWin();
+          onApplied(result);
+          return false;
+        }
+      }
+    ],
+    onClose:()=>{closeWin();if(onCancel)onCancel();}
+  });
+}
+
+function casheaSimulatorDlg(){
+  const rate = S.cfg.rate;
+  const el = h('<div class="form" style="gap:12px">'+
+    '<div style="background:#1E1B4B;border:1px solid #4338CA;border-radius:8px;padding:12px;color:#EEF2FF">'+
+      '<div style="font-size:16px;font-weight:700;color:#FBBF24">⚡ Simulador de Cuotas CASHEA</div>'+
+      '<div style="font-size:12px;color:#C7D2FE">Calcule en segundos el pago inicial y las cuotas quincenales para orientar al cliente en mostrador</div>'+
+    '</div>'+
+    '<div class="docgrid">'+
+      '<div class="f"><label>Monto de la compra (US$)</label><input class="fld r big" id="simUsd" type="number" step="0.5" value="100.00"></div>'+
+      '<div class="f"><label>Tasa oficial BCV</label><input class="fld r" id="simRate" value="'+nf(rate)+' Bs." readonly></div>'+
+      '<div class="f wide"><label>Nivel del cliente en Cashea</label>'+
+        '<select class="fld" id="simLevel">'+
+          '<option value="40" selected>Nivel 3, 4 y 5 (Inicial 40% / Financiado 60% en 3 cuotas)</option>'+
+          '<option value="50">Nivel 2 (Inicial 50% / Financiado 50% en 3 cuotas)</option>'+
+          '<option value="60">Nivel 1 (Inicial 60% / Financiado 40% en 3 cuotas)</option>'+
+          '<option value="0">Línea Cotidiana / Nivel Más (Inicial 0% / Financiado 100% a 14 días)</option>'+
+        '</select>'+
+      '</div>'+
+    '</div>'+
+    '<div class="cashea-calc-box" id="simResultBox"></div>'+
+  '</div>');
+
+  const simUsd = $('#simUsd', el);
+  const simLevel = $('#simLevel', el);
+  const resultBox = $('#simResultBox', el);
+
+  function recalc(){
+    const tot = Math.max(0, Number(simUsd.value) || 0);
+    const pct = Number(simLevel.value) || 0;
+    const cuotas = pct === 0 ? 1 : 3;
+    const inicial = r2(tot * (pct / 100));
+    const financiado = r2(tot - inicial);
+    const cuota = r2(financiado / cuotas);
+    const now = Date.now(), dayMs = 86400000;
+
+    let cHtml = '';
+    for(let c = 1; c <= cuotas; c++){
+      const dt = new Date(now + c * 14 * dayMs).toLocaleDateString('es-VE');
+      cHtml += '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.1);font-size:12.5px">'+
+        '<span>Cuota '+c+' (en '+(c*14)+' días · '+dt+'):</span>'+
+        '<b style="color:#A7F3D0">'+usd(cuota)+' <span style="color:#FBBF24;font-size:11px">('+bsf(cuota*rate)+')</span></b>'+
+      '</div>';
+    }
+
+    resultBox.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">'+
+      '<div style="background:rgba(255,255,255,0.06);padding:10px;border-radius:6px">'+
+        '<div style="font-size:11px;color:#C7D2FE;text-transform:uppercase">Inicial en mostrador ('+pct+'%)</div>'+
+        '<div style="font-size:22px;font-weight:700;color:#A7F3D0">'+usd(inicial)+'</div>'+
+        '<div style="font-size:12px;color:#FBBF24">'+bsf(inicial*rate)+'</div>'+
+      '</div>'+
+      '<div style="background:rgba(255,255,255,0.06);padding:10px;border-radius:6px">'+
+        '<div style="font-size:11px;color:#C7D2FE;text-transform:uppercase">Financiado Cashea ('+(100-pct)+'%)</div>'+
+        '<div style="font-size:22px;font-weight:700;color:#FBBF24">'+usd(financiado)+'</div>'+
+        '<div style="font-size:12px;color:#94A3B8">'+bsf(financiado*rate)+'</div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="font-size:12px;font-weight:600;color:#C7D2FE;margin-bottom:6px">Cronograma de pagos del cliente:</div>'+
+    cHtml;
+  }
+
+  simUsd.addEventListener('input', recalc);
+  simLevel.addEventListener('change', recalc);
+  recalc();
+
+  openWin({
+    title: 'Simulador de Cuotas Cashea (BNPL)',
+    w: 580,
+    body: el,
+    foot: [{ label: 'Cerrar', primary: true }]
+  });
+}
+
+function casheaPrintVoucherDlg(m){
+  const rate = S.cfg.rate;
+  const now = m.ts ? fmtDT(m.ts) : fmtDT(Date.now());
+  const el = h('<div class="form" style="gap:10px">'+
+    '<div class="ticket-roll-wrap"><pre class="ticket-80mm" style="font-family:IBM Plex Mono,monospace;font-size:12px;line-height:1.35;white-space:pre">'+
+      '========================================\n'+
+      '      COMPROBANTE FINANCIAMIENTO       \n'+
+      '             CASHEA (BNPL)              \n'+
+      '========================================\n'+
+      esc(S.cfg.empresa)+'\n'+
+      'RIF: '+esc(S.cfg.rif)+'\n'+
+      '----------------------------------------\n'+
+      'Nº APROBACIÓN : '+esc(m.aprobacion)+'\n'+
+      'FECHA / HORA  : '+now+'\n'+
+      'VENTA FACTURA : #'+pad(m.ventaNo)+'\n'+
+      'Nº CONTROL    : '+(m.ctrlNo||'--')+'\n'+
+      'ESTADO        : '+esc(m.estado)+'\n'+
+      '----------------------------------------\n'+
+      'DATOS DEL CLIENTE:\n'+
+      'Titular       : '+esc(m.clienteNombre)+'\n'+
+      'Cédula / RIF  : '+esc(m.clienteCi)+'\n'+
+      '----------------------------------------\n'+
+      'DESGLOSE FINANCIERO:\n'+
+      'Total Venta   : '+usd(m.totalVenta)+' ('+bsf(m.totalVenta*rate)+')\n'+
+      'Inicial Caja  : '+usd(m.inicialUsd)+' ('+bsf(m.inicialUsd*rate)+')\n'+
+      'Financiado    : '+usd(m.financiadoUsd)+' ('+bsf(m.financiadoUsd*rate)+')\n'+
+      '----------------------------------------\n'+
+      'PLAN DE '+m.cuotasCount+' CUOTAS QUINCENALES:\n'+
+      'Cuota quincenal: '+usd(m.cuotaUsd)+' c/u\n'+
+      '----------------------------------------\n'+
+      (m.loteLiquidacion ? ('LIQUIDACIÓN BANCARIA:\nLote: '+esc(m.loteLiquidacion)+'\nFecha: '+fmtDT(m.fechaLiquidacion)+'\n----------------------------------------\n') : '')+
+      '   FIRMA CLIENTE: __________________\n'+
+      '       C.I.: '+esc(m.clienteCi)+'\n\n'+
+      '   FIRMA CAJERO:  __________________\n'+
+      '========================================\n'+
+      '  CONCILIACIÓN OFICIAL CASHEA TECHNOLOGIES\n'+
+      '========================================'+
+    '</pre></div>'+
+    '<div class="row" style="justify-content:flex-end"><button class="btn primary" id="btnPrintCshVoucher">Imprimir Comprobante</button></div>'+
+  '</div>');
+
+  $('#btnPrintCshVoucher', el).addEventListener('click', () => {
+    const wrap = $('#fiscalPrintWrap');
+    wrap.innerHTML = '<pre style="font-family:IBM Plex Mono,monospace;font-size:12px;padding:20px">'+$('pre', el).textContent+'</pre>';
+    window.print();
+  });
+
+  openWin({
+    title: 'Comprobante Cashea - ' + m.aprobacion,
+    w: 520,
+    body: el,
+    foot: [{ label: 'Cerrar', primary: true }]
+  });
+}
+
+function casheaSettlementDlg(onDone){
+  const allPendings = (S.casheaMovimientos || []).filter(m => m.estado === 'Pendiente Liquidación');
+  let pendings = allPendings.slice();
+  if(!pendings.length){
+    msg('No hay operaciones de Cashea pendientes de liquidación.', 'bad');
+    return;
+  }
+  const rate = S.cfg.rate;
+  let totFinanciado = pendings.reduce((acc, m) => acc + (m.financiadoUsd || 0), 0);
+
+  const el = h('<div class="form" style="gap:12px">'+
+    '<div style="background:#1E1B4B;border:1px solid #4338CA;border-radius:8px;padding:12px;color:#EEF2FF">'+
+      '<b style="font-size:15px;color:#FBBF24">📥 Registrar Liquidación de Lote CASHEA</b>'+
+      '<div style="font-size:12px;color:#C7D2FE">Seleccione las operaciones incluidas en este depósito real de Cashea. Se puede liquidar un subconjunto y conciliar el resto posteriormente.</div>'+
+    '</div>'+
+    '<div class="gridwrap" style="max-height:180px"><table class="grid"><thead><tr><th>Incluir</th><th>Factura</th><th>Cliente</th><th class="r">Financiado US$</th></tr></thead><tbody>'+
+      allPendings.map(m=>'<tr><td><input type="checkbox" data-liq-op="'+esc(m.id)+'" checked aria-label="Incluir operación '+esc(m.id)+'"></td><td>'+esc(m.ventaNo)+'</td><td>'+esc(m.clienteNombre||m.clienteCi||'—')+'</td><td class="r">'+esc(usd(m.financiadoUsd||0))+'</td></tr>').join('')+
+    '</tbody></table></div>'+
+    '<div class="docgrid">'+
+      '<div class="f"><label>Nº de Operaciones pendientes</label><input class="fld mono" value="'+pendings.length+' facturas" readonly></div>'+
+      '<div class="f"><label>Total Bruto por Cobrar (US$)</label><input class="fld r mono" id="liqBruto" value="'+nf(totFinanciado)+'" readonly style="font-weight:700"></div>'+
+      '<div class="f wide"><label>Banco Receptor del Comercio</label>'+
+        '<select class="fld" id="liqBanco">'+
+          '<option value="Banco Mercantil">Banco Mercantil (Cta. Corriente)</option>'+
+          '<option value="Banesco Banco Universal">Banesco Banco Universal</option>'+
+          '<option value="Banco de Venezuela">Banco de Venezuela (BDV)</option>'+
+          '<option value="Banco Nacional de Crédito (BNC)">Banco Nacional de Crédito (BNC)</option>'+
+          '<option value="Bancamiga Banco Universal">Bancamiga Banco Universal</option>'+
+        '</select>'+
+      '</div>'+
+      '<div class="f"><label>Nº Referencia Transferencia Cashea</label><input class="fld mono" id="liqRef" placeholder="Referencia bancaria real" autocomplete="off"></div>'+
+      '<div class="f"><label>% Comisión Cashea (MDR)</label><input class="fld r" id="liqComPct" type="number" min="0" max="100" step="0.01" required placeholder="Según contrato"></div>'+
+      '<div class="f wide"><label>Monto neto depositado según banco (US$ equivalente)</label><input class="fld r mono" id="liqDeposit" inputmode="decimal" autocomplete="off" placeholder="Registra el monto real del estado de cuenta"></div>'+
+    '</div>'+
+    '<div class="cashea-calc-box" id="liqCalcBox"></div>'+
+  '</div>');
+
+  const comPctInp = $('#liqComPct', el);
+  const calcBox = $('#liqCalcBox', el);
+  const refInp = $('#liqRef', el);
+  const depositInp = $('#liqDeposit', el);
+  const bancoSel = $('#liqBanco', el);
+  el.addEventListener('change', e => {
+    const checkbox = e.target.closest('[data-liq-op]');
+    if(!checkbox)return;
+    const selected = new Set($('[data-liq-op]',el).filter(input=>input.checked).map(input=>input.dataset.liqOp));
+    pendings = allPendings.filter(m=>selected.has(String(m.id)));
+    totFinanciado = r2(pendings.reduce((acc,m)=>acc+Number(m.financiadoUsd||0),0));
+    $('#liqBruto',el).value=nf(totFinanciado);
+    recalc();
+  });
+
+  function recalc(){
+    const pct = Math.max(0, Number(comPctInp.value) || 0);
+    const comUsd = r2(totFinanciado * (pct / 100));
+    const netoUsd = r2(totFinanciado - comUsd);
+    const depositRaw=depositInp.value.trim();
+    const depositUsd=depositRaw?pn(depositRaw):null;
+    const diff=depositUsd===null?null:r2(depositUsd-netoUsd);
+    calcBox.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center">'+
+      '<div style="background:rgba(255,255,255,0.06);padding:8px;border-radius:6px">'+
+        '<small style="color:#C7D2FE;font-size:10px">TOTAL BRUTO</small>'+
+        '<div style="font-size:16px;font-weight:700">'+usd(totFinanciado)+'</div>'+
+        '<small style="color:#94A3B8">'+bsf(totFinanciado*rate)+'</small>'+
+      '</div>'+
+      '<div style="background:rgba(255,255,255,0.06);padding:8px;border-radius:6px">'+
+        '<small style="color:#F87171;font-size:10px">COMISIÓN ('+pct+'%)</small>'+
+        '<div style="font-size:16px;font-weight:700;color:#F87171">- '+usd(comUsd)+'</div>'+
+        '<small style="color:#94A3B8">'+bsf(comUsd*rate)+'</small>'+
+      '</div>'+
+      '<div style="background:rgba(255,255,255,0.06);padding:8px;border-radius:6px">'+
+        '<small style="color:#A7F3D0;font-size:10px">NETO ESPERADO</small>'+
+        '<div style="font-size:16px;font-weight:700;color:#A7F3D0">'+usd(netoUsd)+'</div>'+
+        '<small style="color:#FBBF24">'+bsf(netoUsd*rate)+'</small>'+
+      '</div>'+
+    '</div><div style="margin-top:10px;padding:10px;border:1px solid '+(diff===null?'#475569':Math.abs(diff)<=0.01?'#059669':'#B45309')+';border-radius:6px;font-size:12px;color:#E2E8F0">'+
+      (diff===null?'Registra el depósito real para comparar con el neto esperado.':'Diferencia bancaria: <b style="color:'+(Math.abs(diff)<=0.01?'#6EE7B7':'#FCD34D')+'">'+usd(diff)+'</b> · '+(Math.abs(diff)<=0.01?'Coincide con el neto esperado.':'No coincide; la liquidación no se confirmará.'))+
+    '</div>';
+  }
+  comPctInp.addEventListener('input', recalc);
+  depositInp.addEventListener('input', recalc);
+  recalc();
+
+  openWin({
+    title: 'Liquidación de Lote Cashea',
+    w: 620,
+    body: el,
+    foot: [
+      { label: 'Cancelar' },
+      {
+        label: 'Confirmar y Liquidar Lote',
+        primary: true,
+        fn: () => {
+          const ref = refInp.value.trim();
+          const depositRaw = depositInp.value.trim();
+          const pct = Number(comPctInp.value);
+          if(!pendings.length){msg('Seleccione al menos una operación pendiente para liquidar.','bad');return false;}
+          const comUsd = r2(totFinanciado * (pct / 100));
+          const netoUsd = r2(totFinanciado - comUsd);
+          const depositUsd = depositRaw ? pn(depositRaw) : null;
+          if(!ref){ msg('Ingrese la referencia bancaria real de Cashea.', 'bad'); return false; }
+          if(!depositRaw || depositUsd===null || !comPctInp.value.trim() || !Number.isFinite(pct) || pct<0 || pct>100){ msg('Registre el depósito real y una comisión válida entre 0 % y 100 %.', 'bad'); return false; }
+          if(Math.abs(depositUsd-netoUsd)>0.01){ msg('Liquidación rechazada: el depósito real ('+usd(depositUsd)+') no coincide con el neto esperado ('+usd(netoUsd)+'). Revise la comisión o el estado de cuenta.', 'bad'); return false; }
+          const loteId = 'LIQ-CSH-' + Date.now().toString(36).toUpperCase();
+          const now = Date.now();
+          pendings.forEach(m => {
+            m.estado = 'Liquidado';
+            m.loteLiquidacion = loteId;
+            m.fechaLiquidacion = now;
+            m.bancoReceptor = bancoSel.value;
+            m.refBancaria = ref;
+            m.comisionPct = pct;
+            m.comisionUsd = r2((m.financiadoUsd||0) * pct / 100);
+            m.netoEsperadoUsd = r2((m.financiadoUsd||0) - m.comisionUsd);
+            m.tasaBcvLiquidacion = rate;
+          });
+          if(!Array.isArray(S.casheaLiquidaciones))S.casheaLiquidaciones=[];
+          S.casheaLiquidaciones.push({id:loteId,fecha:now,operaciones:pendings.map(m=>m.id),cantidad:pendings.length,banco:bancoSel.value,referencia:ref,brutoUsd:r2(totFinanciado),comisionPct:pct,comisionUsd:comUsd,netoEsperadoUsd:netoUsd,depositadoUsd:depositUsd,diferenciaUsd:r2(depositUsd-netoUsd),tasaBcv:rate});
+          save();
+          msg('Lote '+loteId+' conciliado y guardado ('+pendings.length+' facturas).');
+          if(onDone) onDone();
+          return true;
+        }
+      }
+    ]
+  });
+}
+
+function reverseCasheaSettlement(movementId,onDone){
+  const movement=(S.casheaMovimientos||[]).find(m=>String(m.id)===String(movementId));
+  if(!movement||movement.estado!=='Liquidado'||!movement.loteLiquidacion){msg('La operación no tiene una liquidación activa que pueda revertirse.','bad');return false;}
+  const lot=(S.casheaLiquidaciones||[]).find(item=>item.id===movement.loteLiquidacion&&item.tipo!=='REVERSIÓN');
+  if(!lot||lot.estado==='Revertido'){msg('El lote ya fue revertido o no existe en el historial.','bad');return false;}
+  if(!window.SIFERAccess||typeof window.SIFERAccess.requestPin!=='function'){msg('No se puede revertir: el servicio de autorización no está disponible.','bad');return false;}
+  if(!window.SIFERAccess.requestPin('Revertir liquidación CASHEA '+lot.id))return false;
+  const motivo=window.prompt('Indique el motivo de la reversión del lote '+lot.id+':','');
+  if(!motivo||!motivo.trim()){msg('La reversión requiere un motivo para auditoría.','bad');return false;}
+  if(!confirm('¿Revertir el lote '+lot.id+'? Las operaciones volverán a pendientes y el motivo quedará registrado.'))return false;
+  const now=Date.now(), revId='REV-CSH-'+now.toString(36).toUpperCase();
+  const affected=(S.casheaMovimientos||[]).filter(m=>m.estado==='Liquidado'&&m.loteLiquidacion===lot.id);
+  if(!affected.length){msg('No hay operaciones activas en ese lote.','bad');return false;}
+  lot.estado='Revertido';lot.revertidoAt=now;lot.revertidoPor=currentCajero();lot.reversionId=revId;lot.motivoReversion=motivo.trim();
+  affected.forEach(m=>{
+    m.loteLiquidacionAnterior=lot.id;
+    m.estado='Pendiente Liquidación';
+    m.loteLiquidacion='';
+    delete m.bancoReceptor;delete m.refBancaria;delete m.comisionPct;delete m.comisionUsd;delete m.netoEsperadoUsd;delete m.tasaBcvLiquidacion;delete m.fechaLiquidacion;
+  });
+  S.casheaLiquidaciones.push({id:revId,tipo:'REVERSIÓN',fecha:now,loteOriginal:lot.id,operaciones:affected.map(m=>m.id),cantidad:affected.length,operador:currentCajero(),motivo:motivo.trim(),estado:'Registrada'});
+  save();
+  msg('Reversión '+revId+' registrada. '+affected.length+' operaciones regresaron a pendientes.');
+  if(onDone)onDone();
+  return true;
+}
+
+function casheaDlg(defaultTab){
+  let curTab = defaultTab || 'ALL';
+  let query = '';
+  const rate = S.cfg.rate;
+
+  const el = h('<div class="form" style="gap:12px">'+
+    '<div class="kpi-grid" id="cshKpis"></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;background:var(--alt);padding:8px 10px;border:1px solid var(--lo);border-radius:6px">'+
+      '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+
+        '<button class="btn mini2" id="cshBtnSim" style="background:#312E81;color:#E0E7FF;border-color:#4338CA;font-weight:700">⚡ Simulador de Cuotas</button>'+
+        '<button class="btn mini2" id="cshBtnLiq" style="background:#064E3B;color:#A7F3D0;border-color:#059669;font-weight:700">📥 Registrar Liquidación de Lote</button>'+
+        '<button class="btn mini2" id="cshBtnCsv">📊 Exportar Reporte (CSV)</button>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;align-items:center">'+
+        '<select class="fld mini" id="cshStatusFilter" style="width:170px">'+
+          '<option value="ALL">Todos los estados</option>'+
+          '<option value="Pendiente Liquidación">Pendientes de Liquidación</option>'+
+          '<option value="Liquidado">Liquidados por Cashea</option>'+
+        '</select>'+
+        '<input class="fld mini" id="cshSearch" placeholder="Buscar por cliente, CI, CSH-..." style="width:200px">'+
+      '</div>'+
+    '</div>'+
+    '<div class="gridwrap" style="max-height:360px"><table class="grid" id="cshTable">'+
+      '<thead><tr>'+
+        '<th>ID Mov.</th>'+
+        '<th>Factura</th>'+
+        '<th>Fecha</th>'+
+        '<th>Cliente</th>'+
+        '<th>Token Cashea</th>'+
+        '<th class="r">Total Venta</th>'+
+        '<th class="r">Inicial Caja</th>'+
+        '<th class="r">Financiado</th>'+
+        '<th class="c">Cuotas</th>'+
+        '<th class="c">Estado</th>'+
+        '<th class="c">Acciones</th>'+
+      '</tr></thead>'+
+      '<tbody id="cshRows"></tbody>'+
+    '</table></div>'+
+    '<div class="hint">Las ventas con Cashea permiten cobrar la inicial en el mostrador y financiar el saldo en 3 cuotas quincenales sin interés. El saldo pendiente representa una Cuenta por Cobrar a Cashea Technologies.</div>'+
+  '</div>');
+
+  function render(){
+    const list = S.casheaMovimientos || [];
+    const totVentas = list.reduce((a, m) => a + (m.totalVenta || 0), 0);
+    const totInicial = list.reduce((a, m) => a + (m.inicialUsd || 0), 0);
+    const pendings = list.filter(m => m.estado === 'Pendiente Liquidación');
+    const totPendiente = pendings.reduce((a, m) => a + (m.financiadoUsd || 0), 0);
+    const liquidados = list.filter(m => m.estado === 'Liquidado');
+    const totLiquidado = liquidados.reduce((a, m) => a + (m.financiadoUsd || 0), 0);
+
+    $('#cshKpis', el).innerHTML = '<div class="kpi-card">'+
+        '<div class="klabel">Total Facturado Cashea</div>'+
+        '<div class="kval" style="color:#A5B4FC">'+usd(totVentas)+'</div>'+
+        '<div class="ksub">'+bsf(totVentas*rate)+'</div>'+
+      '</div>'+
+      '<div class="kpi-card">'+
+        '<div class="klabel">Iniciales Cobradas</div>'+
+        '<div class="kval" style="color:#A7F3D0">'+usd(totInicial)+'</div>'+
+        '<div class="ksub">'+bsf(totInicial*rate)+'</div>'+
+      '</div>'+
+      '<div class="kpi-card">'+
+        '<div class="klabel">Por Liquidar (CxC Cashea)</div>'+
+        '<div class="kval" style="color:#FBBF24">'+usd(totPendiente)+'</div>'+
+        '<div class="ksub">'+pendings.length+' facturas pendientes</div>'+
+      '</div>'+
+      '<div class="kpi-card">'+
+        '<div class="klabel">Total Liquidado</div>'+
+        '<div class="kval" style="color:#34D399">'+usd(totLiquidado)+'</div>'+
+        '<div class="ksub">'+liquidados.length+' facturas conciliadas</div>'+
+      '</div>';
+
+    const q = norm(query);
+    const filtered = list.filter(m => {
+      if(curTab !== 'ALL' && m.estado !== curTab) return false;
+      if(!q) return true;
+      const haystack = norm((m.id||'')+' '+(m.ventaNo||'')+' '+(m.clienteNombre||'')+' '+(m.clienteCi||'')+' '+(m.aprobacion||'')+' '+(m.loteLiquidacion||''));
+      return haystack.includes(q);
+    }).slice().sort((a,b) => (b.ts||0) - (a.ts||0));
+
+    const rows = $('#cshRows', el);
+    if(!filtered.length){
+      rows.innerHTML = '<tr class="empty"><td colspan="11">No se encontraron operaciones de Cashea registradas.</td></tr>';
+      return;
+    }
+    rows.innerHTML = filtered.map(m => {
+      const isOk = m.estado === 'Liquidado';
+      const stBadge = '<span class="badge-cashea '+(isOk?'ok':'pend')+'">'+esc(m.estado)+'</span>';
+      return '<tr>'+
+        '<td class="mono" style="font-size:11px">'+esc(m.id)+'</td>'+
+        '<td><b>#'+pad(m.ventaNo)+'</b></td>'+
+        '<td style="font-size:11.5px">'+esc(fmtDT(m.ts||Date.now()))+'</td>'+
+        '<td>'+esc(m.clienteNombre)+'<div class="sub mono">'+esc(m.clienteCi)+'</div></td>'+
+        '<td class="mono" style="font-weight:700;color:#6366F1">'+esc(m.aprobacion)+'</td>'+
+        '<td class="r">'+usd(m.totalVenta)+'</td>'+
+        '<td class="r" style="color:#10B981">'+usd(m.inicialUsd)+'</td>'+
+        '<td class="r" style="font-weight:700;color:#F59E0B">'+usd(m.financiadoUsd)+'</td>'+
+        '<td class="c mono" style="font-size:11.5px">'+(m.cuotasCount||3)+'x '+usd(m.cuotaUsd)+'</td>'+
+        '<td class="c">'+stBadge+'</td>'+
+        '<td class="c">'+
+          '<button class="btn mini2" data-csh-vouch="'+esc(m.id)+'" title="Ver Comprobante">Voucher</button> '+
+          '<button class="btn mini2" data-csh-ticket="'+m.ventaNo+'" title="Ver Ticket Térmico 80mm">Ticket</button>'+
+          (isOk?'<button class="btn mini2" data-csh-reverse="'+esc(m.id)+'" title="Revertir lote conciliado">Revertir lote</button>':'')+
+        '</td>'+
+      '</tr>';
+    }).join('');
+  }
+
+  $('#cshStatusFilter', el).value = curTab;
+  $('#cshStatusFilter', el).addEventListener('change', e => { curTab = e.target.value; render(); });
+  $('#cshSearch', el).addEventListener('input', e => { query = e.target.value.trim(); render(); });
+  $('#cshBtnSim', el).addEventListener('click', () => casheaSimulatorDlg());
+  $('#cshBtnLiq', el).addEventListener('click', () => casheaSettlementDlg(() => render()));
+  $('#cshBtnCsv', el).addEventListener('click', () => {
+    const list = S.casheaMovimientos || [];
+    if(!list.length){ msg('No hay datos para exportar.', 'bad'); return; }
+    let csv = 'ID;Venta;Fecha;Cliente;CI;Aprobacion;Total_USD;Inicial_USD;Financiado_USD;Cuotas;Cuota_USD;Estado;Lote_Liquidacion;Banco;Referencia_Bancaria;Comision_Pct;Comision_USD;Neto_Esperado_USD;Deposito_Lote_USD;Diferencia_Lote_USD;Tasa_BCV_Liquidacion\n';
+    const exportedLots = new Set();
+    list.forEach(m => {
+      const batch=(S.casheaLiquidaciones||[]).find(l=>l.id===m.loteLiquidacion);
+      const includeBatch=!!batch&&!exportedLots.has(batch.id);
+      if(includeBatch)exportedLots.add(batch.id);
+      csv += [m.id, m.ventaNo, fmtDT(m.ts||0), m.clienteNombre, m.clienteCi, m.aprobacion, m.totalVenta, m.inicialUsd, m.financiadoUsd, m.cuotasCount, m.cuotaUsd, m.estado, m.loteLiquidacion||'', m.bancoReceptor||'', m.refBancaria||'', m.comisionPct??'', m.comisionUsd??'', m.netoEsperadoUsd??'', includeBatch?batch.depositadoUsd:'', includeBatch?batch.diferenciaUsd:'', m.tasaBcvLiquidacion??''].join(';') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'cashea-lote-'+new Date().toISOString().slice(0,10)+'.csv';
+    a.click();
+    msg('Archivo CSV de Cashea exportado correctamente.');
+  });
+
+  $('#cshRows', el).addEventListener('click', e => {
+    const bReverse = e.target.closest('[data-csh-reverse]');
+    if(bReverse){
+      const movement=(S.casheaMovimientos||[]).find(x=>x.id===bReverse.dataset.cshReverse);
+      if(movement)reverseCasheaSettlement(movement.id,()=>render());
+      return;
+    }
+    const bVouch = e.target.closest('[data-csh-vouch]');
+    if(bVouch){
+      const m = (S.casheaMovimientos || []).find(x => x.id === bVouch.dataset.cshVouch);
+      if(m) casheaPrintVoucherDlg(m);
+      return;
+    }
+    const bTick = e.target.closest('[data-csh-ticket]');
+    if(bTick){
+      const sale = (S.sales || []).find(x => x.no === Number(bTick.dataset.cshTicket));
+      if(sale) showTicket(sale);
+      else msg('No se encontró la factura #'+bTick.dataset.cshTicket, 'bad');
+    }
+  });
+
+  render();
+
+  openWin({
+    title: 'MÓDULO CASHEA — Pagos en Cuotas (BNPL), Aprobaciones y Conciliación',
+    w: 1040,
+    body: el,
+    foot: [{ label: 'Cerrar', primary: true }]
+  });
+}
+
+/* ---------- cobro (con soporte de CASHEA y Crédito / CxC) ---------- */
+function payDlg(draft){
+  const loginUser=activeUser();
+  if(loginUser.role==='admin'){
+    if(currentCaja()==='SIN-ASIGNAR'){msg('Para cobrar como administrador, cree una caja y asígnesela en Gestión de Usuarios.','bad');usersManagementDlg(loginUser.username);return;}
+    const opening=readActiveOpening();
+    if(!opening||opening.status!=='abierta'||String(opening.cashbox)!==currentCaja()){msg('Abra primero el turno de su caja desde Reporte Z antes de cobrar.','bad');corteZDlg();return;}
+  }
+  draft=draft||{};
+  if(!S.cart.length){msg('Agregue productos antes de cobrar.','bad');return;}
+  const t=totals(),rate=S.cfg.rate;
+  const rowsHtml=METHODS.map(m=>{
+    const isBio=m.id==='biopago';
+    const isCashea=m.id==='cashea';
+    const hasRef=m.id==='cashea';
+    return '<tr>'+
+      '<td><b>'+esc(m.name)+'</b>'+(isBio?' <span class="fiscal-tag ok" style="font-size:10px;padding:1px 5px;margin-left:4px">BDV Huella</span>':'')+(isCashea?' <span class="badge-cashea" style="margin-left:4px">3 Cuotas BNPL</span>':'')+'</td>'+
+      '<td class="c mono" style="font-weight:600">'+(m.cur==='USD'?'US$':'Bs.')+'</td>'+
+      '<td class="r"><input class="fld r pin" id="pm-'+m.id+'" data-m="'+m.id+'" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Monto recibido en '+esc(m.name)+'"></td>'+
+      '<td><button class="btn mini2" data-fill="'+m.id+'" type="button">Saldo</button>'+(isCashea?' <button class="btn mini2" id="btnCasheaAssistantInPay" type="button" style="background:#312E81;color:#E0E7FF;border-color:#4338CA;font-weight:700">⚡ Asistente</button>':'')+'</td>'+
+      '<td>'+(hasRef?'<input class="fld mini mono pref" id="pref-'+m.id+'" data-m="'+m.id+'" placeholder="'+(m.id==='zelle'?'Confirmación Zelle':m.id==='punto'?'Voucher / autorización tarjeta':m.id==='biopago'?'Nº operación Biopago':m.id==='pmovil'?'Referencia pago móvil':m.id==='transf'?'Referencia transferencia':isCashea?'Aprobación real Cashea':'Referencia bancaria')+'" style="width:145px" title="'+(isCashea?'Código real de aprobación Cashea':'Referencia / autorización de '+m.name)+'">'
+      :'<span class="hint" style="font-size:11px">—</span>')+'</td>'+
+    '</tr>';
+  }).join('');
+  const el=h('<div class="form"><div class="paytop"><div class="lcd"><div class="lcd-label">TOTAL FACTURA</div><div class="lcd-bs">'+bsf(t.total*rate)+'</div><div class="lcd-usd">'+usd(t.total)+'</div></div><table class="sumt"><thead><tr><th>Concepto</th><th class="r">US$</th><th class="r">Bs.</th></tr></thead><tbody id="payRes"></tbody></table></div>'+
+    '<div id="casheaPayPreview" hidden style="background:#1E1B4B;border:1px solid #4338CA;border-radius:6px;padding:8px 12px;margin:6px 0;font-size:12px;color:#E0E7FF;display:flex;align-items:center;gap:8px;flex-wrap:wrap"></div>'+
+    '<div class="invbar" style="background:var(--alt);padding:5px 8px;border:1px solid var(--lo)">'+
+      '<label class="chk"><input type="checkbox" id="payCreditChk"> Enviar saldo pendiente a <b>Cuentas por Cobrar (CxC)</b></label>'+
+      '<span id="payCreditDaysWrap" class="row" style="margin-left:auto" hidden><label for="payCreditDays">Plazo crédito (días):</label><input class="fld r" id="payCreditDays" value="15" style="width:64px" inputmode="numeric"></span>'+
+    '</div>'+
+    '<div class="gridwrap paywrap"><table class="grid"><thead><tr><th>Forma de pago</th><th class="c">Moneda</th><th class="r">Monto recibido</th><th></th><th>Aprobación CASHEA</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div><p class="hint">Solo CASHEA exige un token o aprobación real verificable. Los demás medios de pago no requieren referencia para confirmar la venta. Los pagos en divisas (efectivo US$ y Zelle) generan IGTF de 3 %; valide la aplicación fiscal según la operación real.</p></div>');
+  const amts=()=>{const o={};METHODS.forEach(m=>{o[m.id]=pn($('#pm-'+m.id,el).value);});return o;};
+  const refs=()=>{const o={};METHODS.forEach(m=>{const inp=$('#pref-'+m.id,el);o[m.id]=inp?inp.value.trim():'';});return o;};
+  let last=null;
+  METHODS.forEach(m=>{const a=$('#pm-'+m.id,el),r=$('#pref-'+m.id,el);if(a&&draft.amts&&draft.amts[m.id]>0)a.value=nf(draft.amts[m.id]);if(r&&draft.refs&&draft.refs[m.id])r.value=draft.refs[m.id];});
+  if(draft.credit)$('#payCreditChk',el).checked=true;
+  if(draft.cDays)$('#payCreditDays',el).value=String(draft.cDays);
+  if(draft.casheaTx){
+    el._casheaTx=draft.casheaTx;
+    const prev=$('#casheaPayPreview',el);
+    prev.hidden=false;
+    prev.innerHTML='<b>⚡ CASHEA aplicado:</b> Aprobación <b>'+esc(draft.casheaTx.aprobacion)+'</b> · Inicial: <b>'+usd(draft.casheaTx.inicialUsd)+'</b> · Financiado: <b>'+usd(draft.casheaTx.financiadoUsd)+'</b> ('+draft.casheaTx.cuotasCount+' cuota(s) de '+usd(draft.casheaTx.cuotaUsd)+' c/u). Confirme el cobro para finalizar la factura; luego registre la liquidación en el módulo Cashea.';
+  }
+  const upd=()=>{
+    const st=calcPay(t.total,rate,amts());last=st;
+    const isCred=$('#payCreditChk',el).checked;
+    $('#payCreditDaysWrap',el).hidden=!isCred;
+    const row=(c,a,cls,tot)=>'<tr class="'+(cls||'')+(tot?' tot':'')+'"><td>'+c+'</td><td class="r">'+nf(a)+'</td><td class="r">'+nf(a*rate)+'</td></tr>';
+    let html=row('Total factura',t.total)+row('IGTF 3 % (divisas)',st.igtf)+row('Total a cobrar',st.due,'',true);
+    if(st.pending>=0.01){
+      html+=row(isCred?'Saldo a Cuentas por Cobrar (CxC)':'Falta por cobrar',st.pending,isCred?'good':'warn');
+    }
+    else if(st.change>=0.01)html+=row('Vuelto al cliente',st.change,'good');
+    else html+='<tr class="good"><td colspan="3">Saldo cubierto. Puede confirmar el cobro.</td></tr>';
+    $('#payRes',el).innerHTML=html;
+    const b=$('#btnConfirm');if(b)b.disabled=!(st.pending<0.01||isCred);
+  };
+  el.addEventListener('input',e=>{if(e.target.matches('.pin'))upd();});
+  el.addEventListener('change',e=>{if(e.target.id==='payCreditChk')upd();});
+  el.addEventListener('click',e=>{
+    if(e.target.id==='btnCasheaAssistantInPay'||e.target.closest('#btnCasheaAssistantInPay')){
+      const draftNow={amts:amts(),refs:refs(),credit:$('#payCreditChk',el).checked,cDays:Math.max(1,Math.round(pn($('#payCreditDays',el).value)||15)),casheaTx:el._casheaTx||null};
+      casheaPaymentAssistantDlg(t.total,rate,(cData)=>{
+        draftNow.casheaTx=cData;
+        draftNow.refs={cashea:cData.aprobacion};
+        draftNow.amts={cashea:cData.financiadoUsd};
+        (cData.initialPayments||[]).forEach(p=>{draftNow.amts[p.id]=p.amount;if(p.ref)draftNow.refs[p.id]=p.ref;});
+        payDlg(draftNow);
+      },()=>payDlg(draftNow));
+      return;
+    }
+    const b=e.target.closest('[data-fill]');if(!b)return;
+    const m=METHODS.find(x=>x.id===b.dataset.fill),inp=$('#pm-'+m.id,el);
+    inp.value='';
+    const st=calcPay(t.total,rate,amts());
+    if(st.pending>=0.005){
+      const isDivisa=m.id==='efUSD'||m.id==='zelle';
+      inp.value=nf(m.cur==='USD'?(isDivisa?r2(st.pending*(1+IGTF)):r2(st.pending)):r2(st.pending*rate));
+    }
+    upd();inp.focus();inp.select();
+  });
+  openWin({title:'Cobrar factura '+pad(S.invoice),w:760,body:el,
+    foot:[{label:'Cancelar'},{id:'btnConfirm',label:'Confirmar cobro',primary:true,fn:()=>{
+      const isCred=$('#payCreditChk',el).checked;
+      if(!last||(last.pending>=0.01&&!isCred))return false;
+      const enteredAmts=amts(),enteredRefs=refs();
+      const refPrompts={cashea:'código real de aprobación de Cashea'};
+      for(const m of METHODS){if((enteredAmts[m.id]||0)>0&&refPrompts[m.id]&&!enteredRefs[m.id]){msg('Complete la '+refPrompts[m.id]+' para registrar la trazabilidad de '+m.name+'.','bad');const ri=$('#pref-'+m.id,el);if(ri)ri.focus();return false;}}
+      if(enteredAmts.cashea>0&&el._casheaTx&&Math.abs(enteredAmts.cashea-el._casheaTx.financiadoUsd)>0.01){msg('El importe financiado no coincide con el plan Cashea aplicado. Vuelva al asistente.','bad');return false;}
+      if(isCred&&last.pending>=0.01&&S.client.rif==='V-00000000'){
+        msg('Para ventas a crédito (CxC), seleccione o registre primero el cliente (F4).','bad');
+        return false;
+      }
+      const cDays=Math.max(1,Math.round(pn($('#payCreditDays',el).value)||15));
+      finalize(last,enteredAmts,isCred,cDays,enteredRefs,el);return false;
+    }}],
+    onOpen:()=>{upd();$('#pm-efUSD',el).focus();}});
+}
+
+function showSaleCompletion(sale){
+  const change=r2(Math.max(0,Number(sale.change)||0));
+  const rate=Number(sale.rate||S.cfg.rate)||1;
+  const hasChange=change>=0.01;
+  const body=h('<div class="sale-completion">'+
+    '<div class="sale-completion-icon '+(hasChange?'change':'success')+'">'+(hasChange?'↩':'✓')+'</div>'+
+    '<div class="sale-completion-label">'+(hasChange?'VUELTO A ENTREGAR':'VENTA FINALIZADA')+'</div>'+
+    (hasChange?'<div class="sale-completion-amount">'+esc(usd(change))+'</div><div class="sale-completion-equivalent">Equivalente: <b>'+esc(bsf(r2(change*rate)))+'</b></div><p class="sale-completion-note">Entregue el vuelto en efectivo según la moneda acordada con el cliente. Si el excedente provino de un pago electrónico, gestione la devolución por ese mismo medio.</p>':'<p class="sale-completion-note">La factura '+esc(pad(sale.no))+' fue registrada correctamente. No hay vuelto pendiente.</p>')+
+    '<div class="sale-completion-ticket">Factura <b>'+esc(pad(sale.no))+'</b> · Total <b>'+esc(usd(r2(sale.total+sale.igtf)))+'</b></div>'+
+    '</div>');
+  openWin({title:hasChange?'Vuelto de la venta':'Venta finalizada',w:390,body,foot:[
+    {label:'Ver / imprimir ticket',primary:true,fn:()=>{closeWin();showTicket(sale);return false;}},
+    {label:'Cerrar'}
+  ],onOpen:()=>{const node=$('.sale-completion',body);if(node)node.setAttribute('tabindex','-1');}});
+}
+
+function finalize(st,amts,isCred,cDays,refs,payEl){
+  const ctx=cajaContext();if(ctx.role==='cajero'&&ctx.status!=='abierta'){msg('La caja no está abierta. Solicite al administrador una nueva apertura antes de facturar.','bad');return;}
+  const t=totals(), ts=Date.now(), invNo=nextCajaInvoice();
+  const lines=S.cart.map(l=>{
+    const i=lineInfo(l);
+    return{
+      code:l.code,
+      desc:i.p.brand+' '+i.p.desc,
+      unit:i.p.unit||'und',
+      qty:l.qty,
+      price:i.p.price,
+      unitCost:i.p.cost,
+      disc:l.disc,
+      taxRate:i.rate,
+      taxType:(i.p.tax&&i.p.tax.type)||'G',
+      taxTag:prodTaxTag(i.p),
+      iva:i.iva,
+      net:i.net
+    };
+  });
+  const pays=METHODS.filter(m=>amts[m.id]>0).map(m=>({
+    id:m.id,
+    name:m.name,
+    cur:m.cur,
+    amount:r2(amts[m.id]),
+    ref:(refs&&refs[m.id])||''
+  }));
+  const creditAmt=(isCred&&st.pending>=0.01)?r2(st.pending):0;
+  if(creditAmt>0){
+    pays.push({id:'credito',name:'Crédito CxC ('+cDays+' días)',cur:'USD',amount:creditAmt});
+  }
+  const ctrlPrefix=S.cfg.ctrlPrefix||'00-';
+  const seqs=cajaSeqs(),boxSeq=seqs[currentCaja()]||(seqs[currentCaja()]={invoice:1,void:1,refund:1,cxc:1,movement:1,z:1});
+  const ctrlNext=Number(boxSeq.ctrl||1);boxSeq.ctrl=ctrlNext+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
+  const ctrlNo=ctrlPrefix+String(currentCaja()).replace(/\W/g,'').slice(-4)+'-'+pad(ctrlNext,8);
+  const sale={
+    accountingSourceId:'SALE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(invNo),
+    no:invNo,ctrlNo,docType:'01-FACTURA',transType:'01-REG',
+    ts,cashbox:currentCaja(),cashier:currentCajero(),client:Object.assign({},S.client),lines,
+    sub:t.sub,disc:t.disc,base:t.base,
+    baseG16:t.baseG16,baseR8:t.baseR8,baseA31:t.baseA31,baseEx:t.baseEx,
+    iva:t.iva,total:t.total,igtf:st.igtf,rate:S.cfg.rate,pays,
+    change:r2(st.change),credit:creditAmt,void:false
+  };
+
+  const casheaAmt=r2(amts.cashea||0);
+  if(casheaAmt>0){
+    const cRef=(refs&&refs.cashea)||'';
+    if(!cRef){msg('Falta el código real de aprobación Cashea; no se generará una referencia ficticia.','bad');return;}
+    const cTx=(payEl&&payEl._casheaTx)||{};
+    const inicialUsd=cTx.inicialUsd!==undefined?cTx.inicialUsd:r2(t.total-casheaAmt);
+    const nivel=cTx.nivel||'Nivel 3 (40% inicial / 60% financiado)';
+    const cuotasCount=cTx.cuotasCount||3;
+    const cuotaUsd=r2(casheaAmt/cuotasCount);
+    sale.cashea={
+      aprobacion:cRef,
+      ci:S.client.rif,
+      cliente:S.client.name,
+      nivel,
+      totalVenta:t.total,
+      inicialUsd,
+      inicialMetodo:cTx.inicialMetodoName||'Caja',
+      financiadoUsd:casheaAmt,
+      cuotasCount,
+      cuotaUsd,
+      fechasCuotas:Array.from({length:cuotasCount},(_,i)=>ts+(i+1)*14*86400000).map(fmtDT),
+      estado:'Pendiente Liquidación'
+    };
+    if(!Array.isArray(S.casheaMovimientos))S.casheaMovimientos=[];
+    S.casheaMovimientos.push({
+      id:'CSH-MOV-'+pad(S.casheaMovimientos.length+1,4),
+      ventaNo:invNo,
+      ctrlNo,
+      ts,
+      clienteCi:S.client.rif,
+      clienteNombre:S.client.name,
+      aprobacion:cRef,
+      totalVenta:t.total,
+      inicialUsd,
+      financiadoUsd:casheaAmt,
+      cuotasCount,
+      cuotaUsd,
+      estado:'Pendiente Liquidación',
+      loteLiquidacion:null,
+      fechaLiquidacion:null
+    });
+  }
+
+  S.cart.forEach(l=>{
+    const p=prod(l.code);
+    p.stock=Math.max(0,r2(p.stock-l.qty));
+    addKardex({
+      ts,code:p.code,type:'VENTA',dir:'OUT',doc:'FAC-'+pad(invNo),cashbox:currentCaja(),
+      party:S.client.name,qty:l.qty,stockAfter:p.stock,cost:p.cost,user:S.cfg.cajero
+    });
+  });
+  if(creditAmt>0){
+    const paidUpfront=r2(Math.max(0,t.total-creditAmt));
+    S.cxc.push({
+      id:'CXC-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(S.cxc.filter(x=>x.cashbox===currentCaja()).length+1,6),
+      cashbox:currentCaja(),cashier:currentCajero(),saleNo:invNo,
+      doc:'FAC-'+pad(invNo),
+      client:Object.assign({},S.client),
+      concept:'Factura de venta ('+lines.length+' reng.)',
+      ts,dueTs:ts+cDays*86400000,
+      total:t.total,
+      paid:paidUpfront,
+      payments:paidUpfront>0?[{ts,method:'Pago inicial en caja',cur:'USD',amountUsd:paidUpfront,amountBs:r2(paidUpfront*S.cfg.rate),ref:'FAC-'+pad(invNo),note:'Abono en caja al facturar'}]:[]
+    });
+  }
+  S.sales.push(sale);S.invoice=Math.max(S.invoice,invNo+1);S.cart=[];S.sel=-1;S.client=S.clients[0];
+  save();renderAll();
+  msg('Factura '+pad(sale.no)+' procesada por '+usd(r2(sale.total+sale.igtf))+(casheaAmt>0?' (Financiado Cashea: '+usd(casheaAmt)+')':'')+(creditAmt>0?' (Saldo a CxC: '+usd(creditAmt)+')':'')+'.');
+  showSaleCompletion(sale);
+}
+
+const TICKET_FONTS=[
+  {id:'ibm',name:'Térmica POS 80mm (IBM Plex Mono)',css:'"IBM Plex Mono",Consolas,"Liberation Mono",monospace'},
+  {id:'jetbrains',name:'Térmica Alta Nitidez (JetBrains Mono)',css:'"JetBrains Mono",Consolas,monospace'},
+  {id:'courier',name:'Térmica Fiscal Clásica (Courier Prime / Courier New)',css:'"Courier Prime","Courier New",Courier,monospace'},
+  {id:'roboto',name:'Térmica Condensada Epson/Bixolon (Roboto Mono)',css:'"Roboto Mono","Lucida Console",Consolas,monospace'},
+  {id:'inconsolata',name:'Térmica Compacta Tirilla (Inconsolata / Lucida)',css:'"Inconsolata","Lucida Console",Consolas,monospace'},
+  {id:'sans',name:'Térmica Comercial Moderna (Segoe UI / Tahoma Tabular)',css:'"Segoe UI",Tahoma,Verdana,sans-serif'}
+];
+function getTicketFontCss(id){
+  const f=TICKET_FONTS.find(x=>x.id===id)||TICKET_FONTS[0];
+  return f.css;
+}
+function applyTicketStyle(pre){
+  if(!pre)return;
+  const fId=S.cfg.ticketFont||'ibm';
+  const sz=S.cfg.ticketSize||'12';
+  const bold=!!S.cfg.ticketBold;
+  pre.style.fontFamily=getTicketFontCss(fId);
+  pre.style.fontSize=sz+'px';
+  pre.style.fontWeight=bold?'700':'500';
+  pre.style.lineHeight=fId==='sans'?'1.32':'1.36';
+}
+function ticketText(s){
+  const Wd=40,ln='-'.repeat(Wd),dln='='.repeat(Wd);
+  const ctr=t=>' '.repeat(Math.max(0,Math.floor((Wd-t.length)/2)))+t;
+  const row=(a,b)=>{a=String(a);b=String(b);return a+' '.repeat(Math.max(1,Wd-a.length-b.length))+b;};
+  const cut=(t,n)=>t.length>n?t.slice(0,n-1)+'…':t;
+  const L=[];
+  if(s.void)L.push(dln,ctr('*** VENTA ANULADA ***'),dln);
+  L.push(ctr(cut(S.cfg.empresa.toUpperCase(),Wd)),ctr('RIF: '+S.cfg.rif));
+  L.push(dln,row('RECIBO / TICKET: '+pad(s.no),fmtDT(s.ts)),row('Nº Control: '+(s.ctrlNo||('00-'+pad(s.no,8))),'Tasa BCV: '+nf(s.rate||S.cfg.rate)+' Bs.'),row('Cajero: '+S.cfg.cajero,'Caja '+S.cfg.caja),'Cliente: '+cut(s.client.name,Wd-9),'RIF/C.I.: '+s.client.rif,ln,row('CANT·U.M. x PRECIO (IVA)','SUBTOTAL US$'),ln);
+  s.lines.forEach(l=>{
+    const uLabel=(l.unit||'und').toUpperCase();
+    const tTag=l.taxRate===0?'(E 0%)':(l.taxRate===8?'(R 8%)':(l.taxRate===31?'(A 31%)':'(G 16%)'));
+    L.push(cut(l.desc,Wd));
+    L.push(row('  '+fq(l.qty)+' '+uLabel+' x '+nf(l.price)+' '+tTag+(l.disc?' (-'+fq(l.disc)+'%)':''),nf(l.net)));
+  });
+  L.push(ln,row('Subtotal US$',nf(s.sub)));
+  if(s.disc)L.push(row('Descuento US$','-'+nf(s.disc)));
+  if(s.baseEx>0&&s.baseG16>0){
+    L.push(row('Base Gravada 16 % US$',nf(s.baseG16)));
+    if(s.baseR8>0)L.push(row('Base Reducida 8 % US$',nf(s.baseR8)));
+    if(s.baseA31>0)L.push(row('Base Suntuaria 31 % US$',nf(s.baseA31)));
+    L.push(row('Ventas Exentas (0 %) US$',nf(s.baseEx)));
+  }else if(s.baseEx>0){
+    L.push(row('Ventas Exentas (0 %) US$',nf(s.baseEx)));
+  }else{
+    L.push(row('Base imponible US$',nf(s.base)));
+  }
+  L.push(row('Total I.V.A. US$',nf(s.iva)));
+  if(s.igtf)L.push(row('IGTF (3 % Divisas) US$',nf(s.igtf)));
+  const due=r2(s.total+s.igtf);
+  s.pays.forEach(p=>{
+    const refTxt=p.ref?(' Ref:'+p.ref):'';
+    L.push(row(' '+cut(p.name+refTxt,26),(p.cur==='USD'?'US$ ':'Bs. ')+nf(p.amount)));
+  });
+  if(s.change>=0.01)L.push(row(' Vuelto (equiv. US$)',nf(s.change)));
+  if(s.cashea){
+    L.push(ln,ctr('PAGADO CON CASHEA (3 CUOTAS BNPL)'));
+    L.push(row(' Aprobación / Token:',s.cashea.aprobacion));
+    L.push(row(' C.I. Cliente:',s.cashea.ci||s.client.rif));
+    if(s.cashea.inicialUsd>0){
+      L.push(row(' Inicial en caja:',usd(s.cashea.inicialUsd)));
+    }
+    L.push(row(' Financiado Cashea:',usd(s.cashea.financiadoUsd)));
+    L.push(row(' '+(s.cashea.cuotasCount||3)+' cuota(s) quincenales:',usd(s.cashea.cuotaUsd)+' c/u'));
+  }
+  L.push(ln,ctr('¡GRACIAS POR SU COMPRA!'),ctr('Impresora Térmica 80mm · Control Interno'));
+  return L.join('\n');
+}
+function showTicket(s){
+  if(!S.cfg.ticketFont)S.cfg.ticketFont='ibm';
+  if(!S.cfg.ticketSize)S.cfg.ticketSize='12';
+  const fontOpts=TICKET_FONTS.map(f=>'<option value="'+f.id+'"'+(S.cfg.ticketFont===f.id?' selected':'')+'>'+esc(f.name)+'</option>').join('');
+  const el=h('<div class="form">'+
+    '<div class="invbar" style="background:var(--alt);padding:5px 7px;border:1px solid var(--lo)">'+
+      '<label for="tkFont">Letra 80mm:</label>'+
+      '<select class="fld" id="tkFont" style="flex:1;min-width:170px">'+fontOpts+'</select>'+
+      '<label for="tkSize">Tamaño:</label>'+
+      '<select class="fld" id="tkSize" style="width:66px;flex:none"><option value="11"'+(S.cfg.ticketSize==='11'?' selected':'')+'>11 px</option><option value="12"'+(S.cfg.ticketSize==='12'?' selected':'')+'>12 px</option><option value="13"'+(S.cfg.ticketSize==='13'?' selected':'')+'>13 px</option></select>'+
+      '<label class="chk" style="font-size:11.5px"><input type="checkbox" id="tkBold" '+(S.cfg.ticketBold?'checked':'')+'> Negrita térmica</label>'+
+    '</div>'+
+    '<div class="ticket-roll-wrap"><pre class="ticket-80mm" id="ticketPre"></pre></div>'+
+    '<p class="hint">Formato de rollo térmico de <b>80mm</b>. El tipo de letra seleccionado queda guardado para todos los tickets y recibos de caja.</p>'+
+  '</div>');
+  const pre=$('#ticketPre',el);
+  pre.textContent=ticketText(s);
+  applyTicketStyle(pre);
+
+  el.addEventListener('change',e=>{
+    if(e.target.id==='tkFont'||e.target.id==='tkSize'||e.target.id==='tkBold'){
+      S.cfg.ticketFont=$('#tkFont',el).value;
+      S.cfg.ticketSize=$('#tkSize',el).value;
+      S.cfg.ticketBold=$('#tkBold',el).checked;
+      applyTicketStyle(pre);
+      save();
+    }
+  });
+
+  openWin({title:'Recibo / Ticket de Caja Térmica 80mm — Nº '+pad(s.no),w:500,body:el,foot:[
+    {label:'Imprimir 80mm',left:true,fn:()=>{
+      document.body.classList.add('printing-ticket-80mm');
+      window.print();
+      setTimeout(()=>document.body.classList.remove('printing-ticket-80mm'),500);
+      return false;
+    }},
+    {label:'Copiar texto',fn:()=>{
+      const txt=ticketText(s);
+      const fallback=()=>{const r=document.createRange();r.selectNodeContents(pre);const sel=getSelection();sel.removeAllRanges();sel.addRange(r);msg('Texto seleccionado. Cópielo con Ctrl+C.');};
+      try{navigator.clipboard.writeText(txt).then(()=>msg('Ticket copiado.'),fallback);}catch(e){fallback();}
+      return false;
+    }},
+    {label:'Cerrar',primary:true,fn:()=>{setTimeout(()=>$('#entry').focus(),0);}}
+  ]});
+}
+
+/* ---------- ventas del día / cierre ---------- */
+function salesDlg(){
+  let selNo=null,armed=0;
+  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>Factura</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver ticket</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><p class="hint" id="saNote"></p></div>');
+  const todays=()=>S.sales.filter(s=>sameDay(s.ts)&&s.cashbox===currentCaja()).sort((a,b)=>b.no-a.no);
+  const draw=()=>{
+    const list=todays();
+    $('#saBody',el).innerHTML=list.length?list.map(s=>{const due=r2(s.total+s.igtf);return '<tr data-no="'+s.no+'" class="'+(s.no===selNo?'sel':'')+(s.void?' void':'')+'"><td class="mono">'+pad(s.no)+(s.void?' (anulada)':'')+'</td><td>'+fmtT(new Date(s.ts))+'</td><td>'+esc(s.client.name)+'</td><td class="r">'+nf(due)+'</td><td class="r">'+nf(due*s.rate)+'</td><td>'+esc(s.pays.map(p=>p.name.split(' (')[0]).join(' + '))+'</td></tr>';}).join(''):'<tr class="empty"><td colspan="6">Todavía no hay ventas hoy.</td></tr>';
+    const ok=list.filter(s=>!s.void);
+    const by={};
+    ok.forEach(s=>s.pays.forEach(p=>{const k=p.id;by[k]=by[k]||{name:p.name,cur:p.cur,n:0,amt:0};by[k].n++;by[k].amt+=p.amount;}));
+    const sum=(f)=>r2(ok.reduce((a,s)=>a+f(s),0));
+    const metRows=Object.keys(by).map(k=>'<tr><td>'+esc(by[k].name.split(' (')[0])+'</td><td>'+by[k].n+'</td><td>'+(by[k].cur==='USD'?'US$ ':'Bs. ')+nf(by[k].amt)+'</td></tr>').join('')||'<tr><td colspan="3" class="dim">Sin cobros.</td></tr>';
+    $('#saCierre',el).innerHTML='<table class="sumt"><thead><tr><th>Cierre por forma de pago</th><th>Ops.</th><th>Recibido</th></tr></thead><tbody>'+metRows+'</tbody></table><table class="sumt"><thead><tr><th>Totales del día</th><th>US$</th></tr></thead><tbody><tr><td>Ventas válidas</td><td>'+ok.length+'</td></tr><tr><td>Base imponible</td><td>'+nf(sum(s=>s.base))+'</td></tr><tr><td>IVA 16 %</td><td>'+nf(sum(s=>s.iva))+'</td></tr><tr><td>IGTF 3 %</td><td>'+nf(sum(s=>s.igtf))+'</td></tr><tr class="tot"><td>Total facturado</td><td>'+nf(sum(s=>s.total+s.igtf))+'</td></tr><tr><td>Total en Bs. (a la tasa de cada venta)</td><td>'+nf(sum(s=>(s.total+s.igtf)*s.rate))+'</td></tr></tbody></table>';
+    $('#saNote',el).textContent=list.some(s=>s.no<1043)&&!saved?'Las facturas 1038 a 1042 son ejemplos para mostrar el cierre.':'';
+    $('#saView',el).disabled=!selNo;$('#saVoid',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;
+    $('#saVoid',el).textContent='Anular venta';
+  };
+  el.addEventListener('click',e=>{
+    const tr=e.target.closest('tr[data-no]');
+    if(tr){selNo=+tr.dataset.no;armed=0;draw();return;}
+    const s=S.sales.find(x=>x.no===selNo&&x.cashbox===currentCaja());
+    if(e.target.id==='saView'&&s){showTicket(s);}
+    if(e.target.id==='saVoid'&&s&&!s.void){
+      if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin('Anular factura '+pad(s.no)))return;
+      if(!armed||Date.now()-armed>5000){armed=Date.now();e.target.textContent='Confirmar anulación';return;}
+      s.void=true;
+      s.transType='03-ANUL';
+      s.voidDoc='NC-'+pad(s.no,8);
+      s.voidTs=Date.now();
+      s.lines.forEach(l=>{
+        const p=prod(l.code);
+        if(p){
+          p.stock=r2(p.stock+l.qty);
+          addKardex({
+            code:p.code,type:'ANULACIÓN',dir:'IN',doc:'FAC-'+pad(s.no),
+            party:'Reingreso por anulación factura ('+s.client.name+')',
+            qty:l.qty,stockAfter:p.stock,cost:p.cost,user:S.cfg.cajero
+          });
+        }
+      });
+      S.cxc=(S.cxc||[]).filter(x=>!(x.saleNo===s.no&&x.cashbox===currentCaja()));
+      armed=0;save();renderCatalog();draw();msg('Factura '+pad(s.no)+' anulada. Se devolvió la mercancía al inventario y Kardex.');
+    }
+  });
+  openWin({title:'Ventas del día y cierre de caja',w:900,body:el,foot:[
+    {label:'Libro Fiscal SENIAT',left:true,fn:()=>{seniatSudebanDlg('ventas');return false;}},
+    {label:'Cerrar',primary:true}
+  ],onEnter:()=>{},onOpen:()=>{draw();}});
+}
+
+/* ==========================================================================
+   MÓDULO DEDICADO: CONTROL SENIAT / SUDEBAN
+   Cumplimiento fiscal, libros obligatorios, IGTF, auditoría cambiaria BCV,
+   conciliación de medios de pago SUDEBAN y generador de TXT oficial.
+   ========================================================================== */
+
+function downloadBlob(filename, content, mimeType){
+  const blob=new Blob([content],{type:mimeType||'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=filename;document.body.appendChild(a);a.click();
+  setTimeout(()=>{a.remove();URL.revokeObjectURL(url);},500);
+}
+
+function printFiscalReport(title,html){
+  let w=$('#fiscalPrintWrap');
+  if(!w){
+    w=document.createElement('div');
+    w.id='fiscalPrintWrap';
+    document.body.appendChild(w);
+  }
+  w.hidden=false;
+  w.innerHTML='<div style="font-family:sans-serif;color:#10222B;line-height:1.35">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #10222B;padding-bottom:8px;margin-bottom:12px">'+
+      '<div>'+
+        '<h2 style="margin:0;font-size:16px;text-transform:uppercase">'+esc(S.cfg.empresa)+'</h2>'+
+        '<div style="font-size:11.5px"><b>RIF:</b> '+esc(S.cfg.rif)+' &middot; <b>Domicilio Fiscal:</b> '+esc(S.cfg.dir||'No especificado')+'</div>'+
+        '<div style="font-size:11.5px"><b>Condición declarada en el POS:</b> '+(S.cfg.contribEspecial?'Sujeto Pasivo Especial (confirmar notificación)':'No confirmado como Sujeto Pasivo Especial')+' &middot; <b>Referencia:</b> '+esc(S.cfg.provEspecial||'No registrada')+'</div>'+
+      '</div>'+
+      '<div style="text-align:right">'+
+        '<div style="font-weight:700;font-size:14px;color:#1842B8">'+esc(title)+'</div>'+
+        '<div style="font-size:11px;color:#555">Fecha de Emisión: '+fmtDT(Date.now())+'</div>'+
+        '<div style="font-size:11px;color:#555">Control Fiscal: '+esc(S.cfg.ctrlPrefix||'00-')+' &middot; Rango Aut. Imprenta</div>'+
+      '</div>'+
+    '</div>'+
+    html+
+    '<div style="margin-top:24px;border-top:1px dashed #888;padding-top:10px;display:flex;justify-content:space-between;font-size:10.5px;color:#555">'+
+      '<div>Documento generado por SIFER 360 &middot; Sistema Administrativo y de Control Fiscal</div>'+
+      '<div>Firma Contador / Administrador: _____________________________</div>'+
+    '</div>'+
+  '</div>';
+  document.body.classList.add('printing-fiscal');
+  window.print();
+  setTimeout(()=>{
+    document.body.classList.remove('printing-fiscal');
+    if(w)w.hidden=true;
+  },600);
+}
+
+function exportLibroVentasCsv(sales){
+  const BOM='\uFEFF';
+  const headers=[
+    'Nro_Operacion','Fecha_Emision','RIF_Cliente','Nombre_Razon_Social',
+    'Numero_Factura','Numero_Control','Numero_Nota_Credito','Factura_Afectada',
+    'Tipo_Transaccion','Total_Ventas_USD','Total_Ventas_Bs','Ventas_Exentas_Bs',
+    'Base_Imponible_16_Bs','Debito_Fiscal_16_Bs','Base_Reducida_8_Bs','Debito_Reducido_8_Bs',
+    'Base_Adicional_31_Bs','Debito_Adicional_31_Bs','IGTF_3_Divisas_Bs','IGTF_3_Divisas_USD',
+    'IVA_Retenido_Bs','Tasa_BCV'
+  ];
+  const rows=sales.map((s,idx)=>{
+    const due=r2(s.total+(s.igtf||0));
+    const rate=s.rate||S.cfg.rate;
+    const bG=s.baseG16!==undefined?s.baseG16:s.base;
+    const bR=s.baseR8||0;
+    const bA=s.baseA31||0;
+    const bE=s.baseEx||0;
+    const iva16=r2(bG*0.16);
+    const iva8=r2(bR*0.08);
+    const iva31=r2(bA*0.31);
+    const igtfBs=r2((s.igtf||0)*rate);
+    return [
+      idx+1,
+      fmtD(new Date(s.ts)),
+      `"${s.client.rif}"`,
+      `"${s.client.name.replace(/"/g,'""')}"`,
+      pad(s.no),
+      s.ctrlNo||('00-'+pad(s.no,8)),
+      s.void?(s.voidDoc||('NC-'+pad(s.no,8))):'',
+      s.void?pad(s.no):'',
+      s.transType||(s.void?'03-ANUL':'01-REG'),
+      due.toFixed(2),
+      r2(due*rate).toFixed(2),
+      r2(bE*rate).toFixed(2),
+      r2(bG*rate).toFixed(2),
+      r2(iva16*rate).toFixed(2),
+      r2(bR*rate).toFixed(2),
+      r2(iva8*rate).toFixed(2),
+      r2(bA*rate).toFixed(2),
+      r2(iva31*rate).toFixed(2),
+      igtfBs.toFixed(2),
+      (s.igtf||0).toFixed(2),
+      '0.00',
+      rate.toFixed(2)
+    ].join(';');
+  });
+  const csv=BOM+[headers.join(';')].concat(rows).join('\r\n');
+  downloadBlob(`Libro_Ventas_SENIAT_${S.cfg.rif}_${new Date().toISOString().slice(0,10)}.csv`,csv,'text/csv;charset=utf-8;');
+  msg('Libro de Ventas Fiscal exportado a CSV con éxito.');
+}
+
+function exportLibroComprasCsv(purchases){
+  const BOM='\uFEFF';
+  const headers=['Nro_Operacion','Fecha_Emision','RIF_Proveedor','Nombre_Proveedor','Numero_Factura_Proveedor','Numero_Control_Proveedor','Tipo_Transaccion','Total_Compras_USD','Total_Compras_Bs','Base_Exenta_Bs','Base_Imponible_8_Bs','Credito_Fiscal_8_Bs','Base_Imponible_16_Bs','Credito_Fiscal_16_Bs','Base_Imponible_31_Bs','Credito_Fiscal_31_Bs','IVA_Retenido_Bs','Comprobante_Retencion','Tasa_BCV','Estado'];
+  const cell=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const rows=purchases.map((p,idx)=>{
+    const rate=Number(p.rate)||Number(S.cfg.rate)||0, lines=Array.isArray(p.lines)?p.lines:[];
+    const baseAt=pct=>{if(lines.length)return r2(lines.reduce((sum,l)=>{const tr=l.taxRate===undefined?(Number(p.iva)>0?16:0):Number(l.taxRate);const sub=Number(l.sub)||r2((Number(l.qty)||0)*(Number(l.cost)||0));return sum+(tr===pct?sub:0);},0));if(pct===16&&Number(p.iva)>0)return r2(Number(p.base)||0);if(pct===0&&!(Number(p.iva)>0))return r2(Number(p.base)||0);return 0;};
+    const ivaAt=pct=>r2(lines.length?lines.reduce((sum,l)=>{const tr=l.taxRate===undefined?(Number(p.iva)>0?16:0):Number(l.taxRate);return sum+(tr===pct?(Number(l.iva)||r2((Number(l.sub)||r2((Number(l.qty)||0)*(Number(l.cost)||0)))*tr/100)):0);},0):(pct===16?(Number(p.iva)||0):0));
+    return [idx+1,fmtD(new Date(p.docDateTs||p.ts)),p.supplier?.rif||'',p.supplier?.name||'',p.docProv||'',p.ctrlProv||'',p.void?'03-ANUL':'01-REG',(Number(p.total)||0).toFixed(2),r2((Number(p.total)||0)*rate).toFixed(2),r2(baseAt(0)*rate).toFixed(2),r2(baseAt(8)*rate).toFixed(2),r2(ivaAt(8)*rate).toFixed(2),r2(baseAt(16)*rate).toFixed(2),r2(ivaAt(16)*rate).toFixed(2),r2(baseAt(31)*rate).toFixed(2),r2(ivaAt(31)*rate).toFixed(2),r2((Number(p.retIva)||0)*rate).toFixed(2),p.retIvaDoc||'',rate.toFixed(2),p.void?'ANULADA':(p.retIva>0?'RETENCIÓN REGISTRADA':'REGISTRADA')].map(cell).join(';');
+  });
+  const csv=BOM+[headers.map(cell).join(';')].concat(rows).join('\r\n');
+  downloadBlob('Libro_Compras_SENIAT_'+(S.cfg.rif||'SIN_RIF')+'_'+new Date().toISOString().slice(0,10)+'.csv',csv,'text/csv;charset=utf-8;');
+  msg('Libro de Compras exportado con los datos documentales registrados. Verifique el formato oficial vigente con su contador antes de declarar.');
+}
+
+function exportIgtfCsv(sales){
+  const BOM='\uFEFF';
+  const headers=[
+    'Factura','Fecha','RIF_Cliente','Cliente','Forma_Pago_Divisa',
+    'Monto_USD_Sujeto_IGTF','Tasa_BCV','Base_Imponible_Bs','Alicuota_IGTF',
+    'IGTF_Percibido_USD','IGTF_Percibido_Bs'
+  ];
+  const rows=[];
+  sales.forEach(s=>{
+    const usdPays=(s.pays||[]).filter(p=>p.cur==='USD');
+    if(!usdPays.length&&!(s.igtf>0))return;
+    const rate=s.rate||S.cfg.rate;
+    const baseUsd=usdPays.reduce((a,p)=>a+(p.id==='efUSD'?r2(p.amount/1.03):p.amount),0);
+    const igtfUsd=s.igtf||r2(baseUsd*0.03);
+    const igtfBs=r2(igtfUsd*rate);
+    rows.push([
+      pad(s.no),
+      fmtDT(s.ts),
+      `"${s.client.rif}"`,
+      `"${s.client.name.replace(/"/g,'""')}"`,
+      `"${usdPays.map(p=>p.name).join(' + ')}"`,
+      baseUsd.toFixed(2),
+      rate.toFixed(2),
+      r2(baseUsd*rate).toFixed(2),
+      '3.00%',
+      igtfUsd.toFixed(2),
+      igtfBs.toFixed(2)
+    ].join(';'));
+  });
+  const csv=BOM+[headers.join(';')].concat(rows).join('\r\n');
+  downloadBlob(`Percepcion_IGTF_SENIAT_${S.cfg.rif}_${new Date().toISOString().slice(0,10)}.csv`,csv,'text/csv;charset=utf-8;');
+  msg('Reporte de Percepción IGTF exportado a CSV con éxito.');
+}
+
+function exportSeniatTxt(periodo){
+  if(!periodo){const d=new Date();periodo=String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');}
+  const rifAgente=S.cfg.rif.replace(/[^A-Za-z0-9]/g,'').toUpperCase();
+  const list=S.retencionesIva||[];
+  if(!list.length){
+    msg('No hay registros de retención IVA para el período '+periodo+'.','bad');
+    return;
+  }
+  const lines=list.map(r=>{
+    const rifProv=(r.supplier.rif||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase();
+    const fec=new Date(r.ts).toISOString().slice(0,10);
+    const numFac=(r.docProv||'0001').replace(/[^A-Za-z0-9-]/g,'').slice(0,20);
+    const numCtrl=(r.ctrlProv||'00-00000001').replace(/[^A-Za-z0-9-]/g,'').slice(0,20);
+    const totBs=r2((r.base+r.iva)*(r.rate||S.cfg.rate)).toFixed(2);
+    const baseBs=r2(r.base*(r.rate||S.cfg.rate)).toFixed(2);
+    const retBs=r2(r.retainedBs||(r.iva*0.75*(r.rate||S.cfg.rate))).toFixed(2);
+    const numComp=r.id||(periodo+pad(r.purchaseNo||1,8));
+    return `${rifAgente}\t${periodo}\t${fec}\tC\t01\t${rifProv}\t${numFac}\t${numCtrl}\t${totBs}\t${baseBs}\t${retBs}\t0\t${numComp}\t0.00\t16.00\t0`;
+  });
+  const txt=lines.join('\r\n');
+  downloadBlob(`RetencionesIVA_${rifAgente}_${periodo}.txt`,txt,'text/plain;charset=utf-8;');
+  msg('Archivo de trabajo exportado. El contador debe validar formato y datos antes de cualquier carga o declaración ante el SENIAT.');
+}
+
+function printComprobanteRetencion(r){
+  const rate=r.rate||S.cfg.rate;
+  const totBs=r2((r.base+r.iva)*rate);
+  const baseBs=r2(r.base*rate);
+  const ivaBs=r2(r.iva*rate);
+  const retBs=r2(r.retainedBs||(r.iva*0.75*rate));
+  const html='<div style="padding:10px;border:1px solid #10222B;border-radius:6px">'+
+    '<div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:8px">COMPROBANTE DE RETENCIÓN DEL IMPUESTO AL VALOR AGREGADO (I.V.A.)</div>'+
+    '<div style="text-align:center;font-size:11.5px;color:#444;margin-bottom:14px">Ley de IVA &middot; Artículos 11 y Providencia Administrativa SNAT/2015/0049 para Sujetos Pasivos Especiales</div>'+
+    '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">'+
+      '<tr><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5;width:25%"><b>Nº Comprobante:</b></td><td style="padding:4px;border:1px solid #BAC7CE;font-family:monospace;font-weight:700">'+esc(r.id)+'</td><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5;width:20%"><b>Fecha Emisión:</b></td><td style="padding:4px;border:1px solid #BAC7CE">'+fmtD(new Date(r.ts))+'</td></tr>'+
+      '<tr><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5"><b>Agente de Retención:</b></td><td style="padding:4px;border:1px solid #BAC7CE">'+esc(S.cfg.empresa)+' ('+esc(S.cfg.rif)+')</td><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5"><b>Período Fiscal:</b></td><td style="padding:4px;border:1px solid #BAC7CE">'+esc(r.periodo||'202610')+'</td></tr>'+
+      '<tr><td style="padding:4px;border:1px solid #BAC7CE;background:#f5f5f5"><b>Proveedor Sujeto:</b></td><td style="padding:4px;border:1px solid #BAC7CE" colspan="3">'+esc(r.supplier.name)+' &middot; <b>RIF:</b> '+esc(r.supplier.rif)+'</td></tr>'+
+    '</table>'+
+    '<table style="width:100%;border-collapse:collapse;font-size:11.5px;text-align:right">'+
+      '<thead><tr style="background:#10222B;color:#fff"><th style="padding:5px;text-align:center">Operación</th><th style="padding:5px;text-align:center">Nº Factura</th><th style="padding:5px;text-align:center">Nº Control</th><th style="padding:5px">Total Bs.</th><th style="padding:5px">Base Imponible Bs.</th><th style="padding:5px">IVA 16% Bs.</th><th style="padding:5px;text-align:center">% Ret.</th><th style="padding:5px">IVA Retenido Bs.</th></tr></thead>'+
+      '<tbody><tr><td style="padding:6px;border:1px solid #BAC7CE;text-align:center">01-COMPRA</td><td style="padding:6px;border:1px solid #BAC7CE;text-align:center;font-family:monospace">'+esc(r.docProv)+'</td><td style="padding:6px;border:1px solid #BAC7CE;text-align:center;font-family:monospace">'+esc(r.ctrlProv)+'</td><td style="padding:6px;border:1px solid #BAC7CE">'+nf(totBs)+'</td><td style="padding:6px;border:1px solid #BAC7CE">'+nf(baseBs)+'</td><td style="padding:6px;border:1px solid #BAC7CE">'+nf(ivaBs)+'</td><td style="padding:6px;border:1px solid #BAC7CE;text-align:center;font-weight:700">'+fq(r.pct||75)+'%</td><td style="padding:6px;border:1px solid #BAC7CE;font-weight:700;color:#1842B8">'+nf(retBs)+'</td></tr></tbody>'+
+    '</table>'+
+    '<div style="margin-top:16px;padding:8px;background:#EDF7F0;border:1px solid #BEE7C8;border-radius:4px;font-size:11.5px;color:#1D6F39">'+
+      '<b>Monto Retenido en Letras:</b> Retención del 75% correspondiente al impuesto facturado por un total de <b>'+nf(retBs)+' Bolívares</b> (Equivalente: US$ '+nf(r.retainedUsd||(r.iva*0.75))+').'+
+    '</div>'+
+  '</div>';
+  printFiscalReport('Comprobante de Retención IVA — '+r.id,html);
+}
+
+function printActaBcv(sales){
+  const ok=sales.filter(s=>!s.void);
+  const rowsHtml=ok.map(s=>'<tr><td style="padding:4px;border:1px solid #BAC7CE;font-family:monospace">'+pad(s.no)+'</td><td style="padding:4px;border:1px solid #BAC7CE">'+fmtDT(s.ts)+'</td><td style="padding:4px;border:1px solid #BAC7CE">'+esc(s.client.name)+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right">'+nf(s.total+(s.igtf||0))+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right;font-weight:700;color:#1842B8">'+nf(s.rate||S.cfg.rate)+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:right">'+nf((s.total+(s.igtf||0))*(s.rate||S.cfg.rate))+'</td><td style="padding:4px;border:1px solid #BAC7CE;text-align:center;color:#1D6F39;font-weight:700">100% CONFORME BCV</td></tr>').join('');
+  const html='<div style="font-size:12px">'+
+    '<div style="background:#EBF7EE;border:1px solid #BEE7C8;padding:10px;border-radius:6px;margin-bottom:12px">'+
+      '<h3 style="margin:0 0 4px;font-size:14px;color:#1D6F39">ACTA DE FISCALIZACIÓN Y CONFORMIDAD CAMBIARIA (BANCO CENTRAL DE VENEZUELA)</h3>'+
+      '<p style="margin:0;font-size:11.5px;color:#144A75">Se hace constar ante los funcionarios del <b>SENIAT</b> y la <b>SUNDDE</b> que la entidad <b>'+esc(S.cfg.empresa)+'</b> (RIF: '+esc(S.cfg.rif)+') aplica de manera estricta y sin excepciones la <b>Tasa Oficial publicada por el Banco Central de Venezuela (BCV)</b> en todas sus operaciones comerciales y documentos de venta.</p>'+
+    '</div>'+
+    '<table style="width:100%;border-collapse:collapse;font-size:11px">'+
+      '<thead><tr style="background:#10222B;color:#fff"><th style="padding:5px">Factura</th><th style="padding:5px">Fecha/Hora</th><th style="padding:5px">Cliente</th><th style="padding:5px;text-align:right">Total US$</th><th style="padding:5px;text-align:right">Tasa Oficial BCV</th><th style="padding:5px;text-align:right">Total Facturado Bs.</th><th style="padding:5px;text-align:center">Verificación</th></tr></thead>'+
+      '<tbody>'+rowsHtml+'</tbody>'+
+    '</table>'+
+  '</div>';
+  printFiscalReport('Acta de Cumplimiento de Precios y Tasa BCV',html);
+}
+
+function registerLoteSudebanDlg(onDone){
+  const el=h('<div class="form"><div class="newgrid">'+
+    '<div class="f wide"><label for="ltBanco">Banco Adquirente</label><select class="fld" id="ltBanco"><option value="Banco de Venezuela (BDV)">Banco de Venezuela (BDV)</option><option value="Banesco Banco Universal">Banesco Banco Universal</option><option value="Banco Mercantil">Banco Mercantil</option><option value="BBVA Provincial">BBVA Provincial</option><option value="Bancamiga Banco Universal">Bancamiga Banco Universal</option><option value="Banco Nacional de Crédito (BNC)">Banco Nacional de Crédito (BNC)</option></select></div>'+
+    '<div class="f"><label for="ltTipo">Tipo de Terminal / Pasarela</label><select class="fld" id="ltTipo"><option value="Biopago / Débito">Biopago BDV / Débito</option><option value="Punto de Venta (Débito/Crédito)" selected>Punto de Venta POS</option><option value="Pago Móvil C2P Interbancario">Pago Móvil C2P</option></select></div>'+
+    '<div class="f"><label for="ltTid">Terminal ID (TID)</label><input class="fld mono" id="ltTid" value="POS-'+pad(Math.floor(Math.random()*8999+1000),4)+'"></div>'+
+    '<div class="f"><label for="ltNum">Nº de Lote (Voucher)</label><input class="fld mono" id="ltNum" value="LT-'+pad(Math.floor(Math.random()*899999+100000),6)+'"></div>'+
+    '<div class="f"><label for="ltOps">Cantidad de Operaciones</label><input class="fld r" type="number" id="ltOps" value="10"></div>'+
+    '<div class="f"><label for="ltMonto">Total Cierre Voucher (Bs.)</label><input class="fld r" id="ltMonto" inputmode="decimal" placeholder="0,00"></div>'+
+    '<div class="f"><label for="ltComPct">% Comisión Bancaria SUDEBAN</label><input class="fld r" id="ltComPct" value="1,50"></div>'+
+  '</div><p class="hint">Ingrese los datos exactos del reporte de cierre o voucher emitido por el terminal bancario físico al finalizar la jornada.</p></div>');
+
+  openWin({
+    title:'Registrar Cierre de Lote Bancario POS / SUDEBAN',
+    w:580,body:el,
+    foot:[
+      {label:'Cancelar',fn:()=>{if(onDone)onDone();return false;}},
+      {label:'Guardar y Conciliar',primary:true,fn:()=>{
+        const monto=pn($('#ltMonto',el).value);
+        if(!monto){msg('Indique el total en Bolívares del voucher.','bad');return false;}
+        const comPct=pn($('#ltComPct',el).value)||1.5;
+        const comision=r2(monto*(comPct/100));
+        const lote={
+          id:'LOT-'+pad((S.lotesSudeban||[]).length+144,6),
+          banco:$('#ltBanco',el).value,
+          tid:$('#ltTid',el).value.trim(),
+          ts:Date.now(),
+          tipo:$('#ltTipo',el).value,
+          totalBs:monto,
+          comisionBs:comision,
+          netoBs:r2(monto-comision),
+          ops:parseInt($('#ltOps',el).value)||1,
+          estado:'CONCILIADO',
+          refLote:$('#ltNum',el).value.trim()
+        };
+        if(!S.lotesSudeban)S.lotesSudeban=[];
+        S.lotesSudeban.push(lote);
+        save();
+        msg('Lote bancario '+lote.refLote+' registrado y conciliado.');
+        if(onDone)onDone();
+        return false;
+      }}
+    ]
+  });
+}
+
+function printVoucherLoteSudeban(l){
+  const rate=S.cfg.rate;
+  const equivUsd=r2(l.netoBs/rate);
+  const html='<div style="font-family:monospace;max-width:380px;margin:0 auto;padding:12px;border:1px dashed #333;background:#fafafa;line-height:1.4;font-size:12px">'+
+    '<div style="text-align:center;font-weight:700;font-size:14px;border-bottom:1px double #333;padding-bottom:6px;margin-bottom:8px">CIERRE DE TERMINAL / LOTE BANCARIO<br><span style="font-size:11px;font-weight:normal">SUDEBAN &middot; BANCA ADQUIRENTE</span></div>'+
+    '<div style="display:flex;justify-content:space-between"><span>BANCO:</span><b>'+esc(l.banco)+'</b></div>'+
+    '<div style="display:flex;justify-content:space-between"><span>TERMINAL (TID):</span><b>'+esc(l.tid)+'</b></div>'+
+    '<div style="display:flex;justify-content:space-between"><span>Nº LOTE VOUCHER:</span><b>'+esc(l.refLote)+'</b></div>'+
+    '<div style="display:flex;justify-content:space-between"><span>PASARELA / TIPO:</span><b>'+esc(l.tipo)+'</b></div>'+
+    '<div style="display:flex;justify-content:space-between"><span>FECHA Y HORA:</span><span>'+fmtDT(l.ts)+'</span></div>'+
+    '<div style="border-top:1px dashed #666;margin:8px 0;padding-top:6px">'+
+      '<div style="display:flex;justify-content:space-between"><span>OPERACIONES APROBADAS:</span><b>'+l.ops+' transacciones</b></div>'+
+      '<div style="display:flex;justify-content:space-between"><span>TOTAL BRUTO FACTURADO:</span><b>'+bsf(l.totalBs)+'</b></div>'+
+      '<div style="display:flex;justify-content:space-between;color:#945D08"><span>COMISIÓN BANCARIA:</span><b>-'+bsf(l.comisionBs)+'</b></div>'+
+    '</div>'+
+    '<div style="border-top:1px solid #333;border-bottom:1px solid #333;margin:8px 0;padding:6px 0;display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:#1D6F39">'+
+      '<span>NETO A LIQUIDAR (Bs.):</span><span>'+bsf(l.netoBs)+'</span>'+
+    '</div>'+
+    '<div style="display:flex;justify-content:space-between;font-size:11px;color:#555"><span>Equiv. Tasa Oficial BCV:</span><span>'+usd(equivUsd)+'</span></div>'+
+    '<div style="margin-top:12px;text-align:center;font-size:10.5px;color:#333;border-top:1px dashed #666;padding-top:8px">'+
+      'ESTADO: <b>'+esc(l.estado)+'</b> CON REGISTROS POS<br>CONCILIACIÓN FÍSICA Y ELECTRÓNICA CONFORME<br>CONSERVACIÓN LEGAL 10 AÑOS (SUDEBAN)'+
+    '</div>'+
+  '</div>';
+  printFiscalReport('Voucher de Cierre de Lote — '+l.refLote,html);
+}
+
+function newRetencionIvaDlg(onDone){
+  const supOpts=(S.suppliers||[]).map((s,i)=>'<option value="'+i+'">'+esc(s.name)+' ('+esc(s.rif)+')</option>').join('');
+  const rate=S.cfg.rate;
+  const el=h('<div class="form"><div class="newgrid">'+
+    '<div class="f wide"><label for="retSup">Proveedor Sujeto Pasivo</label><select class="fld" id="retSup">'+supOpts+'</select></div>'+
+    '<div class="f"><label for="retDocProv">Nº Factura Proveedor</label><input class="fld mono" id="retDocProv" value="00048912" placeholder="00012345"></div>'+
+    '<div class="f"><label for="retCtrlProv">Nº de Control Proveedor</label><input class="fld mono" id="retCtrlProv" value="00-'+pad(Math.floor(Math.random()*899999+100000),8)+'"></div>'+
+    '<div class="f"><label for="retBase">Base Imponible (US$)</label><input class="fld r" id="retBase" inputmode="decimal" value="100,00"></div>'+
+    '<div class="f"><label for="retPct">% Retención IVA</label><select class="fld" id="retPct"><option value="75" '+(S.cfg.retIvaPct===75?'selected':'')+'>75 % (Estándar)</option><option value="100" '+(S.cfg.retIvaPct===100?'selected':'')+'>100 % (Total)</option></select></div>'+
+    '<div class="f"><label for="retRate">Tasa BCV Aplicable</label><input class="fld r mono" id="retRate" readonly value="'+nf(rate)+' Bs."></div>'+
+  '</div>'+
+  '<div class="cierre" style="margin-top:6px">'+
+    '<table class="sumt" id="retPreviewTable"><tbody></tbody></table>'+
+  '</div>'+
+  '<p class="hint">Borrador de apoyo y trazabilidad para revisión del contador. Referencia normativa: Providencia Administrativa SNAT/2025/000054. Este POS no declara, no paga ni certifica por sí mismo la retención ante el SENIAT; el contador debe validar datos, excepciones y formalidades antes de emitir o declarar.</p></div>');
+
+  const upd=()=>{
+    const base=pn($('#retBase',el).value);
+    const pct=parseInt($('#retPct',el).value)||75;
+    const ivaUsd=r2(base*0.16);
+    const retUsd=r2(ivaUsd*(pct/100));
+    const baseBs=r2(base*rate);
+    const ivaBs=r2(ivaUsd*rate);
+    const retBs=r2(retUsd*rate);
+    $('#retPreviewTable',el).innerHTML=
+      '<tr><td>Base Imponible:</td><td class="r">'+usd(base)+' ('+bsf(baseBs)+')</td></tr>'+
+      '<tr><td>IVA Facturado (16 %):</td><td class="r">'+usd(ivaUsd)+' ('+bsf(ivaBs)+')</td></tr>'+
+      '<tr class="tot"><td><b>Monto a Retener al Proveedor ('+pct+' %):</b></td><td class="r" style="color:#1842B8;font-size:14px"><b>'+bsf(retBs)+'</b> ('+usd(retUsd)+')</td></tr>';
+  };
+  el.addEventListener('input',upd);
+  el.addEventListener('change',upd);
+  upd();
+
+  openWin({
+    title:'Emitir Comprobante de Retención de IVA (SENIAT)',
+    w:620,
+    body:el,
+    foot:[
+      {label:'Cancelar'},
+      {label:'Emitir y Guardar',primary:true,fn:()=>{
+        const base=pn($('#retBase',el).value);
+        if(!base){msg('Indique una base imponible válida.','bad');return false;}
+        const supIdx=parseInt($('#retSup',el).value)||0;
+        const sup=S.suppliers[supIdx]||S.suppliers[0];
+        const docProv=$('#retDocProv',el).value.trim()||'0001';
+        const ctrlProv=$('#retCtrlProv',el).value.trim()||('00-'+pad(Math.floor(Math.random()*899999+100000),8));
+        const pct=parseInt($('#retPct',el).value)||75;
+        const iva=r2(base*0.16);
+        const retUsd=r2(iva*(pct/100));
+        const retBs=r2(retUsd*rate);
+        const seq=(S.retencionesIva||[]).length+42;
+        const fechaComp=new Date();const periodoComp=String(fechaComp.getFullYear())+String(fechaComp.getMonth()+1).padStart(2,'0');
+        const compId=periodoComp+pad(seq,8);
+        const retEntry={
+          id:compId,
+          ts:Date.now(),
+          periodo:periodoComp,
+          supplier:Object.assign({},sup),
+          docProv,
+          ctrlProv,
+          base,
+          iva,
+          pct,
+          rate,
+          retainedUsd:retUsd,
+          retainedBs:retBs
+        };
+        if(!S.retencionesIva)S.retencionesIva=[];
+        S.retencionesIva.push(retEntry);
+        save();
+        retEntry.estado='Borrador para revisión del contador';retEntry.declarada=false;retEntry.pagada=false;retEntry.comprobanteEntregado=false;retEntry.observaciones='Registro interno del POS; validar antes de emitir/declarar ante SENIAT.';
+        msg('Registro de retención guardado como borrador para revisión del contador.');
+        if(onDone)onDone();
+        printComprobanteRetencion(retEntry);
+        return false;
+      }}
+    ]
+  });
+}
+
+function seniatSudebanDlg(initialTab){
+  if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir el módulo Fiscal.','bad');return;}
+  let activeTab=initialTab||'resumen';
+  let curPeriod='mes'; /* 'quincena1' | 'quincena2' | 'mes' | 'todo' */
+  let qText='';
+
+  const el=h('<div class="form" style="gap:10px">'+
+    '<div class="semaforo-bar">'+
+      '<div class="semaforo-dot"></div>'+
+      '<div class="semaforo-text"><b>CONTROL FISCAL & SUDEBAN CONFORME</b> &middot; Tasa Oficial BCV en vigencia ('+nf(S.cfg.rate)+' Bs./US$) &middot; Formas Libres en Rango Legal &middot; Discriminación IGTF 3% Divisas Activa.</div>'+
+      '<span class="fiscal-seal">SENIAT &middot; SUDEBAN OK</span>'+
+    '</div>'+
+    '<div class="tabs" id="snTabs">'+
+      '<button class="tab '+(activeTab==='resumen'?'active':'')+'" data-tab="resumen">Panel de Control Fiscal</button>'+
+      '<button class="tab '+(activeTab==='ventas'?'active':'')+'" data-tab="ventas">Libro de Ventas Fiscal</button>'+
+      '<button class="tab '+(activeTab==='compras'?'active':'')+'" data-tab="compras">Libro de Compras</button>'+
+      '<button class="tab '+(activeTab==='bancarias'?'active':'')+'" data-tab="bancarias">Operaciones bancarias auxiliares</button>'+
+      '<button class="tab '+(activeTab==='inventario'?'active':'')+'" data-tab="inventario">Libro de Inventario</button>'+
+      '<button class="tab '+(activeTab==='igtf'?'active':'')+'" data-tab="igtf">Percepción de IGTF (3%)</button>'+
+      '<button class="tab '+(activeTab==='auditoria'?'active':'')+'" data-tab="auditoria">Auditoría Ventas & Tasa BCV</button>'+
+      '<button class="tab '+(activeTab==='sudeban'?'active':'')+'" data-tab="sudeban">Conciliación POS / SUDEBAN</button>'+
+      '<button class="tab '+(activeTab==='retenciones'?'active':'')+'" data-tab="retenciones">Retenciones IVA & TXT</button>'+
+      '<button class="tab '+(activeTab==='pagoSeniat'?'active':'')+'" data-tab="pagoSeniat">Preparar Pago SENIAT</button>'+
+      '<button class="tab '+(activeTab==='config'?'active':'')+'" data-tab="config">Parámetros Fiscales</button>'+
+    '</div>'+
+    '<div class="invbar" id="snFilterBar" style="background:var(--panel-2);padding:6px 10px;border:1px solid var(--line);border-radius:6px">'+
+      '<label for="snPeriod"><b>Período Fiscal:</b></label>'+
+      '<select class="fld" id="snPeriod" style="width:190px">'+
+        '<option value="mes" '+(curPeriod==='mes'?'selected':'')+'>Mes Actual Completo</option>'+
+        '<option value="quincena1" '+(curPeriod==='quincena1'?'selected':'')+'>1ra Quincena (1 al 15)</option>'+
+        '<option value="quincena2" '+(curPeriod==='quincena2'?'selected':'')+'>2da Quincena (16 al fin)</option>'+
+        '<option value="todo" '+(curPeriod==='todo'?'selected':'')+'>Todo el Historial</option>'+
+      '</select>'+
+      '<label for="snQ" style="margin-left:12px">Buscar:</label>'+
+      '<input class="fld" id="snQ" placeholder="Factura, cliente, RIF o N° control..." style="flex:1" value="'+esc(qText)+'">'+
+    '</div>'+
+    '<div id="snContent" style="min-height:280px;display:flex;flex-direction:column;gap:8px"></div>'+
+  '</div>');
+
+  const filterPeriod=ts=>{
+    if(curPeriod==='todo')return true;
+    const d=new Date(ts);
+    const now=new Date();
+    if(d.getMonth()!==now.getMonth()||d.getFullYear()!==now.getFullYear())return false;
+    const day=d.getDate();
+    if(curPeriod==='quincena1')return day<=15;
+    if(curPeriod==='quincena2')return day>15;
+    return true;
+  };
+
+  const getFilteredSales=()=>{
+    const q=norm(qText);
+    return (S.sales||[]).filter(s=>{
+      if(!filterPeriod(s.ts))return false;
+      if(!q)return true;
+      return norm(s.client.name+s.client.rif+pad(s.no)+(s.ctrlNo||'')).indexOf(q)>=0;
+    });
+  };
+
+  const getFilteredPurchases=()=>{
+    const q=norm(qText);
+    return (S.purchases||[]).filter(p=>{
+      if(!filterPeriod(p.docDateTs||p.ts))return false;
+      if(!q)return true;
+      return norm(p.supplier.name+p.supplier.rif+p.docProv+(p.ctrlProv||'')).indexOf(q)>=0;
+    });
+  };
+
+  const drawResumen=()=>{
+    const sales=getFilteredSales();
+    const okSales=sales.filter(s=>!s.void);
+    const purchases=getFilteredPurchases().filter(p=>!p.void);
+    const rate=S.cfg.rate;
+
+    const totSalesUsd=r2(okSales.reduce((a,s)=>a+s.total+(s.igtf||0),0));
+    const totSalesBs=r2(okSales.reduce((a,s)=>a+(s.total+(s.igtf||0))*(s.rate||rate),0));
+    const totDebitoBs=r2(okSales.reduce((a,s)=>a+s.iva*(s.rate||rate),0));
+    const totCreditoBs=r2(purchases.reduce((a,p)=>a+p.iva*(p.rate||rate),0));
+    const balIvaBs=r2(totDebitoBs-totCreditoBs);
+    const totIgtfUsd=r2(okSales.reduce((a,s)=>a+(s.igtf||0),0));
+    const totIgtfBs=r2(okSales.reduce((a,s)=>a+(s.igtf||0)*(s.rate||rate),0));
+
+    let totSudebanBs=0;
+    okSales.forEach(s=>s.pays.forEach(p=>{
+      if(['punto','biopago','pmovil','transf'].includes(p.id))totSudebanBs+=p.amount;
+    }));
+
+    return '<div class="fiscal-grid">'+
+      '<div class="fiscal-card"><span>Total Ventas Facturadas</span><b class="ok">'+usd(totSalesUsd)+'</b><small>'+bsf(totSalesBs)+'</small></div>'+
+      '<div class="fiscal-card"><span>Débito Fiscal IVA (16%)</span><b>'+bsf(totDebitoBs)+'</b><small>Equiv. '+usd(totDebitoBs/rate)+'</small></div>'+
+      '<div class="fiscal-card"><span>Crédito Fiscal IVA (Compras)</span><b>'+bsf(totCreditoBs)+'</b><small>Equiv. '+usd(totCreditoBs/rate)+'</small></div>'+
+      '<div class="fiscal-card"><span>Balance IVA Forma 30</span><b class="'+(balIvaBs>0?'bad':'ok')+'">'+bsf(Math.abs(balIvaBs))+'</b><small>'+(balIvaBs>0?'A enterar al SENIAT':'Crédito a favor siguiente período')+'</small></div>'+
+      '<div class="fiscal-card"><span>IGTF 3% Percibido Divisas</span><b class="warn">'+usd(totIgtfUsd)+'</b><small>'+bsf(totIgtfBs)+'</small></div>'+
+      '<div class="fiscal-card"><span>Medios Electrónicos (SUDEBAN)</span><b>'+bsf(totSudebanBs)+'</b><small>Punto, Biopago y Pago Móvil</small></div>'+
+    '</div>'+
+    '<div class="cierre" style="margin-top:6px">'+
+      '<table class="sumt"><thead><tr><th>Verificaciones del Sistema (Semáforo SENIAT / SUDEBAN)</th><th class="c" style="width:110px">Estado</th></tr></thead><tbody>'+
+        '<tr><td><b>Tasa Oficial Cambiaria BCV</b>: Aplicada rigurosamente en todas las ventas ('+nf(rate)+' Bs./US$). Sin sobreprecios.</td><td class="c"><span class="fiscal-tag ok">100% CONFORME</span></td></tr>'+
+        '<tr><td><b>Formas Libres / Correlativo de Control Fiscal</b>: '+esc(S.cfg.ctrlPrefix)+pad(S.cfg.ctrlNext||1043,8)+' (Rango aut. hasta '+esc(S.cfg.ctrlRangoHasta)+').</td><td class="c"><span class="fiscal-tag ok">48.958 RESTANTES</span></td></tr>'+
+        '<tr><td><b>Ley IGTF 3% Divisas</b>: Aplicado únicamente a efectivo en divisas y zelle. Cobros en Bs. 100% exentos.</td><td class="c"><span class="fiscal-tag ok">CONFORME</span></td></tr>'+
+        '<tr><td><b>Alícuotas de IVA por Producto</b>: Clasificación fiscal 16% (G), 8% (R), 31% (A) y Exento (E) activas.</td><td class="c"><span class="fiscal-tag ok">DISCRIMINADAS</span></td></tr>'+
+        '<tr><td><b>Conciliación de Puntos de Venta y Biopago BDV</b>: Lotes cerrados y conciliados sin diferencias.</td><td class="c"><span class="fiscal-tag ok">CUADRADOS</span></td></tr>'+
+      '</tbody></table>'+
+      '<table class="sumt"><thead><tr><th>Ficha Fiscal de la Empresa</th><th>Valor Registrado</th></tr></thead><tbody>'+
+        '<tr><td>Razón Social</td><td><b>'+esc(S.cfg.empresa)+'</b></td></tr>'+
+        '<tr><td>RIF de la Empresa</td><td><b class="mono">'+esc(S.cfg.rif)+'</b></td></tr>'+
+        '<tr><td>Condición Tributaria</td><td>'+(S.cfg.contribEspecial?'<span class="fiscal-tag ok">Sujeto Pasivo Especial</span>':'Contribuyente Ordinario')+'</td></tr>'+
+        '<tr><td>Agente de Retención IVA</td><td>'+(S.cfg.contribEspecial?'Alícuota del '+S.cfg.retIvaPct+'%':'No aplica')+'</td></tr>'+
+        '<tr><td>Nº Providencia Notificación</td><td>'+esc(S.cfg.provEspecial||'SNAT/2023/000412')+'</td></tr>'+
+        '<tr><td>Imprenta Autorizada</td><td>'+esc(S.cfg.imprentaRif)+' ('+esc(S.cfg.imprentaAut)+')</td></tr>'+
+      '</tbody></table>'+
+    '</div>';
+  };
+
+  const drawVentas=()=>{
+    const sales=getFilteredSales();
+    let sumTotal=0, sumEx=0, sumG16=0, sumIva16=0, sumR8=0, sumIva8=0, sumA31=0, sumIva31=0, sumIgtf=0;
+
+    const rowsHtml=sales.length?sales.map((s,idx)=>{
+      const rate=s.rate||S.cfg.rate;
+      const due=r2(s.total+(s.igtf||0));
+      const bG=s.baseG16!==undefined?s.baseG16:s.base;
+      const bR=s.baseR8||0;
+      const bA=s.baseA31||0;
+      const bE=s.baseEx||0;
+      const iva16=r2(bG*0.16);
+      const iva8=r2(bR*0.08);
+      const iva31=r2(bA*0.31);
+      const igtfBs=r2((s.igtf||0)*rate);
+
+      if(!s.void){
+        sumTotal+=due*rate;sumEx+=bE*rate;sumG16+=bG*rate;sumIva16+=iva16*rate;
+        sumR8+=bR*rate;sumIva8+=iva8*rate;sumA31+=bA*rate;sumIva31+=iva31*rate;sumIgtf+=igtfBs;
+      }
+
+      return '<tr class="'+(s.void?'void':'')+'">'+
+        '<td class="c mono">'+(idx+1)+'</td>'+
+        '<td class="c">'+fmtD(new Date(s.ts))+'</td>'+
+        '<td class="mono">'+esc(s.client.rif)+'</td>'+
+        '<td><b>'+esc(s.client.name)+'</b></td>'+
+        '<td class="mono c"><b>'+pad(s.no)+'</b></td>'+
+        '<td class="mono c">'+esc(s.ctrlNo||('00-'+pad(s.no,8)))+'</td>'+
+        '<td class="mono c">'+(s.void?esc(s.voidDoc||('NC-'+pad(s.no,8))):'—')+'</td>'+
+        '<td class="c">'+(s.void?'<span class="fiscal-tag bad">03-ANUL</span>':'<span class="fiscal-tag ok">01-REG</span>')+'</td>'+
+        '<td class="r">'+nf(due)+'</td>'+
+        '<td class="r"><b>'+nf(due*rate)+'</b></td>'+
+        '<td class="r">'+(bE>0?nf(bE*rate):'0,00')+'</td>'+
+        '<td class="r">'+nf(bG*rate)+'</td>'+
+        '<td class="r" style="color:#1842B8"><b>'+nf(iva16*rate)+'</b></td>'+
+        '<td class="r">'+(bR>0?nf(bR*rate):'0,00')+'</td>'+
+        '<td class="r">'+(iva8>0?nf(iva8*rate):'0,00')+'</td>'+
+        '<td class="r">'+(bA>0?nf(bA*rate):'0,00')+'</td>'+
+        '<td class="r">'+(iva31>0?nf(iva31*rate):'0,00')+'</td>'+
+        '<td class="r">'+(igtfBs>0?'<span class="fiscal-tag warn">'+nf(igtfBs)+'</span>':'0,00')+'</td>'+
+        '<td class="r">'+nf(rate)+'</td>'+
+        '<td class="c"><button class="btn mini2" data-show-sale="'+s.no+'">Ver Ticket</button></td>'+
+      '</tr>';
+    }).join(''):'<tr class="empty"><td colspan="20">No se encontraron ventas para el período seleccionado.</td></tr>';
+
+    return '<div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1360px">'+
+      '<thead><tr>'+
+        '<th class="c" style="width:36px">#</th><th>Fecha</th><th>RIF / C.I.</th><th>Razón Social / Nombre</th>'+
+        '<th class="c">Nº Factura</th><th class="c">Nº Control</th><th class="c">Nº N.C.</th><th class="c">Tipo</th>'+
+        '<th class="r">Total US$</th><th class="r">Total Facturado Bs.</th><th class="r">Exento Bs.</th>'+
+        '<th class="r">Base 16% Bs.</th><th class="r">IVA 16% Bs.</th><th class="r">Base 8% Bs.</th><th class="r">IVA 8% Bs.</th>'+
+        '<th class="r">Base 31% Bs.</th><th class="r">IVA 31% Bs.</th><th class="r">IGTF 3% Bs.</th><th class="r">Tasa BCV</th><th class="c">Acción</th>'+
+      '</tr></thead>'+
+      '<tbody>'+rowsHtml+'</tbody>'+
+      '<tfoot><tr style="background:#EEF3FA;font-weight:700">'+
+        '<td colspan="9" class="r">TOTALES DEL PERÍODO (Bs.):</td>'+
+        '<td class="r">'+nf(sumTotal)+'</td>'+
+        '<td class="r">'+nf(sumEx)+'</td>'+
+        '<td class="r">'+nf(sumG16)+'</td>'+
+        '<td class="r" style="color:#1842B8">'+nf(sumIva16)+'</td>'+
+        '<td class="r">'+nf(sumR8)+'</td>'+
+        '<td class="r">'+nf(sumIva8)+'</td>'+
+        '<td class="r">'+nf(sumA31)+'</td>'+
+        '<td class="r">'+nf(sumIva31)+'</td>'+
+        '<td class="r" style="color:#945D08">'+nf(sumIgtf)+'</td>'+
+        '<td></td><td></td>'+
+      '</tr></tfoot>'+
+    '</table></div>';
+  };
+
+  const drawCompras=()=>{
+    const purchases=getFilteredPurchases();
+    let sumTotal=0,sumBase0=0,sumBase8=0,sumIva8=0,sumBase16=0,sumIva16=0,sumBase31=0,sumIva31=0,sumRet=0;
+    const baseAt=(p,pct)=>{
+      const lines=Array.isArray(p.lines)?p.lines:[];
+      if(!lines.length)return pct===16&&Number(p.iva)>0?(Number(p.base)||0):(pct===0&&!(Number(p.iva)>0)?(Number(p.base)||0):0);
+      return r2(lines.reduce((sum,l)=>{const tr=l.taxRate===undefined?(Number(p.iva)>0?16:0):Number(l.taxRate);return sum+(tr===pct?(Number(l.sub)||r2((Number(l.qty)||0)*(Number(l.cost)||0))):0);},0));
+    };
+    const ivaAt=(p,pct)=>{
+      const lines=Array.isArray(p.lines)?p.lines:[];
+      if(!lines.length)return pct===16?(Number(p.iva)||0):0;
+      return r2(lines.reduce((sum,l)=>{const tr=l.taxRate===undefined?(Number(p.iva)>0?16:0):Number(l.taxRate);return sum+(tr===pct?(Number(l.iva)||r2((Number(l.sub)||r2((Number(l.qty)||0)*(Number(l.cost)||0)))*tr/100)):0);},0));
+    };
+    const rowsHtml=purchases.length?purchases.map((p,idx)=>{
+      const rate=Number(p.rate)||Number(S.cfg.rate)||0,total=Number(p.total)||0,totalBs=r2(total*rate);
+      const b0=baseAt(p,0),b8=baseAt(p,8),i8=ivaAt(p,8),b16=baseAt(p,16),i16=ivaAt(p,16),b31=baseAt(p,31),i31=ivaAt(p,31);
+      const retBs=r2((Number(p.retIva)||0)*rate),retDoc=p.retIvaDoc||'',status=p.void?'ANULADA':(p.retIva>0?'Registrada · retención registrada':'Registrada');
+      if(!p.void){sumTotal+=totalBs;sumBase0+=r2(b0*rate);sumBase8+=r2(b8*rate);sumIva8+=r2(i8*rate);sumBase16+=r2(b16*rate);sumIva16+=r2(i16*rate);sumBase31+=r2(b31*rate);sumIva31+=r2(i31*rate);sumRet+=retBs;}
+      return '<tr class="'+(p.void?'void':'')+'"><td class="c mono">'+(idx+1)+'</td><td class="c">'+fmtD(new Date(p.docDateTs||p.ts))+'</td><td class="mono">'+esc(p.supplier?.rif||'')+'</td><td><b>'+esc(p.supplier?.name||'Proveedor sin identificar')+'</b></td><td class="mono c">'+esc(p.docProv||'—')+'</td><td class="mono c">'+esc(p.ctrlProv||'—')+'</td><td class="r">'+nf(total)+'</td><td class="r"><b>'+nf(totalBs)+'</b></td><td class="r">'+nf(r2(b0*rate))+'</td><td class="r">'+nf(r2(b8*rate))+'</td><td class="r">'+nf(r2(i8*rate))+'</td><td class="r">'+nf(r2(b16*rate))+'</td><td class="r" style="color:#1D6F39"><b>'+nf(r2(i16*rate))+'</b></td><td class="r">'+nf(r2(b31*rate))+'</td><td class="r">'+nf(r2(i31*rate))+'</td><td class="r" style="color:#1842B8">'+nf(retBs)+'</td><td><span class="fiscal-tag '+(p.void?'bad':(p.retIva>0?'warn':'ok'))+'">'+status+'</span></td><td class="mono c">'+esc(retDoc||'—')+'</td><td class="r">'+nf(rate)+'</td></tr>';
+    }).join(''):'<tr class="empty"><td colspan="19">No hay compras registradas para el período. No se generan facturas, controles ni retenciones ficticias.</td></tr>';
+    const sales=getFilteredSales().filter(x=>!x.void);
+    const debit=r2(sales.reduce((a,x)=>a+(Number(x.iva)||0)*(Number(x.rate)||Number(S.cfg.rate)||0),0));
+    const credit=r2(sumIva8+sumIva16+sumIva31),cuota=r2(debit-credit);
+    return '<div class="hint">Registro auxiliar basado en facturas de proveedor capturadas en Compras. Las alícuotas se registran por renglón; compare siempre contra la factura original. Este informe no presenta declaraciones ni sustituye el formato oficial vigente del SENIAT.</div><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1550px"><thead><tr><th>#</th><th>Fecha factura</th><th>RIF proveedor</th><th>Razón social proveedor</th><th>Nº factura</th><th>Nº control</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th class="r">Base exenta Bs.</th><th class="r">Base 8% Bs.</th><th class="r">IVA 8% Bs.</th><th class="r">Base 16% Bs.</th><th class="r">IVA 16% Bs.</th><th class="r">Base 31% Bs.</th><th class="r">IVA 31% Bs.</th><th class="r">IVA retenido Bs.</th><th>Estado</th><th>Nº comprobante retención</th><th class="r">Tasa BCV</th></tr></thead><tbody>'+rowsHtml+'</tbody><tfoot><tr style="background:#EEF3FA;font-weight:700"><td colspan="7" class="r">TOTALES DE COMPRAS (Bs.):</td><td class="r">'+nf(sumTotal)+'</td><td class="r">'+nf(sumBase0)+'</td><td class="r">'+nf(sumBase8)+'</td><td class="r">'+nf(sumIva8)+'</td><td class="r">'+nf(sumBase16)+'</td><td class="r">'+nf(sumIva16)+'</td><td class="r">'+nf(sumBase31)+'</td><td class="r">'+nf(sumIva31)+'</td><td class="r">'+nf(sumRet)+'</td><td colspan="3"></td></tr></tfoot></table></div><div class="cierre" style="margin-top:8px"><table class="sumt"><thead><tr><th>Conciliación preliminar de IVA (no planilla oficial)</th><th class="r">Monto Bs.</th></tr></thead><tbody><tr><td>Débito fiscal de ventas no anuladas</td><td class="r">'+nf(debit)+'</td></tr><tr><td>(-) Crédito fiscal de compras registrado por alícuota</td><td class="r">-'+nf(credit)+'</td></tr><tr class="tot"><td><b>'+(cuota>0?'Saldo aritmético débito menos crédito':'Saldo aritmético a favor')+'</b></td><td class="r">'+nf(Math.abs(cuota))+'</td></tr><tr><td>Retenciones IVA practicadas a proveedores (obligación separada)</td><td class="r">'+nf(sumRet)+'</td></tr></tbody></table><p class="hint">La retención practicada a proveedores es una obligación de enteramiento separada y no se resta automáticamente del IVA propio por pagar. La determinación tributaria final depende de los documentos y reglas vigentes y debe validarla el contador.</p></div>';
+}
+
+  const drawInventario=()=>{
+    const products=(S.products||[]).slice().sort((a,b)=>String(a.code||a.sku||'').localeCompare(String(b.code||b.sku||''),'es'));
+    const rate=Number(S.cfg.rate)||0;
+    const movements=(S.kardex||[]).filter(k=>filterPeriod(k.ts)).slice().sort((a,b)=>a.ts-b.ts);
+    let totalUnits=0,totalCost=0,belowMin=0;
+    const rows=products.map((p,idx)=>{
+      const stock=Math.max(0,Number(p.stock)||0),cost=Math.max(0,Number(p.cost)||0),value=r2(stock*cost);
+      const min=Math.max(0,Number(p.min)||0),low=stock<=min;
+      totalUnits+=stock;totalCost+=value;if(low)belowMin++;
+      const last=(S.kardex||[]).filter(k=>k.code===p.code).sort((a,b)=>b.ts-a.ts)[0];
+      return '<tr><td class="c">'+(idx+1)+'</td><td class="mono">'+esc(p.code||'')+'</td><td class="mono">'+esc(p.sku||'')+'</td><td><b>'+esc(p.desc||'Producto sin descripción')+'</b><div class="sub">'+esc(p.brand||'')+' · '+esc(p.cat||'')+'</div></td><td>'+esc(p.unit||'und')+'</td><td class="r">'+fq(stock)+'</td><td class="r">'+nf(cost)+'</td><td class="r"><b>'+nf(value)+'</b></td><td class="r">'+fq(min)+'</td><td>'+(low?'<span class="fiscal-tag warn">Revisar stock</span>':'<span class="fiscal-tag ok">Normal</span>')+'</td><td>'+(last?fmtDT(last.ts):'Sin movimientos registrados')+'</td></tr>';
+    }).join('')||'<tr class="empty"><td colspan="11">No hay productos registrados. El libro no inventa existencias iniciales.</td></tr>';
+    const movRows=movements.map((m,i)=>'<tr><td>'+(i+1)+'</td><td>'+fmtDT(m.ts)+'</td><td class="mono">'+esc(m.code||'')+'</td><td>'+esc(m.type||'')+'</td><td>'+esc(m.dir||'')+'</td><td>'+esc(m.doc||'—')+'</td><td>'+esc(m.party||'')+'</td><td class="r">'+fq(m.qty||0)+'</td><td class="r">'+nf(m.cost||0)+'</td><td class="r">'+nf(m.stockAfter||0)+'</td></tr>').join('')||'<tr class="empty"><td colspan="10">Sin movimientos de Kardex para el período.</td></tr>';
+    return '<div class="semaforo-bar" style="background:#FFF6E5;border-color:#F5DEB0"><div class="semaforo-dot" style="background:#945D08;box-shadow:0 0 0 3px rgba(148,93,8,.2)"></div><div class="semaforo-text" style="color:#744600"><b>LIBRO DE INVENTARIO — CORTE ACTUAL</b>. Existencias y valoración al momento de generar el informe; los movimientos sí respetan el filtro de período. Valoración indicativa por costo unitario registrado en cada ficha, no sustituye la toma física ni la valoración contable aprobada.</div></div>'+
+      '<div class="fiscal-grid"><div class="fiscal-card"><span>Artículos registrados</span><b>'+products.length+'</b><small>SKU / códigos únicos en inventario</small></div><div class="fiscal-card"><span>Unidades existentes</span><b>'+fq(totalUnits)+'</b><small>Según saldo actual de las fichas</small></div><div class="fiscal-card"><span>Valor de inventario US$</span><b>'+usd(totalCost)+'</b><small>Existencia × costo unitario registrado</small></div><div class="fiscal-card"><span>Valor referencial Bs.</span><b>'+(rate>0?bsf(r2(totalCost*rate)):'No calculable: falta tasa BCV')+'</b><small>'+(rate>0?'Tasa configurada: '+nf(rate)+' Bs./US$':'Configure una tasa BCV real')+'</small></div><div class="fiscal-card"><span>Artículos en / bajo mínimo</span><b class="'+(belowMin?'warn':'ok')+'">'+belowMin+'</b><small>Comparación con stock mínimo configurado</small></div></div>'+
+      '<h3 style="margin:4px 0">Existencias y valoración actual</h3><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1180px"><thead><tr><th>#</th><th>Código</th><th>SKU</th><th>Descripción / clasificación</th><th>U.M.</th><th class="r">Existencia</th><th class="r">Costo unit. US$</th><th class="r">Valor US$</th><th class="r">Stock mínimo</th><th>Control</th><th>Último movimiento</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="5" class="r"><b>TOTAL GENERAL</b></td><td class="r"><b>'+fq(totalUnits)+'</b></td><td></td><td class="r"><b>'+nf(totalCost)+'</b></td><td colspan="3"></td></tr></tfoot></table></div>'+
+      '<h3 style="margin:8px 0 4px">Libro de movimientos (Kardex) — período seleccionado</h3><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1000px"><thead><tr><th>#</th><th>Fecha / hora</th><th>Código</th><th>Movimiento</th><th>Dirección</th><th>Documento fuente</th><th>Contraparte / detalle</th><th class="r">Cantidad</th><th class="r">Costo US$</th><th class="r">Saldo registrado</th></tr></thead><tbody>'+movRows+'</tbody></table></div>'+
+      '<p class="hint">Este libro usa productos y movimientos almacenados en el POS. Si se migraron existencias sin movimiento inicial de Kardex o se modificó el stock manualmente sin ajuste documentado, debe hacerse conteo físico y registrar la regularización antes de usarlo como soporte contable. No inventa movimientos ni existencias de apertura.</p>';
+  };
+
+  const drawIgtf=()=>{
+    const sales=getFilteredSales().filter(s=>!s.void);
+    const igtfSales=sales.filter(s=>(s.igtf>0)||(s.pays||[]).some(p=>p.cur==='USD'));
+    let sumBaseUsd=0, sumBaseBs=0, sumIgtfUsd=0, sumIgtfBs=0;
+
+    const rowsHtml=igtfSales.length?igtfSales.map(s=>{
+      const rate=s.rate||S.cfg.rate;
+      const usdPays=(s.pays||[]).filter(p=>p.cur==='USD');
+      const baseUsd=usdPays.reduce((a,p)=>a+(p.id==='efUSD'?r2(p.amount/1.03):p.amount),0);
+      const baseBs=r2(baseUsd*rate);
+      const igtfUsd=s.igtf||r2(baseUsd*0.03);
+      const igtfBs=r2(igtfUsd*rate);
+
+      sumBaseUsd+=baseUsd;sumBaseBs+=baseBs;sumIgtfUsd+=igtfUsd;sumIgtfBs+=igtfBs;
+
+      return '<tr>'+
+        '<td class="mono c"><b>'+pad(s.no)+'</b></td>'+
+        '<td class="c">'+fmtDT(s.ts)+'</td>'+
+        '<td class="mono">'+esc(s.client.rif)+'</td>'+
+        '<td>'+esc(s.client.name)+'</td>'+
+        '<td>'+esc(usdPays.map(p=>p.name).join(' + '))+'</td>'+
+        '<td class="r">'+nf(baseUsd)+'</td>'+
+        '<td class="r">'+nf(rate)+'</td>'+
+        '<td class="r">'+nf(baseBs)+'</td>'+
+        '<td class="c"><span class="fiscal-tag warn">3,00 %</span></td>'+
+        '<td class="r" style="color:#945D08"><b>'+nf(igtfUsd)+'</b></td>'+
+        '<td class="r" style="color:#945D08"><b>'+nf(igtfBs)+'</b></td>'+
+      '</tr>';
+    }).join(''):'<tr class="empty"><td colspan="11">No hay cobros en moneda extranjera sujetos a IGTF en este período.</td></tr>';
+
+    return '<div class="semaforo-bar" style="background:#FFF6E5;border-color:#F5DEB0">'+
+      '<div class="semaforo-dot" style="background:#945D08;box-shadow:0 0 0 3px rgba(148,93,8,.2)"></div>'+
+      '<div class="semaforo-text" style="color:#945D08"><b>RÉGIMEN IGTF (Ley Impuesto Grandes Transacciones Financieras &middot; Gaceta Oficial Nº 6.687)</b>: Se percibe el 3% exclusivamente sobre pagos en efectivo en divisas y medios extranjeros. Los pagos en moneda nacional (Biopago, Pago Móvil, Punto de Venta) están exentos (0%).</div>'+
+    '</div>'+
+    '<div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:980px">'+
+      '<thead><tr>'+
+        '<th class="c">Factura</th><th>Fecha/Hora</th><th>RIF</th><th>Cliente</th><th>Forma Pago Divisa</th>'+
+        '<th class="r">Base Divisa US$</th><th class="r">Tasa BCV</th><th class="r">Base Imponible Bs.</th><th class="c">Alícuota</th>'+
+        '<th class="r">IGTF US$</th><th class="r">IGTF Percibido Bs.</th>'+
+      '</tr></thead>'+
+      '<tbody>'+rowsHtml+'</tbody>'+
+      '<tfoot><tr style="background:#EEF3FA;font-weight:700">'+
+        '<td colspan="5" class="r">TOTALES DE PERCEPCIÓN IGTF:</td>'+
+        '<td class="r">'+nf(sumBaseUsd)+'</td>'+
+        '<td></td>'+
+        '<td class="r">'+nf(sumBaseBs)+'</td>'+
+        '<td></td>'+
+        '<td class="r" style="color:#945D08">'+nf(sumIgtfUsd)+'</td>'+
+        '<td class="r" style="color:#945D08">'+nf(sumIgtfBs)+'</td>'+
+      '</tr></tfoot>'+
+    '</table></div>'+
+    '<div class="cierre" style="margin-top:8px">'+
+      '<table class="sumt"><thead><tr><th>Resumen de Enteramiento Quincenal al SENIAT (IGTF)</th><th class="r">Monto</th></tr></thead><tbody>'+
+        '<tr><td>Total Operaciones Sujetas a IGTF</td><td class="r">'+igtfSales.length+' operaciones</td></tr>'+
+        '<tr><td>Base Imponible en Divisas</td><td class="r">'+usd(sumBaseUsd)+'</td></tr>'+
+        '<tr><td>Base Imponible Convertida a Tasa BCV</td><td class="r">'+bsf(sumBaseBs)+'</td></tr>'+
+        '<tr class="tot"><td><b>Total IGTF 3% a Enterar al Tesoro Nacional</b></td><td class="r" style="color:#945D08"><b>'+bsf(sumIgtfBs)+'</b> ('+usd(sumIgtfUsd)+')</td></tr>'+
+      '</tbody></table>'+
+    '</div>';
+  };
+
+  const drawAuditoria=()=>{
+    const sales=getFilteredSales();
+    const ok=sales.filter(s=>!s.void);
+
+    const rowsHtml=sales.length?sales.map(s=>{
+      const rate=s.rate||S.cfg.rate;
+      const dueUsd=r2(s.total+(s.igtf||0));
+      const dueBs=r2(dueUsd*rate);
+      return '<tr class="'+(s.void?'void':'')+'">'+
+        '<td class="mono c"><b>'+pad(s.no)+'</b></td>'+
+        '<td class="c">'+fmtDT(s.ts)+'</td>'+
+        '<td class="mono c">'+esc(s.ctrlNo||('00-'+pad(s.no,8)))+'</td>'+
+        '<td><b>'+esc(s.client.name)+'</b> ('+esc(s.client.rif)+')</td>'+
+        '<td class="r">'+nf(dueUsd)+'</td>'+
+        '<td class="r" style="font-weight:700;color:#1842B8">'+nf(rate)+'</td>'+
+        '<td class="r"><b>'+nf(dueBs)+'</b></td>'+
+        '<td class="c">'+esc(S.cfg.cajero)+'</td>'+
+        '<td class="c">'+(s.void?'<span class="fiscal-tag bad">ANULADA</span>':'<span class="fiscal-tag ok">100% CONFORME BCV</span>')+'</td>'+
+      '</tr>';
+    }).join(''):'<tr class="empty"><td colspan="9">No hay registros de ventas auditadas.</td></tr>';
+
+    return '<div class="semaforo-bar">'+
+      '<div class="semaforo-dot"></div>'+
+      '<div class="semaforo-text"><b>AUDITORÍA DE PRECIOS Y TASA OFICIAL CAMBIARIA (SUNDDE / BCV)</b>: Certificación de cálculo a la tasa fijada por el Banco Central de Venezuela sin sobreprecios ni uso de marcadores paralelos no autorizados.</div>'+
+    '</div>'+
+    '<div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:960px">'+
+      '<thead><tr>'+
+        '<th class="c">Factura</th><th>Fecha y Hora</th><th class="c">Nº Control</th><th>Cliente y RIF</th>'+
+        '<th class="r">Total US$</th><th class="r">Tasa Oficial BCV</th><th class="r">Total Facturado Bs.</th><th class="c">Cajero</th><th class="c">Auditoría</th>'+
+      '</tr></thead>'+
+      '<tbody>'+rowsHtml+'</tbody>'+
+    '</table></div>';
+  };
+
+  const drawSudeban=()=>{
+    const sales=getFilteredSales().filter(s=>!s.void);
+    const byM={punto:0,biopago:0,pmovil:0,transf:0,efBs:0,efUSD:0,zelle:0};
+    const countM={punto:0,biopago:0,pmovil:0,transf:0,efBs:0,efUSD:0,zelle:0};
+
+    sales.forEach(s=>s.pays.forEach(p=>{
+      if(byM[p.id]!==undefined){byM[p.id]+=p.amount;countM[p.id]++;}
+    }));
+
+    const lotes=S.lotesSudeban||[];
+    const lotesRows=lotes.length?lotes.map(l=>'<tr>'+
+      '<td class="mono c"><b>'+esc(l.id)+'</b></td>'+
+      '<td><b>'+esc(l.banco)+'</b></td>'+
+      '<td class="mono c">'+esc(l.tid)+'</td>'+
+      '<td class="mono c">'+esc(l.refLote)+'</td>'+
+      '<td>'+fmtDT(l.ts)+'</td>'+
+      '<td class="c">'+l.ops+' ops</td>'+
+      '<td class="r"><b>'+nf(l.totalBs)+'</b></td>'+
+      '<td class="r" style="color:#945D08">'+nf(l.comisionBs)+'</td>'+
+      '<td class="r" style="color:#1D6F39"><b>'+nf(l.netoBs)+'</b></td>'+
+      '<td class="c"><span class="fiscal-tag ok">'+esc(l.estado)+'</span></td>'+
+      '<td class="c" style="white-space:nowrap">'+
+        '<button class="btn mini2" data-voucher-lote="'+esc(l.id)+'">Voucher</button> '+
+        '<button class="btn mini2" style="color:var(--bad)" data-del-lote="'+esc(l.id)+'" title="Eliminar lote">✕</button>'+
+      '</td>'+
+    '</tr>').join(''):'<tr class="empty"><td colspan="11">No hay lotes bancarios registrados.</td></tr>';
+
+    /* Detección de operaciones de prevención LC/FT (Umbral > 1000 USD en efectivo) */
+    const largeOps=sales.filter(s=>(s.pays||[]).some(p=>p.id==='efUSD'&&p.amount>=1000));
+
+    return '<div class="fiscal-grid">'+
+      '<div class="fiscal-card"><span>Punto de Venta POS</span><b>'+bsf(byM.punto)+'</b><small>'+countM.punto+' transacciones</small></div>'+
+      '<div class="fiscal-card"><span>Biopago BDV (Biometría)</span><b style="color:#1842B8">'+bsf(byM.biopago)+'</b><small>'+countM.biopago+' transacciones</small></div>'+
+      '<div class="fiscal-card"><span>Pago Móvil C2P / P2P</span><b>'+bsf(byM.pmovil)+'</b><small>'+countM.pmovil+' transacciones</small></div>'+
+      '<div class="fiscal-card"><span>Transferencias en Bs.</span><b>'+bsf(byM.transf)+'</b><small>'+countM.transf+' transacciones</small></div>'+
+    '</div>'+
+    '<div class="row" style="margin-top:6px;align-items:center;justify-content:space-between">'+
+      '<b>Lotes de Cierre Bancario y Conciliación (SUDEBAN):</b>'+
+      '<button class="btn mini2 primary" id="btnOpenNewLote">+ Registrar Cierre de Lote</button>'+
+    '</div>'+
+    '<div class="gridwrap" style="max-height:160px;margin-top:4px"><table class="grid">'+
+      '<thead><tr><th class="c">ID Lote</th><th>Banco Adquirente</th><th class="c">Terminal (TID)</th><th class="c">Nº Lote Voucher</th><th>Fecha/Hora</th><th class="c">Ops</th><th class="r">Total Voucher Bs.</th><th class="r">Comisión Bancaria</th><th class="r">Neto Liquidado Bs.</th><th class="c">Estado</th><th class="c">Acciones</th></tr></thead>'+
+      '<tbody>'+lotesRows+'</tbody>'+
+    '</table></div>'+
+    '<div class="group" style="margin-top:8px;padding:8px 10px">'+
+      '<div class="gtitle" style="font-size:13px;display:flex;align-items:center;gap:8px">Prevención de Legitimación de Capitales (LC/FT/FPADM &middot; SUDEBAN) <span class="fiscal-tag info">Umbral: &ge; US$ 1.000</span></div>'+
+      (largeOps.length?
+        '<p class="hint" style="color:var(--warn)">Se detectaron '+largeOps.length+' operaciones en efectivo que superan el umbral regulatorio:</p>'+
+        '<div style="font-size:11.5px">'+largeOps.map(s=>'<div>&bull; Factura '+pad(s.no)+' &middot; Cliente: '+esc(s.client.name)+' ('+esc(s.client.rif)+') &middot; Monto: '+usd(s.total)+' (Ficha KYC Verificada).</div>').join('')+'</div>'
+        :'<p class="hint">No se han registrado operaciones en efectivo atípicas que superen el umbral regulatorio en este período.</p>')+
+    '</div>';
+  };
+
+  const drawRetenciones=()=>{
+    const list=S.retencionesIva||[];
+    const rowsHtml=list.length?list.map(r=>{
+      const rate=r.rate||S.cfg.rate;
+      const retBs=r.retainedBs||r2(r.iva*0.75*rate);
+      return '<tr>'+
+        '<td class="mono c"><b>'+esc(r.id)+'</b></td>'+
+        '<td class="c">'+fmtD(new Date(r.ts))+'</td>'+
+        '<td class="mono">'+esc(r.supplier.rif)+'</td>'+
+        '<td><b>'+esc(r.supplier.name)+'</b></td>'+
+        '<td class="mono c">'+esc(r.docProv)+'</td>'+
+        '<td class="mono c">'+esc(r.ctrlProv)+'</td>'+
+        '<td class="r">'+nf(r.base*rate)+'</td>'+
+        '<td class="r">'+nf(r.iva*rate)+'</td>'+
+        '<td class="c"><span class="fiscal-tag ok">'+fq(r.pct||75)+'%</span></td>'+
+        '<td class="r" style="color:#1842B8"><b>'+nf(retBs)+'</b></td>'+
+        '<td class="c" style="white-space:nowrap">'+
+          '<button class="btn mini2" data-print-ret="'+esc(r.id)+'">Imprimir borrador</button> '+
+          '<button class="btn mini2" style="color:var(--bad)" data-del-ret="'+esc(r.id)+'" title="Eliminar retención">✕</button>'+
+        '</td>'+
+      '</tr>';
+    }).join(''):'<tr class="empty"><td colspan="12">No hay registros de retención.</td></tr>';
+
+    return '<div class="semaforo-bar">'+
+      '<div class="semaforo-dot"></div>'+
+      '<div class="semaforo-text"><b>CONTROL Y TRAZABILIDAD DE RETENCIONES IVA</b> &middot; Reporte interno de apoyo al contador bajo referencia SNAT/2025/000054. El POS no declara ni paga; valide la normativa, las excepciones y el formato vigente antes de usar cualquier archivo.</div>'+ 
+      '<button class="btn mini2 primary" id="btnNewManualRet" style="margin-left:auto;flex:none">+ Emitir Retención de IVA</button>'+
+    '</div>'+
+    '<div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1050px">'+
+      '<thead><tr>'+
+        '<th class="c">Nº / ID interno</th><th>Fecha</th><th>RIF Proveedor</th><th>Nombre Proveedor</th>'+ 
+        '<th class="c">Factura Proveedor</th><th class="c">Nº Control</th><th class="r">Base Imponible Bs.</th><th class="r">IVA Facturado Bs.</th><th class="c">% Ret.</th><th class="r">Monto Retenido Bs.</th><th>Seguimiento contable</th><th class="c" style="width:170px">Acciones</th>'+ 
+      '</tr></thead>'+
+      '<tbody>'+rowsHtml+'</tbody>'+
+    '</table></div>';
+  };
+
+  const drawPagoSeniat=()=>{
+    const fecha=new Date();
+    const mesActual=String(fecha.getFullYear())+'-'+String(fecha.getMonth()+1).padStart(2,'0');
+    const [anioPeriodo,mesPeriodo]=mesActual.split('-').map(Number);
+    const enPeriodoSeniat=ts=>{const d=new Date(ts);return d.getFullYear()===anioPeriodo&&d.getMonth()+1===mesPeriodo;};
+    // El IVA se declara por mes calendario. Este cálculo ignora el filtro de búsqueda y las quincenas de otras pestañas.
+    const sales=(S.sales||[]).filter(x=>!x.void&&enPeriodoSeniat(x.ts));
+    const purchases=(S.purchases||[]).filter(x=>!x.void&&enPeriodoSeniat(x.ts));
+    const retenciones=(S.retencionesIva||[]).filter(r=>enPeriodoSeniat(r.ts));
+    const debito=r2(sales.reduce((a,x)=>a+(x.iva||0)*(x.rate||S.cfg.rate),0));
+    const credito=r2(purchases.reduce((a,x)=>a+(x.iva||0)*(x.rate||S.cfg.rate),0));
+    const retenido=r2(retenciones.reduce((a,r)=>a+(r.retainedBs!==undefined?r.retainedBs:r2((r.iva||0)*(r.pct||S.cfg.retIvaPct||75)/100*(r.rate||S.cfg.rate))),0));
+    const saldo=r2(debito-credito);
+    const periodo=fecha.toLocaleDateString('es-VE',{month:'long',year:'numeric'});
+    const warnings=[];
+    if(!S.cfg.empresa||!S.cfg.rif||!S.cfg.dir)warnings.push('Completar razón social, RIF y domicilio fiscal en Parámetros Fiscales.');
+    if(!sales.length&&!purchases.length)warnings.push('No hay ventas ni compras registradas para el mes calendario actual.');
+    if(sales.some(x=>!x.client||!x.client.rif||!x.no))warnings.push('Hay ventas con datos fiscales incompletos; revisar documentos fuente.');
+    if(purchases.some(x=>!x.supplier||!x.supplier.rif||!x.docProv))warnings.push('Hay compras con datos de proveedor incompletos; revisar facturas originales.');
+    if(S.cfg.empresa==='Licorería'&&!S.cfg.rif)warnings.push('Complete los datos fiscales reales de la licorería antes de emitir informes fiscales.');
+    return '<div class="semaforo-bar" style="background:#FFF6E5;border-color:#F5DEB0">'+
+      '<div class="semaforo-dot" style="background:#945D08;box-shadow:0 0 0 3px rgba(148,93,8,.2)"></div>'+
+      '<div class="semaforo-text" style="color:#744600"><b>PREPARACIÓN PRELIMINAR — NO ES UNA PLANILLA OFICIAL DE PAGO.</b> El compromiso/planilla oficial se genera en el portal del SENIAT después de registrar la declaración. Este módulo no se conecta al SENIAT ni registra declaraciones ni pagos.</div>'+
+    '</div>'+
+    '<div class="khead"><div><span>Contribuyente registrado en el POS</span><b>'+esc(S.cfg.empresa||'Falta razón social')+'</b></div><div><span>RIF configurado</span><b>'+esc(S.cfg.rif||'Falta RIF')+'</b></div><div><span>Período mensual calculado</span><b>'+esc(periodo)+'</b></div><div><span>Generado</span><b>'+esc(fmtDT(fecha.getTime()))+'</b></div></div>'+
+    (warnings.length?'<div class="group" style="border-color:#E7B85C;background:#FFF9E9"><div class="gtitle">Verificaciones pendientes</div><ul style="margin:0;padding-left:20px">'+warnings.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>':'')+
+    '<div class="cierre"><table class="sumt"><thead><tr><th>Resumen de cifras registradas en el POS</th><th class="r">Monto (Bs.)</th></tr></thead><tbody>'+
+      '<tr><td>Débito fiscal calculado desde ventas no anuladas</td><td class="r">'+nf(debito)+'</td></tr>'+
+      '<tr><td>Crédito fiscal registrado en compras no anuladas</td><td class="r">'+nf(credito)+'</td></tr>'+
+      '<tr><td>IVA retenido a proveedores (enteramiento separado)</td><td class="r">'+nf(retenido)+'</td></tr>'+
+      '<tr class="tot"><td>Saldo aritmético preliminar débito menos crédito (no liquidación oficial)</td><td class="r">'+nf(saldo)+'</td></tr>'+
+    '</tbody></table><table class="sumt"><thead><tr><th>Documentos de soporte</th><th class="r">Cantidad</th></tr></thead><tbody>'+
+      '<tr><td>Ventas no anuladas</td><td class="r">'+sales.length+'</td></tr>'+
+      '<tr><td>Compras no anuladas</td><td class="r">'+purchases.length+'</td></tr>'+
+      '<tr><td>Comprobantes de retención registrados</td><td class="r">'+retenciones.length+'</td></tr>'+
+      '<tr><td>IGTF percibido registrado en ventas (referencial)</td><td class="r">'+nf(r2(sales.reduce((a,x)=>a+(x.igtf||0)*(x.rate||S.cfg.rate),0)))+'</td></tr>'+
+    '</tbody></table></div>'+
+    '<div class="group"><div class="gtitle">Antes de declarar y pagar</div><ol style="margin:0;padding-left:20px"><li>Verifique que el RIF, la condición tributaria y el período sean correctos.</li><li>Concilie cada cifra con los libros fiscales, facturas, notas de crédito y comprobantes de retención originales.</li><li>Ingrese al portal oficial, presente la declaración y revise los importes calculados por el SENIAT.</li><li>Tramite por separado las retenciones de IVA practicadas a proveedores y descargue del portal la planilla oficial correspondiente, si aplica.</li><li>Después de registrar la declaración, descargue desde el portal la planilla/compromiso de pago oficial que corresponda. No use este borrador como comprobante de pago.</li></ol><p class="hint" style="margin-top:8px">Las cifras anteriores son sumas de los registros disponibles en este POS. No sustituyen el Formulario/Declaración del SENIAT, la determinación profesional del tributo ni la validación de obligaciones vigentes.</p></div>'+
+    '<div class="row" style="flex-wrap:wrap"><button class="btn primary" id="btnPreviewPagoSeniat">Vista previa / Guardar borrador PDF</button><button class="btn" id="btnOpenSeniatPortal">Abrir portal de declaraciones SENIAT</button></div>';
+  };
+
+  const drawConfig=()=>{
+    const c=S.cfg;
+    return '<div class="newgrid">'+
+      '<div class="f wide"><label for="fEmp">Razón Social</label><input class="fld" id="fEmp" value="'+esc(c.empresa)+'"></div>'+
+      '<div class="f"><label for="fRif">RIF de la Empresa</label><input class="fld" id="fRif" value="'+esc(c.rif)+'"></div>'+
+      '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
+      '<div class="f"><label for="fTipo">Modalidad de Facturación</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option></select></div>'+
+      '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
+      '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
+      '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
+      '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'SNAT/2023/000412')+'"></div>'+
+      '<div class="f"><label for="fCtrlPref">Prefijo Nº Control Fiscal</label><input class="fld mono" id="fCtrlPref" value="'+esc(c.ctrlPrefix||'00-')+'"></div>'+
+      '<div class="f"><label for="fCtrlNext">Próximo Nº de Control</label><input class="fld mono r" id="fCtrlNext" value="'+(c.ctrlNext||1043)+'"></div>'+
+      '<div class="f"><label for="fRangoD">Rango Autorizado (Desde)</label><input class="fld mono" id="fRangoD" value="'+esc(c.ctrlRangoDesde||'00-00000001')+'"></div>'+
+      '<div class="f"><label for="fRangoH">Rango Autorizado (Hasta)</label><input class="fld mono" id="fRangoH" value="'+esc(c.ctrlRangoHasta||'00-00050000')+'"></div>'+
+      '<div class="f"><label for="fImpRif">RIF Imprenta Digital Autorizada</label><input class="fld" id="fImpRif" value="'+esc(c.imprentaRif||'J-31009988-4')+'"></div>'+
+      '<div class="f"><label for="fImpAut">Nº Providencia Imprenta</label><input class="fld" id="fImpAut" value="'+esc(c.imprentaAut||'SENIAT/DAF/2022/981')+'"></div>'+
+      '<div class="f"><label for="fSerial">Serial Máquina / Memoria Fiscal</label><input class="fld mono" id="fSerial" value="'+esc(c.serialFiscal||'Z4A7719204')+'"></div>'+
+    '</div><p class="hint">Los números de control asignados son correlativos y consecutivos conforme a la Providencia SENIAT 0071 sobre emisión de facturas y otros documentos.</p>';
+  };
+
+  const drawBankOps=()=>{const xs=(S.fiscalBankOperations||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));return '<h3>Registro auxiliar de operaciones bancarias sin nuevo documento fiscal</h3><p class="hint">Registro de control solicitado por el usuario/contador. Estas operaciones no se incorporan al Libro de Ventas ni al Libro de Compras, no generan IVA/IGTF automáticamente y no sustituyen facturas, comprobantes o soportes fiscales. Cada fila conserva su referencia interna de control.</p><div class="gridwrap"><table class="grid" style="min-width:850px"><thead><tr><th>Fecha</th><th>Referencia</th><th>Descripción</th><th>Cuenta banco</th><th>Contrapartida</th><th>Moneda</th><th class="r">Monto original</th><th class="r">Equiv. USD</th><th>Referencia contable</th><th>Motivo / tratamiento</th></tr></thead><tbody>'+xs.map(x=>'<tr><td>'+esc(x.date||'—')+'</td><td>'+esc(x.reference||'—')+'</td><td>'+esc(x.description||'—')+'</td><td>'+esc(x.accountCode||'—')+'</td><td>'+esc(x.counterpartAccount||'—')+'</td><td>'+esc(x.currency||'—')+'</td><td class="r">'+nf(x.amount||0)+'</td><td class="r">'+nf(x.amountUsd||0)+'</td><td>'+esc(x.accountingEntryId||'—')+'</td><td>'+esc((x.fiscalTreatment==='LIQUIDACION_SIN_NUEVO_DOCUMENTO'?'LIQUIDACIÓN AGREGADA · Sin nueva factura · ':'NO GRAVABLE · ')+(x.fiscalReason||'Requiere soporte')+(x.fiscalReference?' · Soporte: '+x.fiscalReference:''))+'</td></tr>').join('')+'</tbody></table></div>'+(xs.length?'':'<p class="hint">Todavía no hay operaciones bancarias auxiliares. Aquí aparecerán operaciones no gravables y liquidaciones agregadas, con sus referencias internas de control.</p>');};
+
+  const renderTabContent=()=>{
+    const content=$('#snContent',el);
+    if(activeTab==='resumen')content.innerHTML=drawResumen();
+    else if(activeTab==='ventas')content.innerHTML=drawVentas();
+    else if(activeTab==='compras')content.innerHTML=drawCompras();
+    else if(activeTab==='bancarias')content.innerHTML=drawBankOps();
+    else if(activeTab==='inventario')content.innerHTML=drawInventario();
+    else if(activeTab==='igtf')content.innerHTML=drawIgtf();
+    else if(activeTab==='auditoria')content.innerHTML=drawAuditoria();
+    else if(activeTab==='sudeban')content.innerHTML=drawSudeban();
+    else if(activeTab==='retenciones')content.innerHTML=drawRetenciones();
+    else if(activeTab==='pagoSeniat')content.innerHTML=drawPagoSeniat();
+    else if(activeTab==='config')content.innerHTML=drawConfig();
+    updateFoot();
+  };
+
+  const updateFoot=()=>{
+    if(!W)return;
+    const footL=$('.foot-l',W.el);
+    if(!footL)return;
+    if(activeTab==='ventas'){
+      footL.innerHTML='<button class="btn mini2" id="btnExpV">Exportar Libro CSV</button><button class="btn mini2" id="btnPrintV">Imprimir Libro SENIAT</button>';
+    }else if(activeTab==='compras'){
+      footL.innerHTML='<button class="btn mini2" id="btnExpC">Exportar Libro CSV</button>';
+    }else if(activeTab==='bancarias'){
+      footL.innerHTML='<span class="hint">Registro auxiliar no gravable; conservar soportes y revisión del contador.</span>';
+    }else if(activeTab==='inventario'){
+      footL.innerHTML='<button class="btn mini2" id="btnExpInv">Exportar inventario CSV</button><button class="btn mini2" id="btnPrintInv">Imprimir libro de inventario</button>';
+    }else if(activeTab==='igtf'){
+      footL.innerHTML='<button class="btn mini2" id="btnExpIgtf">Exportar IGTF CSV</button>';
+    }else if(activeTab==='auditoria'){
+      footL.innerHTML='<button class="btn mini2" id="btnPrintActaBcv">Imprimir Acta de Tasa BCV</button>';
+    }else if(activeTab==='sudeban'){
+      footL.innerHTML='<button class="btn mini2 primary" id="btnQuickLote">+ Cierre de Lote POS</button>';
+    }else if(activeTab==='retenciones'){
+      footL.innerHTML='<button class="btn mini2 primary" id="btnTxtSeniat">Descargar TXT para SENIAT</button>';
+    }else if(activeTab==='pagoSeniat'){
+      footL.innerHTML='<span class="hint">Borrador informativo; la planilla oficial se obtiene en el SENIAT.</span>';
+    }else if(activeTab==='config'){
+      footL.innerHTML='<button class="btn mini2 primary" id="btnSaveF">Guardar Parámetros Fiscales</button>';
+    }else{
+      footL.innerHTML='<button class="btn mini2" id="btnGotoVentas">Ver Libro de Ventas</button><button class="btn mini2" id="btnGotoIgtf">Ver IGTF 3%</button>';
+    }
+  };
+
+  el.addEventListener('click',e=>{
+    const tabBtn=e.target.closest('.tab[data-tab]');
+    if(tabBtn){
+      $('.tab.active',el)?.classList.remove('active');
+      tabBtn.classList.add('active');
+      activeTab=tabBtn.dataset.tab;
+      renderTabContent();
+      return;
+    }
+    if(e.target.id==='btnOpenNewLote'){
+      registerLoteSudebanDlg(()=>{seniatSudebanDlg('sudeban');});
+      return;
+    }
+    if(e.target.id==='btnNewManualRet'){
+      newRetencionIvaDlg(()=>{renderTabContent();});
+      return;
+    }
+    const voucherBtn=e.target.closest('[data-voucher-lote]');
+    if(voucherBtn){
+      const l=(S.lotesSudeban||[]).find(x=>x.id===voucherBtn.dataset.voucherLote);
+      if(l)printVoucherLoteSudeban(l);
+      return;
+    }
+    const delLoteBtn=e.target.closest('[data-del-lote]');
+    if(delLoteBtn){
+      const id=delLoteBtn.dataset.delLote;
+      ask('Eliminar lote bancario','¿Confirma eliminar el registro de lote '+id+'?','Eliminar',()=>{
+        S.lotesSudeban=(S.lotesSudeban||[]).filter(x=>x.id!==id);
+        save();renderTabContent();msg('Lote bancario eliminado.');
+      });
+      return;
+    }
+    const retBtn=e.target.closest('[data-print-ret]');
+    if(retBtn){
+      const comp=(S.retencionesIva||[]).find(x=>x.id===retBtn.dataset.printRet);
+      if(comp)printComprobanteRetencion(comp);
+      return;
+    }
+    const delRetBtn=e.target.closest('[data-del-ret]');
+    if(delRetBtn){
+      const id=delRetBtn.dataset.delRet;
+      ask('Eliminar comprobante de retención','¿Confirma anular/eliminar la retención '+id+'?','Eliminar',()=>{
+        S.retencionesIva=(S.retencionesIva||[]).filter(x=>x.id!==id);
+        save();renderTabContent();msg('Comprobante de retención eliminado.');
+      });
+      return;
+    }
+    const showSaleBtn=e.target.closest('[data-show-sale]');
+    if(showSaleBtn){
+      const no=+showSaleBtn.dataset.showSale;
+      const s=(S.sales||[]).find(x=>x.no===no);
+      if(s)showTicket(s);
+      return;
+    }
+  });
+
+  el.addEventListener('change',e=>{
+    if(e.target.id==='snPeriod'){
+      curPeriod=e.target.value;
+      renderTabContent();
+    }
+  });
+
+  el.addEventListener('input',e=>{
+    if(e.target.id==='snQ'){
+      qText=e.target.value;
+      renderTabContent();
+    }
+  });
+
+  openWin({
+    title:'Control SENIAT / SUDEBAN — Cumplimiento Fiscal, IGTF y Conciliación Bancaria',
+    w:1120,
+    body:el,
+    foot:[{label:'Cerrar',primary:true}],
+    onOpen:bd=>{
+      renderTabContent();
+      bd.addEventListener('click',ev=>{
+        if(ev.target.id==='btnExpV')exportLibroVentasCsv(getFilteredSales());
+        if(ev.target.id==='btnPrintV')printFiscalReport('Libro de Ventas Fiscal Oficial (SENIAT)',drawVentas());
+        if(ev.target.id==='btnExpC')exportLibroComprasCsv(getFilteredPurchases());
+        if(ev.target.id==='btnExpInv'){
+          const rate=Number(S.cfg.rate)||0;
+          const headers=['Codigo','SKU','Descripcion','Marca','Categoria','Unidad','Existencia_actual','Costo_unitario_USD','Valor_inventario_USD','Valor_referencial_Bs','Stock_minimo','Ultimo_movimiento'];
+          const rows=(S.products||[]).slice().sort((a,b)=>String(a.code||a.sku||'').localeCompare(String(b.code||b.sku||''),'es')).map(p=>{
+            const last=(S.kardex||[]).filter(k=>k.code===p.code).sort((a,b)=>b.ts-a.ts)[0];
+            const stock=Math.max(0,Number(p.stock)||0),cost=Math.max(0,Number(p.cost)||0);
+            return [p.code||'',p.sku||'',p.desc||'',p.brand||'',p.cat||'',p.unit||'und',stock,cost.toFixed(2),r2(stock*cost).toFixed(2),rate>0?r2(stock*cost*rate).toFixed(2):'',Number(p.min)||0,last?new Date(last.ts).toISOString():''].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';');
+          });
+          downloadBlob('Libro_Inventario_SIFER_'+new Date().toISOString().slice(0,10)+'.csv','\uFEFF'+[headers.join(';')].concat(rows).join('\r\n'),'text/csv;charset=utf-8;');
+          msg('Libro de inventario actual exportado a CSV.');
+        }
+        if(ev.target.id==='btnPrintInv')printFiscalReport('Libro de Inventario — corte actual',drawInventario());
+        if(ev.target.id==='btnExpIgtf')exportIgtfCsv(getFilteredSales());
+        if(ev.target.id==='btnPrintActaBcv')printActaBcv(getFilteredSales());
+        if(ev.target.id==='btnTxtSeniat')exportSeniatTxt('202610');
+        if(ev.target.id==='btnPreviewPagoSeniat'){
+          const fechaPeriodo=new Date();
+          const mesPeriodo=String(fechaPeriodo.getFullYear())+'-'+String(fechaPeriodo.getMonth()+1).padStart(2,'0');
+          const [anioFiscal,mesFiscal]=mesPeriodo.split('-').map(Number);
+          const enPeriodoFiscal=ts=>{const d=new Date(ts);return d.getFullYear()===anioFiscal&&d.getMonth()+1===mesFiscal;};
+          // Totales mensuales sin depender del filtro de búsqueda ni de la vista quincenal de otras pestañas.
+          const sales=(S.sales||[]).filter(x=>!x.void&&enPeriodoFiscal(x.ts));
+          const purchases=(S.purchases||[]).filter(x=>!x.void&&enPeriodoFiscal(x.ts));
+          const retenciones=(S.retencionesIva||[]).filter(r=>enPeriodoFiscal(r.ts));
+          const debito=r2(sales.reduce((a,x)=>a+(x.iva||0)*(x.rate||S.cfg.rate),0));
+          const credito=r2(purchases.reduce((a,x)=>a+(x.iva||0)*(x.rate||S.cfg.rate),0));
+          const retenido=r2(retenciones.reduce((a,r)=>a+(r.retainedBs!==undefined?r.retainedBs:r2((r.iva||0)*(r.pct||S.cfg.retIvaPct||75)/100*(r.rate||S.cfg.rate))),0));
+          const saldo=r2(debito-credito);
+          const periodo=fechaPeriodo.toLocaleDateString('es-VE',{month:'long',year:'numeric'});
+          const html='<div style="border:2px solid #945D08;padding:10px;margin-bottom:12px;text-align:center"><b>DOCUMENTO PRELIMINAR — NO ES PLANILLA OFICIAL SENIAT NI COMPROBANTE DE PAGO</b></div>'+
+            '<h3>Preparación de declaración tributaria</h3><p><b>Contribuyente:</b> '+esc(S.cfg.empresa)+' &nbsp; <b>RIF:</b> '+esc(S.cfg.rif)+'</p><p><b>Domicilio fiscal:</b> '+esc(S.cfg.dir||'No especificado')+'</p><p><b>Período seleccionado:</b> '+esc(periodo)+' &nbsp; <b>Fecha de emisión:</b> '+esc(fmtDT(Date.now()))+'</p>'+
+            '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th style="text-align:left;border-bottom:1px solid #777;padding:6px">Concepto calculado desde registros POS</th><th style="text-align:right;border-bottom:1px solid #777;padding:6px">Monto Bs.</th></tr></thead><tbody>'+
+            [['Débito fiscal de ventas no anuladas',debito],['Crédito fiscal de compras no anuladas',credito],['IVA retenido a proveedores (obligación separada)',retenido],['Saldo aritmético preliminar débito menos crédito; requiere conciliación',saldo]].map(r=>'<tr><td style="padding:6px;border-bottom:1px solid #ddd">'+esc(r[0])+'</td><td style="padding:6px;text-align:right;border-bottom:1px solid #ddd">'+nf(r[1])+'</td></tr>').join('')+
+            '</tbody></table><p><b>Soporte:</b> '+sales.length+' ventas no anuladas, '+purchases.length+' compras no anuladas y '+retenciones.length+' comprobantes de retención.</p>'+
+            '<p>Este informe no reproduce una planilla oficial ni genera un compromiso de pago. El IVA retenido a proveedores es una obligación de enteramiento separada y no se resta automáticamente del saldo propio de IVA en este cálculo. La declaración debe revisarse y registrarse en el portal oficial del SENIAT; la planilla/compromiso oficial se obtiene allí después de registrar la declaración cuando corresponda.</p>'+
+            '<p><b>Validación:</b> Confirmar datos del contribuyente, período, documentos originales, alícuotas, créditos, retenciones y reglas tributarias vigentes antes de declarar.</p>';
+          printFiscalReport('BORRADOR NO OFICIAL — Preparación de Pago SENIAT',html);
+        }
+        if(ev.target.id==='btnOpenSeniatPortal')window.open('https://declaraciones.seniat.gob.ve/','_blank','noopener');
+        if(ev.target.id==='btnQuickLote')registerLoteSudebanDlg(()=>{seniatSudebanDlg('sudeban');});
+        if(ev.target.id==='btnGotoVentas'){activeTab='ventas';$('.tab[data-tab="ventas"]',el)?.click();}
+        if(ev.target.id==='btnGotoIgtf'){activeTab='igtf';$('.tab[data-tab="igtf"]',el)?.click();}
+        if(ev.target.id==='btnSaveF'){
+          S.cfg.empresa=$('#fEmp',el).value.trim()||S.cfg.empresa;
+          S.cfg.rif=$('#fRif',el).value.trim()||S.cfg.rif;
+          S.cfg.dir=$('#fDir',el).value.trim();
+          S.cfg.fiscalTipo=$('#fTipo',el).value;
+          S.cfg.contribEspecial=$('#fEsp',el).value==='1';
+          S.cfg.retIvaPct=75;
+          S.cfg.retencionHabilitadaConfirmada=$('#fRetConfirm',el).checked===true;
+          if(!S.cfg.contribEspecial)S.cfg.retencionHabilitadaConfirmada=false;
+          S.cfg.provEspecial=$('#fProvEsp',el).value.trim();
+          S.cfg.ctrlPrefix=$('#fCtrlPref',el).value.trim()||'00-';
+          S.cfg.ctrlNext=parseInt($('#fCtrlNext',el).value)||1043;
+          S.cfg.ctrlRangoDesde=$('#fRangoD',el).value.trim();
+          S.cfg.ctrlRangoHasta=$('#fRangoH',el).value.trim();
+          S.cfg.imprentaRif=$('#fImpRif',el).value.trim();
+          S.cfg.imprentaAut=$('#fImpAut',el).value.trim();
+          S.cfg.serialFiscal=$('#fSerial',el).value.trim();
+          save();renderAll();msg('Parámetros fiscales guardados con éxito.');
+        }
+      });
+    }
+  });
+}
+
+/* ---------- configuración y ayuda ---------- */
+function tasaBcvDlg(){
+  const user=activeUser(),opening=readActiveOpening(),oldRate=Number(S.cfg.rate)||0;
+  if(user.role!=='cajero'){cfgDlg('cRate');return;}
+  if(!opening||opening.status!=='abierta'||String(opening.username||'')!==String(user.username||'')||String(opening.cashbox||'')!==String(user.cashbox||'')){
+    msg('No se puede cambiar la tasa: no existe una apertura de caja válida para este cajero.','bad');return;
+  }
+  const el=h('<div class="form"><div class="newgrid"><div class="f"><label>Tasa BCV actual (Bs./US$)</label><input class="fld r" value="'+nf(oldRate)+'" readonly></div><div class="f"><label for="cashierNewRate">Nueva tasa (Bs./US$)</label><input class="fld r" id="cashierNewRate" inputmode="decimal" value="'+nf(oldRate)+'"></div><div class="f wide"><label for="cashierRateReason">Motivo del cambio (obligatorio)</label><input class="fld" id="cashierRateReason" maxlength="240" placeholder="Indique el motivo del ajuste de tasa"></div></div><p class="hint">El cambio se aplicará a las operaciones nuevas desde este momento. Las ventas y cobros anteriores conservarán la tasa registrada en cada operación. La acción quedará en el historial de auditoría.</p></div>');
+  openWin({title:'Actualizar tasa BCV · Caja '+esc(opening.cashbox),w:520,body:el,foot:[{label:'Cancelar'},{label:'Registrar cambio de tasa',primary:true,fn:()=>{
+    const next=pn($('#cashierNewRate',el).value),reason=$('#cashierRateReason',el).value.trim();
+    if(!(next>0)){msg('Ingrese una tasa BCV mayor que cero.','bad');return false;}
+    if(!reason){msg('Indique el motivo del cambio para dejar constancia de auditoría.','bad');return false;}
+    if(Math.abs(next-oldRate)<0.000001){msg('La tasa indicada es igual a la tasa actual. No hay cambios que registrar.','bad');return false;}
+    const ts=Date.now();
+    if(!Array.isArray(S.rateAudit))S.rateAudit=[];
+    S.rateAudit.push({id:'BCV-'+ts+'-'+String(S.rateAudit.length+1).padStart(4,'0'),ts,previousRate:oldRate,newRate:next,reason,username:user.username,name:user.name||user.username,role:user.role,cashbox:opening.cashbox,openingId:opening.id});
+    S.cfg.rate=next;opening.rate=next;writeActiveOpening(opening);
+    try{localStorage.setItem('sifer360_bcv_rate',String(next));}catch(e){}
+    save();renderAll();msg('Tasa BCV actualizada de '+nf(oldRate)+' a '+nf(next)+' Bs./US$. Cambio auditado.','ok');
+  }}],onOpen:()=>{const input=$('#cashierNewRate',el);input.focus();input.select();}});
+}
+function cfgDlg(focusId){
+  const c=S.cfg;
+  if(!c.ticketFont)c.ticketFont='ibm';
+  if(!c.ticketSize)c.ticketSize='12';
+  const fontOpts=TICKET_FONTS.map(f=>'<option value="'+f.id+'"'+(c.ticketFont===f.id?' selected':'')+'>'+esc(f.name)+'</option>').join('');
+  const el=h('<div class="form"><div class="newgrid"><div class="f wide"><label for="cEmp">Nombre del negocio</label><input class="fld" id="cEmp" value="'+esc(c.empresa)+'"></div><div class="f"><label for="cRif">RIF</label><input class="fld" id="cRif" value="'+esc(c.rif)+'"></div><div class="f wide"><label for="cDir">Dirección (ticket)</label><input class="fld" id="cDir" value="'+esc(c.dir)+'"></div><div class="f"><label for="cCaj">Cajero</label><input class="fld" id="cCaj" value="'+esc(c.cajero)+'"></div><div class="f"><label for="cCaja">Caja Nº</label><input class="fld" id="cCaja" value="'+esc(c.caja)+'"></div><div class="f"><label for="cRate">Tasa de cambio (Bs. por US$)</label><input class="fld r" id="cRate" inputmode="decimal" value="'+nf(c.rate)+'"></div><div class="f wide"><label for="cTkFont">Tipo de letra en Ticket Térmico 80mm</label><select class="fld" id="cTkFont">'+fontOpts+'</select></div><div class="f"><label for="cTkSize">Tamaño letra Ticket 80mm</label><select class="fld" id="cTkSize"><option value="11"'+(c.ticketSize==='11'?' selected':'')+'>11 px (Compacta)</option><option value="12"'+(c.ticketSize==='12'?' selected':'')+'>12 px (Estándar 80mm)</option><option value="13"'+(c.ticketSize==='13'?' selected':'')+'>13 px (Grande)</option></select></div></div><p class="hint">Cambiar la tasa recalcula al instante los precios en bolívares de la venta en curso. También puede elegir aquí el tipo de letra predeterminado para los recibos de impresora térmica de 80mm.</p></div>');
+  openWin({title:'Datos del negocio, tasa y ticket 80mm',w:620,body:el,foot:[{label:'Cancelar'},{label:'Guardar',primary:true,fn:()=>{
+    const rate=pn($('#cRate',el).value);
+    if(!rate){msg('Escriba una tasa de cambio válida.','bad');return false;}
+    c.empresa=$('#cEmp',el).value.trim()||c.empresa;c.rif=$('#cRif',el).value.trim();c.dir=$('#cDir',el).value.trim();
+    c.cajero=$('#cCaj',el).value.trim()||c.cajero;c.caja=$('#cCaja',el).value.trim()||c.caja;c.rate=rate;
+    c.ticketFont=$('#cTkFont',el).value;c.ticketSize=$('#cTkSize',el).value;
+    save();renderAll();msg('Configuración guardada. Tasa: '+nf(rate)+' Bs. por US$.');
+  }}],onOpen:()=>{const f=$('#'+(focusId||'cEmp'),el);f.focus();if(f.select)f.select();}});
+}
+function helpDlg(){
+  const rows=[
+    ['F1','Control SENIAT/SUDEBAN'],['F2','Nueva venta'],['F3','Ir a código / búsqueda'],['F4','Seleccionar cliente'],['F5','Suspender venta'],['F6','Recuperar venta en espera'],
+    ['F7','Descuento'],['F8','Maestro de Inventario'],['F9','Ventas del día y cierre'],['F10','Módulo de Compras'],['F11','Conteo físico masivo'],['F12','Cobrar'],
+    ['↑ ↓','Moverse por el catálogo (en la caja de búsqueda) o por la venta'],['+ / −','Sumar o restar una unidad al renglón seleccionado'],
+    ['Supr','Quitar el renglón seleccionado'],['3*texto','Agregar 3 unidades del producto buscado'],['Esc','Cerrar ventana o limpiar la búsqueda']
+  ];
+  openWin({title:'Atajos de teclado',w:540,body:h('<div class="gridwrap" style="flex:none"><table class="grid"><thead><tr><th style="width:90px">Tecla</th><th>Acción</th></tr></thead><tbody>'+rows.map(r=>'<tr><td><b>'+esc(r[0])+'</b></td><td>'+esc(r[1])+'</td></tr>').join('')+'</tbody></table></div>'),foot:[{label:'Cerrar',primary:true}]});
+}
+function aboutDlg(){
+  openWin({title:'Acerca de SIFER 360 Licorería',w:480,body:h('<div class="form"><p style="margin:0"><b>SIFER 360 Licorería — Sistema Integral Administrativo y Punto de Venta</b></p><p class="hint">Punto de venta especializado en licorerías: bebidas alcohólicas y no alcohólicas, inventario por presentación, compras, ventas, caja y control fiscal. Incluye facturación multimoneda (US$ / Bs.), IVA 16 %, IGTF 3 %, Módulo de Control SENIAT/SUDEBAN (Libros de Ventas y Compras oficiales, Liquidación Forma 30 IVA, Percepción IGTF, Auditoría cambiaria BCV, Conciliación bancaria POS/Biopago y Generador de TXT de Retenciones), Compras a proveedores, Cuentas por Cobrar (CxC), Cuentas por Pagar (CxP), Ficha Kardex Profesional (CPP) y Conteo Físico de Inventario.</p><p class="hint">Los datos se guardan localmente en este navegador.</p></div>'),foot:[{label:'Cerrar',primary:true}]});
+}
+function resetAll(){
+  ask('Vaciar datos operativos','Se borrarán ventas, compras, CxC, CxP, Kardex, inventario y configuración guardados en este dispositivo. La base quedará vacía para configurar la licorería.','Restablecer',()=>{
+    try{localStorage.removeItem(KEY);}catch(e){}
+    draftConteo={};seed();saved=false;renderAll();renderCatOptions();msg('Base operativa vacía. Configure los datos de la licorería y registre el inventario real.');
+  });
+}
+
+
+/* ---------- dashboard administrativo + gestión de usuarios/cajas ---------- */
+const USERS_STORAGE_KEY='sifer360_access_v1', BOXES_STORAGE_KEY='sifer360_cashboxes';
+function activeUser(){
+  try{return JSON.parse(sessionStorage.getItem('sifer360_session_v1')||'null')||{};}catch(e){return {};}
+}
+function cashboxList(){
+  let boxes=[];
+  try{boxes=JSON.parse(localStorage.getItem(BOXES_STORAGE_KEY)||'[]')||[];}catch(e){}
+  const users=window.SIFERAccess&&window.SIFERAccess.getUsers?window.SIFERAccess.getUsers():[];
+  const legacy=[String(S.cfg.caja||'01'),...users.map(u=>String(u.cashbox||''))].filter(x=>x&&x!=='—'&&x!=='Todas'&&x!=='SIN-ASIGNAR');
+  legacy.forEach(id=>{if(!boxes.some(b=>String(b.id)===id))boxes.push({id,name:/^Caja\s/i.test(id)?id:'Caja '+id,active:true,createdAt:Date.now()});});
+  if(!boxes.length)boxes=[{id:'01',name:'Caja 01',active:true,createdAt:Date.now()}];
+  boxes=boxes.map(b=>Object.assign({name:'Caja '+b.id,active:true},b));
+  localStorage.setItem(BOXES_STORAGE_KEY,JSON.stringify(boxes));
+  return boxes;
+}
+function persistCashboxes(boxes){localStorage.setItem(BOXES_STORAGE_KEY,JSON.stringify(boxes));}
+function showPosScreen(){
+  const session=activeUser();
+  if(session.role==='contador'){window.SIFERAccountantDashboard.show();return;}
+  if(session.role==='cajero'){
+    const opening=readActiveOpening();
+    if(!opening||opening.status!=='abierta'||String(opening.cashbox)!==currentCaja()||String(opening.username||'')!==String(session.username||'')){
+      document.body.classList.add('cashier-pending');
+      openCashboxDlg();
+      return;
+    }
+  }
+  const d=$('#adminDashboard'),main=$('.main'),left=$('.left');
+  if(d)d.hidden=true;if(left)left.hidden=false;
+  if(main)main.classList.remove('dashboard-mode');
+  document.body.classList.remove('cashier-pending');
+  const b=$('#btnDashboard');if(b)b.setAttribute('aria-pressed','false');
+  renderHeader();renderAll();
+}
+function showDashboardScreen(){
+  if(activeUser().role==='contador'){window.SIFERAccountantDashboard.show();return;}
+  const d=$('#adminDashboard'),main=$('.main'),left=$('.left');
+  if(!d||!main)return;
+  if(left)left.hidden=true; // Ocultar toda el área de venta; la cabecera y la toolbar están fuera de .main y permanecen visibles.
+  d.hidden=false;main.classList.add('dashboard-mode');
+  const b=$('#btnDashboard');if(b){b.hidden=activeUser().role!=='admin';b.setAttribute('aria-pressed','true');}
+  renderHeader();
+  const now=new Date(),today=new Date(now);today.setHours(0,0,0,0);
+  const tomorrow=new Date(today.getTime()+86400000),monthStart=new Date(now.getFullYear(),now.getMonth(),1),nextMonth=new Date(now.getFullYear(),now.getMonth()+1,1);
+  const sales=(S.sales||[]).filter(x=>!x.void);
+  const purchases=(S.purchases||[]).filter(x=>!x.void);
+  const stamp=x=>{const n=Number(x.ts||x.timestamp||0);if(n)return n;const parsed=Date.parse(x.date||x.fecha||'');return Number.isFinite(parsed)?parsed:0;};
+  const value=x=>Number(x.total||x.totalUsd||x.amount||0);
+  const sum=list=>r2(list.reduce((a,x)=>a+value(x),0));
+  const todaySales=sales.filter(x=>stamp(x)>=today.getTime()&&stamp(x)<tomorrow.getTime());
+  const monthSales=sales.filter(x=>stamp(x)>=monthStart.getTime()&&stamp(x)<nextMonth.getTime());
+  const previousDay=sales.filter(x=>stamp(x)>=today.getTime()-86400000&&stamp(x)<today.getTime());
+  const todayTotal=sum(todaySales),monthTotal=sum(monthSales),yesterdayTotal=sum(previousDay);
+  const change=yesterdayTotal?((todayTotal-yesterdayTotal)/yesterdayTotal)*100:(todayTotal?100:0);
+  const fmtPct=n=>(n>0?'+':'')+n.toFixed(1).replace('.',',')+'%';
+  const fmtMoney=n=>usd(n);
+  const outstanding=list=>r2(list.reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
+  const cxc=(S.cxc||[]).filter(x=>Math.max(0,Number(x.total||0)-Number(x.paid||0))>0.009);
+  const cxp=(S.cxp||[]).filter(x=>Math.max(0,Number(x.total||0)-Number(x.paid||0))>0.009);
+  const totalCxc=outstanding(cxc),totalCxp=outstanding(cxp);
+  const products=S.products||[],low=products.filter(p=>Number(p.stock||0)<=Number(p.min||0)).length;
+  const fmtDate=x=>{const t=stamp(x);return t?new Date(t).toLocaleString('es-VE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';};
+  const escMoney=x=>esc(fmtMoney(value(x)));
+  const latestSales=sales.slice().sort((a,b)=>stamp(b)-stamp(a)).slice(0,5);
+  const latestPurchases=purchases.slice().sort((a,b)=>stamp(b)-stamp(a)).slice(0,5);
+  const methodTotals={};
+  todaySales.forEach(sale=>(sale.pays||[]).forEach(p=>{const name=p.name||p.method||p.id||'Otros';let amount=Number(p.amountUsd??p.amount??p.amountBs??0);if(p.cur==='VES'&&!p.amountUsd&&!p.amountBs)amount=amount/Math.max(1,Number(sale.rate||S.cfg.rate||1));methodTotals[name]=(methodTotals[name]||0)+Math.max(0,amount);}));
+  const paymentSlices=Object.entries(methodTotals).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const palette=['#2563eb','#10b981','#f59e0b','#8b5cf6','#ef4444'];
+  const grand=paymentSlices.reduce((a,x)=>a+x[1],0);
+  let offset=0;
+  const gradient=grand?paymentSlices.map(([name,v],i)=>{const start=offset;offset+=v/grand*100;return palette[i%palette.length]+' '+start.toFixed(2)+'% '+offset.toFixed(2)+'%';}).join(', '):'#dbe3ea 0% 100%';
+  const pieLegend=paymentSlices.length?paymentSlices.map(([name,v],i)=>'<div class="dash-legend-row"><span class="dash-legend-dot" style="background:'+palette[i%palette.length]+'"></span><span>'+esc(name)+'</span><b>'+fmtMoney(v)+'</b><small>'+((v/grand)*100).toFixed(1).replace('.',',')+'%</small></div>').join(''):'<div class="dash-empty">No hay ventas con métodos de pago registrados hoy.</div>';
+  const salesRows=latestSales.length?latestSales.map(x=>'<tr><td>'+esc(fmtDate(x))+'</td><td><b>'+esc(x.ctrlNo||('Venta #'+String(x.no??'—')) )+'</b></td><td>'+esc(x.client?.name||x.clientName||'Cliente general')+'</td><td class="r">'+escMoney(x)+'</td></tr>').join(''):'<tr><td colspan="4" class="dash-empty">Todavía no hay ventas registradas.</td></tr>';
+  const purchaseRows=latestPurchases.length?latestPurchases.map(x=>'<tr><td>'+esc(fmtDate(x))+'</td><td><b>'+esc(x.docProv||('Compra #'+String(x.no??'—')) )+'</b></td><td>'+esc(x.supplier?.name||x.supplierName||'Proveedor')+'</td><td class="r">'+escMoney(x)+'</td></tr>').join(''):'<tr><td colspan="4" class="dash-empty">Todavía no hay compras registradas.</td></tr>';
+  d.innerHTML='<div class="admin-dash-head"><div><div class="dash-eyebrow">PANEL DE CONTROL · SIFER 360</div><h1>Resumen del negocio</h1><p>Indicadores comerciales y financieros · '+esc(fmtDate({ts:Date.now()}))+'</p></div></div>'+
+  '<div class="dash-kpis">'+
+  '<article class="dash-kpi"><span class="dash-kpi-icon blue">↗</span><div class="dash-kpi-label">Ventas del día</div><div class="dash-kpi-value">'+fmtMoney(todayTotal)+'</div><div class="dash-kpi-foot '+(change>=0?'positive':'negative')+'">'+fmtPct(change)+' <span>vs. día anterior</span></div></article>'+
+  '<article class="dash-kpi"><span class="dash-kpi-icon green">▤</span><div class="dash-kpi-label">Ventas del mes</div><div class="dash-kpi-value">'+fmtMoney(monthTotal)+'</div><div class="dash-kpi-foot">'+monthSales.length+' operaciones este mes</div></article>'+
+  '<article class="dash-kpi"><span class="dash-kpi-icon amber">◷</span><div class="dash-kpi-label">Total CxC pendiente</div><div class="dash-kpi-value">'+fmtMoney(totalCxc)+'</div><div class="dash-kpi-foot">'+cxc.length+' documentos con saldo</div></article>'+
+  '<article class="dash-kpi"><span class="dash-kpi-icon red">▤</span><div class="dash-kpi-label">Total CxP pendiente</div><div class="dash-kpi-value">'+fmtMoney(totalCxp)+'</div><div class="dash-kpi-foot">'+cxp.length+' obligaciones con saldo</div></article>'+
+  '<article class="dash-kpi"><span class="dash-kpi-icon violet">▦</span><div class="dash-kpi-label">Artículos en inventario</div><div class="dash-kpi-value">'+products.length.toLocaleString('es-VE')+'</div><div class="dash-kpi-foot">'+low+' <span>en mínimo o agotados</span></div></article>'+
+  '<article class="dash-kpi"><span class="dash-kpi-icon teal">▧</span><div class="dash-kpi-label">Unidades en existencia</div><div class="dash-kpi-value">'+products.reduce((a,p)=>a+Number(p.stock||0),0).toLocaleString('es-VE')+'</div><div class="dash-kpi-foot">Inventario registrado</div></article>'+
+  '</div><div class="dash-analytics-grid"><section class="dash-panel"><div class="dash-panel-head"><div><h2>Últimas 5 ventas</h2><p>Operaciones más recientes · montos en US$</p></div><strong>'+sales.length+'</strong></div><div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Fecha</th><th>Documento</th><th>Cliente</th><th class="r">Total</th></tr></thead><tbody>'+salesRows+'</tbody></table></div></section>'+
+  '<section class="dash-panel"><div class="dash-panel-head"><div><h2>Últimas 5 compras</h2><p>Entradas más recientes · montos en US$</p></div><strong>'+purchases.length+'</strong></div><div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Fecha</th><th>Documento</th><th>Proveedor</th><th class="r">Total</th></tr></thead><tbody>'+purchaseRows+'</tbody></table></div></section>'+
+  '<section class="dash-panel dash-chart-panel"><div class="dash-panel-head"><div><h2>Ventas de hoy por método de pago</h2><p>Distribución porcentual · vista tipo dona 3D</p></div></div><div class="dash-pie-layout"><div class="dash-pie-3d" style="--pie-gradient:conic-gradient('+gradient+')"><div class="dash-pie-hole"><b>'+fmtMoney(grand)+'</b><small>Total procesado</small></div></div><div class="dash-pie-legend">'+pieLegend+'</div></div></section>'+
+  '<section class="dash-panel dash-chart-panel"><div class="dash-panel-head"><div><h2>Resumen financiero</h2><p>Saldos pendientes y actividad</p></div><span class="dash-live-dot">ACTUAL</span></div><div class="dash-status-row"><span>Operaciones del día</span><b>'+todaySales.length+'</b></div><div class="dash-status-row"><span>Ticket promedio</span><b>'+fmtMoney(todaySales.length?todayTotal/todaySales.length:0)+'</b></div><div class="dash-status-row"><span>Ventas de ayer</span><b>'+fmtMoney(yesterdayTotal)+'</b></div><div class="dash-status-row"><span>Saldo total por cobrar</span><b>'+fmtMoney(totalCxc)+'</b></div><div class="dash-status-row"><span>Saldo total por pagar</span><b>'+fmtMoney(totalCxp)+'</b></div></section></div>';
+}
+function usersManagementDlg(editUsername){
+  if(!window.SIFERAccess||!window.SIFERAccess.getUsers){msg('El servicio de usuarios no está disponible.','bad');return;}
+  let users=window.SIFERAccess.getUsers(),boxes=cashboxList(),editing=editUsername||'';
+  const roleOptions=[['admin','Administrador'],['cajero','Cajero'],['contador','Contador']];
+  const el=h('<div class="form user-admin-form"><div class="hint">Cada usuario tiene un perfil y una caja asignada. El administrador puede quedarse sin caja asignada para operar solo desde el dashboard; para vender debe tener una caja creada y asignada.</div><input id="uaOriginal" type="hidden"><div class="newgrid"><div class="f"><label for="uaName">Nombre completo</label><input class="fld" id="uaName" required></div><div class="f"><label for="uaUsername">Usuario</label><input class="fld" id="uaUsername" required autocomplete="off"></div><div class="f"><label for="uaCode">Contraseña / código</label><input class="fld" id="uaCode" type="password" autocomplete="new-password" placeholder="Obligatorio para usuario nuevo"></div><div class="f"><label for="uaRole">Rol</label><select class="fld" id="uaRole">'+roleOptions.map(r=>'<option value="'+r[0]+'">'+r[1]+'</option>').join('')+'</select></div><div class="f"><label for="uaBox">Caja asignada</label><select class="fld" id="uaBox"><option value="">Sin caja asignada</option>'+boxes.filter(b=>b.active!==false).map(b=>'<option value="'+esc(b.id)+'">'+esc(b.name)+' ('+esc(b.id)+')</option>').join('')+'</select></div></div><div class="row" style="flex-wrap:wrap"><button class="btn primary" id="uaSave">Guardar usuario</button><button class="btn" id="uaClear" type="button">Limpiar</button><span class="hint" id="uaMsg"></span></div><div class="gridwrap" style="max-height:360px;flex:none"><table class="grid"><thead><tr><th>Nombre / usuario</th><th>Rol</th><th>Caja asignada</th><th>Acciones</th></tr></thead><tbody id="uaRows"></tbody></table></div></div>');
+  const clear=()=>{editing='';$('#uaOriginal',el).value='';$('#uaName',el).value='';$('#uaUsername',el).value='';$('#uaUsername',el).disabled=false;$('#uaCode',el).value='';$('#uaCode',el).placeholder='Obligatorio para usuario nuevo';$('#uaRole',el).value='cajero';$('#uaBox',el).value=boxes.find(b=>b.active!==false)?.id||'';$('#uaMsg',el).textContent='';};
+  const draw=()=>{users=window.SIFERAccess.getUsers();$('#uaRows',el).innerHTML=users.map(u=>'<tr><td><b>'+esc(u.name)+'</b><div class="sub">'+esc(u.username)+'</div></td><td>'+esc((roleOptions.find(r=>r[0]===u.role)||[u.role,u.role])[1])+'</td><td>'+esc(u.cashbox||'—')+'</td><td><button class="btn mini2" data-ua-edit="'+esc(u.username)+'">Editar</button> <button class="btn mini2" data-ua-delete="'+esc(u.username)+'" '+(u.username===activeUser().username||users.filter(x=>x.role==='admin').length<=1&&u.role==='admin'?'disabled':'')+'>Desactivar/eliminar</button></td></tr>').join('');};
+  const edit=u=>{editing=u.username;$('#uaOriginal',el).value=u.username;$('#uaName',el).value=u.name||'';$('#uaUsername',el).value=u.username;$('#uaUsername',el).disabled=true;$('#uaCode',el).value='';$('#uaCode',el).placeholder='Vacío = conservar contraseña actual';$('#uaRole',el).value=u.role;$('#uaBox',el).value=u.cashbox&&u.cashbox!=='Todas'?u.cashbox:'';$('#uaMsg',el).textContent='Editando '+u.username;};
+  $('#uaSave',el).addEventListener('click',()=>{const name=$('#uaName',el).value.trim(),username=$('#uaUsername',el).value.trim(),code=$('#uaCode',el).value,role=$('#uaRole',el).value,cashbox=$('#uaBox',el).value||'—';if(!name||!username){$('#uaMsg',el).textContent='Nombre y usuario son obligatorios.';return;}users=window.SIFERAccess.getUsers();const idx=users.findIndex(u=>u.username===editing);if(idx<0&&!code){$('#uaMsg',el).textContent='La contraseña/código es obligatorio para crear el usuario.';return;}if(idx<0&&users.some(u=>u.username.toLowerCase()===username.toLowerCase())){$('#uaMsg',el).textContent='Ese nombre de usuario ya existe.';return;}if(role==='cajero'&&cashbox==='—'){$('#uaMsg',el).textContent='Asigne una caja a todo cajero.';return;}if(cashbox!=='—'&&users.some(u=>u.username!==editing&&String(u.cashbox)===String(cashbox))){$('#uaMsg',el).textContent='La caja '+cashbox+' ya está asignada a otro usuario. Cree otra caja o reasigne la existente.';return;}if(idx>=0){users[idx]=Object.assign({},users[idx],{name,role,cashbox});if(code)users[idx].code=code;}else users.push({username,code,name,role,cashbox});if(!window.SIFERAccess.setUsers(users)){$('#uaMsg',el).textContent='No se pudo guardar la lista de usuarios.';return;}if(activeUser().username===username){const sess=Object.assign({},activeUser(),{name,role,cashbox});sessionStorage.setItem('sifer360_session_v1',JSON.stringify(sess));if(role==='admin'&&!cashbox||cashbox==='—'){sessionStorage.removeItem('sifer360_active_box');localStorage.removeItem('sifer360_active_box');}else{const ctx=Object.assign({},JSON.parse(localStorage.getItem('sifer360_active_box')||'{}'),{username,name,role,cashbox});sessionStorage.setItem('sifer360_active_box',JSON.stringify(ctx));localStorage.setItem('sifer360_active_box',JSON.stringify(ctx));}}$('#uaMsg',el).textContent='Usuario guardado correctamente.';clear();draw();showDashboardScreen();});
+  $('#uaClear',el).addEventListener('click',clear);
+  el.addEventListener('click',e=>{const eb=e.target.closest('[data-ua-edit]'),db=e.target.closest('[data-ua-delete]');if(eb){const u=window.SIFERAccess.getUsers().find(x=>x.username===eb.dataset.uaEdit);if(u)edit(u);}if(db){const u=db.dataset.uaDelete;if(u===activeUser().username){$('#uaMsg',el).textContent='No puedes eliminar el usuario de la sesión actual.';return;}if(!confirm('¿Eliminar el usuario '+u+'?'))return;users=window.SIFERAccess.getUsers();if(users.filter(x=>x.role==='admin').length===1&&users.find(x=>x.username===u)?.role==='admin'){msg('Debe conservarse al menos un administrador.','bad');return;}window.SIFERAccess.setUsers(users.filter(x=>x.username!==u));draw();}});
+  clear();draw();
+  openWin({title:'Gestión de Usuarios',w:820,body:el,foot:[{label:'Cerrar',primary:true}],onOpen:()=>{if(editing){const u=users.find(x=>x.username===editing);if(u)edit(u);}}});
+}
+function cashboxesManagementDlg(){
+  let boxes=cashboxList();
+  const users=()=>window.SIFERAccess&&window.SIFERAccess.getUsers?window.SIFERAccess.getUsers():[];
+  const el=h('<div class="form"><div class="hint">Cree cajas independientes y luego asígnelas a los usuarios desde Gestión de Usuarios. No se puede eliminar una caja que tenga usuarios asignados o historial de aperturas; puede deshabilitarla.</div><div class="newgrid"><div class="f"><label for="cbxId">Código de caja</label><input class="fld" id="cbxId" placeholder="02" maxlength="12"></div><div class="f"><label for="cbxName">Nombre visible</label><input class="fld" id="cbxName" placeholder="Caja 02"></div><div class="f"><label>&nbsp;</label><button class="btn primary" id="cbxCreate">Crear caja</button></div></div><div id="cbxMsg" class="hint"></div><div class="gridwrap" style="max-height:420px;flex:none"><table class="grid"><thead><tr><th>Código</th><th>Nombre</th><th>Usuarios asignados</th><th>Estado</th><th>Acción</th></tr></thead><tbody id="cbxRows"></tbody></table></div></div>');
+  const draw=()=>{boxes=cashboxList();const us=users();$('#cbxRows',el).innerHTML=boxes.map(b=>{const assigned=us.filter(u=>String(u.cashbox)===String(b.id));const isOpen=(()=>{const a=readActiveOpening();return !!(a&&String(a.cashbox)===String(b.id)&&a.status==='abierta');})();return '<tr><td><b>'+esc(b.id)+'</b></td><td>'+esc(b.name)+'</td><td>'+assigned.map(u=>esc(u.name)).join(', ')+' ('+assigned.length+')</td><td><span class="'+(b.active===false?'dash-warn':'dash-ok')+'">'+(b.active===false?'Deshabilitada':isOpen?'Turno abierto':'Activa')+'</span></td><td><button class="btn mini2" data-cbx-toggle="'+esc(b.id)+'">'+(b.active===false?'Habilitar':'Deshabilitar')+'</button></td></tr>';}).join('');};
+  $('#cbxCreate',el).addEventListener('click',()=>{const id=$('#cbxId',el).value.trim(),name=$('#cbxName',el).value.trim()||('Caja '+id);if(!id||! /^[A-Za-z0-9_-]{1,12}$/.test(id)){$('#cbxMsg',el).textContent='Use un código de 1 a 12 caracteres: letras, números, guion o guion bajo.';return;}if(cashboxList().some(b=>String(b.id).toLowerCase()===id.toLowerCase())){$('#cbxMsg',el).textContent='Ya existe una caja con ese código.';return;}boxes=cashboxList();boxes.push({id,name,active:true,createdAt:Date.now()});persistCashboxes(boxes);$('#cbxId',el).value='';$('#cbxName',el).value='';$('#cbxMsg',el).textContent='Caja creada. Ahora puede asignarla en Gestión de Usuarios.';draw();});
+  el.addEventListener('click',e=>{const b=e.target.closest('[data-cbx-toggle]');if(!b)return;boxes=cashboxList();const box=boxes.find(x=>String(x.id)===b.dataset.cbxToggle);if(!box)return;const assigned=users().filter(u=>String(u.cashbox)===String(box.id));const active=readActiveOpening();if(box.active!==false&&assigned.length){$('#cbxMsg',el).textContent='No se puede deshabilitar: está asignada a '+assigned.map(u=>u.name).join(', ')+'. Reasigne primero esos usuarios.';return;}if(box.active!==false&&active&&String(active.cashbox)===String(box.id)&&active.status==='abierta'){ $('#cbxMsg',el).textContent='No se puede deshabilitar una caja con turno abierto. Cierre primero el Corte Z.';return;}box.active=box.active===false;persistCashboxes(boxes);draw();});
+  draw();openWin({title:'Gestión de Cajas',w:760,body:el,foot:[{label:'Cerrar',primary:true}]});
+}
+
+function adminCajaRequiredDlg(moduleName){
+  const user=activeUser(),box=currentCaja(),assigned=box!=='SIN-ASIGNAR',active=readActiveOpening();
+  const opened=!!(active&&active.status==='abierta'&&String(active.cashbox)===box);
+  const body=h('<div class="form"><div style="font-size:34px;margin-bottom:8px">▣</div><h3 style="margin:0 0 8px">Para acceder a '+esc(moduleName)+' debes tener una caja abierta</h3><p class="hint">El flujo obligatorio es: crear una caja si aún no existe, asignártela en Gestión de Usuarios y abrir el turno desde el botón POS de la barra superior. El módulo Corte Z ya no abre turnos.</p><div class="gridwrap"><table class="grid"><tbody><tr><td>Usuario</td><td><b>'+esc(user.name||user.username||'Administrador')+'</b></td></tr><tr><td>Caja asignada</td><td><b>'+esc(assigned?box:'Ninguna')+'</b></td></tr><tr><td>Estado del turno</td><td><b>'+esc(opened?'Abierto':'No abierto')+'</b></td></tr></tbody></table></div><p class="hint">'+(assigned?(opened?'La caja ya está abierta; puedes volver al POS y continuar.':'Pulsa “Abrir caja (POS)” para registrar el fondo inicial.'):'Primero crea una caja en Gestión de Cajas y asígnatela en Gestión de Usuarios. Después abre la caja desde POS.')+'</p></div>');
+  const foot=[];
+  if(!assigned){foot.push({label:'Gestión de Cajas',fn:()=>{cashboxesManagementDlg();return false;}});foot.push({label:'Gestión de Usuarios',fn:()=>{usersManagementDlg(user.username);return false;}});}
+  foot.push({label:'Abrir caja (POS)',primary:true,fn:()=>{closeWin();openCashboxDlg();return false;}});
+  foot.push({label:'Cerrar'});
+  openWin({title:'Apertura obligatoria de caja',w:540,body,foot});
+}
+function openCashboxDlg(){
+  const user=activeUser();
+  if(!user||!['admin','cajero'].includes(user.role)){showPosScreen();return;}
+  const isCashier=user.role==='cajero';
+  const box=currentCaja(),boxes=cashboxList(),boxMeta=boxes.find(b=>String(b.id)===box);
+  if(box==='SIN-ASIGNAR'||!boxMeta||boxMeta.active===false){
+    if(isCashier){msg('No tienes una caja activa asignada. Solicita al administrador que te asigne una caja.','bad');return;}
+    adminCajaRequiredDlg('Punto de venta');return;
+  }
+  const existing=readActiveOpening();
+  if(existing&&existing.status==='abierta'&&String(existing.cashbox)===box){
+    if(isCashier&&String(existing.username||'')!==String(user.username||'')){
+      msg('Esta caja tiene un turno abierto por otro usuario. Solicita al administrador que revise el cierre anterior.','bad');return;
+    }
+    if(isCashier){
+      const context={username:user.username,name:user.name||user.username,role:user.role,cashbox:box,openingId:existing.id,openedAt:existing.openedAt,bs:existing.bs,usd:existing.usd,rate:existing.rate,status:'abierta'};
+      sessionStorage.setItem('sifer360_active_box',JSON.stringify(context));
+      sessionStorage.setItem('sifer360_active_opening',JSON.stringify(existing));
+      applyCashierWorkspace();showPosScreen();return;
+    }
+    openWin({title:'Caja ya abierta · '+box,w:430,body:h('<div class="form"><h3>El turno ya está abierto</h3><p class="hint">Caja '+esc(box)+' · Apertura '+esc(fmtDT(existing.openedAt))+'</p><p>Para hacer el arqueo y cerrar la jornada, entra a Corte Z.</p></div>'),foot:[{label:'Ir al POS',primary:true,fn:()=>{showPosScreen();return true;}},{label:'Cerrar'}]});return;
+  }
+  const body=h('<div class="form"><div class="hint">Registra y confirma los fondos físicos reales antes de vender. La apertura se asociará exclusivamente al usuario y a la caja asignada.</div><div class="newgrid"><div class="f"><label>'+(isCashier?'Cajero':'Administrador')+'</label><input class="fld" value="'+esc(user.name||user.username)+'" readonly></div><div class="f"><label>Caja asignada</label><input class="fld" value="'+esc(boxMeta.name+' ('+box+')')+'" readonly></div><div class="f"><label for="posOpenBs">Fondo inicial en Bs.</label><input class="fld r" id="posOpenBs" value="0,00" inputmode="decimal"></div><div class="f"><label for="posOpenUsd">Fondo inicial en US$</label><input class="fld r" id="posOpenUsd" value="0,00" inputmode="decimal"></div><div class="f"><label for="posOpenRate">Tasa BCV (Bs./US$)</label><input class="fld r" id="posOpenRate" value="'+esc(nf(Number(S.cfg.rate)||0))+'" inputmode="decimal"></div></div><div class="hint" id="posOpenError" role="status"></div></div>');
+  const confirmOpening=()=>{
+    const parse=v=>{const raw=String(v||'').trim().replace(/\s/g,'').replace(/\./g,'').replace(',','.');const n=Number(raw);return Number.isFinite(n)&&n>=0?n:null;};
+    const bs=parse($('#posOpenBs',body).value),usd=parse($('#posOpenUsd',body).value),rate=parse($('#posOpenRate',body).value);
+    if(bs===null||usd===null||rate===null||rate<=0){$('#posOpenError',body).textContent='Ingrese fondos válidos y una tasa BCV mayor que cero.';return false;}
+    const all=(()=>{try{return JSON.parse(localStorage.getItem('sifer360_openings')||'[]')||[];}catch(e){return [];}})();
+    const openedAt=new Date().toISOString(),op={id:'OPEN-'+Date.now(),invoiceStart:'FAC-'+String(currentCajaInvoice()).padStart(8,'0'),cashier:user.name||user.username,username:user.username,cashbox:box,bs,usd,rate,openedAt,status:'abierta'};
+    all.push(op);localStorage.setItem('sifer360_openings',JSON.stringify(all));localStorage.setItem('sifer360_bcv_rate',String(rate));
+    const context={username:user.username,name:user.name||user.username,role:user.role,cashbox:box,openingId:op.id,openedAt,bs,usd,rate,status:'abierta'};
+    sessionStorage.setItem('sifer360_active_box',JSON.stringify(context));sessionStorage.setItem('sifer360_active_opening',JSON.stringify(op));
+    if(!isCashier){localStorage.setItem('sifer360_active_box',JSON.stringify(context));localStorage.setItem('sifer360_active_opening',JSON.stringify(op));}
+    S.cfg.rate=rate;applyCashierWorkspace();showPosScreen();msg('Apertura de caja '+box+' registrada. Ya puedes operar en el POS.','ok');return true;
+  };
+  openWin({title:(isCashier?'POS · Apertura obligatoria de caja ':'POS · Apertura de caja ')+box,w:560,body,foot:(isCashier?[]:[{label:'Cancelar'}]).concat([{label:'Confirmar apertura e ingresar al POS',primary:true,fn:confirmOpening}]),onClose:isCashier?()=>{}:undefined});
+}
+function applyCashierWorkspace(){
+  const user=activeUser();
+  document.body.classList.toggle('cashier-mode',user.role==='cajero');
+  document.body.classList.remove('cashier-pending');
+  const toolbar=$('#toolbar');
+  if(toolbar)toolbar.classList.toggle('cashier-toolbar',user.role==='cajero');
+  if(window.SIFERAccess&&window.SIFERAccess.applyPermissions)window.SIFERAccess.applyPermissions(user);
+}
+window.SIFERCashier={start:function(user){document.body.classList.add('cashier-mode','cashier-pending');const access=$('#sifer-access');if(access)access.remove();document.body.classList.remove('sa-locked');if(window.SIFERAccess&&window.SIFERAccess.applyPermissions)window.SIFERAccess.applyPermissions(user||activeUser());document.body.classList.add('cashier-pending');openCashboxDlg();}};
+function addAdminToolbarItems(){
+  if(!TB.some(t=>Array.isArray(t)&&t[0]==='pos')){const idx=TB.findIndex(t=>Array.isArray(t)&&t[0]==='usuarios');TB.splice(idx<0?TB.length:idx,0,['pos','POS','',openCashboxDlg],['usuarios','Usuarios','',usersManagementDlg],['cajas','Gestión cajas','',cashboxesManagementDlg],'-');}
+}
+window.SIFERDashboard={show:showDashboardScreen,showPos:showPosScreen,refresh:showDashboardScreen};
+
+/* ---------- menús y barra de herramientas ---------- */
+const focusEntry=()=>$('#entry').focus();
+function openAccountingModule(){
+  if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir Contabilidad.','bad');return;}
+  const app=window.SIFERAccountingApp;
+  if(!app||typeof app.open!=='function'){
+    console.error('SIFERAccountingApp no está disponible. Verifique que /accounting.js haya cargado sin errores.');
+    alert('Contabilidad VEN-NIF no está disponible: el componente /accounting.js no se inicializó. Recargue la aplicación; si persiste, informe este mensaje al soporte.');
+    return;
+  }
+  try{app.open();}catch(e){
+    console.error('Error al abrir Contabilidad VEN-NIF:',e);
+    alert('No se pudo abrir Contabilidad VEN-NIF: '+(e&&e.message?e.message:String(e)));
+  }
+}
+
+const MENUS={
+ 'Archivo':[['Dashboard','',showDashboardScreen],['Abrir caja (POS)','',openCashboxDlg],['Nueva venta','F2',newSale],['Suspender venta','F5',suspend],['Recuperar venta','F6',recoverDlg],'-',['Ventas del día y cierre…','F9',salesDlg],'-',['Gestión de usuarios','',usersManagementDlg],['Gestión de cajas','',cashboxesManagementDlg],['Cerrar sesión','',()=>window.SIFERAccess&&window.SIFERAccess.logout()],'-',['Restablecer datos de ejemplo…','',resetAll]],
+ 'Ventas':[['Cobrar','F12',payDlg],['Módulo de Pagos CASHEA (BNPL)…','',()=>casheaDlg()],['Descuento…','F7',discountDlg],['Quitar renglón','Supr',removeSel],['Vaciar venta…','',clearCart],'-',['Cuentas por Cobrar (CxC)…','',()=>cxcDlg()]],
+ 'Compras':[['Registrar compra de mercancía…','F10',()=>comprasDlg('new')],['Historial de compras…','',()=>comprasDlg('hist')],['Directorio de proveedores…','',()=>comprasDlg('sup')],'-',['Cuentas por Pagar (CxP)…','',()=>cxpDlg()]],
+  'Inventario':[['Maestro de inventario…','F8',inventoryDlg],['Nuevo producto (Ficha avanzada)…','',()=>productFormDlg(null)],['Generador de etiquetas / Hablador SKU (US$)…','',()=>labelGeneratorDlg()],'-',['Conteo físico de inventario (masivo)…','F11',()=>conteoDlg()],['Ficha / Tarjeta Kardex Profesional…','',()=>kardexDlg()],'-',['Buscar producto','F3',focusEntry]],
+ 'Finanzas':[['Cuentas por Cobrar (CxC)…','',()=>cxcDlg()],['Cuentas por Pagar (CxP)…','',()=>cxpDlg()],['Operaciones Cambiarias (Compra USD / Zelle)…','',()=>divisasDlg()],['Conciliación CASHEA (BNPL y Cuotas)…','',()=>casheaDlg()],'-',['Ventas del día y cierre de caja…','F9',salesDlg]],
+ 'Contabilidad':[['Contabilidad general VEN-NIF…','',openAccountingModule]],
+ 'Control SENIAT/SUDEBAN':[
+   ['Módulo Fiscal Integral…','',()=>seniatSudebanDlg()],
+   ['Libro de Ventas Fiscal (SENIAT)…','',()=>seniatSudebanDlg('ventas')],
+   ['Libro de Compras Fiscal (Forma 30)…','',()=>seniatSudebanDlg('compras')],
+   ['Percepción y Retenciones de IGTF (3%)…','',()=>seniatSudebanDlg('igtf')],
+   ['Auditoría de Ventas y Tasa BCV…','',()=>seniatSudebanDlg('auditoria')],
+   ['Conciliación Puntos de Venta (SUDEBAN)…','',()=>seniatSudebanDlg('sudeban')],
+   ['Retenciones IVA y Archivo TXT SENIAT…','',()=>seniatSudebanDlg('retenciones')],
+   ['Trazabilidad Cambiaria (Compra USD / Zelle)…','',()=>divisasDlg()],
+   '-',
+   ['Parámetros Fiscales y Talonarios…','',()=>seniatSudebanDlg('config')]
+ ],
+ 'Clientes':[['Seleccionar cliente…','F4',clientDlg],['Estado de cuentas por cobrar…','',()=>cxcDlg()]],
+ 'Configuración':[['Datos del negocio y tasa…','',()=>cfgDlg()]],
+ 'Ayuda':[['Atajos de teclado…','',helpDlg],['Acerca del POS…','',aboutDlg]]
+};
+let menuEl=null;
+function closeMenu(){if(menuEl){menuEl.remove();menuEl=null;}const b=$('#btnMenu');if(b){b.classList.remove('open');b.setAttribute('aria-expanded','false');}}
+function openMenu(){
+  const btn=$('#btnMenu');if(!btn)return;
+  closeMenu();btn.classList.add('open');btn.setAttribute('aria-expanded','true');
+  const m=document.createElement('div');m.className='menu';m.setAttribute('role','menu');
+  Object.keys(MENUS).forEach(name=>{
+    const g=document.createElement('div');g.className='mhead';g.textContent=name;m.appendChild(g);
+    MENUS[name].forEach(it=>{
+      if(it==='-')return;
+      const b=h('<button class="mi" role="menuitem"><span>'+esc(it[0])+'</span><kbd>'+esc(it[1])+'</kbd></button>');
+      b.addEventListener('click',()=>{closeMenu();it[2]();});
+      m.appendChild(b);
+    });
+  });
+  document.body.appendChild(m);
+  const r=btn.getBoundingClientRect();
+  m.style.left=Math.max(8,Math.min(r.right-m.offsetWidth,window.innerWidth-m.offsetWidth-8))+'px';
+  m.style.top=(r.bottom+6)+'px';
+  menuEl=m;
+  const first=$('.mi',m);if(first)first.focus();
+}
+
+/* ---------- control de caja por sesión y corte Z persistente ---------- */
+function cajaContext(){
+  try{
+    const session=activeUser();
+    const active=JSON.parse(sessionStorage.getItem('sifer360_active_box')||'null');
+    if(active&&(!session.username||String(active.username||'')===String(session.username)))return active;
+    if(session.role==='cajero')return {username:session.username,name:session.name,role:'cajero',cashbox:session.cashbox};
+    return JSON.parse(localStorage.getItem('sifer360_active_box')||'null')||active||{};
+  }catch(e){return {};}
+}
+function currentCaja(){
+  const c=cajaContext(),session=activeUser();
+  if((c.role==='admin'||session.role==='admin')&&(!c.cashbox||c.cashbox==='Todas'||c.cashbox==='—'||c.cashbox==='SIN-ASIGNAR'))return 'SIN-ASIGNAR';
+  return String(c.cashbox||session.cashbox||S.cfg.caja||'01');
+}
+function currentCajero(){
+  const c=cajaContext(),session=activeUser();
+  return String(c.name||session.name||S.cfg.cajero||'Cajero');
+}
+function cajaSeqs(){
+  try{return JSON.parse(localStorage.getItem('sifer360_box_sequences')||'{}')||{};}catch(e){return {};}
+}
+function currentCajaInvoice(){const box=currentCaja(),seqs=cajaSeqs();if(!seqs[box])seqs[box]={invoice:1,void:1,refund:1,cxc:1,movement:1,z:1};return Number(seqs[box].invoice)||1;}
+function nextCajaInvoice(){
+  const box=currentCaja(),seqs=cajaSeqs();
+  if(!seqs[box])seqs[box]={invoice:1,void:1,refund:1,cxc:1,movement:1};
+  const no=Number(seqs[box].invoice)||1;
+  seqs[box].invoice=no+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
+  return no;
+}
+function getZHistory(){
+  if(!Array.isArray(S.cortesZ))S.cortesZ=[];
+  return S.cortesZ;
+}
+function moneyTotal(rows,fn){
+  return r2(rows.reduce((a,x)=>a+fn(x),0));
+}
+function zPayTotals(sales){
+  const out={};
+  sales.forEach(s=>(s.pays||[]).forEach(p=>{
+    const k=(p.name||p.id||'Otro')+' ('+(p.cur||'USD')+')';
+    out[k]=(out[k]||0)+Number(p.amount||0);
+  }));
+  return out;
+}
+function zOperationalTotals(sales,start,end,box){
+  const inPeriod=ts=>Number(ts)>=Number(start)&&Number(ts)<=Number(end);
+  const out={cxcUsd:0,cxcBs:0,casheaUsd:0,creditSalesUsd:0,cashInUsd:0,cashOutUsd:0,cashInBs:0,cashOutBs:0,movementCount:0};
+  (S.cxc||[]).forEach(item=>{
+    if(item.cashbox&&String(item.cashbox)!==String(box))return;
+    (item.payments||[]).forEach(p=>{if(inPeriod(p.ts)){out.cxcUsd=r2(out.cxcUsd+Number(p.amountUsd||0));out.cxcBs=r2(out.cxcBs+Number(p.amountBs||0));}});
+  });
+  sales.filter(s=>!s.void).forEach(s=>(s.pays||[]).forEach(p=>{if(p.id==='credito')out.creditSalesUsd=r2(out.creditSalesUsd+Number(p.amount||0));}));
+  const saleNos=new Set(sales.filter(s=>!s.void&&String(s.cashbox||box)===String(box)).map(s=>String(s.no)));
+  (S.casheaLiquidaciones||[]).forEach(lot=>{
+    if(lot.tipo==='REVERSIÓN'||lot.estado==='Revertido'||!inPeriod(lot.fecha))return;
+    const ops=Array.isArray(lot.operaciones)?lot.operaciones:[];
+    if((S.casheaMovimientos||[]).some(m=>ops.includes(m.id)&&saleNos.has(String(m.ventaNo))))out.casheaUsd=r2(out.casheaUsd+Number(lot.depositadoUsd||0));
+  });
+  (S.movimientosCaja||[]).forEach(m=>{
+    if(String(m.cashbox||box)!==String(box)||!inPeriod(m.ts))return;
+    const currency=m.currency==='USD'?'Usd':'Bs',direction=m.direction==='IN'?'In':'Out',key='cash'+direction+currency;
+    out[key]=r2(out[key]+Math.max(0,Number(m.amount||0)));out.movementCount++;
+  });
+  return out;
+}
+function readActiveOpening(){
+  try{
+    const user=activeUser();
+    const sessionValue=JSON.parse(sessionStorage.getItem('sifer360_active_opening')||'null');
+    if(user.role==='cajero'){
+      if(!sessionValue||sessionValue.status!=='abierta')return null;
+      if(String(sessionValue.username||'')!==String(user.username||''))return null;
+      if(String(sessionValue.cashbox||'')!==String(user.cashbox||''))return null;
+      return sessionValue;
+    }
+    if(sessionValue&&sessionValue.status==='abierta')return sessionValue;
+    const localValue=JSON.parse(localStorage.getItem('sifer360_active_opening')||'null');
+    return localValue||sessionValue||null;
+  }catch(e){return null;}
+}
+function writeActiveOpening(opening){
+  const value=JSON.stringify(opening);
+  sessionStorage.setItem('sifer360_active_opening',value);
+  if(activeUser().role!=='cajero')localStorage.setItem('sifer360_active_opening',value);
+}
+function zExpectedByMethod(sales,opening){
+  const out={};
+  METHODS.forEach(m=>out[m.id]=0);
+  out.efBs=Number(opening&&opening.bs||0);
+  out.efUSD=Number(opening&&opening.usd||0);
+  sales.forEach(s=>{
+    (s.pays||[]).forEach(p=>{
+      if(Object.prototype.hasOwnProperty.call(out,p.id))out[p.id]+=Number(p.amount||0);
+    });
+    const change=Math.max(0,Number(s.change||0));
+    if(change>0){
+      const rate=Number(s.rate||S.cfg.rate||1)||1;
+      const cashUsd=(s.pays||[]).filter(p=>p.id==='efUSD').reduce((a,p)=>a+Number(p.amount||0),0);
+      const cashBs=(s.pays||[]).filter(p=>p.id==='efBs').reduce((a,p)=>a+Number(p.amount||0),0);
+      const usdEquivalent=cashUsd+cashBs/rate;
+      if(usdEquivalent>0){
+        const usdChange=change*(cashUsd/usdEquivalent);
+        const bsChange=change*(cashBs/rate/usdEquivalent)*rate;
+        out.efUSD-=usdChange;
+        out.efBs-=bsChange;
+      }
+    }
+  });
+  (S.movimientosCaja||[]).forEach(m=>{
+    if(String(m.cashbox||opening.cashbox||'')!==String(opening.cashbox||m.cashbox||'')||Number(m.ts)<Number(opening.openedAt||0))return;
+    const key=m.currency==='USD'?'efUSD':(m.currency==='BS'?'efBs':null);
+    if(!key)return;
+    const amount=Math.max(0,Number(m.amount||0));
+    out[key]+=m.direction==='IN'?amount:-amount;
+  });
+  Object.keys(out).forEach(k=>out[k]=r2(k==='efBs'||k==='efUSD'?out[k]:Math.max(0,out[k])));
+  return out;
+}
+function zDiffStatus(rows){
+  const diffs=rows.map(r=>Number(r.diff||0));
+  const hasShort=diffs.some(d=>d<-.009);
+  const hasOver=diffs.some(d=>d>.009);
+  if(!hasShort&&!hasOver)return 'CONCILIADO · CUADRA';
+  if(hasShort&&hasOver)return 'CON DIFERENCIAS · FALTANTES Y SOBRANTES';
+  return hasShort?'FALTANTE':'SOBRANTE';
+}
+function printCorteZ(z,autoPrint){
+  const w=window.open('','_blank','width=420,height=800');
+  if(!w){msg('Permite ventanas emergentes para mostrar o imprimir el Corte Z.','bad');return;}
+  const line=(a,b)=>'<div class="zr"><span>'+esc(a)+'</span><b>'+esc(b==null?'—':String(b))+'</b></div>';
+  const reconciliation=Array.isArray(z.reconciliation)?z.reconciliation:[];
+  const recHtml=reconciliation.map(r=>'<div class="zrec"><b>'+esc(r.name)+' ('+esc(r.cur)+')</b><div class="zrecvals"><span>Sist. '+esc(nf(r.system))+'</span><span>Real '+esc(r.real==null?'—':nf(r.real))+'</span><b>Dif. '+esc(r.diff==null?'—':(r.diff>0?'+':'')+nf(r.diff))+'</b></div></div>').join('');
+  const productRows=Array.isArray(z.productSales)?z.productSales:[];
+  const productHtml=productRows.length?'<div class="zdetail"><table><thead><tr><th>SKU / Código</th><th>Producto</th><th class="qty">Cant.</th></tr></thead><tbody>'+productRows.map(p=>'<tr><td>'+esc(p.code)+'</td><td>'+esc(p.desc)+'</td><td class="qty">'+esc(fq(Number(p.qty)||0))+'</td></tr>').join('')+'</tbody></table></div>':'<div class="zrec">Sin detalle de productos para este corte.</div>';
+  const adjustmentRows=Array.isArray(z.inventoryAdjustments)?z.inventoryAdjustments:[];
+  const adjustmentHtml=adjustmentRows.length?'<div class="zdetail"><table><thead><tr><th>SKU / Código</th><th>Producto / motivo</th><th class="qty">Ajuste</th></tr></thead><tbody>'+adjustmentRows.map(a=>'<tr><td>'+esc(a.code)+'</td><td>'+esc(a.desc)+(a.doc&&a.doc!=='—'?'<br><small>'+esc(a.doc)+'</small>':'')+(a.reason?'<br><small>'+esc(a.reason)+'</small>':'')+'</td><td class="qty">'+(Number(a.sign)>0?'+':'−')+esc(fq(Number(a.qty)||0))+'</td></tr>').join('')+'</tbody></table></div>':'<div class="zrec">No se registraron ajustes positivos o negativos de inventario en este turno.</div>';
+  const notes=z.observations?line('Observaciones',z.observations):'';
+  const html='<div class="zpaper"><center><b>'+esc(S.cfg.empresa||'SIFER 360')+'</b><br>REPORTE Z · CIERRE DE CAJA<br><small>REPORTE DE CONTROL INTERNO · NO FISCAL</small></center><hr>'+
+    line('Corte Z',z.id)+line('Fecha',fmtDT(z.closedAt))+line('Caja',z.cashbox)+line('Cajero',z.cashier)+line('Desde',z.openedAt?fmtDT(z.openedAt):'—')+line('Desde factura',z.invoiceFrom||'—')+line('Hasta factura',z.invoiceTo||'—')+
+    '<hr><b>RESUMEN DE VENTAS</b>'+line('Facturas válidas',String(z.salesCount))+line('Anulaciones',String(z.voidCount))+line('Ventas netas USD',usd(z.netUsd))+line('Ventas netas Bs.',bsf(z.netBs))+line('IVA USD',usd(z.ivaUsd))+line('IGTF USD',usd(z.igtfUsd))+
+    '<hr><b>CONSOLIDADO DE PRODUCTOS VENDIDOS · SKU / CÓDIGO / CANTIDAD</b>'+productHtml+'<hr><b>AJUSTES DE INVENTARIO · POSITIVOS (+) Y NEGATIVOS (−)</b>'+adjustmentHtml+
+    '<hr><b>RESUMEN DE COBROS Y CRÉDITOS</b>'+line('Cobros de CxC recibidos',usd(z.detailTotals&&z.detailTotals.cxcUsd||0)+' / '+bsf(z.detailTotals&&z.detailTotals.cxcBs||0))+line('Depósitos Cashea recibidos',usd(z.detailTotals&&z.detailTotals.casheaUsd||0))+line('Ventas a crédito generadas (CxC)',usd(z.detailTotals&&z.detailTotals.creditSalesUsd||0))+
+    '<hr><b>TOTALES COBRADOS · POR MÉTODO</b>'+(Object.keys(z.payments||{}).length?Object.entries(z.payments).map(([name,amount])=>line(name,name.includes('(VES)')?bsf(amount):usd(amount))).join(''):'<div class="zrec">No hay cobros registrados por método en este corte.</div>')+'<hr><b>ARQUEO DE CAJA · POR MÉTODO</b><div class="zrec-head"><b>SISTEMA</b> / <b>REAL CONTADO O CONCILIADO</b> / <b>DIFERENCIA</b></div>'+(recHtml||'<div class="zrec">Este Corte Z no contiene detalle de arqueo por método.</div>')+
+    '<hr><b>RESULTADO DEL ARQUEO</b>'+line('Estado de conciliación',z.reconciliationStatus||(reconciliation.length?zDiffStatus(reconciliation):'SIN ARQUEO DETALLADO · CORTE ANTERIOR'))+line('Faltante USD',usd(z.shortageUsd||0))+line('Sobrante USD',usd(z.surplusUsd||0))+line('Faltante Bs.',bsf(z.shortageBs||0))+line('Sobrante Bs.',bsf(z.surplusBs||0))+
+    '<hr><b>MOVIMIENTOS DE EFECTIVO FÍSICO</b>'+line('Entradas efectivo USD (+)',usd(z.detailTotals&&z.detailTotals.cashInUsd||0))+line('Salidas efectivo USD (−)',usd(z.detailTotals&&z.detailTotals.cashOutUsd||0))+line('Entradas efectivo Bs. (+)',bsf(z.detailTotals&&z.detailTotals.cashInBs||0))+line('Salidas efectivo Bs. (−)',bsf(z.detailTotals&&z.detailTotals.cashOutBs||0))+line('Cantidad de movimientos',String(z.detailTotals&&z.detailTotals.movementCount||0))+notes+
+    '<hr>'+line('Operador',z.cashier)+line('Generado',new Date(z.closedAt).toLocaleString('es-VE'))+'<hr><center>Conserve este reporte para auditoría interna.<br>La impresión no sustituye una factura fiscal ni registra una operación directamente en una impresora fiscal.</center></div>';
+  const printScript=autoPrint?'window.onload=()=>{window.focus();window.print()}':'window.onload=()=>window.focus()';
+  const previewToolbar='<div class="zpreview-tools"><b>Vista previa de impresión · Térmica 80 mm</b><button type="button" onclick="window.print()">Imprimir 80 mm</button><button type="button" onclick="window.close()">Cerrar vista previa</button></div>';
+  const previewCss='.zpreview-tools{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px;background:#f1f5f9;border-bottom:1px solid #cbd5e1;font:13px Arial,sans-serif}.zpreview-tools button{padding:8px 12px;cursor:pointer;border:1px solid #64748b;border-radius:5px;background:#fff;font-weight:600}';
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(z.id)+'</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>@page{size:80mm auto;margin:3mm}*{box-sizing:border-box}body{margin:0;color:#000;font:10px/1.3 "Courier New",monospace}.zpaper{width:74mm;margin:auto}.zr{display:flex;justify-content:space-between;align-items:flex-start;gap:5px;margin:3px 0}.zr span{max-width:48mm;overflow-wrap:anywhere}.zr b{text-align:right;overflow-wrap:anywhere}.zrec{margin:5px 0;border-bottom:1px dotted #777;padding-bottom:4px}.zrecvals{display:flex;justify-content:space-between;gap:3px;font-size:9px;flex-wrap:wrap}.zrec-head{font-size:9px;margin:4px 0}.zdetail{width:100%;margin:4px 0 8px}.zdetail table{width:100%;border-collapse:collapse;table-layout:fixed;font:8px/1.25 monospace}.zdetail th,.zdetail td{border-bottom:1px dotted #777;padding:3px 1px;text-align:left;vertical-align:top;overflow-wrap:anywhere}.zdetail th.qty,.zdetail td.qty{text-align:right;width:12mm;white-space:nowrap}.zdetail th:first-child,.zdetail td:first-child{width:19mm}.zdetail small{font-size:7px}hr{border:0;border-top:1px dashed #333;margin:7px 0}center{line-height:1.5}small{font-size:8px}'+previewCss+'@media print{body{width:74mm}.zpreview-tools{display:none!important}}</style></head><body>'+(autoPrint?'':previewToolbar)+html+'<script>'+printScript+'<\/script></body></html>');
+  w.document.close();
+}
+function corteZDlg(){
+  const login=activeUser(),openingNow=readActiveOpening();
+  if(login.role==='admin'&&currentCaja()==='SIN-ASIGNAR'){adminCajaRequiredDlg('Corte Z');return;}
+  if(!openingNow||openingNow.status!=='abierta'||String(openingNow.cashbox)!==currentCaja()){adminCajaRequiredDlg('Corte Z');return;}
+  let active=readActiveOpening();
+  const box=currentCaja();
+  const boxOpen=()=>!!(active&&String(active.cashbox)===box&&active.status==='abierta');
+  const shiftStart=()=>active&&active.openedAt?new Date(active.openedAt).getTime():Date.now();
+  const el=h('<div class="form"><div class="hint" id="zIntro">Arqueo previo obligatorio: compare el saldo que registra el sistema con el importe real de cada método. La diferencia se calcula como Real − Sistema. El cierre guarda una fotografía inalterable del turno y después permite imprimir el reporte térmico de 80 mm.</div>'+
+    '<section id="zOpenPanel" hidden style="border:1px solid var(--lo);padding:10px;margin:8px 0;border-radius:6px"><b>Apertura de turno / fondo inicial</b><p class="hint">Si esta caja todavía no tiene un turno abierto, registre el fondo inicial antes de realizar el arqueo.</p><div class="row"><label>Fondo inicial Bs. <input class="fld r" id="zOpeningBs" value="0,00" inputmode="decimal" style="width:125px"></label><label>Fondo inicial US$ <input class="fld r" id="zOpeningUsd" value="0,00" inputmode="decimal" style="width:125px"></label><button class="btn primary" id="zOpenShift">Abrir turno</button></div><div class="hint" id="zOpenStatus"></div></section>'+
+    '<div class="gridwrap"><table class="grid"><thead><tr><th>Resumen del turno</th><th class="r">Total</th></tr></thead><tbody id="zSummary"></tbody></table></div>'+
+    '<section id="zArqueoPanel" style="border:2px solid var(--ac);padding:12px;margin:10px 0;border-radius:8px"><h3 style="margin:0 0 6px">ARQUEO PREVIO POR MÉTODO DE PAGO</h3><p class="hint" style="margin:4px 0 10px">Este formulario es obligatorio para el Corte Z. Abra el turno primero; luego escriba el monto real contado o conciliado en cada método. Si no tuvo movimientos, escriba 0,00. La diferencia se calcula automáticamente.</p><div class="gridwrap"><table class="grid" style="min-width:660px"><thead><tr><th>Método de pago</th><th>Moneda</th><th class="r">Saldo en sistema</th><th class="r">Monto real contado / conciliado</th><th class="r">Dif. (+/−)</th></tr></thead><tbody id="zReconcile"></tbody><tfoot id="zReconcileFoot"></tfoot></table></div><div class="gridwrap"><table class="grid"><thead><tr><th>Totales de arqueo</th><th class="r">US$</th><th class="r">Bs.</th></tr></thead><tbody id="zTotals"></tbody></table></div></section>'+
+    '<section style="border:1px solid var(--lo);padding:10px;margin:8px 0;border-radius:6px"><b>Movimientos de efectivo físico (+ / −)</b><div class="row" style="flex-wrap:wrap"><label>Tipo <select class="fld" id="zMovDir"><option value="IN">Entrada (+)</option><option value="OUT">Salida (−)</option></select></label><label>Moneda <select class="fld" id="zMovCur"><option value="BS">Efectivo Bs.</option><option value="USD">Efectivo USD</option></select></label><label>Monto <input class="fld r" id="zMovAmount" inputmode="decimal" placeholder="0,00" style="width:110px"></label><label>Motivo <input class="fld" id="zMovReason" maxlength="160" placeholder="Ej. retiro para sencillo" style="min-width:190px"></label><label>Contrapartida contable <select class="fld" id="zMovAccount" style="min-width:210px"><option value="">Seleccione cuenta</option><option value="3.1.1.01">Aporte / capital</option><option value="4.2.1.01">Otro ingreso</option><option value="6.1.1.04">Gasto operativo</option><option value="1.1.1.03">Traslado a banco Bs.</option><option value="1.1.1.05">Traslado a banco USD</option><option value="1.1.4.01">Inventario / mercancía</option><option value="2.1.1.01">Obligación por pagar</option></select></label><button class="btn" id="zMovAdd">Registrar movimiento</button></div><div class="hint" id="zMovStatus">Registre entradas o salidas de efectivo físico para que aparezcan en el cierre.</div><div id="zMovRows"></div></section>'+
+    '<label for="zObservations">Observaciones del cierre</label><textarea class="fld" id="zObservations" rows="2" placeholder="Explique faltantes, sobrantes, depósitos pendientes o incidencias."></textarea>'+
+    '<div class="row" style="margin:10px 0;gap:8px;flex-wrap:wrap"><button class="btn" id="zPreview">Vista previa del reporte Z · 80 mm</button><button class="btn primary" id="zClose">Confirmar cierre e imprimir</button></div><div class="hint" id="zActionStatus" role="status" aria-live="polite">Abra el turno y complete el arqueo para habilitar el cierre.</div>'+
+    '<p class="hint">El botón de impresión abre el diálogo del sistema para seleccionar una impresora térmica de 80 mm. Este reporte es no fiscal; una impresora fiscal requiere su integración/controlador homologado para emitir documentos fiscales.</p>'+
+    '<h3>Historial de Cortes Z</h3><div class="gridwrap"><table class="grid" style="min-width:560px"><thead><tr><th>Corte</th><th>Fecha</th><th>Cajero</th><th class="r">Ventas USD</th><th>Resultado</th><th>Acciones</th></tr></thead><tbody id="zHistory"></tbody></table></div></div>');
+  const getPeriodSales=()=>S.sales.filter(s=>String(s.cashbox||box)===box&&Number(s.ts)>=shiftStart());
+  const getProductSales=(sales)=>{
+    const map=new Map();
+    (sales||[]).filter(s=>!s.void).forEach(s=>(s.lines||[]).forEach(l=>{
+      const code=String(l.code||l.sku||'SIN-CODIGO');
+      const row=map.get(code)||{code,desc:String(l.desc||l.name||'Producto sin nombre'),qty:0};
+      row.qty=r2(row.qty+(Number(l.qty)||0));map.set(code,row);
+    }));
+    return [...map.values()].sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
+  };
+  const getInventoryAdjustments=(start,end)=>(S.kardex||[]).filter(k=>{
+    const ts=Number(k.ts)||0;
+    return ts>=Number(start)&&ts<=Number(end)&&['CONTEO','AJUSTE'].includes(String(k.type||'').toUpperCase());
+  }).map(k=>({code:String(k.code||'SIN-CODIGO'),desc:String((prod(k.code)||{}).desc||k.party||'Producto sin nombre'),qty:Math.abs(Number(k.qty)||0),sign:k.dir==='IN'?1:-1,doc:String(k.doc||'—'),reason:String(k.party||'')})).sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true})||a.doc.localeCompare(b.doc));
+  const getRows=()=>{
+    const sales=getPeriodSales().filter(s=>!s.void);
+    const expected=zExpectedByMethod(sales,active||{});
+    return METHODS.map(m=>({id:m.id,name:m.name,cur:m.cur,system:r2(expected[m.id]||0)}));
+  };
+  const readReal=()=>{
+    const out={};
+    $$('#zReconcile [data-z-real]',el).forEach(input=>{out[input.dataset.zReal]=pnZero(input.value);});
+    return out;
+  };
+  const calculate=()=>{
+    const rows=getRows(),real=readReal();
+    const rec=rows.map(r=>Object.assign({},r,{real:real[r.id],diff:real[r.id]===null||real[r.id]===undefined?null:r2(real[r.id]-r.system)}));
+    const total={shortageUsd:0,surplusUsd:0,shortageBs:0,surplusBs:0,complete:rec.every(r=>r.diff!==null)};
+    rec.forEach(r=>{
+      if(r.diff===null)return;
+      const short=Math.max(0,-r.diff),over=Math.max(0,r.diff);
+      if(r.cur==='USD'){total.shortageUsd=r2(total.shortageUsd+short);total.surplusUsd=r2(total.surplusUsd+over);}
+      else{total.shortageBs=r2(total.shortageBs+short);total.surplusBs=r2(total.surplusBs+over);}
+    });
+    total.status=!total.complete?'PENDIENTE DE COMPLETAR ARQUEO':zDiffStatus(rec);
+    return {rec,total};
+  };
+  const updateTotals=()=>{
+    const result=calculate(),t=result.total;
+    $('#zReconcileFoot',el).innerHTML='<tr><th colspan="2">Balance</th><th class="r">—</th><th class="r">Montos reales</th><th class="r">'+(t.complete?esc(t.status):'Pendiente')+'</th></tr>';
+    $('#zTotals',el).innerHTML=[
+      ['Faltante',usd(t.shortageUsd),bsf(t.shortageBs)],
+      ['Sobrante',usd(t.surplusUsd),bsf(t.surplusBs)],
+      ['Estado',t.status,'']
+    ].map(r=>'<tr><td>'+esc(r[0])+'</td><td class="r"><b>'+esc(r[1])+'</b></td><td class="r"><b>'+esc(r[2])+'</b></td></tr>').join('');
+    return result;
+  };
+  const draw=()=>{
+    active=readActiveOpening();
+    const opened=boxOpen();
+    $('#zOpenStatus',el).textContent=opened?'Turno abierto desde '+fmtDT(active.openedAt)+' · Caja '+box+' · '+String(active.cashier||currentCajero()):'No hay un turno abierto para esta caja. Registre el fondo inicial y pulse Abrir turno.';
+    $('#zOpenPanel',el).hidden=opened;
+    $('#zIntro',el).textContent=opened?'La apertura de caja ya está registrada. Se reutiliza el turno iniciado al entrar al POS; no debe abrir otro turno aquí. Complete el arqueo real de los 8 métodos, revise la vista previa de 80 mm y luego confirme el cierre.':'No se detectó una apertura válida para esta caja. Registre el fondo inicial aquí solo si no se hizo al iniciar sesión. El arqueo por los 8 métodos seguirá siendo obligatorio antes del cierre.';
+    $('#zOpenPanel',el).style.opacity='1';
+    $('#zOpenShift',el).disabled=opened;
+    $('#zOpeningBs',el).disabled=opened;
+    $('#zOpeningUsd',el).disabled=opened;
+    const period=getPeriodSales(),validSales=period.filter(s=>!s.void),voidSales=period.filter(s=>s.void);
+    $('#zSummary',el).innerHTML=[['Facturas válidas',String(validSales.length)],['Anulaciones',String(voidSales.length)],['Ventas netas USD',usd(moneyTotal(validSales,s=>Number(s.total||0)))],['Ventas netas Bs.',bsf(moneyTotal(validSales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)))],['IVA USD',usd(moneyTotal(validSales,s=>Number(s.iva||0)))],['IGTF USD',usd(moneyTotal(validSales,s=>Number(s.igtf||0)))]] .map(r=>'<tr><td>'+esc(r[0])+'</td><td class="r"><b>'+esc(r[1])+'</b></td></tr>').join('');
+    const oldReal=readReal();
+    const movements=(S.movimientosCaja||[]).filter(m=>String(m.cashbox||box)===String(box)&&Number(m.ts)>=shiftStart()&&Number(m.ts)<=Date.now()).sort((a,b)=>Number(b.ts)-Number(a.ts));
+    $('#zMovRows',el).innerHTML=movements.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Movimiento</th><th>Motivo</th><th class="r">Monto</th><th>Usuario</th></tr></thead><tbody>'+movements.map(m=>'<tr><td>'+esc(fmtDT(m.ts))+'</td><td>'+esc((m.direction==='IN'?'Entrada (+)':'Salida (−)')+' · '+(m.currency==='USD'?'Efectivo USD':'Efectivo Bs.'))+'</td><td>'+esc(m.reason||'—')+'</td><td class="r">'+esc(m.currency==='USD'?usd(m.amount):bsf(m.amount))+'</td><td>'+esc(m.user||'—')+'</td></tr>').join('')+'</tbody></table></div>':'<div class="hint">Sin movimientos de efectivo registrados en este turno.</div>';
+    const rows=getRows();
+    $('#zReconcile',el).innerHTML=rows.map(r=>{
+      const existing=oldReal[r.id];
+      const value=existing===null||existing===undefined?'':nf(existing);
+      return '<tr><td>'+esc(r.name)+'</td><td>'+esc(r.cur)+'</td><td class="r">'+esc(nf(r.system))+'</td><td><input class="fld r" style="min-width:115px;width:100%" data-z-real="'+esc(r.id)+'" aria-label="Monto real '+esc(r.name)+'" inputmode="decimal" placeholder="Ingrese importe real" value="'+esc(value)+'" '+(!opened?'disabled':'')+'></td><td class="r" data-z-diff="'+esc(r.id)+'">—</td></tr>';
+    }).join('');
+    const hs=getZHistory().filter(z=>String(z.cashbox)===box).slice().sort((a,b)=>Number(b.closedAt)-Number(a.closedAt));
+    $('#zHistory',el).innerHTML=hs.length?hs.map(z=>'<tr><td>'+esc(z.id)+'</td><td>'+esc(fmtDT(z.closedAt))+'</td><td>'+esc(z.cashier||'—')+'</td><td class="r">'+esc(usd(z.netUsd||0))+'</td><td>'+esc(z.reconciliationStatus||'Histórico anterior')+'</td><td><button class="btn mini2" data-z-view="'+esc(z.id)+'">Mostrar</button> <button class="btn mini2" data-z-print="'+esc(z.id)+'">Reimprimir</button></td></tr>').join(''):'<tr class="empty"><td colspan="6">Todavía no hay cortes Z guardados para esta caja.</td></tr>';
+    const result=updateTotals();
+    $('#zClose',el).disabled=!opened||!result.total.complete;
+    $('#zActionStatus',el).textContent=!opened?'El cierre está bloqueado: primero abra el turno de esta caja.':(!result.total.complete?'Arqueo incompleto: ingrese el monto real de los 8 métodos de pago; use 0,00 en los métodos sin movimientos.':'Arqueo completo. Puede revisar la vista previa de 80 mm y confirmar el cierre.');
+    result.rec.forEach(r=>{
+      const cell=$('[data-z-diff="'+r.id+'"]',el);
+      if(cell)cell.textContent=r.diff===null?'—':(r.diff>0?'+':'')+nf(r.diff);
+    });
+    $('#zPreview',el).disabled=!opened;
+  };
+  el.addEventListener('input',e=>{
+    if(e.target.matches('[data-z-real]')){
+      const result=updateTotals();
+      result.rec.forEach(r=>{
+        const cell=$('[data-z-diff="'+r.id+'"]',el);
+        if(cell)cell.textContent=r.diff===null?'—':(r.diff>0?'+':'')+nf(r.diff);
+      });
+      const opened=boxOpen();
+      $('#zClose',el).disabled=!opened||!result.total.complete;
+      $('#zActionStatus',el).textContent=!opened?'El cierre está bloqueado: primero abra el turno de esta caja.':(!result.total.complete?'Arqueo incompleto: ingrese el monto real de los 8 métodos de pago; use 0,00 en los métodos sin movimientos.':'Arqueo completo. Puede revisar la vista previa de 80 mm y confirmar el cierre.');
+    }
+  });
+  el.addEventListener('click',e=>{
+    const view=e.target.closest('[data-z-view]');
+    if(view){const z=getZHistory().find(item=>item.id===view.dataset.zView&&String(item.cashbox)===box);if(z)printCorteZ(z,false);return;}
+    const reprint=e.target.closest('[data-z-print]');
+    if(reprint){const z=getZHistory().find(item=>item.id===reprint.dataset.zPrint&&String(item.cashbox)===box);if(z)printCorteZ(z,true);return;}
+    if(e.target.id==='zMovAdd'){
+      active=readActiveOpening();
+      if(!boxOpen()){msg('Debe abrir el turno antes de registrar movimientos.','bad');return;}
+      const amount=pn($('#zMovAmount',el).value),reason=$('#zMovReason',el).value.trim(),counterpartAccount=$('#zMovAccount',el).value;
+      if(!amount||!reason||!counterpartAccount){msg('Indique monto, motivo y cuenta contrapartida contable del movimiento.','bad');return;}
+      if(!Array.isArray(S.movimientosCaja))S.movimientosCaja=[];
+      S.movimientosCaja.push({id:'MOV-'+box.replace(/\W/g,'')+'-'+Date.now(),cashbox:box,ts:Date.now(),direction:$('#zMovDir',el).value,currency:$('#zMovCur',el).value,amount:r2(amount),reason,counterpartAccount,rate:S.cfg.rate,user:currentCajero(),openingId:active.id||''});
+      save();$('#zMovAmount',el).value='';$('#zMovReason',el).value='';$('#zMovStatus',el).textContent='Movimiento registrado y guardado en el historial del turno.';draw();return;
+    }
+    if(e.target.id==='zOpenShift'){
+      active=readActiveOpening();
+      if(boxOpen()){msg('Ya existe un turno abierto para esta caja.','bad');draw();return;}
+      const bs=pnZero($('#zOpeningBs',el).value),usdOpening=pnZero($('#zOpeningUsd',el).value);
+      if(bs===null||usdOpening===null){msg('Indique el fondo inicial de Bs. y US$, aunque sea cero.','bad');return;}
+      const now=Date.now();
+      active={id:'OPEN-'+box.replace(/\W/g,'')+'-'+now,cashbox:box,cashier:currentCajero(),openedAt:now,bs:r2(bs),usd:r2(usdOpening),status:'abierta'};
+      writeActiveOpening(active);
+      const ctx=Object.assign(cajaContext(),{cashbox:box,name:currentCajero(),status:'abierta',openedAt:now});
+      sessionStorage.setItem('sifer360_active_box',JSON.stringify(ctx));localStorage.setItem('sifer360_active_box',JSON.stringify(ctx));
+      msg('Turno abierto para la caja '+box+'. Registre el arqueo real antes de cerrar.');
+      draw();return;
+    }
+    if(e.target.id==='zPreview'){
+      active=readActiveOpening();
+      if(!boxOpen()){msg('Abra el turno y registre el fondo inicial antes de previsualizar el Corte Z.','bad');draw();return;}
+      const result=calculate();
+      const all=getPeriodSales(),sales=all.filter(s=>!s.void),voids=all.filter(s=>s.void);
+      const now=Date.now();
+      const rec=result.rec.map(r=>Object.assign({},r,{real:r.real==null?null:Number(r.real),diff:r.diff==null?null:Number(r.diff)}));
+      const draft={id:'VISTA PREVIA · Z-'+box,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:now,productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),now),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),now,box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:result.total.status,shortageUsd:result.total.shortageUsd,surplusUsd:result.total.surplusUsd,shortageBs:result.total.shortageBs,surplusBs:result.total.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'previa'};
+      printCorteZ(draft,false);return;
+    }
+    if(e.target.id==='zClose'){
+      active=readActiveOpening();
+      if(!boxOpen()){msg('Abra el turno y registre el fondo inicial antes del cierre Z.','bad');draw();return;}
+      const result=calculate();
+      if(!result.total.complete){msg('Complete el importe real de todos los métodos de pago; use 0,00 si no hubo movimientos.','bad');return;}
+      if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin('Cerrar caja y generar Corte Z '+box))return;
+      const status=result.total.status;
+      if(!confirm('¿Confirmar el cierre definitivo de la caja '+box+'?\\nResultado: '+status+'\\nFaltante: '+usd(result.total.shortageUsd)+' / '+bsf(result.total.shortageBs)+'\\nSobrante: '+usd(result.total.surplusUsd)+' / '+bsf(result.total.surplusBs)+'\\nEl corte quedará guardado en el historial.'))return;
+      const all=getPeriodSales(),sales=all.filter(s=>!s.void),voids=all.filter(s=>s.void);
+      const rec=result.rec.map(r=>Object.assign({},r,{real:Number(r.real),diff:Number(r.diff)}));
+      const seqs=cajaSeqs(),seq=seqs[box]||{z:1};const zSeq=Number(seq.z)||1;seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
+      const t=Object.assign({},result.total);
+      const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now()),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
+      getZHistory().push(z);
+      save();
+      const closedOpening=Object.assign({},active,{status:'cerrada',closedAt:z.closedAt,cutId:z.id});
+      writeActiveOpening(closedOpening);
+      const closedBox=Object.assign(cajaContext(),{cashbox:box,status:'cerrada',closedAt:z.closedAt,cutId:z.id});
+      sessionStorage.setItem('sifer360_active_box',JSON.stringify(closedBox));localStorage.setItem('sifer360_active_box',JSON.stringify(closedBox));
+      msg('Corte Z '+z.id+' guardado. Resultado: '+status+'. Se abrirá la vista previa de 80 mm para imprimir.');
+      printCorteZ(z,false);draw();
+    }
+  });
+  openWin({title:'Corte Z · '+box,w:900,body:el,foot:[{label:'Cerrar',primary:true}],onOpen:draw});
+}
+
+const TB=[
+ ['nueva','Nueva','F2',newSale],['buscar','Buscar','F3',searchCatalogDlg],['cliente','Cliente','F4',clientDlg],
+ ['suspender','Suspender','F5',suspend],['recuperar','Recuperar','F6',recoverDlg],['descuento','Descuento','F7',discountDlg],['quitar','Quitar','Supr',removeSel],
+ '-',['inventario','Inventario','F8',inventoryDlg],['conteo','Conteo','F11',()=>conteoDlg()],['kardex','Kardex','',()=>kardexDlg()],['salidas','Salidas inventario','',inventoryExitDlg],
+ '-',['compras','Compras','F10',()=>comprasDlg('new')],['cxc','CxC','',()=>cxcDlg()],['cxp','CxP','',()=>cxpDlg()],['divisas','USD/Zelle','',()=>divisasDlg()],['cashea','Cashea','',()=>casheaDlg()],
+ '-',['ventas','Ventas día','F9',salesDlg],['cortez','Corte Z','',corteZDlg],['seniat','Fiscal','',()=>seniatSudebanDlg()],['contabilidad','Contabilidad','',openAccountingModule],['documentos','Documentos','',()=>fiscalDocumentsDlg()],['basedatos','Base de datos','',()=>databaseSettingsDlg()],['tasa','Tasa BCV','',()=>activeUser().role==='cajero'?tasaBcvDlg():cfgDlg('cRate')]
+];
+function buildChrome(){
+  addAdminToolbarItems();
+  $('#toolbar').innerHTML=TB.map(t=>t==='-'?'<span class="tsep"></span>':'<button class="tb" data-tb="'+t[0]+'" title="'+esc(t[1])+(t[2]?' ('+t[2]+')':'')+'">'+ico(t[0])+'<b>'+esc(t[1])+'</b><kbd>'+esc(t[2]||' ')+'</kbd>'+(t[0]==='recuperar'?'<span class="badge" id="heldBadge" hidden></span>':'')+(t[0]==='conteo'?'<span class="badge warn" id="conteoBadge" hidden></span>':'')+'</button>').join('');
+  applyCashierWorkspace();
+}
+
+/* ---------- render ---------- */
+function ensureVisible(tr,wrap){
+  if(!tr||!wrap)return;
+  const th=wrap.querySelector('thead'),hh=th?th.offsetHeight:0;
+  const top=tr.offsetTop-hh,bot=tr.offsetTop+tr.offsetHeight;
+  if(top<wrap.scrollTop)wrap.scrollTop=top;else if(bot>wrap.scrollTop+wrap.clientHeight)wrap.scrollTop=bot-wrap.clientHeight;
+}
+function renderHeader(){
+  const c=S.cfg;
+  const session=activeUser();
+  const dashboardButton=$('#btnDashboard');if(dashboardButton)dashboardButton.hidden=session.role!=='admin';
+  $('#winTitle').textContent=c.empresa;
+  if($('#winSub'))$('#winSub').textContent=currentCaja()==='SIN-ASIGNAR'?'Dashboard administrativo · Sin caja asignada':'Punto de venta · Caja '+currentCaja();
+  document.title='POS '+c.empresa;
+  $('#fNo').value=pad(currentCajaInvoice());
+  $('#fDate').value=fmtDT(Date.now());
+  $('#fClient').value=S.client.name;
+  $('#fRif').value=S.client.rif;
+  $('#fCajero').value=currentCajero();
+  if($('#whoUser'))$('#whoUser').textContent=(session.name||c.cajero)+(session.role==='admin'?' · Administrador':'')+(session.cashbox&&session.cashbox!=='—'&&session.cashbox!=='Todas'?' · Caja '+session.cashbox:'');
+}
+function renderCatOptions(){}
+function renderCart(){
+  const tb=$('#cartBody'),rate=S.cfg.rate;
+  if(!S.cart.length){
+    tb.innerHTML='<tr class="empty"><td colspan="10">Venta vacía. Escanee un código de barras o escriba la descripción del producto en la caja de arriba.</td></tr>';
+  }else{
+    tb.innerHTML=S.cart.map((l,i)=>{
+      const x=lineInfo(l),p=x.p;
+      const u=esc(p.unit||'und').toUpperCase();
+      const taxCls=prodTaxCls(p);
+      return '<tr data-i="'+i+'" class="'+(i===S.sel?'sel':'')+'">'+
+        '<td class="c">'+(i+1)+'</td>'+
+        '<td class="mono">'+esc(p.code)+'</td>'+
+        '<td><div class="desc">'+esc(p.desc)+'</div><div class="sub">'+esc(p.brand)+' · '+(p.sku?esc(p.sku)+' · ':'')+'pasillo '+esc(p.loc)+'</div></td>'+
+        '<td class="c"><span class="um-tag">'+u+'</span></td>'+
+        '<td class="c"><span class="qty"><button class="mini" data-act="dec" aria-label="Restar una unidad">&minus;</button><span class="qv">'+fq(l.qty)+' '+(p.unit||'und')+'</span><button class="mini" data-act="inc" aria-label="Sumar una unidad">+</button></span></td>'+
+        '<td class="r">'+nf(p.price)+'</td>'+
+        '<td class="r">'+(l.disc?fq(l.disc)+' %':'')+'</td>'+
+        '<td class="c"><span class="iva-tag '+taxCls+'">'+esc(prodTaxTag(p))+'</span></td>'+
+        '<td class="r">'+nf(x.net)+'</td>'+
+        '<td class="r">'+nf(r2(x.net*rate))+'</td>'+
+      '</tr>';
+    }).join('');
+  }
+  renderTotals();renderStatus();
+}
+function renderTotals(){
+  const t=totals(),r=S.cfg.rate;
+  const row=(c,a,cls)=>'<tr class="'+(cls||'')+'"><td>'+c+'</td><td class="r">'+nf(a)+'</td><td class="r">'+nf(a*r)+'</td></tr>';
+  let html=row('Subtotal',t.sub);
+  if(t.disc>0)html+=row('Descuento',-t.disc);
+  if(t.baseEx>0&&t.baseG16>0){
+    html+=row('Base gravada (16 %)',t.baseG16);
+    if(t.baseR8>0)html+=row('Base reducida (8 %)',t.baseR8);
+    if(t.baseA31>0)html+=row('Base suntuaria (31 %)',t.baseA31);
+    html+=row('Ventas exentas (0 %)',t.baseEx);
+  }else if(t.baseEx>0){
+    html+=row('Ventas exentas (0 %)',t.baseEx);
+  }else{
+    html+=row('Base imponible',t.base);
+  }
+  html+=row('Total I.V.A.',t.iva);
+  html+=row('Total',t.total,'tot');
+  $('#sumBody').innerHTML=html;
+  $('#lcdBs').textContent=bsf(t.total*r);
+  $('#lcdUsd').textContent=usd(t.total);
+  $('#btnPay').disabled=!S.cart.length;
+}
+function renderCatalog(){}
+function renderDetail(){}
+function renderStatus(){
+  const units=S.cart.reduce((a,l)=>a+l.qty,0);
+  $('#sbCajero').textContent='Cajero: '+currentCajero()+' · Caja '+currentCaja();
+  $('#sbRate').textContent='Tasa: '+nf(S.cfg.rate)+' Bs./US$';
+  $('#sbCount').textContent='Renglones: '+S.cart.length+' · Unidades: '+fq(r2(units));
+  $('#sbClock').textContent=fmtDT(Date.now());
+  const b=$('#heldBadge');if(b){b.hidden=!S.held.length;b.textContent=S.held.length;}
+  const cb=$('#conteoBadge');
+  if(cb){
+    const modCount=Object.keys(draftConteo).filter(c=>{const p=prod(c),d=draftConteo[c];return p&&d&&d.newStock!==null&&Math.abs(d.newStock-p.stock)>1e-9;}).length;
+    cb.hidden=!modCount;cb.textContent=modCount;
+  }
+}
+function renderAll(){renderHeader();renderCart();}
+
+/* ---------- entrada de productos ---------- */
+function parseEntry(v){
+  const m=v.trim().match(/^(\d+(?:[.,]\d+)?)\s*\*\s*(.*)$/);
+  if(m)return{qty:parseFloat(m[1].replace(',','.')),text:m[2].trim(),hasQty:true};
+  return{qty:1,text:v.trim(),hasQty:false};
+}
+function quickPickDlg(matches,qty,queryText){
+  let selIdx=0;
+  const el=h('<div class="form"><div class="hint">Se encontraron <b>'+matches.length+'</b> coincidencias para "<b>'+esc(queryText)+'</b>". Seleccione el producto a agregar (Cantidad: <b>'+fq(qty)+'</b>):</div>'+
+    '<div class="gridwrap invwrap"><table class="grid"><thead><tr><th>Código</th><th>SKU</th><th>Descripción</th><th>Marca</th><th class="c" style="width:54px">U.M.</th><th class="c" style="width:72px">I.V.A.</th><th>Pasillo</th><th class="r">Exist.</th><th class="r">Precio US$</th><th class="r">Precio Bs.</th></tr></thead><tbody id="qpBody"></tbody></table></div></div>');
+  const draw=()=>{
+    $('#qpBody',el).innerHTML=matches.map((p,i)=>'<tr data-idx="'+i+'" class="'+(i===selIdx?'sel':'')+'"><td class="mono">'+esc(p.code)+'</td><td class="mono">'+esc(p.sku||'-')+'</td><td><b>'+esc(p.desc)+'</b></td><td>'+esc(p.brand)+'</td><td class="c"><span class="um-tag">'+esc((p.unit||'und').toUpperCase())+'</span></td><td class="c"><span class="iva-tag '+prodTaxCls(p)+'">'+esc(prodTaxTag(p))+'</span></td><td class="c">'+esc(p.loc)+'</td><td class="r '+stockCls(p)+'">'+fq(p.stock)+'</td><td class="r">'+nf(p.price)+'</td><td class="r">'+nf(p.price*S.cfg.rate)+'</td></tr>').join('');
+  };
+  const pick=()=>{
+    const p=matches[selIdx];
+    if(p&&addItem(p.code,qty)){
+      const entry=$('#entry');entry.value='';S.query='';
+    }
+  };
+  el.addEventListener('click',e=>{
+    const tr=e.target.closest('tr[data-idx]');
+    if(tr){selIdx=+tr.dataset.idx;draw();}
+  });
+  el.addEventListener('dblclick',e=>{
+    const tr=e.target.closest('tr[data-idx]');
+    if(tr){selIdx=+tr.dataset.idx;pick();closeWin();}
+  });
+  openWin({title:'Seleccionar producto ('+matches.length+' coincidencias)',w:760,body:el,foot:[{label:'Cancelar'},{label:'Agregar a la venta',primary:true,fn:pick}],onOpen:()=>draw()});
+}
+function submitEntry(){
+  const entry=$('#entry'),pe=parseEntry(entry.value);
+  if(!pe.text){msg('Escriba un código, SKU o una descripción.','bad');return;}
+  const qUp=pe.text.toUpperCase();
+  let p=S.products.find(x=>x.code===pe.text||(x.sku&&x.sku.toUpperCase()===qUp)||(x.assocSuppliers||[]).some(s=>s.barcode&&s.barcode.toUpperCase()===qUp));
+  if(!p){
+    const m=searchProducts(pe.text,'Todas');
+    if(m.length===1)p=m[0];
+    else if(!m.length){msg('No se encontró "'+pe.text+'".','bad');return;}
+    else{quickPickDlg(m,pe.qty,pe.text);return;}
+  }
+  if(addItem(p.code,pe.qty)){entry.value='';S.query='';navigated=false;}
+}
+
+/* ---------- eventos ---------- */
+function wire(){
+  const entry=$('#entry');
+  entry.addEventListener('input',()=>{S.query=parseEntry(entry.value).text;navigated=false;});
+  entry.addEventListener('keydown',e=>{
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      if(S.cart.length){
+        e.preventDefault();
+        S.sel=e.key==='ArrowDown'?Math.min(S.cart.length-1,S.sel+1):Math.max(0,S.sel-1);
+        renderCart();ensureVisible($('#cartBody tr.sel'),$('#cartWrap'));
+      }
+    }else if(e.key==='Enter'){e.preventDefault();submitEntry();}
+    else if(e.key==='Escape'){entry.value='';S.query='';navigated=false;}
+  });
+  $('#btnAdd').addEventListener('click',()=>{submitEntry();if(!W)entry.focus();});
+  $('#btnPay').addEventListener('click',payDlg);
+  $('#btnClient').addEventListener('click',clientDlg);
+  $('#sbRate').addEventListener('click',()=>cfgDlg('cRate'));
+
+  $('#cartBody').addEventListener('click',e=>{
+    const tr=e.target.closest('tr[data-i]');if(!tr)return;
+    const i=+tr.dataset.i,btn=e.target.closest('[data-act]');
+    S.sel=i;
+    if(btn)changeQty(i,btn.dataset.act==='inc'?1:-1);else renderCart();
+  });
+
+  const btnMenu=$('#btnMenu');
+  if(btnMenu)btnMenu.addEventListener('click',()=>{if(menuEl)closeMenu();else openMenu();});
+  const btnCasheaTop=$('#btnCasheaTop');
+  if(btnCasheaTop)btnCasheaTop.addEventListener('click',()=>casheaDlg());
+  const btnDivisasTop=$('#btnDivisasTop');
+  if(btnDivisasTop)btnDivisasTop.addEventListener('click',()=>divisasDlg());
+  const btnSeniatTop=$('#btnSeniatTop');
+  if(btnSeniatTop)btnSeniatTop.addEventListener('click',()=>seniatSudebanDlg());
+  const btnAccountingTop=$('#btnAccountingTop');
+  if(btnAccountingTop)btnAccountingTop.addEventListener('click',()=>openAccountingModule());
+  const sbDivisas=$('#sbDivisas');
+  if(sbDivisas)sbDivisas.addEventListener('click',()=>divisasDlg());
+  const sbSeniat=$('#sbSeniat');
+  if(sbSeniat)sbSeniat.addEventListener('click',()=>seniatSudebanDlg());
+
+  const dashboardButton=$('#btnDashboard');if(dashboardButton)dashboardButton.addEventListener('click',()=>showDashboardScreen());
+  const logoutButton=$('#btnLogout');if(logoutButton)logoutButton.addEventListener('click',()=>{if(confirm('¿Desea cerrar la sesión actual?')){if(window.SIFERAccess&&window.SIFERAccess.logout)window.SIFERAccess.logout();}});
+  $('#toolbar').addEventListener('click',e=>{
+    const b=e.target.closest('[data-tb]');if(!b)return;
+    const user=activeUser();
+    if(user.username)try{localStorage.setItem('sifer360_last_module_v1:'+user.username,b.dataset.tb);}catch(err){}
+    const t=TB.find(x=>x[0]===b.dataset.tb);if(t){if(!window.SIFERAccess||!window.SIFERAccess.canAccess||!window.SIFERAccess.canAccess(b.dataset.tb,user)){msg('Tu perfil no tiene autorización para abrir este módulo.','bad');return;}if($('#adminDashboard')&&!$('#adminDashboard').hidden&&user.role!=='contador')showPosScreen();t[3]();}
+  });
+  document.addEventListener('pointerdown',e=>{
+    if(menuEl&&!e.target.closest('.menu')&&!e.target.closest('#btnMenu'))closeMenu();
+  });
+
+  const fk={F1:()=>seniatSudebanDlg(),F2:newSale,F3:focusEntry,F4:clientDlg,F5:suspend,F6:recoverDlg,F7:discountDlg,F8:inventoryDlg,F9:salesDlg,F10:()=>comprasDlg('new'),F11:()=>conteoDlg(),F12:payDlg};
+  document.addEventListener('keydown',e=>{
+    if(W){if(e.key==='Escape'){e.preventDefault();closeWin();}return;}
+    if(e.key==='Escape'&&menuEl){closeMenu();if($('#btnMenu'))$('#btnMenu').focus();return;}
+    if(fk[e.key]){e.preventDefault();const session=activeUser();if(session.role==='contador'&&e.key!=='F1'){msg('El perfil contador solo tiene acceso a Fiscal y Contabilidad.','bad');return;}closeMenu();fk[e.key]();return;}
+    const tag=document.activeElement?document.activeElement.tagName:'';
+    if(/INPUT|SELECT|TEXTAREA/.test(tag))return;
+    if(e.key==='Delete'){e.preventDefault();removeSel();}
+    else if(e.key==='ArrowDown'&&S.cart.length){e.preventDefault();S.sel=Math.min(S.cart.length-1,S.sel+1);renderCart();ensureVisible($('#cartBody tr.sel'),$('#cartWrap'));}
+    else if(e.key==='ArrowUp'&&S.cart.length){e.preventDefault();S.sel=Math.max(0,S.sel-1);renderCart();ensureVisible($('#cartBody tr.sel'),$('#cartWrap'));}
+    else if((e.key==='+'||e.key==='-')&&S.sel>=0){e.preventDefault();changeQty(S.sel,e.key==='+'?1:-1);}
+  });
+  setInterval(()=>{$('#fDate').value=fmtDT(Date.now());$('#sbClock').textContent=fmtDT(Date.now());},15000);
+}
+
+
+/* ---------- Adjuntos fiscales y base de datos local SQLite ---------- */
+function formatDocSize(n){return n<1024? n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(2)+' MB';}
+function docDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=()=>reject(new Error('No se pudo leer el archivo.'));r.readAsDataURL(file);});}
+async function docSha256(dataUrl){try{const bytes=Uint8Array.from(atob(dataUrl.split(',')[1]||''),c=>c.charCodeAt(0));const hash=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('');}catch{return '';}}
+
+async function documentRows(filter = {}){
+  if (window.posDesktop) return await window.posDesktop.listDocuments(filter);
+  return await posSqliteDriver.listDocuments(filter);
+}
+
+async function fiscalDocumentsDlg(){
+  if(S && !Array.isArray(S.documents)) S.documents=[];
+  const el=h('<div class="form" style="gap:10px"><div class="hint">Adjunte el documento digital original de una operación en la base de datos local SQLite. En móviles, use <b>Tomar foto</b> para abrir la cámara si el navegador lo permite. Los archivos se vinculan al número de venta o compra seleccionado.</div><div class="f"><label>Operación fiscal</label><select class="fld" id="fdTx"><option value="">Seleccione una venta o compra</option></select></div><div class="row" style="flex-wrap:wrap"><button class="btn primary" id="fdUpload">Subir documento desde el dispositivo</button><button class="btn" id="fdCamera">Tomar foto con la cámara</button><input id="fdFile" type="file" accept="application/pdf,image/*" hidden><input id="fdCameraFile" type="file" accept="image/*" capture="environment" hidden></div><div class="f"><label>Nota de revisión (opcional)</label><input class="fld" id="fdNote" maxlength="300" placeholder="Ej. Factura original del proveedor"></div><div class="hint">Formatos: PDF, JPG, PNG, WEBP. Máximo 3 MB por archivo. Almacenado localmente en SQLite.</div><div id="fdStatus" class="hint">Seleccione una operación para ver sus documentos.</div><div class="gridwrap" style="max-height:240px"><table class="grid"><thead><tr><th>Documento</th><th>Tipo</th><th>Fecha</th><th></th></tr></thead><tbody id="fdRows"><tr class="empty"><td colspan="4">Sin documentos cargados.</td></tr></tbody></table></div></div>');
+  const tx=$('#fdTx',el),status=$('#fdStatus',el),rows=$('#fdRows',el),upload=$('#fdFile',el),camera=$('#fdCameraFile',el);
+  const sales=(S.sales||[]).filter(x=>!x.void).slice().sort((a,b)=>b.ts-a.ts);
+  const purchases=(S.purchases||[]).filter(x=>!x.void).slice().sort((a,b)=>b.ts-a.ts);
+  tx.innerHTML='<option value="">Seleccione una venta o compra</option><optgroup label="Ventas">'+sales.map(x=>'<option value="sale:'+esc(String(x.no))+'">Venta #'+esc(String(x.no))+' · '+esc(fmtDT(x.ts))+' · '+esc(usd(x.total))+'</option>').join('')+'</optgroup><optgroup label="Compras">'+purchases.map(x=>'<option value="purchase:'+esc(String(x.no))+'">Compra #'+esc(String(x.no))+' · '+esc(fmtDT(x.ts))+' · '+esc(usd(x.total))+'</option>').join('')+'</optgroup>';
+  const selected=()=>{const a=tx.value.split(':');return a.length===2?{transactionType:a[0],transactionId:a[1]}:null;};
+  const render=async()=>{
+    const sel=selected(); if(!sel){rows.innerHTML='<tr class="empty"><td colspan="4">Seleccione una venta o compra.</td></tr>';return;}
+    try{
+      const docs=await documentRows(sel);const filtered=docs.filter(d=>d.transactionType===sel.transactionType&&String(d.transactionId)===sel.transactionId);
+      rows.innerHTML=filtered.length?filtered.map(d=>'<tr><td><b>'+esc(d.fileName||'Documento')+'</b><div class="sub">'+esc(formatDocSize(Number(d.fileSize||0)))+'</div></td><td>'+esc(d.transactionType==='sale'?'Venta':'Compra')+'</td><td>'+esc(String(d.createdAt||'').slice(0,10))+'</td><td><button class="btn mini2" data-doc-open="'+esc(d.id)+'">Ver</button> <button class="btn mini2" data-doc-delete="'+esc(d.id)+'">Eliminar</button></td></tr>').join(''):'<tr class="empty"><td colspan="4">Esta operación no tiene documentos adjuntos.</td></tr>';
+    }catch(e){rows.innerHTML='<tr class="empty"><td colspan="4">'+esc(e.message||'No se pudieron cargar los documentos.')+'</td></tr>';status.textContent='Error al consultar documentos.';}
+  };
+  const processFile=async file=>{
+    const sel=selected();if(!sel){status.textContent='Primero seleccione una venta o compra.';return;}
+    if(!file)return;
+    if(file.size>3*1024*1024){status.textContent='El archivo supera el límite de 3 MB.';return;}
+    if(!(file.type==='application/pdf'||file.type.startsWith('image/'))){status.textContent='Solo se permiten PDF e imágenes.';return;}
+    status.textContent='Leyendo y guardando documento en SQLite…';
+    try{
+      const dataUrl=await docDataUrl(file);
+      const doc={id:'DOC-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8),transactionType:sel.transactionType,transactionId:sel.transactionId,fileName:file.name||('captura-'+Date.now()+'.jpg'),mimeType:file.type||'application/octet-stream',fileSize:file.size,sha256:await docSha256(dataUrl),dataUrl,createdAt:new Date().toISOString(),notes:$('#fdNote',el).value.trim()};
+      await posSqliteDriver.saveDocument(doc);
+      if(!Array.isArray(S.documents))S.documents=[];
+      S.documents=S.documents.filter(d=>d.id!==doc.id);
+      S.documents.push({id:doc.id,transactionType:doc.transactionType,transactionId:doc.transactionId,fileName:doc.fileName,mimeType:doc.mimeType,fileSize:doc.fileSize,sha256:doc.sha256,createdAt:doc.createdAt,notes:doc.notes});
+      save();status.textContent='Documento guardado localmente en SQLite para '+(sel.transactionType==='sale'?'la venta #':'la compra #')+sel.transactionId+'.';await render();
+    }catch(e){status.textContent='No se guardó el documento: '+(e.message||e);persistenceError(e);}
+  };
+  $('#fdUpload',el).addEventListener('click',()=>upload.click());
+  $('#fdCamera',el).addEventListener('click',()=>camera.click());
+  upload.addEventListener('change',()=>{processFile(upload.files&&upload.files[0]);upload.value='';});
+  camera.addEventListener('change',()=>{processFile(camera.files&&camera.files[0]);camera.value='';});
+  tx.addEventListener('change',render);
+  rows.addEventListener('click',async e=>{
+    const del=e.target.closest('[data-doc-delete]'),open=e.target.closest('[data-doc-open]');
+    if(del){
+      if(!confirm('¿Eliminar este documento adjunto?'))return;
+      try{
+        await posSqliteDriver.deleteDocument(del.dataset.docDelete);
+        if(Array.isArray(S.documents)) S.documents=S.documents.filter(d=>d.id!==del.dataset.docDelete);
+        save();await render();
+      }catch(err){status.textContent='No se pudo eliminar: '+err.message;}
+      return;
+    }
+    if(open){
+      try{
+        let d = await posSqliteDriver.getDocument(open.dataset.docOpen);
+        if(!d||!d.dataUrl) d=(S.documents||[]).find(x=>x.id===open.dataset.docOpen);
+        if(!d||!d.dataUrl) throw new Error('No se encontró el contenido del archivo.');
+        const w=window.open();
+        if(w){
+          w.document.write('<title>'+esc(d.fileName)+'</title><iframe style="border:0;width:100%;height:100vh" src="'+d.dataUrl+'"></iframe>');
+        } else {
+          const a=document.createElement('a');a.href=d.dataUrl;a.download=d.fileName;a.click();
+        }
+      }catch(err){status.textContent='No se pudo abrir el archivo: '+err.message;}
+    }
+  });
+  openWin({title:'Documentos fiscales originales (SQLite Local)',w:820,body:el,foot:[{label:'Cerrar',primary:true}],onOpen:()=>{render();}});
+}
+
+async function databaseSettingsDlg(){
+  const isDesktop = !!window.posDesktop;
+  const salesCount = S.sales ? S.sales.length : 0;
+  const prodCount = S.products ? S.products.length : 0;
+  const cshCount = S.casheaMovimientos ? S.casheaMovimientos.length : 0;
+  const krdxCount = S.kardex ? S.kardex.length : 0;
+
+  const el = h('<div class="form" style="gap:14px">' +
+    '<div style="background:#0F172A;border:1px solid #1E293B;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:8px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between">' +
+        '<b style="color:#38BDF8;font-size:15px;display:inline-flex;align-items:center;gap:6px">' +
+          '<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>' +
+          'Base de Datos Local SQLite (100% Offline)' +
+        '</b>' +
+        '<span style="background:#065F46;color:#6EE7B7;font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px">CONECTADO LOCAL</span>' +
+      '</div>' +
+      '<div class="hint" style="margin:0;color:#94A3B8;line-height:1.5">' +
+        'Este software opera <b>exclusivamente con SQLite local</b> (<code>sifer360-licoreria.sqlite</code>). No depende de Turso, Vercel ni conexiones a internet. Todas las ventas, clientes, compras, inventario, libro fiscal SENIAT y pagos CASHEA residen permanentemente en este equipo.' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:4px">' +
+        '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">MOTOR SQL</span><b style="color:#F1F5F9;font-size:12px">' + (isDesktop ? 'SQLite3 Nativo (Electron)' : 'SQLite3 WebAssembly (sql.js)') + '</b></div>' +
+        '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">ARCHIVO / IDB</span><b style="color:#F1F5F9;font-size:12px">sifer360-licoreria.sqlite</b></div>' +
+        '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">VENTAS REGISTRADAS</span><b style="color:#38BDF8;font-size:13px">' + salesCount + '</b></div>' +
+        '<div style="background:#1E293B;padding:8px 10px;border-radius:6px"><span style="font-size:10px;color:#94A3B8;display:block">OPERACIONES CASHEA</span><b style="color:#A78BFA;font-size:13px">' + cshCount + '</b></div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div style="background:#131C2E;border:1px solid #1E293B;border-radius:8px;padding:12px">' +
+      '<b style="color:#F8FAFC;font-size:13px;display:block;margin-bottom:8px">Copias de Seguridad y Restauración de SQLite</b>' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px">' +
+        '<button class="btn primary" id="dbExportSqlite" type="button" style="display:inline-flex;align-items:center;gap:6px">' +
+          '<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+          'Descargar copia (.sqlite)' +
+        '</button>' +
+        '<button class="btn" id="dbImportSqliteBtn" type="button" style="display:inline-flex;align-items:center;gap:6px">' +
+          '<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' +
+          'Restaurar copia (.sqlite)' +
+        '</button>' +
+        '<input type="file" id="dbImportSqliteFile" accept=".sqlite,.db" hidden>' +
+        '<button class="btn" id="dbExportJson" type="button" title="Respaldo completo de datos en formato JSON">Respaldo JSON</button>' +
+        '<button class="btn" id="dbResetAll" type="button" style="color:#F87171;border-color:#7F1D1D" title="Vaciar datos operativos locales">Reiniciar base</button>' +
+      '</div>' +
+      '<div id="dbMsg" class="hint" style="margin-top:10px;min-height:18px"></div>' +
+    '</div>' +
+  '</div>');
+
+  const note = $('#dbMsg', el);
+
+  $('#dbExportSqlite', el).addEventListener('click', () => {
+    try {
+      const bytes = posSqliteDriver.exportSqlite();
+      if (!bytes) {
+        /* Export JSON snapshot if raw sqlite bytes not loaded in memory */
+        const blob = new Blob([JSON.stringify(stateSnapshot(), null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'sifer360-licoreria-estado-' + new Date().toISOString().slice(0, 10) + '.json';
+        a.click();
+        note.textContent = 'Respaldo de datos exportado correctamente.';
+        return;
+      }
+      const blob = new Blob([bytes], { type: 'application/x-sqlite3' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'sifer360-licoreria-backup-' + new Date().toISOString().slice(0, 10) + '.sqlite';
+      a.click();
+      note.textContent = 'Respaldo SQLite de SIFER 360 Licorería descargado exitosamente.';
+    } catch (e) {
+      note.textContent = 'Error al exportar SQLite: ' + e.message;
+    }
+  });
+
+  const fileInput = $('#dbImportSqliteFile', el);
+  $('#dbImportSqliteBtn', el).addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    note.textContent = 'Importando base de datos SQLite…';
+    try {
+      const buf = await file.arrayBuffer();
+      await posSqliteDriver.importSqlite(buf);
+      note.textContent = 'Base de datos SQLite restaurada correctamente. Recargando…';
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      note.textContent = 'Error restaurando SQLite: ' + e.message;
+    }
+  });
+
+  $('#dbExportJson', el).addEventListener('click', () => {
+    try {
+      const blob = new Blob([JSON.stringify(stateSnapshot(), null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'sifer360-licoreria-snapshot-' + new Date().toISOString().slice(0, 10) + '.json';
+      a.click();
+      note.textContent = 'Respaldo JSON descargado con éxito.';
+    } catch (e) {
+      note.textContent = 'Error al exportar: ' + e.message;
+    }
+  });
+
+  $('#dbResetAll', el).addEventListener('click', () => {
+    resetAll();
+  });
+
+  openWin({
+    title: 'Base de Datos Local SQLite',
+    w: 620,
+    body: el,
+    foot: [{ label: 'Cerrar', primary: true }]
+  });
+}
+
+async function prepareDatabaseBeforeStartup(){
+  window.__POS_DB_MODE = 'sqlite';
+  try {
+    await posSqliteDriver.init();
+    const st = await posSqliteDriver.loadState();
+    window.__POS_BOOT_STATE = st;
+  } catch (e) {
+    console.warn('Advertencia al iniciar SQLite local:', e);
+  }
+}
+
+window.SIFERAccountingBridge={getState:()=>S,save:()=>save(),setAccounting:data=>{if(!S)throw new Error('Estado POS no inicializado');S.accounting=data;save();return true;}};
+
+/* ---------- arranque ---------- */
+function restoreWorkspaceAfterReload(){
+  const user=activeUser();
+  if(!user||!user.username||!user.role)return;
+  if(user.role==='cajero'){
+    if(window.SIFERCashier&&typeof window.SIFERCashier.start==='function')window.SIFERCashier.start(user);
+    return;
+  }
+  const key='sifer360_last_module_v1:'+user.username;
+  let last='';try{last=localStorage.getItem(key)||'';}catch(e){}
+  const allowed={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','contabilidad','documentos','basedatos','tasa','usuarios','cajas'],contador:['seniat','contabilidad']};
+  if(last&&(allowed[user.role]||[]).includes(last)){
+    const button=$('#toolbar [data-tb="'+last+'"]');
+    if(button&&!button.hidden){button.click();return;}
+  }
+  if(user.role==='admin')showDashboardScreen();else if(user.role==='contador'&&window.SIFERAccountantDashboard)window.SIFERAccountantDashboard.show();
+}
+prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(()=>{
+  init();
+  buildChrome();
+  renderCatOptions();
+  renderAll();
+  wire();
+  primeOperationBaseline();
+  window.__SIFER_READY = true;
+  try{window.dispatchEvent(new Event('sifer:ready'));}catch(e){}
+  restoreWorkspaceAfterReload();
+  msg(saved?'Base de datos local SQLite de SIFER 360 Licorería cargada con éxito. Sistema listo para operar.':'Base de datos local SQLite de SIFER 360 Licorería inicializada. Listo para operar.');
+});
+})();:'Bs.')+'</td><td><input class="fld r" type="number" min="0" step="0.01" id="cshInitAmt-'+m.id+'" data-csh-initial-method="'+m.id+'" value="0" style="min-width:105px" aria-label="Importe inicial '+esc(m.name)+'"></td></tr>').join('');
   const ciInp = $('#cshCi', el);
   const tokenInp = $('#cshToken', el);
 
