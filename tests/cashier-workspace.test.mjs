@@ -41,3 +41,14 @@ test('toolbars scroll horizontally without shrinking labels or overlapping butto
   assert.match(css,/\.toolbar\.cashier-toolbar\{justify-content:safe center;/);
   assert.match(css,/body\.cashier-pending #toolbar,body\.cashier-pending \.main\{visibility:hidden/);
 });
+
+test('cashier opening is session-scoped and never falls back to shared local active opening',()=>{
+  const start=main.indexOf('function readActiveOpening()');
+  const end=main.indexOf('function zExpectedByMethod',start);
+  const block=main.slice(start,end);
+  assert.match(block,/if\(user\.role==='cajero'\)/);
+  assert.match(block,/String\(sessionValue\.username\|\|''\)!==String\(user\.username\|\|''\)/);
+  assert.match(block,/String\(sessionValue\.cashbox\|\|''\)!==String\(user\.cashbox\|\|''\)/);
+  assert.match(block,/if\(activeUser\(\)\.role!=='cajero'\)localStorage\.setItem/);
+  assert.doesNotMatch(block,/if\(user\.role==='cajero'\)[\s\S]*?localStorage\.getItem/);
+});
