@@ -413,7 +413,7 @@ button.sp:hover{background:var(--sel)}
 .toolbar{min-width:0;max-width:100%;overscroll-behavior-x:contain;touch-action:pan-x;}
 .toolbar>.tb,.toolbar>.tsep{flex:0 0 auto;}
 .toolbar>.tb{white-space:nowrap;}
-.toolbar.cashier-toolbar{justify-content:safe center;}
+ .toolbar.cashier-toolbar{justify-content:center;justify-content:safe center;}
 body.cashier-mode .topr>#btnDashboard,
 body.cashier-mode .topr>#btnCasheaTop,
 body.cashier-mode .topr>#btnDivisasTop,
