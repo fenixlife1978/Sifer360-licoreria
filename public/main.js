@@ -5951,11 +5951,11 @@ function cajaContext(){
 function currentCaja(){
   const c=cajaContext(),session=activeUser();
   if((c.role==='admin'||session.role==='admin')&&(!c.cashbox||c.cashbox==='Todas'||c.cashbox==='—'||c.cashbox==='SIN-ASIGNAR'))return 'SIN-ASIGNAR';
-  return String(!c.cashbox||c.cashbox==='Todas'?(S.cfg.caja||'01'):c.cashbox);
+  return String(c.cashbox||session.cashbox||S.cfg.caja||'01');
 }
 function currentCajero(){
-  const c=cajaContext();
-  return String(c.name||S.cfg.cajero||'Cajero');
+  const c=cajaContext(),session=activeUser();
+  return String(c.name||session.name||S.cfg.cajero||'Cajero');
 }
 function cajaSeqs(){
   try{return JSON.parse(localStorage.getItem('sifer360_box_sequences')||'{}')||{};}catch(e){return {};}
