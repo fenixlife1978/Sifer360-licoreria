@@ -17,6 +17,8 @@ test('la toolbar del contador autoriza exclusivamente Fiscal y Contabilidad',()=
  assert.match(access,/contador:\['seniat','contabilidad'\]/);
  assert.match(access,/function canAccess\(module,u\)/);
  assert.match(access,/accountant-toolbar/);
+ assert.match(access,/#toolbar \\.tsep/);
+ assert.match(access,/separator\.hidden=accountant/);
  assert.match(main,/SIFERAccess\.canAccess\(b\.dataset\.tb,user\)/);
  assert.match(main,/session\.role==='contador'\)\{window\.SIFERAccountantDashboard\.show\(\);return;\}/);
 });
