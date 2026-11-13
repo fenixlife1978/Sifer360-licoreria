@@ -8,7 +8,7 @@ const css=readFileSync(new URL('../public/styles.css',import.meta.url),'utf8');
 
 test('cashier login enters the POS opening flow directly instead of the role dashboard',()=>{
   assert.match(access,/window\.SIFERCashier\.start\(u\)/);
-  assert.match(main,/window\.SIFERCashier=\{start:function\(\)/);
+  assert.match(main,/window\.SIFERCashier=\{start:function\(user\)/);\n  assert.match(main,/window\.SIFERAccess&&window\.SIFERAccess\.applyPermissions\)window\.SIFERAccess\.applyPermissions\(user\|\|activeUser\(\)\)/);
   assert.match(main,/POS · Apertura obligatoria de caja/);
   assert.match(main,/onClose:isCashier\?\(\)=>\{\}:undefined/);
   assert.match(main,/Confirmar apertura e ingresar al POS/);
