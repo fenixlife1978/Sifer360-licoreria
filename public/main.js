@@ -6756,6 +6756,8 @@ prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la
   renderAll();
   wire();
   primeOperationBaseline();
+  window.__SIFER_READY = true;
+  try{window.dispatchEvent(new Event('sifer:ready'));}catch(e){}
   restoreWorkspaceAfterReload();
   msg(saved?'Base de datos local SQLite de SIFER 360 Licorería cargada con éxito. Sistema listo para operar.':'Base de datos local SQLite de SIFER 360 Licorería inicializada. Listo para operar.');
 });
