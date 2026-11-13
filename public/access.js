@@ -221,7 +221,8 @@ function applyPermissions(u){
  const toolbar=$('#toolbar');if(toolbar){toolbar.classList.toggle('cashier-toolbar',cashier);toolbar.classList.toggle('accountant-toolbar',accountant);}
  document.querySelectorAll('#toolbar [data-tb]').forEach(b=>{b.hidden=!(allow[u.role]||[]).includes(b.dataset.tb)});
  ['btnDashboard','btnCasheaTop','btnDivisasTop','btnAccountingTop','btnSeniatTop','btnMenu'].forEach(id=>{const b=$('#'+id);if(b)b.hidden=cashier||accountant;});
- if(accountant)['sbRate','sbDivisas','sbSeniat'].forEach(id=>{const b=$('#'+id);if(b)b.hidden=true;});
+ ['sbRate','sbDivisas','sbSeniat'].forEach(id=>{const b=$('#'+id);if(b)b.hidden=accountant;});
+ document.querySelectorAll('#toolbar .tsep').forEach(separator=>{separator.hidden=accountant;});
  const logout=$('#btnLogout');if(logout)logout.hidden=false;
 }
 async function renderNetwork(u){
