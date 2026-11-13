@@ -63,3 +63,17 @@ test('cashier can update BCV rate with a mandatory audited reason and opening id
   assert.match(main,/cashbox:opening\.cashbox,openingId:opening\.id/);
   assert.match(main,/activeUser\(\)\.role==='cajero'\?tasaBcvDlg\(\):cfgDlg\('cRate'\)/);
 });
+
+test('cashier can register justified collaboration, own consumption and donation stock exits in Kardex',()=>{
+  assert.match(access,/cajero:\[[^\]]*'salidas'[^\]]*\]/);
+  assert.match(main,/\['salidas','Salidas inventario','',inventoryExitDlg\]/);
+  assert.match(main,/function inventoryExitDlg\(\)/);
+  assert.match(main,/COLABORACION/);
+  assert.match(main,/CONSUMO_PROPIO/);
+  assert.match(main,/DONACION/);
+  assert.match(main,/if\(qty>Number\(p\.stock\)\)/);
+  assert.match(main,/if\(!reason\)/);
+  assert.match(main,/p\.stock=r2\(before-qty\)/);
+  assert.match(main,/addKardex\(\{ts,code:p\.code,type:concept,dir:'OUT'/);
+  assert.match(main,/cashbox:currentCaja\(\),qty,stockAfter:p\.stock,cost,user:user\.name/);
+});
