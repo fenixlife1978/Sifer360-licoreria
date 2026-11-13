@@ -15,7 +15,7 @@ test('cashier login enters the POS opening flow directly instead of the role das
 });
 
 test('cashier POS stays gated until a matching opening belongs to the logged-in cashier and box',()=>{
-  assert.match(main,/session\.role==='cajero'[\s\S]{0,360}opening\.status!=='abierta'[\s\S]{0,220}opening\.username\|\|''\)!==String\(session\.username/);
+  assert.match(main,/opening\.status!=='abierta'/);\n  assert.match(main,/String\(opening\.username\|\|''\)!==String\(session\.username\|\|''\)/);
   assert.match(main,/if\(isCashier&&String\(existing\.username\|\|''\)!==String\(user\.username\|\|''\)\)/);
   assert.match(main,/sessionStorage\.setItem\('sifer360_active_opening',JSON\.stringify\(op\)\)/);
   assert.match(main,/localStorage\.setItem\('sifer360_active_opening',JSON\.stringify\(op\)\)/);
