@@ -36,7 +36,7 @@ function accountRows(){
  const a=state(),q=filterText.toLowerCase(),accounts=a.accounts.filter(x=>(filterType==='TODOS'||x.type===filterType)&&(!q||(String(x.code)+' '+x.name).toLowerCase().includes(q)));
  return accounts.map(x=>{const t=totalsFor(validEntries(),x.code);return '<tr><td class="ac-code">'+esc(x.code)+'</td><td style="padding-left:'+Math.max(0,(x.level-1)*13)+'px">'+esc(x.name)+(x.isMovement?'':' <span class="ac-muted">· Agrupadora</span>')+'</td><td>'+esc(x.type)+'</td><td class="ac-num">'+money(t.balUsd)+'</td><td class="ac-num">'+money(t.balBs)+'</td></tr>';}).join('');
 }
-function tabButtons(){return [['accounts','Plan de cuentas'],['journal','Libro diario'],['ledger','Libro mayor'],['trial','Balance de comprobación']].map(([id,label])=>'<button class="ac-tab '+(activeTab===id?'active':'')+'" data-tab="'+id+'">'+label+'</button>').join('');}
+function tabButtons(){return [['accounts','Plan de cuentas'],['journal','Libro diario'],['ledger','Libro mayor'],['trial','Balance de comprobación'],['statements','Estados financieros'],['assets','Activos fijos']].map(([id,label])=>'<button class="ac-tab '+(activeTab===id?'active':'')+'" data-tab="'+id+'">'+label+'</button>').join('');}
 function accountSelect(value=''){
  return '<select class="ac-input" data-field="account"><option value="">Seleccione cuenta imputable…</option>'+movementAccounts().map(a=>'<option value="'+esc(a.code)+'" '+(String(value)===String(a.code)?'selected':'')+'>'+esc(a.code+' · '+a.name)+'</option>').join('')+'</select>';
 }
@@ -64,7 +64,7 @@ function renderTrial(){
 function render(){
  if(!dialog)return;
  const content=$('#acContent',dialog);
- content.innerHTML=activeTab==='accounts'?renderAccounts():activeTab==='journal'?renderJournal():activeTab==='ledger'?renderLedger():renderTrial();
+ content.innerHTML=activeTab==='accounts'?renderAccounts():activeTab==='journal'?renderJournal():activeTab==='ledger'?renderLedger():activeTab==='trial'?renderTrial():activeTab==='statements'?renderStatements():renderAssets();
  dialog.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===activeTab));
 }
 function addLine(container,values={}){
@@ -130,6 +130,61 @@ function exportTrial(){
  const csv=['Código,Cuenta,Debe USD,Haber USD,Debe Bs,Haber Bs',...rows.map(x=>[x.a.code,'"'+x.a.name.replace(/"/g,'""')+'"',x.t.dUsd,x.t.cUsd,x.t.dBs,x.t.cBs].join(','))].join('\r\n');
  const url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='sifer360-balance-comprobacion-'+today()+'.csv';a.click();URL.revokeObjectURL(url);
 }
+
+function renderStatements(){
+ const date=$('#acStatementDate',dialog)?.value||today(),entries=validEntries().filter(e=>String(e.date)<=date);
+ const sums=type=>movementAccounts().filter(a=>a.type===type).map(a=>({a,t:totalsFor(entries,a.code)}));
+ const natural=(type,t)=>type==='ACTIVO'||type==='COSTOS'||type==='GASTOS'?t.balUsd:t.cUsd-t.dUsd;
+ const assets=sums('ACTIVO'),liabs=sums('PASIVO'),equity=sums('PATRIMONIO'),income=sums('INGRESOS'),costs=sums('COSTOS'),expenses=sums('GASTOS');
+ const total=x=>x.reduce((n,z)=>n+natural(z.a.type,z.t),0);
+ const totalAssets=total(assets),totalLiabs=total(liabs),totalEquity=total(equity);
+ const profit=total(income)-total(costs)-total(expenses);
+ const section=(title,rows,type)=>'<h3 class="ac-report-title">'+title+'</h3><table class="ac-table"><thead><tr><th>Código</th><th>Cuenta</th><th class="ac-num">Saldo US$</th><th class="ac-num">Saldo Bs.</th></tr></thead><tbody>'+rows.filter(x=>Math.abs(x.t.balUsd)+Math.abs(x.t.balBs)>0.000001).map(x=>{const sign=type==='ACTIVO'||type==='COSTOS'||type==='GASTOS'?1:-1;return '<tr><td class="ac-code">'+esc(x.a.code)+'</td><td>'+esc(x.a.name)+'</td><td class="ac-num">'+money(x.t.balUsd*sign)+'</td><td class="ac-num">'+money(x.t.balBs*sign)+'</td></tr>';}).join('')+'</tbody><tfoot><tr class="ac-total"><td colspan="2">Total '+title+'</td><td class="ac-num">'+money(total(rows))+'</td><td class="ac-num">'+money(rows.reduce((n,x)=>n+(type==='ACTIVO'||type==='COSTOS'||type==='GASTOS'?x.t.balBs:-x.t.balBs),0))+'</td></tr></tfoot></table>';
+ const d=total(income),c=total(costs),g=total(expenses);
+ return '<div class="ac-tools"><label>Fecha de corte <input type="date" class="ac-input" id="acStatementDate" value="'+esc(date)+'"></label><button class="ac-small" id="acExportStatement">Exportar estados CSV</button><span class="ac-muted">Cifras derivadas exclusivamente de asientos contabilizados hasta la fecha seleccionada.</span></div><div class="ac-report-scroll"><section class="ac-report"><h2>Estado de situación financiera</h2><p class="ac-muted">Al '+esc(date)+'</p>'+section('Activos',assets,'ACTIVO')+section('Pasivos',liabs,'PASIVO')+section('Patrimonio',equity,'PATRIMONIO')+'<div class="ac-check '+(Math.abs(totalAssets-totalLiabs-totalEquity-profit)<0.02?'ok':'warn')+'">Activo: '+money(totalAssets)+' · Pasivo + Patrimonio + resultado del período: '+money(totalLiabs+totalEquity+profit)+' USD</div></section><section class="ac-report"><h2>Estado de resultados acumulado</h2><p class="ac-muted">Desde el inicio de la contabilidad hasta '+esc(date)+'</p>'+section('Ingresos',income,'INGRESOS')+section('Costos',costs,'COSTOS')+section('Gastos',expenses,'GASTOS')+'<div class="ac-total ac-profit">Resultado acumulado: '+money(profit)+' USD · '+money(total(income.map(x=>({a:x.a,t:{balBs:x.t.balBs,dUsd:x.t.dUsd,cUsd:x.t.cUsd}})))-costs.reduce((n,x)=>n+x.t.dBs-x.t.cBs,0)-expenses.reduce((n,x)=>n+x.t.dBs-x.t.cBs,0))+' Bs.</div></section><section class="ac-report"><h2>Flujo de efectivo registrado</h2><p class="ac-muted">Variación neta contabilizada en las cuentas de caja disponibles en el catálogo. No incluye bancos agrupadores sin auxiliares imputables.</p>'+section('Caja y efectivo',assets.filter(x=>x.a.code==='1.1.1.01'||x.a.code==='1.1.1.02'),'ACTIVO')+'</section></div>';
+}
+function showAssetForm(){
+ const a=state(),el=document.createElement('div');el.className='ac-modal';
+ const categories=[['1.2.1.01','1.2.1.05','Mobiliario y equipos'],['1.2.1.02','1.2.1.07','Equipos de computación'],['1.2.1.03','1.2.1.06','Vehículos'],['1.2.1.04','1.2.1.05','Maquinaria y equipos']];
+ el.innerHTML='<div class="ac-modal-card"><div class="ac-modal-head"><b>Registrar activo fijo</b><button class="ac-small" id="acCloseAsset">Cerrar</button></div><div class="ac-form-grid"><label>Descripción<input class="ac-input" id="asName" maxlength="150" placeholder="Identificación del activo"></label><label>Fecha de adquisición<input class="ac-input" id="asDate" type="date" value="'+today()+'"></label><label>Grupo contable<select class="ac-input" id="asCategory">'+categories.map(c=>'<option value="'+c[0]+'|'+c[1]+'">'+c[2]+'</option>').join('')+'</select></label><label>Costo de adquisición US$<input class="ac-input" id="asCostUsd" type="number" min="0.01" step="0.01"></label><label>Costo de adquisición Bs.<input class="ac-input" id="asCostBs" type="number" min="0.01" step="0.01"></label><label>Vida útil (meses)<input class="ac-input" id="asLife" type="number" min="1" max="1200" value="60"></label><label>Valor residual US$<input class="ac-input" id="asResidual" type="number" min="0" step="0.01" value="0"></label><label>Valor residual Bs.<input class="ac-input" id="asResidualBs" type="number" min="0" step="0.01" value="0"></label><label>Tasa de adquisición Bs./US$<input class="ac-input" id="asRate" type="number" min="0.000001" step="0.000001"></label></div><p class="ac-note">El alta del auxiliar no contabiliza nuevamente la compra. Registre primero el asiento de adquisición o apertura correspondiente; este auxiliar permitirá controlar la depreciación.</p><div class="ac-form-foot"><button class="ac-primary" id="acSaveAsset">Guardar activo</button></div></div>';
+ dialog.appendChild(el);
+ $('#acCloseAsset',el).onclick=()=>el.remove();
+ $('#acSaveAsset',el).onclick=()=>{
+  const name=$('#asName',el).value.trim(),date=$('#asDate',el).value,[assetAccount,accumAccount]=$('#asCategory',el).value.split('|');
+  const costUsd=Number($('#asCostUsd',el).value),costBs=Number($('#asCostBs',el).value),lifeMonths=Number($('#asLife',el).value),residualUsd=Number($('#asResidual',el).value)||0,residualBs=Number($('#asResidualBs',el).value)||0,rate=Number($('#asRate',el).value);
+  if(!name||!date||!(costUsd>0)||!(costBs>0)||!(lifeMonths>0)||!Number.isInteger(lifeMonths)||residualUsd<0||residualBs<0||residualUsd>costUsd||residualBs>costBs||!(rate>0)){alert('Complete los datos del activo con importes y vida útil válidos.');return;}
+  const map=accountMap();if(!map.get(assetAccount)?.isMovement||!map.get(accumAccount)?.isMovement){alert('Las cuentas del activo no están disponibles en el plan VEN-NIF.');return;}
+  const id='AF-'+String(a.nextAsset||1).padStart(5,'0');
+  a.fixedAssets.push({id,name,acquisitionDate:date,assetAccount,accumulatedDepreciationAccount:accumAccount,costUsd,costBs,residualUsd,residualBs,lifeMonths,rate,monthlyUsd:(costUsd-residualUsd)/lifeMonths,monthlyBs:(costBs-residualBs)/lifeMonths,monthsDepreciated:0,lastDepreciationMonth:null,status:'active',createdAt:new Date().toISOString()});
+  a.nextAsset=(Number(a.nextAsset)||1)+1;save();el.remove();render();
+ };
+}
+function renderAssets(){
+ const assets=state().fixedAssets||[];
+ return '<div class="ac-tools"><button class="ac-primary" id="acNewAsset">＋ Registrar activo</button><span class="ac-muted">'+assets.filter(a=>a.status==='active').length+' activos en control · Depreciación lineal mensual</span></div><div class="ac-scroll"><table class="ac-table"><thead><tr><th>Activo</th><th>Adquisición</th><th>Costo US$</th><th>Vida útil</th><th>Depreciado</th><th>Último período</th><th>Acción</th></tr></thead><tbody>'+ (assets.map(a=>'<tr><td><b>'+esc(a.id)+'</b><br>'+esc(a.name)+'</td><td>'+esc(a.acquisitionDate)+'</td><td class="ac-num">'+money(a.costUsd)+'</td><td>'+a.lifeMonths+' meses</td><td>'+a.monthsDepreciated+'/'+a.lifeMonths+'</td><td>'+esc(a.lastDepreciationMonth||'—')+'</td><td>'+(a.status==='active'&&a.monthsDepreciated<a.lifeMonths?'<button class="ac-small" data-depreciate="'+esc(a.id)+'">Depreciar mes</button>':'<span class="ac-muted">Completado</span>')+'</td></tr>').join('')||'<tr><td colspan="7" class="ac-empty">No hay activos fijos registrados.</td></tr>')+'</tbody></table></div><p class="ac-note">La depreciación se contabiliza al ejecutar el período. El sistema evita duplicar meses; el contador conserva el control y puede revisar cada asiento en el diario.</p>';
+}
+function depreciateAsset(id){
+ const a=state(),asset=a.fixedAssets.find(x=>x.id===id);if(!asset||asset.status!=='active')return;
+ const month=prompt('Indique el período a depreciar (AAAA-MM):',today().slice(0,7));if(!month)return;
+ if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)){alert('Período inválido. Use AAAA-MM.');return;}
+ if(month<asset.acquisitionDate.slice(0,7)){alert('No se puede depreciar antes de la fecha de adquisición.');return;}
+ if(asset.lastDepreciationMonth&&month<=asset.lastDepreciationMonth){alert('Ese período ya fue depreciado o es anterior al último período contabilizado.');return;}
+ const months=asset.monthsDepreciated||0;if(months>=asset.lifeMonths){alert('La vida útil ya fue depreciada.');return;}
+ const debitUsd=Math.min(asset.monthlyUsd,asset.costUsd-asset.residualUsd-months*asset.monthlyUsd),debitBs=Math.min(asset.monthlyBs,asset.costBs-asset.residualBs-months*asset.monthlyBs);
+ if(!(debitUsd>0)||!(debitBs>0)){alert('El valor depreciable se agotó.');return;}
+ const sequence=Number(a.nextEntry)||1,entryId='ACC-'+String(sequence).padStart(6,'0'),expense=accountMap().get('6.1.1.06'),accum=accountMap().get(asset.accumulatedDepreciationAccount);
+ if(!expense?.isMovement||!accum?.isMovement){alert('No se encuentran las cuentas contables de depreciación.');return;}
+ const date=month+'-'+new Date(Number(month.slice(0,4)),Number(month.slice(5,7)),0).getDate();
+ a.entries.push({id:entryId,number:entryId,sequence,date,reference:asset.id+' / '+month,description:'Depreciación mensual · '+asset.name,rate:debitBs/debitUsd,lines:[{accountCode:expense.code,accountName:expense.name,debitUsd,creditUsd:0,debitBs,creditBs:0},{accountCode:accum.code,accountName:accum.name,debitUsd:0,creditUsd:debitUsd,debitBs:0,creditBs:debitBs}],totalDebitUsd:debitUsd,totalCreditUsd:debitUsd,totalDebitBs:debitBs,totalCreditBs:debitBs,status:'posted',createdAt:new Date().toISOString(),createdBy:'Contador',assetId:asset.id,depreciationPeriod:month});
+ asset.monthsDepreciated=months+1;asset.lastDepreciationMonth=month;if(asset.monthsDepreciated>=asset.lifeMonths)asset.status='depreciated';
+ a.nextEntry=sequence+1;save();render();
+}
+function exportStatement(){
+ const date=$('#acStatementDate',dialog)?.value||today(),entries=validEntries().filter(e=>e.date<=date),rows=movementAccounts().map(a=>({a,t:totalsFor(entries,a.code)}));
+ const csv=['Código,Cuenta,Tipo,Saldo USD,Saldo Bs',...rows.map(x=>[x.a.code,'"'+x.a.name.replace(/"/g,'""')+'"',x.a.type,x.t.balUsd,x.t.balBs].join(','))].join('\r\n');
+ const url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'})),link=document.createElement('a');link.href=url;link.download='sifer360-estados-financieros-'+date+'.csv';link.click();URL.revokeObjectURL(url);
+}
+
 function open(){
  if(!bridge()){alert('El módulo contable no pudo conectarse con la base de datos del POS.');return;}
  ensureChart().then(()=>{
@@ -144,9 +199,12 @@ function open(){
    const rev=e.target.closest('[data-reverse]');if(rev){reverseEntry(rev.dataset.reverse);return;}
    const view=e.target.closest('[data-view-entry]');if(view){const entry=state().entries.find(x=>x.id===view.dataset.viewEntry);if(entry)showEntryForm(entry);return;}
    if(e.target.closest('#acExportTrial')){exportTrial();return;}
+   if(e.target.closest('#acNewAsset')){showAssetForm();return;}
+   const dep=e.target.closest('[data-depreciate]');if(dep){depreciateAsset(dep.dataset.depreciate);return;}
+   if(e.target.closest('#acExportStatement')){exportStatement();return;}
   });
   dialog.addEventListener('input',e=>{if(e.target.id==='acSearch'){filterText=e.target.value;const pos=e.target.selectionStart;render();const input=$('#acSearch',dialog);input.focus();input.setSelectionRange(pos,pos);}});
-  dialog.addEventListener('change',e=>{if(e.target.id==='acType'){filterType=e.target.value;render();}if(e.target.id==='acLedgerAccount'){selectedAccount=e.target.value;render();}});
+  dialog.addEventListener('change',e=>{if(e.target.id==='acType'){filterType=e.target.value;render();}if(e.target.id==='acLedgerAccount'){selectedAccount=e.target.value;render();}if(e.target.id==='acStatementDate'){render();}});
   render();
  }).catch(e=>alert('No se pudo iniciar Contabilidad: '+e.message));
 }
