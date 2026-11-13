@@ -213,7 +213,7 @@ function renderLogin(error=''){
 }
 
 function applyPermissions(u){
- const allow={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','contabilidad','documentos','basedatos','tasa','usuarios','cajas'],cajero:['nueva','buscar','cliente','suspender','recuperar','descuento','quitar','ventas','cortez','tasa'],contador:['ventas','cortez','seniat','documentos','cxc','cxp','compras','basedatos']};
+ const allow={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','contabilidad','documentos','basedatos','tasa','usuarios','cajas'],cajero:['nueva','buscar','cliente','suspender','recuperar','descuento','quitar','ventas','cortez','tasa','salidas'],contador:['ventas','cortez','seniat','documentos','cxc','cxp','compras','basedatos']};
  const cashier=u&&u.role==='cajero';
  document.body.classList.toggle('cashier-mode',cashier);
  const toolbar=$('#toolbar');if(toolbar)toolbar.classList.toggle('cashier-toolbar',cashier);
