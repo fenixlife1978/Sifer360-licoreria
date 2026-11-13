@@ -42,6 +42,16 @@ test('las operaciones POS exponen referencias estables y costo histórico para c
   assert.match(pos, /cost:l\.cost/);
 });
 
+test('la integración POS exige configurar cuentas imputables por método y operación', () => {
+  assert.match(accounting, /function renderIntegration\(\)/);
+  assert.match(accounting, /data-pay-account/);
+  assert.match(accounting, /data-integration-account/);
+  assert.match(accounting, /movementAccounts\(\)/);
+  assert.match(accounting, /No se asignan bancos agrupadores automáticamente/);
+  assert.match(accounting, /function saveIntegration\(\)/);
+  assert.match(accounting, /\['integration','Integración POS'\]/);
+});
+
 test('la contabilidad se incluye en el snapshot SQLite y se restaura al iniciar', () => {
   assert.match(pos, /accounting:S\.accounting\|\|/);
   assert.match(pos, /S\.accounting=d\.accounting&&typeof d\.accounting==='object'/);
