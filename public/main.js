@@ -1058,6 +1058,32 @@ function showKardexTicket(p){
   ]});
 }
 
+
+/* ---------- salidas justificadas de inventario ---------- */
+function inventoryExitDlg(){
+  const user=activeUser(),cashier=user.role==='cajero';
+  let selected=S.products[0]?.code||'';
+  const el=h('<div class="form"><div class="newgrid"><div class="f wide"><label for="ixProduct">Producto</label><select class="fld" id="ixProduct"></select></div><div class="f"><label for="ixConcept">Concepto de salida</label><select class="fld" id="ixConcept"><option value="COLABORACION">Colaboración</option><option value="CONSUMO_PROPIO">Consumo propio</option><option value="DONACION">Donación</option></select></div><div class="f"><label for="ixQty">Cantidad</label><input class="fld r" id="ixQty" type="number" min="0.001" step="0.001" value="1"></div><div class="f wide"><label for="ixReason">Motivo / detalle obligatorio</label><textarea class="fld" id="ixReason" rows="3" maxlength="300" placeholder="Indique a quién se entrega, motivo y cualquier detalle relevante"></textarea></div></div><div class="kpis" id="ixStock"></div><p class="hint">La salida descuenta existencias y se registra en el Kardex al costo promedio ponderado vigente. No genera factura ni ingreso por venta. El movimiento identifica usuario, caja, fecha y motivo.</p></div>');
+  const fill=()=>{
+    $('#ixProduct',el).innerHTML=S.products.map(p=>'<option value="'+esc(p.code)+'"'+(p.code===selected?' selected':'')+'>'+esc(p.code)+' — '+esc(p.desc)+' · Existencia: '+fq(p.stock)+' '+esc(p.unit||'und')+'</option>').join('');
+    const p=prod(selected);$('#ixStock',el).innerHTML=p?'<div class="kpi"><span>Existencia actual</span><b>'+fq(p.stock)+' '+esc(p.unit||'und')+'</b></div><div class="kpi"><span>CPP unitario</span><b>'+usd(p.cost)+'</b></div>':'';
+  };
+  $('#ixProduct',el).addEventListener('change',e=>{selected=e.target.value;fill();});
+  fill();
+  openWin({title:'Salidas y ajustes de inventario',w:650,body:el,foot:[{label:'Cancelar'},{label:'Registrar salida en Kardex',primary:true,fn:()=>{
+    const p=prod($('#ixProduct',el).value),qty=pn($('#ixQty',el).value),concept=$('#ixConcept',el).value,reason=$('#ixReason',el).value.trim();
+    if(!p){msg('Seleccione un producto válido.','bad');return false;}
+    if(!(qty>0)){msg('La cantidad debe ser mayor que cero.','bad');return false;}
+    if(qty>Number(p.stock)){msg('Existencia insuficiente. Disponible: '+fq(p.stock)+' '+p.unit,'bad');return false;}
+    if(!reason){msg('El motivo/detalle es obligatorio.','bad');return false;}
+    const ts=Date.now(),before=Number(p.stock)||0,cost=Number(p.cost)||0;
+    p.stock=r2(before-qty);
+    const labels={COLABORACION:'Colaboración',CONSUMO_PROPIO:'Consumo propio',DONACION:'Donación'};
+    addKardex({ts,code:p.code,type:concept,dir:'OUT',doc:'SAL-'+String(currentCaja()).replace(/\W/g,'')+'-'+ts,party:labels[concept]+' · '+reason,cashbox:currentCaja(),qty,stockAfter:p.stock,cost,user:user.name||user.username||currentCajero()});
+    save();renderAll();msg('Salida registrada en Kardex: '+fq(qty)+' '+p.unit+' de '+p.desc+'.','ok');closeWin();return true;
+  }}],onOpen:()=>$('#ixProduct',el).focus()});
+}
+
 /* ---------- SECCIÓN DE CONTEO DE INVENTARIO CON FILTROS, MOTIVOS Y GUARDADO MASIVO ---------- */
 function conteoDlg(focusCode){
   let fDept='Todos', fCat='Todas', fSub='Todas', fQ='', onlyMod=false, onlyLow=false;
@@ -6294,7 +6320,7 @@ function corteZDlg(){
 const TB=[
  ['nueva','Nueva','F2',newSale],['buscar','Buscar','F3',searchCatalogDlg],['cliente','Cliente','F4',clientDlg],
  ['suspender','Suspender','F5',suspend],['recuperar','Recuperar','F6',recoverDlg],['descuento','Descuento','F7',discountDlg],['quitar','Quitar','Supr',removeSel],
- '-',['inventario','Inventario','F8',inventoryDlg],['conteo','Conteo','F11',()=>conteoDlg()],['kardex','Kardex','',()=>kardexDlg()],
+ '-',['inventario','Inventario','F8',inventoryDlg],['conteo','Conteo','F11',()=>conteoDlg()],['kardex','Kardex','',()=>kardexDlg()],['salidas','Salidas inventario','',inventoryExitDlg],
  '-',['compras','Compras','F10',()=>comprasDlg('new')],['cxc','CxC','',()=>cxcDlg()],['cxp','CxP','',()=>cxpDlg()],['divisas','USD/Zelle','',()=>divisasDlg()],['cashea','Cashea','',()=>casheaDlg()],
  '-',['ventas','Ventas día','F9',salesDlg],['cortez','Corte Z','',corteZDlg],['seniat','Fiscal','',()=>seniatSudebanDlg()],['contabilidad','Contabilidad','',openAccountingModule],['documentos','Documentos','',()=>fiscalDocumentsDlg()],['basedatos','Base de datos','',()=>databaseSettingsDlg()],['tasa','Tasa BCV','',()=>activeUser().role==='cajero'?tasaBcvDlg():cfgDlg('cRate')]
 ];
