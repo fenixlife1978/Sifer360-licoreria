@@ -85,7 +85,8 @@ test('CASHEA initial payment can be split across several real payment methods', 
   assert.match(assistant, /data-csh-initial-method/);
   assert.match(assistant, /initialPayments\.push\(\{id:m\.id,name:m\.name,cur:m\.cur,amount,ref\}\)/);
   assert.match(assistant, /Math\.abs\(r2\(paidInitialUsd-inicialUsd\)\)>0\.01/);
-  assert.match(assistant, /initialNeedsRef\.has\(m\.id\)&&!ref/);
+  assert.doesNotMatch(assistant, /initialNeedsRef|cshInitRef/);
+  assert.match(assistant, /if\(!token\)/);
   assert.match(main, /draftNow\.refs=\{cashea:cData\.aprobacion\}/);
   assert.match(main, /\(cData\.initialPayments\|\|\[\]\)\.forEach\(p=>\{draftNow\.amts\[p\.id\]=p\.amount;if\(p\.ref\)draftNow\.refs\[p\.id\]=p\.ref;\}\)/);
 });
