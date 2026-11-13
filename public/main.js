@@ -2565,6 +2565,7 @@ function comprasDlg(initialTab){
 
 /* ---------- MÓDULO DE CUENTAS POR COBRAR (CxC) ---------- */
 function cxcDlg(selId){
+  const cashierMode=activeUser().role==='cajero';
   let fState='PEND', fQ='', curId=selId||null, payMode='SINGLE';
   let mixState={};
   const resetMix=()=>{
@@ -2574,13 +2575,13 @@ function cxcDlg(selId){
   resetMix();
 
   const el=h('<div class="form">'+
-    '<div class="kpis" id="cxcKpis"></div>'+
+    '<div class="kpis" id="cxcKpis"'+(cashierMode?' style="display:none"':'')+'></div>'+
     '<div class="invbar">'+
       '<label for="cxcState">Estado</label>'+
       '<select class="fld" id="cxcState" style="max-width:190px"><option value="PEND">Pendientes por cobrar</option><option value="OVER">Solo vencidas</option><option value="PAID">Pagadas / Solventes</option><option value="ALL">Todas las cuentas</option></select>'+
       '<label for="cxcQ">Buscar</label>'+
       '<input class="fld" id="cxcQ" placeholder="Cliente, RIF o Nº de factura..." autocomplete="off">'+
-      '<button class="btn mini2" id="cxcNewBtn">+ Nuevo Cargo / CxC Manual</button>'+
+      (cashierMode?'':'<button class="btn mini2" id="cxcNewBtn">+ Nuevo Cargo / CxC Manual</button>')+
     '</div>'+
     '<div class="gridwrap invwrap" style="height:175px"><table class="grid" style="min-width:860px">'+
       '<thead><tr><th>Doc. / Factura</th><th>Cliente</th><th>RIF</th><th>Emisión</th><th>Vencimiento</th><th>Estado</th><th class="r">Total US$</th><th class="r">Abonado US$</th><th class="r">Saldo US$</th><th class="r">Saldo Bs.</th></tr></thead>'+
@@ -2772,7 +2773,7 @@ function cxcDlg(selId){
   el.addEventListener('click',e=>{
     const tr=e.target.closest('tr[data-id]');
     if(tr){curId=tr.dataset.id;resetMix();draw();return;}
-    if(e.target.id==='cxcNewBtn'){newCxcManualDlg();return;}
+    if(e.target.id==='cxcNewBtn'){if(activeUser().role==='cajero'){msg('El rol cajero no tiene permiso para crear cargos manuales de CxC.','bad');return;}newCxcManualDlg();return;}
     if(e.target.id==='abSwitchMixBtn'){payMode='MIXTO';renderDetailBox();return;}
     if(e.target.id==='cxcMixClear'){resetMix();renderDetailBox();return;}
     const fillBtn=e.target.closest('[data-cxc-fill]');
@@ -2847,6 +2848,7 @@ function cxcDlg(selId){
 }
 
 function newCxcManualDlg(){
+  if(activeUser().role==='cajero'){msg('El rol cajero no tiene permiso para crear cargos manuales de CxC.','bad');return;}
   const clOpts=S.clients.filter(c=>c.rif!=='V-00000000').map((c,i)=>'<option value="'+esc(c.rif)+'">'+esc(c.name)+' ('+esc(c.rif)+')</option>').join('');
   const el=h('<div class="form"><div class="newgrid">'+
     '<div class="f wide"><label for="mcClient">Cliente</label><select class="fld" id="mcClient">'+clOpts+'</select></div>'+
@@ -5676,6 +5678,26 @@ function seniatSudebanDlg(initialTab){
 }
 
 /* ---------- configuración y ayuda ---------- */
+function tasaBcvDlg(){
+  const user=activeUser(),opening=readActiveOpening(),oldRate=Number(S.cfg.rate)||0;
+  if(user.role!=='cajero'){cfgDlg('cRate');return;}
+  if(!opening||opening.status!=='abierta'||String(opening.username||'')!==String(user.username||'')||String(opening.cashbox||'')!==String(user.cashbox||'')){
+    msg('No se puede cambiar la tasa: no existe una apertura de caja válida para este cajero.','bad');return;
+  }
+  const el=h('<div class="form"><div class="newgrid"><div class="f"><label>Tasa BCV actual (Bs./US$)</label><input class="fld r" value="'+nf(oldRate)+'" readonly></div><div class="f"><label for="cashierNewRate">Nueva tasa (Bs./US$)</label><input class="fld r" id="cashierNewRate" inputmode="decimal" value="'+nf(oldRate)+'"></div><div class="f wide"><label for="cashierRateReason">Motivo del cambio (obligatorio)</label><input class="fld" id="cashierRateReason" maxlength="240" placeholder="Indique el motivo del ajuste de tasa"></div></div><p class="hint">El cambio se aplicará a las operaciones nuevas desde este momento. Las ventas y cobros anteriores conservarán la tasa registrada en cada operación. La acción quedará en el historial de auditoría.</p></div>');
+  openWin({title:'Actualizar tasa BCV · Caja '+esc(opening.cashbox),w:520,body:el,foot:[{label:'Cancelar'},{label:'Registrar cambio de tasa',primary:true,fn:()=>{
+    const next=pn($('#cashierNewRate',el).value),reason=$('#cashierRateReason',el).value.trim();
+    if(!(next>0)){msg('Ingrese una tasa BCV mayor que cero.','bad');return false;}
+    if(!reason){msg('Indique el motivo del cambio para dejar constancia de auditoría.','bad');return false;}
+    if(Math.abs(next-oldRate)<0.000001){msg('La tasa indicada es igual a la tasa actual. No hay cambios que registrar.','bad');return false;}
+    const ts=Date.now();
+    if(!Array.isArray(S.rateAudit))S.rateAudit=[];
+    S.rateAudit.push({id:'BCV-'+ts+'-'+String(S.rateAudit.length+1).padStart(4,'0'),ts,previousRate:oldRate,newRate:next,reason,username:user.username,name:user.name||user.username,role:user.role,cashbox:opening.cashbox,openingId:opening.id});
+    S.cfg.rate=next;opening.rate=next;writeActiveOpening(opening);
+    try{localStorage.setItem('sifer360_bcv_rate',String(next));}catch(e){}
+    save();renderAll();msg('Tasa BCV actualizada de '+nf(oldRate)+' a '+nf(next)+' Bs./US$. Cambio auditado.','ok');
+  }}],onOpen:()=>{const input=$('#cashierNewRate',el);input.focus();input.select();}});
+}
 function cfgDlg(focusId){
   const c=S.cfg;
   if(!c.ticketFont)c.ticketFont='ibm';
@@ -6273,7 +6295,7 @@ const TB=[
  ['suspender','Suspender','F5',suspend],['recuperar','Recuperar','F6',recoverDlg],['descuento','Descuento','F7',discountDlg],['quitar','Quitar','Supr',removeSel],
  '-',['inventario','Inventario','F8',inventoryDlg],['conteo','Conteo','F11',()=>conteoDlg()],['kardex','Kardex','',()=>kardexDlg()],
  '-',['compras','Compras','F10',()=>comprasDlg('new')],['cxc','CxC','',()=>cxcDlg()],['cxp','CxP','',()=>cxpDlg()],['divisas','USD/Zelle','',()=>divisasDlg()],['cashea','Cashea','',()=>casheaDlg()],
- '-',['ventas','Ventas día','F9',salesDlg],['cortez','Corte Z','',corteZDlg],['seniat','Fiscal','',()=>seniatSudebanDlg()],['contabilidad','Contabilidad','',openAccountingModule],['documentos','Documentos','',()=>fiscalDocumentsDlg()],['basedatos','Base de datos','',()=>databaseSettingsDlg()],['tasa','Tasa','',()=>cfgDlg('cRate')]
+ '-',['ventas','Ventas día','F9',salesDlg],['cortez','Corte Z','',corteZDlg],['seniat','Fiscal','',()=>seniatSudebanDlg()],['contabilidad','Contabilidad','',openAccountingModule],['documentos','Documentos','',()=>fiscalDocumentsDlg()],['basedatos','Base de datos','',()=>databaseSettingsDlg()],['tasa','Tasa BCV','',()=>activeUser().role==='cajero'?tasaBcvDlg():cfgDlg('cRate')]
 ];
 function buildChrome(){
   addAdminToolbarItems();
