@@ -124,13 +124,11 @@ test('la liquidación CASHEA exige depósito real conciliado y guarda trazabilid
 });
 
 
-test('el cobro exige referencias reales para los métodos electrónicos', () => {
-  assert.match(pos, /const refPrompts=\{zelle:/);
-  assert.match(pos, /voucher o código de autorización de la tarjeta/);
-  assert.match(pos, /número de operación\/autorización de Biopago/);
-  assert.match(pos, /referencia del pago móvil/);
-  assert.match(pos, /referencia de la transferencia/);
-  assert.match(pos, /finalize\(last,enteredAmts,isCred,cDays,enteredRefs,el\)/);
+test('el cobro solo exige aprobación real para CASHEA', () => {
+  assert.match(pos, /const refPrompts=\\{cashea:/);
+  assert.doesNotMatch(pos, /const refPrompts=\\{zelle:/);
+  assert.match(pos, /Aprobación CASHEA/);
+  assert.match(pos, /finalize\\(last,enteredAmts,isCred,cDays,enteredRefs,el\\)/);
 });
 
 test('el asistente Cashea vuelve al modal de pago y conserva el plan aplicado', () => {
