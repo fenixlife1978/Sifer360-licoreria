@@ -5946,7 +5946,13 @@ function openMenu(){
 
 /* ---------- control de caja por sesión y corte Z persistente ---------- */
 function cajaContext(){
-  try{return JSON.parse(sessionStorage.getItem('sifer360_active_box')||localStorage.getItem('sifer360_active_box')||'null')||{};}catch(e){return {};}
+  try{
+    const session=activeUser();
+    const active=JSON.parse(sessionStorage.getItem('sifer360_active_box')||'null');
+    if(active&&(!session.username||String(active.username||'')===String(session.username)))return active;
+    if(session.role==='cajero')return {username:session.username,name:session.name,role:'cajero',cashbox:session.cashbox};
+    return JSON.parse(localStorage.getItem('sifer360_active_box')||'null')||active||{};
+  }catch(e){return {};}
 }
 function currentCaja(){
   const c=cajaContext(),session=activeUser();
