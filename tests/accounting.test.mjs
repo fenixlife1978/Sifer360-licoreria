@@ -64,6 +64,14 @@ test('el módulo contable se carga después del POS y tiene acceso desde menú y
   assert.match(pos, /\['contabilidad','Contabilidad'/);
 });
 
+test('los accesos a Contabilidad VEN-NIF no fallan silenciosamente si el módulo no carga', () => {
+  assert.match(pos, /function openAccountingModule\\(\\)/);
+  assert.match(pos, /Contabilidad VEN-NIF no está disponible/);
+  assert.match(pos, /'Contabilidad':\\[\\['Contabilidad general VEN-NIF…','',openAccountingModule\\]\\]/);
+  assert.match(pos, /\\['contabilidad','Contabilidad','',openAccountingModule\\]/);
+  assert.match(accounting, /window\\.SIFERAccountingApp=\\{open\\}/);
+});
+
 test('estados financieros usan asientos contabilizados y fecha de corte', () => {
   assert.match(accounting, /function renderStatements\(\)/);
   assert.match(accounting, /Estado de situación financiera/);
