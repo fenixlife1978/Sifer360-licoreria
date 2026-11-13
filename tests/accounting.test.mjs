@@ -35,6 +35,13 @@ test('la reversión crea un asiento inverso y conserva el original', () => {
   assert.match(accounting, /debitUsd:l\.creditUsd,creditUsd:l\.debitUsd,debitBs:l\.creditBs,creditBs:l\.debitBs/);
 });
 
+test('las operaciones POS exponen referencias estables y costo histórico para contabilización', () => {
+  assert.match(pos, /accountingSourceId:'SALE-\+String\(currentCaja\(\)\)/);
+  assert.match(pos, /unitCost:i\.p\.cost/);
+  assert.match(pos, /accountingSourceId:'PURCHASE-\+pad\(no\)/);
+  assert.match(pos, /cost:l\.cost/);
+});
+
 test('la contabilidad se incluye en el snapshot SQLite y se restaura al iniciar', () => {
   assert.match(pos, /accounting:S\.accounting\|\|/);
   assert.match(pos, /S\.accounting=d\.accounting&&typeof d\.accounting==='object'/);
