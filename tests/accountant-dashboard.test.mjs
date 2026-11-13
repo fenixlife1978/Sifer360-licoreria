@@ -25,7 +25,7 @@ test('la toolbar del contador autoriza exclusivamente Fiscal y Contabilidad',()=
 test('los accesos superiores ajenos al contador se ocultan y el dashboard permanece visible al abrir módulos',()=>{
  assert.match(access,/btnDashboard','btnCasheaTop','btnDivisasTop','btnAccountingTop','btnSeniatTop','btnMenu/);
  assert.match(main,/user\.role!=='contador'\)showPosScreen\(\)/);
- assert.match(main,/user\.role==='contador'&&e\.key!=='F1'/);
+ assert.match(main,/session\.role==='contador'&&e\.key!=='F1'/);
  assert.match(main,/function openAccountingModule\(\)[\s\S]{0,180}contador/);
  assert.match(main,/function seniatSudebanDlg\(initialTab\)\{\s*if\(/);
 });
