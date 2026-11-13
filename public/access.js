@@ -179,7 +179,7 @@ function renderLogin(error=''){
       ? '<svg class="sa-eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
       : '<svg class="sa-eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
   };
-  $('#sa-login').onsubmit=e=>{
+  $('#sa-login').onsubmit=async e=>{
     e.preventDefault();
     const username=$('#sa-user').value.trim(),code=$('#sa-code').value;let cashbox=$('#sa-cashbox').value;
     const users=initUsers();
@@ -205,9 +205,18 @@ function renderLogin(error=''){
       sessionStorage.setItem('sifer360_active_box',JSON.stringify(active));
       localStorage.setItem('sifer360_active_box',JSON.stringify(active));
     }
+    const submit=$('#sa-login button[type="submit"]');
+    if(submit)submit.disabled=true;
+    $('#sa-error').textContent='Preparando el POS y verificando la base de datos…';
+    try{await waitForPosReady();}
+    catch(err){
+      if(submit)submit.disabled=false;
+      $('#sa-error').textContent='La aplicación todavía no está lista. '+err.message+' Recargue la página e intente nuevamente; no se ha registrado ninguna operación.';
+      return;
+    }
     if(u.role==='cajero'){
       if(window.SIFERCashier&&typeof window.SIFERCashier.start==='function')window.SIFERCashier.start(u);
-      else $('#sa-error').textContent='No se pudo iniciar la apertura obligatoria del POS. Recargue la aplicación e intente nuevamente.';
+      else {if(submit)submit.disabled=false;$('#sa-error').textContent='No se pudo iniciar la apertura obligatoria del POS. Recargue la aplicación e intente nuevamente.';}
     }else renderDashboard(u);
   };
 }
@@ -237,19 +246,33 @@ async function renderNetwork(u){
  $('#sa-net-stop').onclick=async()=>{try{const n=await window.posDesktop.networkStopServer();$('#sa-net-server-info').textContent='Servidor detenido.';await status()}catch(err){$('#sa-net-server-info').textContent=err.message}};
  await status();
 }
+function waitForPosReady(timeoutMs=30000){
+ if(window.__SIFER_READY)return Promise.resolve(true);
+ return new Promise((resolve,reject)=>{
+  let timer;
+  const cleanup=()=>{window.removeEventListener('sifer:ready',ready);if(timer)clearTimeout(timer)};
+  const ready=()=>{cleanup();resolve(true)};
+  window.addEventListener('sifer:ready',ready,{once:true});
+  if(window.__SIFER_READY){ready();return}
+  timer=setTimeout(()=>{cleanup();reject(new Error('El POS no terminó de inicializarse en 30 segundos.'))},timeoutMs);
+ });
+}
 function renderDashboard(u){if(u.role==='admin'){document.body.classList.remove('sa-locked');const access=$('#sifer-access');if(access)access.remove();applyPermissions(u);if(window.SIFERDashboard)window.SIFERDashboard.show();return;}if(u.role==='contador'){document.body.classList.remove('sa-locked');const access=$('#sifer-access');if(access)access.remove();applyPermissions(u);if(window.SIFERAccountantDashboard)window.SIFERAccountantDashboard.show();return;}const r=roles[u.role];const c=$('#sa-content');c.innerHTML='<div class="sa-top"><div class="sa-user"><div class="sa-avatar">'+esc(u.name.slice(0,1).toUpperCase())+'</div><div><div class="sa-role">'+esc(r.label)+'</div><b>'+esc(u.name)+'</b><div class="sa-muted">Sesión iniciada · '+esc(u.cashbox)+'</div></div></div><button class="sa-btn secondary" id="sa-logout" style="width:auto;margin:0">Salir</button></div><div class="sa-eyebrow">ESPACIO DE TRABAJO</div><h2 style="margin:10px 0 8px">¿Qué necesitas hacer?</h2><p class="sa-muted" style="margin-bottom:22px">Módulos disponibles según tu perfil de acceso.</p><div class="sa-dashgrid">'+r.modules.map((m,i)=>'<button class="sa-module" data-module="'+esc(m[1])+'"><div class="sa-icon">'+m[0]+'</div><b>'+esc(m[1])+'</b><span>'+esc(m[2])+'</span></button>').join('')+'</div><div class="sa-small">Las operaciones críticas deben solicitar autorización PIN. La autorización debe validarse en el servidor para producción.</div>';$('#sa-logout').onclick=logout;applyPermissions(u);c.querySelectorAll('[data-module]').forEach(b=>b.onclick=()=>{const m=b.dataset.module;if(m==='Dashboard')return;if(m==='Red y sincronización'){renderNetwork(u);return;}document.body.classList.remove('sa-locked');$('#sifer-access').remove();const map={'Punto de venta':'nueva','Ventas':'ventas','Compras':'compras','Compras y proveedores':'compras','Inventario':'inventario','Cajas':'cortez','Mi caja':'cortez','Reportes':'ventas','Libros fiscales':'seniat','Retenciones IVA':'seniat','Conciliación':'seniat','Exportar reportes':'seniat','Configuración':'basedatos','Consultar precios':'buscar','Dashboard':null};const id=map[m];if(id){document.body.classList.remove('sa-locked');$('#sifer-access').remove();const target=$('#toolbar [data-tb="'+id+'"]');if(target)target.click();else alert('El módulo aún no está conectado en esta pantalla: '+m)}else{applyPermissions(u);document.body.classList.remove('sa-locked');$('#sifer-access').remove();if(m==='Punto de venta'){const entry=$('#entry');if(entry)entry.focus()}}})}
 function renderOpening(u){const c=$('#sa-content');const invoice=(()=>{try{const seqs=JSON.parse(localStorage.getItem('sifer360_box_sequences')||'{}');const n=Number((seqs[u.cashbox]||{}).invoice||1);return 'FAC-'+String(n).padStart(8,'0')}catch{return 'FAC-00000001'}})();const rate=localStorage.getItem('sifer360_bcv_rate')||'0,00';c.innerHTML='<div class="sa-opening"><div class="sa-eyebrow">CONTROL DE JORNADA</div><h2>Apertura de caja</h2><p class="sa-muted">Registra los fondos físicos con los que inicia tu jornada. Este paso es obligatorio antes de facturar.</p><div class="sa-summary"><span>👤 Cajero: <b>'+esc(u.name)+'</b></span><span>▣ Caja: <b>'+esc(u.cashbox)+'</b></span><span>🧾 Factura inicial: <b>'+esc(invoice)+'</b></span></div><form id="sa-open"><div class="sa-opening-grid"><div class="sa-field"><label for="sa-bs">FONDO INICIAL EFECTIVO · BS.</label><input id="sa-bs" inputmode="decimal" required value="0,00" placeholder="0,00"></div><div class="sa-field"><label for="sa-usd">FONDO INICIAL USD FÍSICOS</label><input id="sa-usd" inputmode="decimal" required value="0,00" placeholder="0,00"></div><div class="sa-field"><label for="sa-rate">TASA BCV (BS./USD)</label><input id="sa-rate" required value="'+esc(rate)+'" inputmode="decimal"></div><div class="sa-field"><label>FECHA Y HORA</label><input readonly value="'+new Date().toLocaleString('es-VE')+'"></div></div><div class="sa-warning">Verifica los montos físicos y la tasa BCV antes de abrir. Los valores quedarán como registro de apertura para el control y arqueo de caja.</div><button class="sa-btn">Confirmar apertura y entrar al POS →</button><div class="sa-error" id="sa-open-error"></div></form><div class="sa-small">Si algún dato no coincide, solicita apoyo al administrador antes de continuar.</div></div>';$('#sa-open').onsubmit=e=>{e.preventDefault();const bs=num($('#sa-bs').value),usd=num($('#sa-usd').value),rate=num($('#sa-rate').value);if(bs===null||usd===null||rate===null||rate<=0){$('#sa-open-error').textContent='Ingresa montos válidos y una tasa BCV mayor que cero.';return}const opens=JSON.parse(localStorage.getItem('sifer360_openings')||'[]');const op={id:'OPEN-'+Date.now(),invoiceStart:invoice,cashier:u.name,username:u.username,cashbox:u.cashbox,bs,usd,rate,openedAt:new Date().toISOString(),status:'abierta'};opens.push(op);localStorage.setItem('sifer360_openings',JSON.stringify(opens));localStorage.setItem('sifer360_bcv_rate',String(rate));const activeBox={username:u.username,name:u.name,role:u.role,cashbox:u.cashbox,openingId:op.id,openedAt:op.openedAt,bs,usd,rate,status:'abierta'};sessionStorage.setItem('sifer360_active_box',JSON.stringify(activeBox));localStorage.setItem('sifer360_active_box',JSON.stringify(activeBox));sessionStorage.setItem('sifer360_active_opening',JSON.stringify(op));localStorage.setItem('sifer360_active_opening',JSON.stringify(op));renderDashboard(u)}}
 function num(s){s=String(s).trim().replace(/\./g,'').replace(',','.');const n=Number(s);return Number.isFinite(n)&&n>=0?n:null}
 function logout(){const current=(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION)||'null')}catch{return null}})();sessionStorage.removeItem(SESSION);sessionStorage.removeItem('sifer360_active_box');sessionStorage.removeItem('sifer360_active_opening');if(current&&current.username){const box=(()=>{try{return JSON.parse(localStorage.getItem('sifer360_active_box')||'null')}catch{return null}})();if(box&&box.username===current.username)localStorage.removeItem('sifer360_active_box');}const old=$('#sifer-access');if(old)old.remove();shell()}
-document.addEventListener('DOMContentLoaded',()=>{
+document.addEventListener('DOMContentLoaded',async()=>{
   const users=initUsers();
   const saved=(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION)||'null')}catch{return null}})();
   const user=saved&&users.find(x=>x.username===saved.username&&x.role===saved.role);
   if(user){
     const restored=Object.assign({},saved,{name:user.name,role:user.role,cashbox:user.role==='cajero'?user.cashbox:(saved.cashbox||user.cashbox||'—')});
     sessionStorage.setItem(SESSION,JSON.stringify(restored));
-    if(user.role!=='cajero')renderDashboard(restored);
-    else {shell();renderDashboard(restored);}
+    shell();
+    const content=$('#sa-content');
+    if(content)content.innerHTML='<div class="sa-card"><h2>Preparando SIFER360…</h2><p class="sa-muted">Inicializando el POS y comprobando la base de datos local. Espera un momento.</p></div>';
+    try{await waitForPosReady();renderDashboard(restored);}
+    catch(err){if(content)content.innerHTML='<div class="sa-card"><h2>No se pudo iniciar el POS</h2><p class="sa-error">'+esc(err.message)+'</p><p class="sa-muted">No se ha registrado ninguna operación. Recarga la aplicación para reintentar.</p></div>';}
   }else{
     sessionStorage.removeItem(SESSION);
     shell();
