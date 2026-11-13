@@ -33,7 +33,7 @@ test('el dashboard calcula IVA, retenciones, IGTF, CxC y CxP desde el estado ope
  for(const term of ['state.sales','state.purchases','state.retencionesIva','retainedUsd','retainedBs','ivaDebitBs','ivaCreditBs','igtfBs','state.cxc','state.cxp','accounting.entries'])assert.ok(dashboard.includes(term),term);
  assert.match(dashboard,/SIFERAccountantDashboard/);
  assert.match(dashboard,/estimación informativa/);
- assert.match(dashboard,/soportes fiscales adjuntos/);
+ assert.match(dashboard,/Soportes fiscales adjuntos/i);
 });
 test('dashboard y toolbar del contador se adaptan a pantallas pequeñas',()=>{
  assert.match(css,/accountant-toolbar\{justify-content:center/);
