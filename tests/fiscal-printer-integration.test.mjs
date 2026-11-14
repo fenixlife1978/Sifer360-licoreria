@@ -74,3 +74,11 @@ test('el modo interno muestra una advertencia inequívoca y nunca simula un núm
   assert.match(main, /if\(noPrinter\)\{msg\('Esta instalación está configurada sin impresora/);
   assert.match(main, /document\.body\.classList\.add\('printing-ticket-80mm'\)/);
 });
+
+test('el asistente inicial se abre después del primer inicio de sesión del administrador', () => {
+  const access = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
+  assert.match(access, /dispatchEvent\(new CustomEvent\('sifer:authenticated'/);
+  assert.match(main, /addEventListener\('sifer:authenticated'/);
+  assert.match(main, /event\.detail\.role==='admin'/);
+  assert.doesNotMatch(main, /function restoreWorkspaceAfterReload\(\)[\s\S]{0,220}printerSetupWizardDlg/);
+});
