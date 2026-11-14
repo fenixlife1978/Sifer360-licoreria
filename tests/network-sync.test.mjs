@@ -428,3 +428,10 @@ test('el cliente distingue conflicto de hash, conflicto de eventos y desconexió
   assert.match(pos, /conflictos LAN/);
   assert.match(pos, /Cliente LAN desconectado/);
 });
+
+test('el servidor y los clientes rechazan puertos LAN inválidos en lugar de usar NaN', () => {
+  assert.match(electron, /function normalizeLanPort\(value\)/);
+  assert.match(electron, /Number\.isInteger\(port\) \|\| port < 1024 \|\| port > 65535/);
+  assert.match(electron, /const port = normalizeLanPort\(requestedPort/);
+  assert.match(electron, /const port = normalizeLanPort\(opts\.port/);
+});
