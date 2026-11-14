@@ -12,7 +12,7 @@ const PROVIDERS = Object.freeze({
   epson:{id:'epson',label:'Epson Fiscal',sdkFiles:['EpsonFiscalInterface.dll'],sdkGroups:[['EpsonFiscalInterface.dll']],models:['Epson Fiscal compatible (confirmar modelo exacto)']},
   quorion:{id:'quorion',label:'Quorion',sdkFiles:['QProg.dll'],sdkGroups:[['QProg.dll']],models:['QPrint','CR20']},
   aclas:{id:'aclas',label:'Aclas',sdkFiles:['AclasSDK.dll'],sdkGroups:[['AclasSDK.dll']],models:['Aclas fiscal compatible (confirmar modelo exacto)']},
-  pnp:{id:'pnp',label:'PNP / Desarrollos PNP',sdkFiles:['pnpdll.dll'],sdkGroups:[['pnpdll.dll']],models:['PF-SUNMI','PF-88A','PF-220A','PF-220DA','PF-950A','PF-675A','PF-300A']}
+  pnp:{id:'pnp',label:'PNP / Desarrollos PNP',sdkFiles:['pnpdll.dll','pnpdll64.dll'],sdkGroups:[['pnpdll.dll','pnpdll64.dll']],models:['PF-SUNMI','PF-220A','PF-220DA','PF-220II','PF-300A','PF-300II','PF-950A','PF-675A','PFT88A']}
   ,hasar:{id:'hasar',label:'Hasar',sdkFiles:[],sdkGroups:[],models:['Hasar fiscal compatible (confirmar modelo y SDK con distribuidor)']}
 });
 const USB_SERIAL_DRIVERS = Object.freeze([
