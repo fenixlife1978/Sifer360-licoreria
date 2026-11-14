@@ -176,7 +176,8 @@ test('el evento debe tener una secuencia entera segura y positiva', () => {
 
 test('el identificador declarado debe coincidir con el identificador real del registro', () => {
   const db = fixture();
-  const invalid = event({ entityId: 'SALE-OTHER' });
+  const invalid = event();
+  invalid.payload.record.id = 'SALE-OTHER';
   assert.throws(() => db.apply([invalid]), /no coincide con el identificador del registro/);
   assert.equal(db.received(), 0);
   assert.equal(db.state().sales.length, 0);
