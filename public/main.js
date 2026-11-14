@@ -6496,11 +6496,6 @@ function wire(){
   if(btnSeniatTop)btnSeniatTop.addEventListener('click',()=>seniatSudebanDlg());
   const btnAccountingTop=$('#btnAccountingTop');
   if(btnAccountingTop)btnAccountingTop.addEventListener('click',()=>openAccountingModule());
-  const sbDivisas=$('#sbDivisas');
-  if(sbDivisas)sbDivisas.addEventListener('click',()=>divisasDlg());
-  const sbSeniat=$('#sbSeniat');
-  if(sbSeniat)sbSeniat.addEventListener('click',()=>seniatSudebanDlg());
-
   const dashboardButton=$('#btnDashboard');if(dashboardButton)dashboardButton.addEventListener('click',()=>showDashboardScreen());
   const logoutButton=$('#btnLogout');if(logoutButton)logoutButton.addEventListener('click',()=>{if(confirm('¿Desea cerrar la sesión actual?')){if(window.SIFERAccess&&window.SIFERAccess.logout)window.SIFERAccess.logout();}});
   $('#toolbar').addEventListener('click',e=>{
