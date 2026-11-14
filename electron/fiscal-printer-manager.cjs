@@ -4,6 +4,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
+const PnpProtocol = require('./pnp-protocol.cjs');
 const execFileAsync = promisify(execFile);
 
 const PROVIDERS = Object.freeze({
@@ -82,4 +83,49 @@ async function emitInvoice(profile,invoice,options={}){
   if(!fiscalDocumentNumber||!fiscalSerial)throw new Error('El adaptador no confirmó número de documento fiscal y serial de máquina. No se considera emitida.');
   return{ok:true,fiscalDocumentNumber,fiscalSerial,authorization:cleanText(response.authorization,200),raw:response};
 }
-module.exports={PROVIDERS,USB_SERIAL_DRIVERS,normalizeProfile,getSdkStatus,listSerialPorts,testSerialPort,runBridge,emitInvoice};
+
+let pnpSequence = 0x20;
+async function testPnpFiscalStatus(profile, options = {}) {
+  const p = normalizeProfile(profile);
+  if (p.provider !== 'pnp') throw new Error('La consulta de estado PNP solo aplica al ecosistema PNP.');
+  if (!p.port) throw new Error('Seleccione el puerto COM de la impresora PNP.');
+  if ((options.platform || process.platform) !== 'win32') throw new Error('La consulta PNP directa requiere Windows.');
+  pnpSequence = pnpSequence >= 0x7f ? 0x20 : pnpSequence + 1;
+  const sequence = pnpSequence;
+  const request = PnpProtocol.createStatusQuery(sequence);
+  const hex = request.toString('hex');
+  const parityName = p.parity[0].toUpperCase() + p.parity.slice(1);
+  const stopName = p.stopBits === 1 ? 'One' : 'Two';
+  const script = "$ErrorActionPreference='Stop'; " +
+    "$p=[System.IO.Ports.SerialPort]::new('" + p.port + "'," + p.baudRate + ",[System.IO.Ports.Parity]::" + parityName + "," + p.dataBits + ",[System.IO.Ports.StopBits]::" + stopName + "); " +
+    "try { $p.ReadTimeout=250; $p.WriteTimeout=" + p.timeoutMs + "; $p.Open(); $p.DiscardInBuffer(); " +
+    "$hex='" + hex + "'; $bytes=New-Object byte[] ($hex.Length/2); for($i=0;$i -lt $bytes.Length;$i++){ $bytes[$i]=[Convert]::ToByte($hex.Substring($i*2,2),16) }; " +
+    "$p.Write($bytes,0,$bytes.Length); $stream=New-Object System.IO.MemoryStream; $deadline=[DateTime]::UtcNow.AddMilliseconds(" + p.timeoutMs + "); $etxEnd=0; " +
+    "while([DateTime]::UtcNow -lt $deadline){ try{$v=$p.ReadByte()}catch [System.TimeoutException]{continue}; if($v -eq 18){$deadline=$deadline.AddMilliseconds(800);continue}; " +
+    "$stream.WriteByte([byte]$v); if($v -eq 3 -and $etxEnd -eq 0){$etxEnd=$stream.Length}; if($etxEnd -gt 0 -and $stream.Length -ge ($etxEnd+4)){break} }; " +
+    "if($etxEnd -eq 0 -or $stream.Length -lt ($etxEnd+4)){throw 'La impresora no devolvió una trama PNP completa.'}; " +
+    "[Console]::WriteLine([Convert]::ToBase64String($stream.ToArray())) } finally { if($p -and $p.IsOpen){$p.Close()}; if($p){$p.Dispose()} }";
+  const exec = options.execFileAsync || execFileAsync;
+  try {
+    const encoded = Buffer.from(script, 'utf16le').toString('base64');
+    const { stdout } = await exec('powershell.exe', ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',encoded], { windowsHide:true, timeout:p.timeoutMs+4000, maxBuffer:65536 });
+    const output = String(stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
+    if (!output) throw new Error('Windows no devolvió datos de la impresora.');
+    const response = PnpProtocol.decodeFrame(Buffer.from(output, 'base64'));
+    PnpProtocol.validateResponse(response, { sequence, command:0x38 });
+    if (response.fields.length < 12) throw new Error('La respuesta de estado PNP está incompleta.');
+    if (!/^[0-9A-Fa-f]{4}$/.test(response.fields[0]) || !/^[0-9A-Fa-f]{4}$/.test(response.fields[1])) throw new Error('La impresora devolvió estados no válidos.');
+    return {
+      ok:true, provider:'pnp', model:p.model, port:p.port, sequence,
+      printerStatus:response.fields[0], fiscalStatus:response.fields[1],
+      lastSequence:response.fields[2], currentStatus:response.fields[3],
+      lastCommand:response.fields[4], fiscalDate:response.fields[5],
+      fiscalTime:response.fields[6], invoicesSinceZ:response.fields[7],
+      currentInvoice:response.fields[9], lastZ:response.fields[11],
+      message:'La impresora PNP respondió a la consulta de estado de solo lectura. No se emitió factura ni reporte.'
+    };
+  } catch (error) {
+    throw new Error('No se pudo consultar el estado fiscal PNP: ' + (error.message || String(error)));
+  }
+}
+\nmodule.exports={PROVIDERS,USB_SERIAL_DRIVERS,normalizeProfile,getSdkStatus,listSerialPorts,testSerialPort,testPnpFiscalStatus,runBridge,emitInvoice};
