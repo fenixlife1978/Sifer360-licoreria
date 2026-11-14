@@ -126,3 +126,19 @@ test('el mismo registro en colas vinculadas a servidores distintos no se dedupli
   assert.equal(second.deviceSeq, 2);
   assert.deepEqual(outbox.pending().map(event => event.serverDeviceId), ['server-a', 'server-b']);
 });
+
+test('la cola rechaza una secuencia local agotada o un contador inconsistente', t => {
+  const options = fixture(t);
+  const file = path.join(options.directory, 'sifer360-network-outbox-v1.json');
+  fs.writeFileSync(file, JSON.stringify({ version: 1, deviceId: options.deviceId, lastSeq: Number.MAX_SAFE_INTEGER, events: [] }));
+  const outbox = createDurableOutbox(options);
+  assert.throws(() => outbox.enqueue(operation('event-overflow')), /Se agotó el consecutivo local/);
+});
+
+test('una cola cuyo contador no cubre los eventos guardados falla de forma cerrada', t => {
+  const options = fixture(t);
+  const file = path.join(options.directory, 'sifer360-network-outbox-v1.json');
+  fs.writeFileSync(file, JSON.stringify({ version: 1, deviceId: options.deviceId, lastSeq: 0, events: [{ ...operation('event-inconsistent'), deviceId: options.deviceId, deviceSeq: 1, status: 'pending' }] }));
+  const outbox = createDurableOutbox(options);
+  assert.throws(() => outbox.pending(), /cola LAN contiene una operación inválida/);
+});
