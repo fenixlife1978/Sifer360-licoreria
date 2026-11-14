@@ -115,3 +115,14 @@ test('los conflictos conservan el evento completo para diagnóstico después de 
   assert.equal(conflicts[0].conflictReason, 'entity-already-exists-with-different-data');
   assert.equal(conflicts[0].payload.record.total, 10);
 });
+
+test('el mismo registro en colas vinculadas a servidores distintos no se deduplica entre bases', t => {
+  const options = fixture(t);
+  const outbox = createDurableOutbox(options);
+  const first = outbox.enqueue({ ...operation('event-server-a'), serverDeviceId: 'server-a' });
+  const second = outbox.enqueue({ ...operation('event-server-b'), serverDeviceId: 'server-b' });
+  assert.notEqual(first.eventId, second.eventId);
+  assert.equal(first.deviceSeq, 1);
+  assert.equal(second.deviceSeq, 2);
+  assert.deepEqual(outbox.pending().map(event => event.serverDeviceId), ['server-a', 'server-b']);
+});
