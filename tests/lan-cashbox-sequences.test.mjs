@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const main = readFileSync(new URL('../electron/main.cjs', import.meta.url), 'utf8');
 const eventStore = readFileSync(new URL('../electron/lan-event-store.cjs', import.meta.url), 'utf8');
+const sequenceStore = readFileSync(new URL('../electron/cashbox-sequence.cjs', import.meta.url), 'utf8');
 const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
 const pos = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
 
@@ -15,7 +16,8 @@ test('los consecutivos se almacenan en SQLite con clave compuesta caja + tipo de
 
 test('la reserva correlativa incrementa atómicamente y nunca comparte secuencias entre cajas', () => {
   assert.match(main, /function allocateCashboxSequence\(cashboxId, operationType, minimumValue = 1\)/);
-  assert.match(main, /db\.run\('BEGIN IMMEDIATE'\)/);
+  assert.match(main, /allocateCashboxSequenceDurable/);
+  assert.match(sequenceStore, /db\.run\('BEGIN IMMEDIATE'\)/);
   assert.match(main, /MAX\(last_value,\?\)\+1/);
   assert.match(main, /periodRetention = \/\^retention-\\d\{6\}\$\//);
   assert.match(main, /COMMIT/);
