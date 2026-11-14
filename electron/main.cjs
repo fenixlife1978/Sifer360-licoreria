@@ -438,7 +438,7 @@ function requestPinnedJson(route, options = {}) {
         agent.destroy();
         let result = {};
         try { result = JSON.parse(raw || '{}'); } catch { return reject(new Error('El servidor LAN devolvió una respuesta JSON inválida.')); }
-        if (response.statusCode < 200 || response.statusCode >= 300 || result.ok === false) return reject(new Error(result.error || 'El servidor LAN no confirmó la operación (' + response.statusCode + ').'));
+        if (response.statusCode < 200 || response.statusCode >= 300 || result.ok === false) return reject(new Error((response.statusCode === 409 ? 'Conflicto de concurrencia: ' : '') + (result.error || 'El servidor LAN no confirmó la operación (' + response.statusCode + ').')));
         resolve(result);
       });
     });
