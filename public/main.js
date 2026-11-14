@@ -1302,7 +1302,7 @@ function conteoDlg(focusCode){
     }
   });
 
-  const saveBulk=()=>{
+  const saveBulk=async()=>{
     const modEntries=Object.keys(draftConteo).map(c=>{
       const p=prod(c),d=draftConteo[c];
       if(!p||!d||d.newStock===null||d.newStock===undefined)return null;
@@ -6068,6 +6068,9 @@ async function nextCajaSequence(operation,box=currentCaja()){
   else if(operation==='control')minimum=Math.max(0,...sales.map(x=>Number(String(x.ctrlNo||'').split('-').pop())||0))+1;
   else if(operation==='z')minimum=Math.max(0,...zRows.map(x=>Number(String(x.id||'').split('-').pop())||0))+1;
   else if(operation==='void')minimum=Math.max(0,...sales.map(x=>Number(x.voidNo)||0))+1;
+  else if(operation==='purchase')minimum=Math.max(0,...(S.purchases||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.no)||0))+1;
+  else if(operation==='count')minimum=Math.max(0,...(S.counts||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
+  else if(operation==='cxc')minimum=Math.max(0,...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
   else if(operation==='refund'||operation==='return')minimum=Math.max(0,...(S.returns||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.returnNo||x.sequence)||0))+1;
   const cached=cajaSeqs()[String(box)]||{};
   const cacheKey={invoice:'invoice',control:'ctrl',z:'z',void:'void',refund:'refund',return:'refund'}[operation];
