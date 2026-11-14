@@ -1,0 +1,38 @@
+name: Desktop verification
+
+on:
+  push:
+    branches:
+      - auto-depreciacion-mensual
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-web-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm test
+      - run: npm run build
+
+  windows-desktop-package:
+    needs: test-and-web-build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build:exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sifer360-licoreria-windows
+          path: dist-exe/*.exe
+          if-no-files-found: error
