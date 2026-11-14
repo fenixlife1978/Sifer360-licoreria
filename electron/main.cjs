@@ -111,17 +111,18 @@ function mergeStateRecords(base, incoming) {
   if (!base || typeof base !== 'object') return incoming;
   if (!incoming || typeof incoming !== 'object') return base;
   const out = { ...base, ...incoming };
-  const arrays = new Set(['sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','movements','returns','voids','openings','retentions','retencionesIva','divisas','cashea','casheaMovimientos','customers','clients','suppliers','documents','products']);
+  const arrays = new Set(['sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','movements','returns','voids','openings','retentions','retencionesIva','divisas','cashea','casheaMovimientos','casheaLiquidaciones','cambiosDivisas','customers','clients','suppliers','documents','products']);
+  const timestampValue = value => { const numeric = Number(value); if (Number.isFinite(numeric) && value !== null && value !== '') return numeric; const parsed = Date.parse(String(value || '')); return Number.isFinite(parsed) ? parsed : 0; };
   for (const key of arrays) {
     if (!Array.isArray(base[key]) && !Array.isArray(incoming[key])) continue;
     const map = new Map();
     for (const item of [...(base[key] || []), ...(incoming[key] || [])]) {
       const id = item && (item.id ?? item.uuid ?? item.eventId ?? item.no ?? item.number ?? item.code ?? item.sku);
       if (id === undefined || id === null) { map.set(crypto.createHash('sha256').update(JSON.stringify(item)).digest('hex'), item); continue; }
-      const boxScoped = ['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos'].includes(key) ? String(item.cashbox || 'sin-caja') + ':' : '';
+      const boxScoped = ['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas'].includes(key) ? String(item.cashbox || 'sin-caja') + ':' : '';
       const k = boxScoped + String(id);
       const old = map.get(k);
-      if (!old || Number(item.updatedAt || item.ts || item.createdAt || 0) >= Number(old.updatedAt || old.ts || old.createdAt || 0)) map.set(k, item);
+      if (!old || timestampValue(item.updatedAt || item.ts || item.createdAt) >= timestampValue(old.updatedAt || old.ts || old.createdAt)) map.set(k, item);
     }
     out[key] = [...map.values()];
   }
@@ -389,7 +390,7 @@ async function startLanServer(requestedPort) {
               throw new Error('La operación no contiene una entidad permitida y un registro válido.');
             }
             let state = null, records = [], existingRecord = null;
-            const boxScopedCollections = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos']);
+            const boxScopedCollections = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas']);
             const recordId = String(ev.entityId);
             if (allowedCollections.has(collection) && record && typeof record === 'object' && !Array.isArray(record)) {
               const stateRow = one('SELECT payload FROM app_state WHERE id=1');
@@ -532,6 +533,7 @@ async function flushClientOutbox() {
   for (const conflict of conflicts) clientOutbox.conflict([String(conflict.eventId)], conflict.reason || 'conflicto-servidor');
   if (typeof result.stateHash === 'string') networkConfig.serverStateHash = result.stateHash;
   saveNetworkConfig();
+  if (conflicts.length) throw new Error('El servidor detectó conflictos en operaciones LAN. Se detuvo la sincronización del snapshot para evitar sobrescribir registros; revise la cola de operaciones.');
   return { pending: clientOutbox.status().pending, accepted, conflicts };
 }
 function registerNetworkIpc() {
