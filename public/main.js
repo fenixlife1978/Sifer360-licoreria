@@ -6390,9 +6390,13 @@ function corteZDlg(){
       if(!boxOpen()){msg('Debe abrir el turno antes de registrar movimientos.','bad');return;}
       const amount=pn($('#zMovAmount',el).value),reason=$('#zMovReason',el).value.trim(),counterpartAccount=$('#zMovAccount',el).value;
       if(!amount||!reason||!counterpartAccount){msg('Indique monto, motivo y cuenta contrapartida contable del movimiento.','bad');return;}
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      let movementNo;try{movementNo=await nextCajaSequence('movement',box);}catch(error){msg('No se pudo reservar el consecutivo del movimiento: '+error.message,'bad');return;}
       if(!Array.isArray(S.movimientosCaja))S.movimientosCaja=[];
-      S.movimientosCaja.push({id:'MOV-'+box.replace(/\W/g,'')+'-'+Date.now(),cashbox:box,ts:Date.now(),direction:$('#zMovDir',el).value,currency:$('#zMovCur',el).value,amount:r2(amount),reason,counterpartAccount,rate:S.cfg.rate,user:currentCajero(),openingId:active.id||''});
-      save();$('#zMovAmount',el).value='';$('#zMovReason',el).value='';$('#zMovStatus',el).textContent='Movimiento registrado y guardado en el historial del turno.';draw();return;
+      S.movimientosCaja.push({id:'MOV-'+box.replace(/\W/g,'')+'-'+pad(movementNo,6),cashbox:box,sequence:movementNo,ts:Date.now(),direction:$('#zMovDir',el).value,currency:$('#zMovCur',el).value,amount:r2(amount),reason,counterpartAccount,rate:S.cfg.rate,user:currentCajero(),openingId:active.id||''});
+      const persisted=await save();
+      if(!persisted||!persisted.ok){Object.assign(S,rollbackState);msg('SQLite/servidor no confirmó el movimiento; se restauró el estado anterior.','bad');draw();return;}
+      $('#zMovAmount',el).value='';$('#zMovReason',el).value='';$('#zMovStatus',el).textContent='Movimiento registrado y guardado en el historial del turno.';draw();return;
     }
     if(e.target.id==='zOpenShift'){
       active=readActiveOpening();
