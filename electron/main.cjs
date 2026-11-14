@@ -418,6 +418,7 @@ function allocateCashboxSequence(cashboxId, operationType, minimumValue = 1) {
   }
 }
 function requestPinnedJson(route, options = {}) {
+  if (options.body && Buffer.byteLength(options.body, 'utf8') > MAX_SYNC_BODY) throw new Error('La operación supera el límite de tamaño permitido para sincronización LAN.');
   const agent = createPinnedAgent(networkConfig.serverCert, networkConfig.tlsFingerprint);
   return new Promise((resolve, reject) => {
     const request = https.request({
