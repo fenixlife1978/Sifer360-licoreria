@@ -283,6 +283,7 @@ async function initializeDatabase() {
   db = opened.database;
   if (opened.recovered) console.warn('SIFER360 recuperó la base SQLite desde el respaldo automático:', opened.source, opened.corruptFile || '');
   initializeSchema();
+  if (opened.recovered) persistDb();
   dbConfigPath = path.join(app.getPath('userData'), 'database-mode.json');
   databaseMode = 'sqlite';
   try {
