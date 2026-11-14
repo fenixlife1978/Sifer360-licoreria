@@ -35,8 +35,8 @@ async function ensureServerCertificate({ directory, deviceId }) {
         notBeforeDate,
         notAfterDate,
         extensions: [
-          { name: 'basicConstraints', cA: false, critical: true },
-          { name: 'keyUsage', digitalSignature: true, keyAgreement: true, critical: true },
+          { name: 'basicConstraints', cA: true, critical: true },
+          { name: 'keyUsage', digitalSignature: true, keyAgreement: true, keyCertSign: true, cRLSign: true, critical: true },
           { name: 'extKeyUsage', serverAuth: true }
         ]
       }
