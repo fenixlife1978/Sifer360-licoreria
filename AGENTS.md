@@ -9,13 +9,26 @@ Antes de actuar, confirmar repositorio, rama, entorno y alcance solicitado. No a
 ## 1. Arquitectura obligatoria
 
 - La base operativa es **SQLite local exclusivamente**.
-- No incorporar nube, bases de datos remotas, servidores externos, sincronización remota ni almacenamiento externo como autoridad de datos.
+- No incorporar nube, bases de datos remotas, servidores externos ni sincronización por Internet. La única comunicación entre equipos permitida es dentro de la red local (LAN) del establecimiento.
+- En una instalación multi-PC, una computadora se designa como servidor y conserva la única SQLite operativa. Las demás son clientes y acceden a los datos exclusivamente mediante la API LAN autenticada del servidor; nunca abren ni modifican directamente el archivo SQLite.
+- El servidor LAN no es una base remota ni un servicio externo: permanece dentro de la red local y puede operar sin Internet. Si un cliente pierde conexión con el servidor, no debe confirmar ni registrar localmente operaciones como si fueran definitivas; debe informar que la operación no fue confirmada y permitir reconectar/recargar.
+- No almacenar la autoridad operativa de datos en cada cliente ni habilitar sincronización diferida que pueda mezclar o sobrescribir operaciones concurrentes.
 - No convertir LocalStorage, IndexedDB, cachés ni archivos temporales en una segunda fuente de verdad. Solo pueden apoyar persistencia local, recuperación y funcionamiento offline según la arquitectura existente.
 - Los respaldos y restauraciones son locales y quedan bajo control del cliente: pendrives, discos externos u otros medios que el cliente administre.
 - No proponer ni implementar copias de seguridad en nube o remotas.
 - Proteger los datos existentes. Nunca reinicializar, borrar, sustituir o migrar destructivamente información sin autorización expresa, respaldo verificable y plan de reversión.
 - Mantener compatibilidad con instalaciones y datos existentes; toda migración debe ser incremental, idempotente y comprobable.
 
+## 1.1. Red local y aislamiento por caja
+
+- La PC designada como servidor muestra su IP local, puerto y clave de emparejamiento. Los clientes pueden descubrir el servidor automáticamente en la LAN o introducir la IP manualmente.
+- Autenticar las conexiones LAN; no exponer la API a Internet ni abrir túneles o dependencias externas.
+- El servidor conserva la única SQLite central. Las lecturas y escrituras de los clientes pasan por el servidor y solo se confirman después de la persistencia central.
+- Proteger escrituras concurrentes: una modificación basada en una versión obsoleta del estado central debe rechazarse y solicitar recarga, nunca sobrescribir silenciosamente cambios de otra PC.
+- Cada caja tiene su propia numeración correlativa por tipo de operación. Ventas, números de control, cortes Z, devoluciones, anulaciones, compras, CxC, CxP, conteos, retenciones, movimientos y cualquier otro documento numerado no deben compartir secuencias entre cajas.
+- Las secuencias se reservan de forma atómica en SQLite central, con claves que distingan caja y tipo de operación; cuando la norma exija reinicio por período, incluir también el período.
+- Los registros operativos numerados deben identificar la caja de origen. Los historiales y consultas de una caja no deben incluir operaciones de otra. Los reportes fiscales o financieros consolidados de la entidad sí pueden sumar todas las cajas cuando su finalidad contable lo requiera.
+- Nunca cambiar la rama main ni publicar una versión sin autorización expresa del usuario.
 ## 2. Principio rector del módulo fiscal y contable
 
 SIFER debe ser una herramienta práctica para el contador público independiente que lleva la contabilidad de varias pequeñas y medianas empresas en Venezuela. Priorizar facilidad de uso, flexibilidad profesional, eficiencia e integridad contable.
