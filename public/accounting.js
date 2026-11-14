@@ -22,6 +22,7 @@ async function ensureChart(){
  const persisted=await save();if(!persisted||!persisted.ok)throw new Error('No se pudo guardar el plan de cuentas en SQLite.');return a;
 }
 function accountMap(){return new Map(state().accounts.map(a=>[String(a.code),a]));}
+function nextEntrySequence(a=state()){const max=(a.entries||[]).reduce((n,e)=>Math.max(n,Number(e.sequence)||Number(String(e.id||'').match(/(\\d+)$/)?.[1])||0),0);return Math.max(1,Number(a.nextEntry)||1,max+1);}
 function fmtAccount(a){return esc(a.code)+' · '+esc(a.name);}
 function movementAccounts(){return state().accounts.filter(a=>a.isMovement);}
 function totalsFor(entries,accountCode){
@@ -109,7 +110,7 @@ function showEntryForm(prefill=null){
   const sum=f=>entryLines.reduce((n,l)=>n+Number(l[f]||0),0);
   const dU=sum('debitUsd'),cU=sum('creditUsd'),dB=sum('debitBs'),cB=sum('creditBs');
   if(Math.abs(dU-cU)>=0.01||Math.abs(dB-cB)>=0.01){alert('El asiento no cuadra. Debe y Haber deben coincidir en USD y Bs.');return;}
-  const sequence=Number(a.nextEntry)||1,id='ACC-'+String(sequence).padStart(6,'0');
+  const sequence=nextEntrySequence(a),id='ACC-'+String(sequence).padStart(6,'0');
   a.entries.push({id,number:id,sequence,date,reference,description,rate,lines:entryLines,totalDebitUsd:dU,totalCreditUsd:cU,totalDebitBs:dB,totalCreditBs:cB,status:'posted',createdAt:new Date().toISOString(),createdBy:window.SIFERAccountingBridge.getState().cfg?.cajero||'Contador'});
   a.nextEntry=sequence+1;const persisted=await save();if(!persisted||!persisted.ok){a.entries=a.entries.filter(x=>x.id!==id);a.nextEntry=sequence;alert('SQLite no confirmó el asiento. No se registró definitivamente; verifique la conexión antes de reintentar.');return;}el.remove();render();
  });
@@ -120,7 +121,7 @@ async function reverseEntry(id){
  const a=state(),original=a.entries.find(e=>e.id===id);if(!original)return;
  if(a.entries.some(e=>e.reversalOf===id)){alert('Este asiento ya tiene una reversión registrada.');return;}
  if(!confirm('Se creará un asiento inverso y se conservará el original. ¿Continuar?'))return;
- const sequence=Number(a.nextEntry)||1,newId='ACC-'+String(sequence).padStart(6,'0');
+ const sequence=nextEntrySequence(a),newId='ACC-'+String(sequence).padStart(6,'0');
  const lines=original.lines.map(l=>({...l,debitUsd:l.creditUsd,creditUsd:l.debitUsd,debitBs:l.creditBs,creditBs:l.debitBs}));
  a.entries.push({id:newId,number:newId,sequence,date:today(),reference:'REVERSIÓN '+original.number,description:'Reversión de '+original.number+' · '+original.description,rate:original.rate,lines,totalDebitUsd:original.totalCreditUsd,totalCreditUsd:original.totalDebitUsd,totalDebitBs:original.totalCreditBs,totalCreditBs:original.totalDebitBs,status:'posted',reversalOf:id,createdAt:new Date().toISOString(),createdBy:window.SIFERAccountingBridge.getState().cfg?.cajero||'Contador'});
  a.nextEntry=sequence+1;const persisted=await save();if(!persisted||!persisted.ok){a.entries=a.entries.filter(x=>x.id!==newId);a.nextEntry=sequence;alert('SQLite no confirmó la reversión. El asiento original permanece intacto.');return;}render();
@@ -242,7 +243,7 @@ function depreciateAsset(id,target){
  if(countBefore>=asset.lifeMonths)return 0;
  const map=accountMap(),expense=map.get('6.1.1.06'),accum=map.get(asset.accumulatedDepreciationAccount);
  if(!expense?.isMovement||!accum?.isMovement)return 0;
- let posted=0,usedUsd=alreadyUsd,usedBs=alreadyBs,count=countBefore,sequence=Number(a.nextEntry)||1;
+ let posted=0,usedUsd=alreadyUsd,usedBs=alreadyBs,count=countBefore,sequence=nextEntrySequence(a);
  for(const month of periods){
   if(count>=asset.lifeMonths)break;
   const debitUsd=Math.min(Number(asset.monthlyUsd)||0,Math.max(0,asset.costUsd-asset.residualUsd-usedUsd));
