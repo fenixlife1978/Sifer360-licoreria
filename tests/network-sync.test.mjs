@@ -43,7 +43,7 @@ test('la aplicación reintenta sincronización automáticamente en segundo plano
   assert.match(pos, /setInterval\(\(\)=>\{if\(window\.posDesktop&&typeof window\.posDesktop\.networkSyncNow==='function'\)networkSyncAttempt\(\)\},20000\)/);
   assert.match(pos, /scheduleNetworkSync\(\)/);
   assert.match(pos, /Sin confirmación del servidor · las operaciones nuevas permanecen en la cola LAN local/);
-  assert.match(pos, /const pending=saveQueue\.then\(\(\)=>posSqliteDriver\.saveState\(state\)\)\.then/);
+  assert.match(pos, /saveQueue\.then\(async\(\)=>\{\s*await previousCapture;\s*await captureNewOperations\(state\);\s*return posSqliteDriver\.saveState\(state\);\s*\}\)/);
 });
 
 test('el administrador tiene panel para servidor y clientes LAN', () => {
@@ -96,7 +96,7 @@ test('el POS convierte nuevos registros operativos en eventos de la cola local',
   assert.match(pos, /OPERATION_COLLECTIONS/);
   assert.match(pos, /\['sales','sale'\]/);
   assert.match(pos, /\['purchases','purchase'\]/);
-  assert.match(pos, /captureNewOperations\(\)/);
+  assert.match(pos, /await captureNewOperations\(state\)/);
   assert.match(pos, /networkCreateOperation\(/);
   assert.match(pos, /primeOperationBaseline\(\)/);
 });
@@ -254,7 +254,7 @@ test('Electron usa la cola durable del cliente y reintenta eventos pendientes an
 test('el cliente captura el registro nuevo antes de esperar la red y conserva la operación si falla el guardado remoto', () => {
   const capture = pos.slice(pos.indexOf('async function captureNewOperations'), pos.indexOf('function mergeRemoteSnapshot'));
   assert.ok(capture.indexOf('const snap=stateSnapshot()') < capture.indexOf('await window.posDesktop.networkStatus()'));
-  assert.match(capture, /Capturar primero en la outbox durable del cliente/);
+  assert.match(capture, /delivery\.serverConfirmed!==true\|\|delivery\.status!=='acked'/);
   assert.match(capture, /await window\.posDesktop\.networkCreateOperation\(/);
   assert.doesNotMatch(capture, /await lastSave/);
 });
@@ -304,7 +304,7 @@ test('la fusión de snapshots conserva cajas separadas para CASHEA y cambios de 
   assert.match(stateMerge, /timestampValue = value =>/);
   assert.match(stateMerge, /timestampValue\(item\.updatedAt \|\| item\.ts \|\| item\.createdAt\)/);
   assert.match(pos, /'casheaLiquidaciones','cambiosDivisas'/);
-  assert.match(pos, /Operación en cola LAN local/);
+  assert.match(pos, /Operación guardada en la cola LAN local/);
   assert.match(pos, /Conflicto LAN en/);
 });
 
@@ -384,8 +384,8 @@ test('una base recuperada persiste también el esquema actualizado antes de acep
 });
 
 test('un fallo al persistir la cola de auditoría LAN se comunica y no se oculta en consola', () => {
-  assert.match(pos, /falló la cola de auditoría LAN local/);
-  assert.match(pos, /Revise antes de continuar/);
+  assert.match(pos, /No se pudo confirmar una operación en el servidor LAN/);
+  assert.match(pos, /Operación no confirmada por el servidor LAN/);
 });
 
 test('el cliente impide enviar snapshots mayores que el límite del servidor', () => {
@@ -454,7 +454,7 @@ test('el arranque migra una sola vez los consecutivos históricos compartidos', 
 
 test('las escrituras del renderer se serializan y un fallo recarga el estado autoritativo o bloquea nuevas escrituras', () => {
   assert.match(pos, /let saveQueue=Promise\.resolve\(\),saveSequence=0,persistenceBlocked=false/);
-  assert.match(pos, /saveQueue\.then\(\(\)=>posSqliteDriver\.saveState\(state\)\)/);
+  assert.match(pos, /await captureNewOperations\(state\);\s*return posSqliteDriver\.saveState\(state\)/);
   assert.match(pos, /const authoritative=await posSqliteDriver\.loadState\(\)/);
   assert.match(pos, /OPERACIÓN NO CONFIRMADA: se recargó el último estado durable/);
   assert.match(pos, /persistenceBlocked=true/);
@@ -470,14 +470,14 @@ test('la sincronización también bloquea operaciones antiguas sin identidad de 
   assert.match(electron, /server-identity-changed/);
 });
 
-test('la outbox captura operaciones nuevas sin depender del éxito del snapshot completo', () => {
-  assert.match(pos, /Capturar primero en la outbox durable del cliente/);
+test('el renderer captura y confirma operaciones nuevas antes del snapshot completo', () => {
+  assert.match(pos, /await captureNewOperations\(state\)/);
   assert.doesNotMatch(pos, /const lastSave=window\.__SIFER_LAST_SAVE;\s*if\(lastSave\)\{const persisted=await lastSave/);
   assert.match(pos, /window\.posDesktop\.networkCreateOperation\(/);
 });
 
 test('la reconexión recupera el estado del servidor y desbloquea escrituras previamente bloqueadas', () => {
-  assert.match(pos, /if\(persistenceBlocked\|\|saveSequence===syncRevision\)\{\s*for\(const key of Object\.keys\(S\)\)delete S\[key\];\s*Object\.assign\(S,result\.state\);\s*persistenceBlocked=false/);
+  assert.match(pos, /if\(persistenceBlocked\|\|saveSequence===syncRevision\)\{\s*for\(const key of Object\.keys\(S\)\)delete S\[key\];\s*Object\.assign\(S,result\.state\);\s*primeOperationBaseline\(\);\s*persistenceBlocked=false/);
 });
 
 test('desconectar conserva la identidad del servidor anterior para etiquetar nuevas operaciones pendientes', () => {
@@ -515,7 +515,7 @@ test('la sincronización no sobrescribe cambios del usuario hechos mientras la p
 
 test('la sincronización espera tanto la persistencia del snapshot como la captura durable de operaciones', () => {
   assert.match(pos, /let operationCapturePromise=Promise\.resolve\(\)/);
-  assert.match(pos, /operationCapturePromise=operationCapturePromise\.then\(\(\)=>captureNewOperations\(\)\)/);
+  assert.match(pos, /operationCapturePromise=pending\.then\(\(\)=>undefined,\(\)=>undefined\)/);
   assert.match(pos, /captureTask=operationCapturePromise/);
   assert.match(pos, /await captureTask/);
   assert.match(pos, /captureTask!==operationCapturePromise/);
@@ -535,7 +535,7 @@ test('el endpoint LAN valida Bearer con comparación constante y nunca compara c
 
 test('si falla el bind del servidor LAN restaura la configuración anterior y no deja el equipo marcado como servidor', () => {
   const startup = electron.slice(electron.indexOf('async function startLanServer'), electron.indexOf('function allocateCashboxSequence'));
-  assert.match(startup, /const previousConfig = \{ \.\.\.networkConfig, \.\.\.\(networkConfig\.role === 'server' \? \{ role: 'standalone' \} : \{\}\) \}/);
+  assert.match(startup, /const previousConfig = \{ \.\.\.networkConfig \}/);
   assert.match(startup, /networkServer = null/);
   assert.match(startup, /try \{\s*saveNetworkConfig\(\)/);
   assert.match(startup, /catch \(error\) \{\s*stopDiscoveryServer\(\)/);
@@ -602,4 +602,40 @@ test('una operación pendiente o conflictiva no se marca como capturada en la l�
   assert.match(capture, /if\(!delivery\|\|delivery\.serverConfirmed!==true\|\|delivery\.status!=='acked'\)/);
   assert.match(capture, /throw new Error\(delivery&&delivery\.deliveryError/);
   assert.ok(capture.indexOf('seen.add(identity)') > capture.indexOf('delivery.serverConfirmed!==true'));
+});
+
+test('el handler de guardado de snapshots cliente vacía y confirma la outbox antes de enviar el snapshot', () => {
+  const handler = electron.slice(electron.indexOf("ipcMain.handle('posdb:save-state'"), electron.indexOf("ipcMain.handle('posdb:list-documents'"));
+  assert.match(handler, /if \(networkConfig\.role === 'client'\)[\s\S]{0,350}await flushClientOutbox\(\);[\s\S]{0,300}clientApi\('\/api\/sync\/state'/);
+});
+
+test('los tombstones de ventas suspendidas se cargan desde el snapshot y sobreviven al reinicio del renderer', () => {
+  assert.match(pos, /S\.heldDeletedIds=Array\.isArray\(d\.heldDeletedIds\)\?d\.heldDeletedIds:\[\]/);
+  assert.match(pos, /if\(!Array\.isArray\(S\.heldDeletedIds\)\)S\.heldDeletedIds=\[\]/);
+  assert.match(pos, /S\.heldDeletedIds\.push\(\{id:String\(hd\.id/);
+});
+
+test('si el servidor LAN no puede reanudarse al iniciar, la aplicación falla cerrada y no crea un modo local paralelo', () => {
+  assert.match(electron, /if \(networkConfig\.role === 'server'\) \{ try \{ await startLanServer\(networkConfig\.port\); \} catch \(error\) \{ throw new Error\('No se pudo reanudar el servidor LAN/);
+  const startup = electron.slice(electron.indexOf('app.whenReady().then'), electron.indexOf("app.on('window-all-closed'"));
+  assert.doesNotMatch(startup, /networkConfig\.role = 'standalone'/);
+  assert.match(startup, /app\.quit\(\)/);
+});
+
+test('el renderer solicita consecutivos sin enviar mínimos calculados desde su snapshot local', () => {
+  const sequence = pos.slice(pos.indexOf('async function nextCajaSequence'), pos.indexOf('async function nextCajaInvoice'));
+  assert.match(sequence, /networkNextSequence\(\{cashbox:String\(box\),operation\}\)/);
+  assert.doesNotMatch(sequence, /let minimum=1|S\.sales|S\.cortesZ|localStorage/);
+  assert.match(electron, /getCashboxSequenceMinimum\(state, cashboxId, operationType\)/);
+  assert.doesNotMatch(electron.slice(electron.indexOf("url.pathname === '\/api\/sequences\/next'"), electron.indexOf("url.pathname === '\/api\/sync\/events'")), /body\.minimum/);
+});
+
+test('al reconectar después de un fallo, el cliente vacía la outbox y recarga el estado autoritativo sin enviar snapshots locales no confirmados', () => {
+  const sync = pos.slice(pos.indexOf('async function networkSyncAttempt'), pos.indexOf('window.SIFERNetworkSync'));
+  assert.match(sync, /if\(persistenceBlocked\)\{[\s\S]{0,300}networkFlushOutbox\(\)/);
+  assert.match(sync, /const authoritative=await posSqliteDriver\.loadState\(\)/);
+  assert.match(sync, /Object\.assign\(S,authoritative\)/);
+  assert.ok(sync.indexOf('if(persistenceBlocked)') < sync.indexOf('networkSyncNow(local)'));
+  assert.match(electron, /ipcMain\.handle\('network:flush-outbox'/);
+  assert.match(preload, /networkFlushOutbox: \(\) => ipcRenderer\.invoke\('network:flush-outbox'\)/);
 });

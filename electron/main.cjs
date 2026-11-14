@@ -13,6 +13,7 @@ const { openOrRecoverDatabase } = require('./sqlite-recovery.cjs');
 const { isLanAddress, assertLanHost } = require('./lan-address.cjs');
 const { hasValidBearerToken } = require('./lan-auth.cjs');
 const { allocateCashboxSequence: allocateCashboxSequenceDurable } = require('./cashbox-sequence.cjs');
+const { getCashboxSequenceMinimum } = require('./cashbox-sequence-minimum.cjs');
 const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
 const initSqlJs = require('sql.js');
 
@@ -305,7 +306,7 @@ async function startLanServer(requestedPort) {
   }
   if (!safeStorage.isEncryptionAvailable()) throw new Error('El cifrado seguro del sistema operativo no está disponible; no se iniciará el servidor LAN.');
   const identity = await ensureServerCertificate({ directory: app.getPath('userData'), deviceId: networkConfig.deviceId, encryptPrivateKey: pem => safeStorage.encryptString(pem).toString('base64'), decryptPrivateKey: value => safeStorage.decryptString(Buffer.from(value, 'base64')) });
-  const previousConfig = { ...networkConfig, ...(networkConfig.role === 'server' ? { role: 'standalone' } : {}) };
+  const previousConfig = { ...networkConfig };
   networkConfig = { ...networkConfig, role: 'server', host: '', port, token: networkConfig.token || crypto.randomBytes(24).toString('hex'), tlsFingerprint: identity.fingerprint, serverCert: '' };
   try {
     saveNetworkConfig();
@@ -350,7 +351,7 @@ async function startLanServer(requestedPort) {
     if (url.pathname === '/api/sequences/next' && req.method === 'POST') {
       try {
         const body = await readBody(req);
-        const result = allocateCashboxSequence(body.cashbox, body.operation, body.minimum);
+        const result = allocateCashboxSequence(body.cashbox, body.operation);
         return sendJson(res, 200, result);
       } catch (error) { return sendJson(res, 400, { error: error.message || 'No se pudo reservar el consecutivo.' }); }
     }
@@ -411,7 +412,17 @@ async function startLanServer(requestedPort) {
     throw error;
   }
 }
-function allocateCashboxSequence(cashboxId, operationType, minimumValue = 1) {
+function allocateCashboxSequence(cashboxId, operationType) {
+  if (!db) throw new Error('La base SQLite central no está disponible para reservar consecutivos.');
+  const statement = db.prepare('SELECT payload FROM app_state WHERE id=1');
+  let state = {};
+  try {
+    if (statement.step()) {
+      const row = statement.getAsObject();
+      state = JSON.parse(String(row.payload || '{}'));
+    }
+  } finally { statement.free(); }
+  const minimumValue = getCashboxSequenceMinimum(state, cashboxId, operationType);
   return allocateCashboxSequenceDurable({ db, cashboxId, operationType, minimumValue, persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
 }
 function requestPinnedJson(route, options = {}) {
@@ -474,6 +485,12 @@ async function flushClientOutbox() {
 }
 function registerNetworkIpc() {
   ipcMain.handle('network:status', () => ({ ...networkConfig, running: !!networkServer, addresses: localAddresses() }));
+  ipcMain.handle('network:flush-outbox', async () => {
+    if (networkConfig.role !== 'client') return { pending: 0, accepted: [], conflicts: [] };
+    if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente LAN desconectado. No se confirma ninguna operación pendiente.');
+    assertLanHost(networkConfig.host);
+    return flushClientOutbox();
+  });
   ipcMain.handle('network:operation-create', async (_e, input = {}) => {
     if (networkConfig.role === 'client') {
       const eventType = String(input.eventType || '').trim();
@@ -550,9 +567,9 @@ function registerNetworkIpc() {
     if (networkConfig.role === 'client') {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión configurada al servidor.');
       assertLanHost(networkConfig.host);
-      return clientApi('/api/sequences/next', { method: 'POST', body: JSON.stringify({ cashbox: input.cashbox, operation: input.operation, minimum: input.minimum }), timeoutMs: 8000 });
+      return clientApi('/api/sequences/next', { method: 'POST', body: JSON.stringify({ cashbox: input.cashbox, operation: input.operation }), timeoutMs: 8000 });
     }
-    return allocateCashboxSequence(input.cashbox, input.operation, input.minimum);
+    return allocateCashboxSequence(input.cashbox, input.operation);
   });
   ipcMain.handle('network:discover', () => discoverLanServers());
   ipcMain.handle('network:configure-server', (_e, opts = {}) => startLanServer(opts.port));
@@ -636,6 +653,7 @@ function registerIpc() {
     if (networkConfig.role === 'client') {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión al servidor; no se guardó la operación.');
       assertLanHost(networkConfig.host);
+      await flushClientOutbox();
       const result = await clientApi('/api/sync/state', { method: 'POST', body: JSON.stringify({ deviceId: networkConfig.deviceId, state, expectedHash: networkConfig.serverStateHash || '' }), timeoutMs: 10000 });
       networkConfig.serverStateHash = result.stateHash;
       return { ok: true, durable: 'server-sqlite', serverDeviceId: result.serverDeviceId };
@@ -721,7 +739,7 @@ if (!hasSingleInstanceLock) {
     if (networkConfig.role !== 'client') await initializeDatabase();
     registerIpc();
     registerNetworkIpc();
-    if (networkConfig.role === 'server') { try { await startLanServer(networkConfig.port); } catch (error) { networkConfig.role = 'standalone'; saveNetworkConfig(); } }
+    if (networkConfig.role === 'server') { try { await startLanServer(networkConfig.port); } catch (error) { throw new Error('No se pudo reanudar el servidor LAN. SIFER no iniciará en modo local para evitar crear una base de datos paralela. ' + (error && error.message ? error.message : String(error))); } }
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   }).catch(error => {

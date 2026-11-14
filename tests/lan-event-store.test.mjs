@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url);
 const { applyIncomingEvents } = require('../electron/lan-event-store.cjs');
 const SQL = await initSqlJs();
 
-function fixture({ failPersist = false } = {}) {
+function fixture({ failPersist = false, initialState = { sales: [], purchases: [] } } = {}) {
   let db = new SQL.Database();
   db.run(`
     CREATE TABLE app_state(id INTEGER PRIMARY KEY, payload TEXT NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -24,7 +24,7 @@ function fixture({ failPersist = false } = {}) {
       UNIQUE(device_id, device_seq)
     );
   `);
-  db.run('INSERT INTO app_state(id,payload) VALUES(1,?)', [JSON.stringify({ sales: [], purchases: [] })]);
+  db.run('INSERT INTO app_state(id,payload) VALUES(1,?)', [JSON.stringify(initialState)]);
   let persistedSnapshot = Buffer.from(db.export());
   let persistCalls = 0;
 
@@ -203,4 +203,49 @@ test('acepta y persiste eventos de movimientos de caja, auditoría de tasa y lot
   assert.equal(db.state().rateAudit[0].newRate, 900);
   assert.equal(db.state().lotesSudeban[0].refLote, 'ABC');
   assert.equal(db.integrity(), 'ok');
+});
+
+test('Kardex de dispositivos distintos no colisiona aunque su contador numérico local sea igual', () => {
+  const db = fixture();
+  const first = { id: 1, eventId: 'kdx-device-a-1', code: 'ART-01', cashbox: '01', ts: 100, qty: 1 };
+  const second = { id: 1, eventId: 'kdx-device-b-1', code: 'ART-02', cashbox: '01', ts: 101, qty: 2 };
+  const result = db.apply([
+    { eventId: 'evt-kdx-a', deviceId: 'device-a', deviceSeq: 1, eventType: 'inventory-movement', entityType: 'kardex', entityId: first.eventId, occurredAt: new Date(100).toISOString(), payload: { record: first } },
+    { eventId: 'evt-kdx-b', deviceId: 'device-b', deviceSeq: 1, eventType: 'inventory-movement', entityType: 'kardex', entityId: second.eventId, occurredAt: new Date(101).toISOString(), payload: { record: second } }
+  ]);
+  assert.deepEqual(result.accepted, ['evt-kdx-a', 'evt-kdx-b']);
+  assert.equal(db.state().kardex.length, 2);
+  assert.deepEqual(db.state().kardex.map(x => x.eventId).sort(), ['kdx-device-a-1', 'kdx-device-b-1']);
+});
+
+test('las colecciones con IDs locales no globales usan eventId para evitar colisiones entre clientes', () => {
+  const db = fixture();
+  const collections = ['kardex', 'lotesSudeban', 'rateAudit', 'casheaLiquidaciones'];
+  const events = collections.flatMap((collection, index) => [
+    { eventId: 'evt-a-' + collection, deviceId: 'device-a', deviceSeq: index + 1, eventType: collection, entityType: collection, entityId: 'unique-a-' + collection, occurredAt: new Date(1000 + index).toISOString(), payload: { record: { id: 'LOCAL-1', eventId: 'unique-a-' + collection, cashbox: '01', ts: 1000 + index } } },
+    { eventId: 'evt-b-' + collection, deviceId: 'device-b', deviceSeq: index + 1, eventType: collection, entityType: collection, entityId: 'unique-b-' + collection, occurredAt: new Date(2000 + index).toISOString(), payload: { record: { id: 'LOCAL-1', eventId: 'unique-b-' + collection, cashbox: '01', ts: 2000 + index } } }
+  ]);
+  const result = db.apply(events);
+  assert.equal(result.accepted.length, 8);
+  for (const collection of collections) assert.equal(db.state()[collection].length, 2, collection);
+});
+
+test('el evento de eliminación de venta suspendida conserva el tombstone y elimina solo esa venta', () => {
+  const db = fixture();
+  const held = { id: 'HOLD-01-a', cashbox: '01', cart: [{ code: 'A', qty: 1 }], ts: 100 };
+  db.apply([{ eventId: 'held-add', deviceId: 'device-a', deviceSeq: 1, eventType: 'held-sale', entityType: 'held', entityId: held.id, occurredAt: new Date(100).toISOString(), payload: { record: held } }]);
+  const tombstone = { id: held.id, cashbox: '01', ts: 200 };
+  const result = db.apply([{ eventId: 'held-delete', deviceId: 'device-a', deviceSeq: 2, eventType: 'held-sale-delete', entityType: 'heldDeletedIds', entityId: tombstone.id, occurredAt: new Date(200).toISOString(), payload: { record: tombstone } }]);
+  assert.deepEqual(result.accepted, ['held-delete']);
+  assert.deepEqual(db.state().held, []);
+  assert.deepEqual(db.state().heldDeletedIds, [tombstone]);
+});
+
+test('un tombstone elimina también una venta suspendida heredada sin id usando caja y timestamp', () => {
+  const legacy = { cashbox: '01', ts: 100, cart: [{ code: 'OLD', qty: 1 }] };
+  const db = fixture({ initialState: { sales: [], purchases: [], held: [legacy] } });
+  const tombstone = { id: 'HOLD-LEGACY-100', cashbox: '01', ts: 200 };
+  const result = db.apply([{ eventId: 'legacy-held-delete', deviceId: 'device-a', deviceSeq: 1, eventType: 'held-sale-delete', entityType: 'heldDeletedIds', entityId: tombstone.id, occurredAt: new Date(200).toISOString(), payload: { record: tombstone } }]);
+  assert.deepEqual(result.accepted, ['legacy-held-delete']);
+  assert.deepEqual(db.state().held, []);
 });

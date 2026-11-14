@@ -147,6 +147,7 @@ function addKardex(ev){
   if(!S.kardex)S.kardex=[];
   S.kardex.push({
     id:S.kardex.length+1,
+    eventId:ev.eventId||('KDX-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2))),
     ts:ev.ts||Date.now(),
     code:ev.code,
     type:ev.type,       /* 'INICIAL' | 'COMPRA' | 'VENTA' | 'CONTEO' | 'AJUSTE' | 'ANULACIÓN' */
@@ -531,14 +532,15 @@ let operationCapturePromise=Promise.resolve();
 const OPERATION_COLLECTIONS = [
   ['sales','sale'], ['purchases','purchase'], ['cxc','receivable'], ['cxp','payable'],
   ['cortesZ','cash-close'], ['kardex','inventory-movement'], ['counts','inventory-count'],
-  ['held','held-sale'], ['movimientosCaja','cashbox-movement'], ['rateAudit','exchange-rate-audit'], ['lotesSudeban','bank-batch'],
+  ['held','held-sale'], ['heldDeletedIds','held-sale-delete'], ['movimientosCaja','cashbox-movement'], ['rateAudit','exchange-rate-audit'], ['lotesSudeban','bank-batch'],
   ['casheaMovimientos','cashea-operation'], ['casheaLiquidaciones','cashea-settlement'], ['cambiosDivisas','currency-movement'],
   ['retencionesIva','tax-retention'], ['retentions','tax-retention'], ['returns','return'], ['voids','void']
 ];
-const BOX_SCOPED_OPERATION_COLLECTIONS = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','movimientosCaja','rateAudit','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas']);
+const BOX_SCOPED_OPERATION_COLLECTIONS = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','held','heldDeletedIds','movimientosCaja','rateAudit','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas']);
 function operationIdentity(item,index,collection){
   if(!item||typeof item!=='object')return String(index)+':'+JSON.stringify(item);
-  const id=item.id??item.uuid??item.eventId??item.no??item.number??item.ctrlNo??item.code;
+  const eventIdCollections=new Set(['kardex','lotesSudeban','rateAudit','casheaLiquidaciones']);
+  const id=eventIdCollections.has(collection)?(item.eventId??item.id??item.uuid??item.no??item.number??item.ctrlNo??item.code):(item.id??item.uuid??item.eventId??item.no??item.number??item.ctrlNo??item.code);
   if(id===undefined)return String(index)+':'+JSON.stringify(item);
   const box=BOX_SCOPED_OPERATION_COLLECTIONS.has(collection)?String(item.cashbox||'sin-caja')+':':'';
   return box+String(id);
@@ -596,6 +598,24 @@ async function networkSyncAttempt(){
       if(pendingSave)await pendingSave;
       await captureTask;
     }while(pendingSave!==window.__SIFER_LAST_SAVE||captureTask!==operationCapturePromise);
+    if(persistenceBlocked){
+      const flushed=typeof window.posDesktop.networkFlushOutbox==='function'
+        ?await window.posDesktop.networkFlushOutbox()
+        :{accepted:[]};
+      const authoritative=await posSqliteDriver.loadState();
+      if(!authoritative||typeof authoritative!=='object')throw new Error('No se pudo recuperar el estado autoritativo después de la reconexión.');
+      for(const key of Object.keys(S))delete S[key];
+      Object.assign(S,authoritative);
+      primeOperationBaseline();
+      persistenceBlocked=false;
+      try{renderAll();}catch(e){}
+      networkLastStatus='recovered';
+      const status=$('#sbMsg');
+      if(status)status.textContent=(flushed&&flushed.accepted&&flushed.accepted.length)
+        ?'Reconexión confirmada · '+flushed.accepted.length+' operación(es) pendiente(s) aceptada(s) por el servidor; se recargó el estado durable.'
+        :'Estado autoritativo recargado · no se enviaron cambios locales no confirmados.';
+      return;
+    }
     const local=stateSnapshot();
     const syncRevision=saveSequence;
     const result=await window.posDesktop.networkSyncNow(local);
@@ -733,6 +753,7 @@ function load(){
     if(Array.isArray(d.suppliers)&&d.suppliers.length)S.suppliers=d.suppliers;
     S.sales=Array.isArray(d.sales)?d.sales:S.sales;
     S.held=Array.isArray(d.held)?d.held:[];
+    S.heldDeletedIds=Array.isArray(d.heldDeletedIds)?d.heldDeletedIds:[];
     if(Array.isArray(d.purchases))S.purchases=d.purchases;
     if(Array.isArray(d.cxc))S.cxc=d.cxc;
     if(Array.isArray(d.cxp))S.cxp=d.cxp;
@@ -794,6 +815,7 @@ function init(){
   saved=load();
   if(!Array.isArray(S.documents))S.documents=[];
   if(!Array.isArray(S.casheaMovimientos))S.casheaMovimientos=[];
+  if(!Array.isArray(S.heldDeletedIds))S.heldDeletedIds=[];
 }
 
 /* ---------- cálculos ---------- */
@@ -990,7 +1012,7 @@ function clearCart(){
 }
 async function suspend(){
   if(!S.cart.length){msg('No hay una venta con renglones para suspender.','bad');return;}
-  S.held.push({cart:S.cart,client:S.client,ts:Date.now()});
+  S.held.push({id:'HOLD-'+String(currentCaja()).replace(/\\W/g,'')+'-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2)),cashbox:currentCaja(),cart:S.cart,client:S.client,ts:Date.now()});
   S.cart=[];S.sel=-1;S.client=S.clients[0];
   const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la suspensión; la venta permanece en el estado durable anterior.','bad');return;}
   renderAll();msg('Venta suspendida. Hay '+S.held.length+' en espera.');
@@ -1004,7 +1026,7 @@ function recoverDlg(){
     const sub=r2(hd.cart.reduce((a,l)=>a+r2(r2(prod(l.code).price*l.qty)*(1-l.disc/100)),0));
     const tr=h('<table><tbody><tr><td>'+esc(hd.client.name)+'</td><td class="r">'+hd.cart.length+'</td><td class="r">'+nf(r2(sub*(1+IVA)))+'</td><td>'+fmtT(new Date(hd.ts))+'</td><td class="c"><button class="btn mini2" '+(busy?'disabled':'')+'>Recuperar</button></td></tr></tbody></table>').querySelector('tr');
     $('button',tr).addEventListener('click',async()=>{
-      S.cart=hd.cart;S.client=hd.client;S.sel=0;S.held.splice(i,1);
+      S.cart=hd.cart;S.client=hd.client;S.sel=0;if(!Array.isArray(S.heldDeletedIds))S.heldDeletedIds=[];S.heldDeletedIds.push({id:String(hd.id||('HOLD-LEGACY-'+hd.ts)),cashbox:String(hd.cashbox||currentCaja()),ts:Date.now()});S.held.splice(i,1);
       const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la recuperación; se conservó el estado durable anterior.','bad');return;}
       closeWin();renderAll();msg('Venta recuperada.');
     });
@@ -4224,7 +4246,7 @@ function casheaSettlementDlg(onDone){
             m.tasaBcvLiquidacion = rate;
           });
           if(!Array.isArray(S.casheaLiquidaciones))S.casheaLiquidaciones=[];
-          S.casheaLiquidaciones.push({id:loteId,fecha:now,operaciones:pendings.map(m=>m.id),cantidad:pendings.length,banco:bancoSel.value,referencia:ref,brutoUsd:r2(totFinanciado),comisionPct:pct,comisionUsd:comUsd,netoEsperadoUsd:netoUsd,depositadoUsd:depositUsd,diferenciaUsd:r2(depositUsd-netoUsd),tasaBcv:rate});
+          S.casheaLiquidaciones.push({id:loteId,eventId:'CSH-LIQ-EVT-'+(crypto.randomUUID?crypto.randomUUID():now+'-'+Math.random().toString(36).slice(2)),fecha:now,operaciones:pendings.map(m=>m.id),cantidad:pendings.length,banco:bancoSel.value,referencia:ref,brutoUsd:r2(totFinanciado),comisionPct:pct,comisionUsd:comUsd,netoEsperadoUsd:netoUsd,depositadoUsd:depositUsd,diferenciaUsd:r2(depositUsd-netoUsd),tasaBcv:rate});
           const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la liquidación CASHEA; se restauró el estado durable anterior.','bad');return false;}
           msg('Lote '+loteId+' conciliado y guardado ('+pendings.length+' facturas).');
           if(onDone) onDone();
@@ -5085,6 +5107,7 @@ function registerLoteSudebanDlg(onDone){
           refLote:$('#ltNum',el).value.trim()
         };
         if(!S.lotesSudeban)S.lotesSudeban=[];
+        lote.eventId='LOT-EVT-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2));
         S.lotesSudeban.push(lote);
         const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el lote bancario; se restauró el estado durable anterior.','bad');return false;}
         msg('Lote bancario '+lote.refLote+' registrado y conciliado.');
@@ -5805,7 +5828,7 @@ function seniatSudebanDlg(initialTab){
     foot:[{label:'Cerrar',primary:true}],
     onOpen:bd=>{
       renderTabContent();
-      bd.addEventListener('click',ev=>{
+      bd.addEventListener('click',async ev=>{
         if(ev.target.id==='btnExpV')exportLibroVentasCsv(getFilteredSales());
         if(ev.target.id==='btnPrintV')printFiscalReport('Libro de Ventas Fiscal Oficial (SENIAT)',drawVentas());
         if(ev.target.id==='btnExpC')exportLibroComprasCsv(getFilteredPurchases());
@@ -5891,7 +5914,7 @@ function tasaBcvDlg(){
     if(Math.abs(next-oldRate)<0.000001){msg('La tasa indicada es igual a la tasa actual. No hay cambios que registrar.','bad');return false;}
     const ts=Date.now();
     if(!Array.isArray(S.rateAudit))S.rateAudit=[];
-    S.rateAudit.push({id:'BCV-'+ts+'-'+String(S.rateAudit.length+1).padStart(4,'0'),ts,previousRate:oldRate,newRate:next,reason,username:user.username,name:user.name||user.username,role:user.role,cashbox:opening.cashbox,openingId:opening.id});
+    S.rateAudit.push({id:'BCV-'+ts+'-'+String(S.rateAudit.length+1).padStart(4,'0'),eventId:'BCV-EVT-'+(crypto.randomUUID?crypto.randomUUID():ts+'-'+Math.random().toString(36).slice(2)),ts,previousRate:oldRate,newRate:next,reason,username:user.username,name:user.name||user.username,role:user.role,cashbox:opening.cashbox,openingId:opening.id});
     S.cfg.rate=next;opening.rate=next;writeActiveOpening(opening);
     const persisted=await save();if(!persisted||!persisted.ok){const restoredOpening=Object.assign({},opening,{rate:oldRate});writeActiveOpening(restoredOpening);try{localStorage.setItem('sifer360_bcv_rate',String(oldRate));}catch(e){}msg('El servidor no confirmó el cambio de tasa BCV; se restauró la apertura y el último estado durable.','bad');return false;}
     try{localStorage.setItem('sifer360_bcv_rate',String(next));}catch(e){}
@@ -6205,25 +6228,7 @@ function currentCajaInvoice(){const box=currentCaja(),seqs=cajaSeqs();if(!seqs[b
 async function nextCajaSequence(operation,box=currentCaja()){
   if(!box||String(box)==='SIN-ASIGNAR')throw new Error('Asigne una caja antes de generar una operación numerada.');
   if(!window.posDesktop||typeof window.posDesktop.networkNextSequence!=='function')throw new Error('La numeración correlativa requiere el motor SQLite de escritorio.');
-  const sales=(S.sales||[]).filter(x=>String(x.cashbox||'01')===String(box));
-  const zRows=(S.cortesZ||[]).filter(x=>String(x.cashbox||'')===String(box));
-  let minimum=1;
-  if(operation==='invoice')minimum=Math.max(0,...sales.map(x=>Number(x.no)||0))+1;
-  else if(operation==='control')minimum=Math.max(0,...sales.map(x=>Number(String(x.ctrlNo||'').split('-').pop())||0))+1;
-  else if(operation==='z')minimum=Math.max(0,...zRows.map(x=>Number(String(x.id||'').split('-').pop())||0))+1;
-  else if(operation==='void')minimum=Math.max(0,...sales.map(x=>Number(x.voidNo)||0))+1;
-  else if(operation==='purchase')minimum=Math.max(0,...(S.purchases||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.no)||0))+1;
-  else if(operation==='count')minimum=Math.max(0,...(S.counts||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
-  else if(operation==='cxc')minimum=Math.max(0,...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
-  else if(operation.startsWith('retention-')){const period=operation.slice('retention-'.length);minimum=Math.max(0,...(S.retencionesIva||[]).filter(x=>String(x.cashbox||'')===String(box)&&String(x.periodo||'')===period).map(x=>Number(x.sequence)||Number(String(x.id||'').slice(-8))||0))+1;}
-  else if(operation==='cxp')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
-  else if(operation==='cashea')minimum=Math.max(0,...(S.casheaMovimientos||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
-  else if(operation==='cxc-payment')minimum=Math.max(0,...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)))+1;
-  else if(operation==='cxp-payment')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)))+1;
-  else if(operation==='currency-exchange')minimum=Math.max(0,...(S.cambiosDivisas||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0))+1;
-  else if(operation==='movement')minimum=Math.max(0,...(S.movimientosCaja||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0))+1;
-  else if(operation==='refund'||operation==='return')minimum=Math.max(0,...(S.returns||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.returnNo||x.sequence)||0))+1;
-  const result=await window.posDesktop.networkNextSequence({cashbox:String(box),operation,minimum});
+  const result=await window.posDesktop.networkNextSequence({cashbox:String(box),operation});
   const value=Number(result&&result.value);
   if(!result||!result.ok||!Number.isSafeInteger(value)||value<1)throw new Error('El servidor no confirmó el consecutivo de '+operation+'.');
   return value;
