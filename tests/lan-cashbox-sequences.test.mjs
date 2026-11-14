@@ -44,7 +44,7 @@ test('ventas, números de control, anulaciones y cortes Z solicitan correlativos
   assert.match(pos, /nextCajaSequence\('count',currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('cxc',currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('cxp',currentCaja\(\)\)/);
-  assert.match(pos, /nextCajaSequence\('retention-'\+periodo,currentCaja\(\)\)/);
+  assert.match(pos, /nextCajaSequence\('retention-'\+periodoRetencion,currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('retention-'\+periodoComp,currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('cashea',currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('cxc',currentCaja\(\)\)/);
