@@ -5700,7 +5700,7 @@ function seniatSudebanDlg(initialTab){
     }
   };
 
-  el.addEventListener('click',e=>{
+  el.addEventListener('click',async e=>{
     const tabBtn=e.target.closest('.tab[data-tab]');
     if(tabBtn){
       $('.tab.active',el)?.classList.remove('active');
@@ -6734,7 +6734,8 @@ async function fiscalDocumentsDlg(){
       if(!Array.isArray(S.documents))S.documents=[];
       S.documents=S.documents.filter(d=>d.id!==doc.id);
       S.documents.push({id:doc.id,transactionType:doc.transactionType,transactionId:doc.transactionId,fileName:doc.fileName,mimeType:doc.mimeType,fileSize:doc.fileSize,sha256:doc.sha256,createdAt:doc.createdAt,notes:doc.notes});
-      save();status.textContent='Documento guardado localmente en SQLite para '+(sel.transactionType==='sale'?'la venta #':'la compra #')+sel.transactionId+'.';await render();
+      const persisted=await save();if(!persisted||!persisted.ok){status.textContent='El archivo se guardó en la tabla documental, pero el servidor no confirmó sus metadatos en el estado general. Revise y vuelva a cargar antes de continuar.';return;}
+      status.textContent='Documento guardado de forma durable en SQLite para '+(sel.transactionType==='sale'?'la venta #':'la compra #')+sel.transactionId+'.';await render();
     }catch(e){status.textContent='No se guardó el documento: '+(e.message||e);persistenceError(e);}
   };
   $('#fdUpload',el).addEventListener('click',()=>upload.click());
@@ -6749,7 +6750,8 @@ async function fiscalDocumentsDlg(){
       try{
         await posSqliteDriver.deleteDocument(del.dataset.docDelete);
         if(Array.isArray(S.documents)) S.documents=S.documents.filter(d=>d.id!==del.dataset.docDelete);
-        save();await render();
+        const persisted=await save();if(!persisted||!persisted.ok){status.textContent='El archivo se eliminó de la tabla documental, pero el servidor no confirmó la actualización de sus metadatos. Recargue para verificar.';return;}
+        await render();
       }catch(err){status.textContent='No se pudo eliminar: '+err.message;}
       return;
     }
@@ -6912,7 +6914,7 @@ async function prepareDatabaseBeforeStartup(){
   }
 }
 
-window.SIFERAccountingBridge={getState:()=>S,save:()=>save(),setAccounting:data=>{if(!S)throw new Error('Estado POS no inicializado');S.accounting=data;save();return true;}};
+window.SIFERAccountingBridge={getState:()=>S,save:()=>save(),setAccounting:async data=>{if(!S)throw new Error('Estado POS no inicializado');const previous=S.accounting;S.accounting=data;const persisted=await save();if(!persisted||!persisted.ok){S.accounting=previous;throw new Error('SQLite/servidor no confirmó los cambios contables.');}return true;}};
 
 /* ---------- arranque ---------- */
 function restoreWorkspaceAfterReload(){
