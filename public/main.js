@@ -6990,12 +6990,14 @@ function restoreWorkspaceAfterReload(){
   }
   if(user.role==='admin')showDashboardScreen();else if(user.role==='contador'&&window.SIFERAccountantDashboard)window.SIFERAccountantDashboard.show();
 }
-prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(()=>{
+prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(async()=>{
   init();
+  await migrateLegacyOpenings();
   buildChrome();
   renderCatOptions();
   renderAll();
   wire();
+  if(window.__POS_OPENING_MIGRATION_ERROR)msg(window.__POS_OPENING_MIGRATION_ERROR,'bad');
   primeOperationBaseline();
   window.__SIFER_READY = true;
   try{window.dispatchEvent(new Event('sifer:ready'));}catch(e){}
