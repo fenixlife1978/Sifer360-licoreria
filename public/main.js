@@ -2345,7 +2345,7 @@ function inventoryDlg(){
     sum();
   };
   el.addEventListener('input',e=>{if(e.target.id==='invQ')draw();});
-  el.addEventListener('change',e=>{
+  el.addEventListener('change',async e=>{
     if(e.target.id==='invLow'){draw();return;}
     const f=e.target.dataset.f;if(!f)return;
     const tr=e.target.closest('tr'),p=prod(tr.dataset.code),v=pn(e.target.value);
@@ -2384,7 +2384,8 @@ function inventoryDlg(){
     if(f==='price'||f==='cost')e.target.value=nf(p[f]);
     else if(f==='stock'||f==='min')e.target.value=fq(p[f]);
     tr.className=p.stock<=0?'rowout':(p.stock<=p.min?'rowlow':'');
-    save();sum();renderCatalog();renderCart();
+    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el ajuste de inventario o precio.','bad');return;}
+    sum();renderCatalog();renderCart();
   });
   el.addEventListener('click',e=>{
     if(e.target.id==='btnNewProd'){productFormDlg(null,'gen');return;}
@@ -2532,7 +2533,7 @@ function comprasDlg(initialTab){
           '</tr>';
         }).join(''):'<tr class="empty"><td colspan="9">Sin compras registradas.</td></tr>')+'</tbody>'+
       '</table></div>';
-    v.onclick=e=>{
+    v.onclick=async e=>{
       const b=e.target.closest('[data-void-comp]');
       if(!b)return;
       const c=S.purchases.find(x=>x.no===+b.dataset.voidComp&&String(x.cashbox||currentCaja())===currentCaja());
@@ -2550,8 +2551,8 @@ function comprasDlg(initialTab){
       });
       (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja())).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
       (S.retencionesIva||[]).filter(x=>(Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||'')&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
-      save();renderAll();renderPurchaseHist(v);
-      msg('Compra COM-'+pad(c.no)+' anulada. Se revirtió el ingreso en inventario y Kardex.');
+      const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la anulación de la compra; se restauró el estado durable anterior.','bad');return;}
+      renderAll();renderPurchaseHist(v);msg('Compra COM-'+pad(c.no)+' anulada. Se revirtió el ingreso en inventario y Kardex.');
     };
   };
 
@@ -2567,22 +2568,23 @@ function comprasDlg(initialTab){
         '<div class="f"><label for="nsCond">Condición</label><select class="fld" id="nsCond"><option>Contado</option><option selected>15 días</option><option>30 días</option></select></div>'+
         '<div class="f"><label for="nsRetIva">Sujeto a retención de IVA</label><select class="fld" id="nsRetIva"><option value="no" selected>No / por verificar</option><option value="si">Sí, confirmado</option></select></div>'+
       '</div><p class="muted">Active esta opción solo después de verificar la condición fiscal del proveedor y la operación.</p><button class="btn" id="nsSave">Guardar proveedor</button></details>';
-    v.onchange=e=>{
+    v.onchange=async e=>{
       const ctl=e.target.closest('[data-ret-iva]');
       if(!ctl)return;
       const sup=S.suppliers.find(x=>x.id===ctl.dataset.retIva);
       if(!sup)return;
       sup.retieneIva=ctl.value==='si';
-      save();
+      const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el cambio de retención del proveedor.','bad');return;}
       renderSuppliersTab(v);
       msg('Configuración de retención IVA actualizada para '+sup.name+'.');
     };
-    v.onclick=e=>{
+    v.onclick=async e=>{
       if(e.target.id==='nsSave'){
         const rif=$('#nsRif',v).value.trim(), name=$('#nsName',v).value.trim();
         if(!rif||!name){msg('Indique RIF y razón social del proveedor.','bad');return;}
         S.suppliers.push({id:'PRV-'+two(S.suppliers.length+1),name,rif,tel:$('#nsTel',v).value.trim(),cond:$('#nsCond',v).value,retieneIva:$('#nsRetIva',v).value==='si'});
-        save();renderSuppliersTab(v);msg('Proveedor '+name+' registrado.');
+        const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el registro del proveedor.','bad');return;}
+        renderSuppliersTab(v);msg('Proveedor '+name+' registrado.');
       }
     };
   };
