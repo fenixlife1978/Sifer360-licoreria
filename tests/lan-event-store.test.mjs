@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url);
 const { applyIncomingEvents } = require('../electron/lan-event-store.cjs');
 const SQL = await initSqlJs();
 
-function fixture({ failPersist = false } = {}) {
+function fixture({ failPersist = false, initialState = { sales: [], purchases: [] } } = {}) {
   let db = new SQL.Database();
   db.run(`
     CREATE TABLE app_state(id INTEGER PRIMARY KEY, payload TEXT NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -24,7 +24,7 @@ function fixture({ failPersist = false } = {}) {
       UNIQUE(device_id, device_seq)
     );
   `);
-  db.run('INSERT INTO app_state(id,payload) VALUES(1,?)', [JSON.stringify({ sales: [], purchases: [] })]);
+  db.run('INSERT INTO app_state(id,payload) VALUES(1,?)', [JSON.stringify(initialState)]);
   let persistedSnapshot = Buffer.from(db.export());
   let persistCalls = 0;
 
@@ -242,11 +242,10 @@ test('el evento de eliminación de venta suspendida conserva el tombstone y elim
 });
 
 test('un tombstone elimina también una venta suspendida heredada sin id usando caja y timestamp', () => {
-  const db = fixture();
   const legacy = { cashbox: '01', ts: 100, cart: [{ code: 'OLD', qty: 1 }] };
-  db.apply([{ eventId: 'legacy-held-add', deviceId: 'device-a', deviceSeq: 1, eventType: 'held-sale', entityType: 'held', entityId: 'legacy-held-1', occurredAt: new Date(100).toISOString(), payload: { record: { ...legacy, id: 'legacy-held-1' } } }]);
-  const tombstone = { id: 'legacy-held-1', cashbox: '01', ts: 200 };
-  const result = db.apply([{ eventId: 'legacy-held-delete', deviceId: 'device-a', deviceSeq: 2, eventType: 'held-sale-delete', entityType: 'heldDeletedIds', entityId: tombstone.id, occurredAt: new Date(200).toISOString(), payload: { record: tombstone } }]);
+  const db = fixture({ initialState: { sales: [], purchases: [], held: [legacy] } });
+  const tombstone = { id: 'HOLD-LEGACY-100', cashbox: '01', ts: 200 };
+  const result = db.apply([{ eventId: 'legacy-held-delete', deviceId: 'device-a', deviceSeq: 1, eventType: 'held-sale-delete', entityType: 'heldDeletedIds', entityId: tombstone.id, occurredAt: new Date(200).toISOString(), payload: { record: tombstone } }]);
   assert.deepEqual(result.accepted, ['legacy-held-delete']);
   assert.deepEqual(db.state().held, []);
 });
