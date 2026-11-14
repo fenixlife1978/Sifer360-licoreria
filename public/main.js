@@ -625,12 +625,15 @@ function save(){
     return result;
   }).catch(async error=>{
     persistenceError(error);
-    if(sequence===saveSequence){
+    let recovered=false;
+    const superseded=sequence!==saveSequence;
+    if(!superseded){
       try{
         const authoritative=await posSqliteDriver.loadState();
         if(!authoritative||typeof authoritative!=='object')throw new Error('La base autoritativa no devolvió un estado recuperable.');
         for(const key of Object.keys(S))delete S[key];
         Object.assign(S,authoritative);
+        recovered=true;
         persistenceBlocked=false;
         try{renderAll();}catch(e){}
         const node=$('#sbMsg')||$('#sbStatus');
@@ -640,7 +643,7 @@ function save(){
         persistenceError(new Error('No se confirmó la operación y tampoco se pudo recargar el estado autoritativo. Las nuevas escrituras quedan bloqueadas. '+(recoveryError&&recoveryError.message||recoveryError)));
       }
     }
-    return {ok:false,durable:'none',error};
+    return {ok:false,durable:'none',error,recovered,superseded};
   });
   saveQueue=pending.then(()=>undefined,()=>undefined);
   window.__SIFER_LAST_SAVE=pending;
