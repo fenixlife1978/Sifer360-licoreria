@@ -109,6 +109,11 @@ function localAddresses() {
   return out;
 }
 
+function normalizeLanPort(value) {
+  const port = Number(value || 38760);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('El puerto LAN debe ser un entero entre 1024 y 65535.');
+  return port;
+}
 function sendJson(res, status, data) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': 'null' }); res.end(JSON.stringify(data)); }
 function readBody(req) { return new Promise((resolve, reject) => { let raw = ''; let receivedBytes = 0; let rejected = false; req.on('data', chunk => { receivedBytes += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk)); if (receivedBytes > MAX_SYNC_BODY) { rejected = true; reject(new Error('La carga de sincronización excede 8 MB.')); req.destroy(); return; } raw += chunk; }); req.on('end', () => { if (rejected) return; try { resolve(JSON.parse(raw || '{}')); } catch { reject(new Error('JSON inválido.')); } }); req.on('error', error => { if (!rejected) reject(error); }); }); }
 function statePayloadHash(payload) { return crypto.createHash('sha256').update(String(payload || '')).digest('hex'); }
@@ -286,7 +291,7 @@ async function setMode(mode) {
 async function startLanServer(requestedPort) {
   if (networkConfig.role === 'client' || networkConfig.serverPromotionBlocked) throw new Error('Este equipo ya fue cliente LAN y su SQLite local no se considera autoridad. No puede convertirse en servidor automáticamente; restaure o migre la base central mediante un procedimiento explícito antes de promoverlo.');
   if (!db) await initializeDatabase();
-  const port = Math.max(1024, Math.min(65535, Number(requestedPort || networkConfig.port || 38760)));
+  const port = normalizeLanPort(requestedPort || networkConfig.port || 38760);
   if (networkServer) await new Promise(resolve => networkServer.close(resolve));
   if (!safeStorage.isEncryptionAvailable()) throw new Error('El cifrado seguro del sistema operativo no está disponible; no se iniciará el servidor LAN.');
   const identity = await ensureServerCertificate({ directory: app.getPath('userData'), deviceId: networkConfig.deviceId, encryptPrivateKey: pem => safeStorage.encryptString(pem).toString('base64'), decryptPrivateKey: value => safeStorage.decryptString(Buffer.from(value, 'base64')) });
@@ -547,7 +552,7 @@ function registerNetworkIpc() {
   });
   ipcMain.handle('network:configure-client', async (_e, opts = {}) => {
     const host = String(opts.host || '').trim();
-    const port = Math.max(1024, Math.min(65535, Number(opts.port || 38760)));
+    const port = normalizeLanPort(opts.port || 38760);
     const token = String(opts.token || '').trim();
     const expectedFingerprint = String(opts.fingerprint || '').trim();
     if (!host || !token || !expectedFingerprint) throw new Error('Indica IP, clave de emparejamiento y huella TLS SHA-256 del servidor.');
