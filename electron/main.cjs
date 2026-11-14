@@ -301,9 +301,11 @@ async function startLanServer(requestedPort) {
   if (networkServer) await new Promise(resolve => networkServer.close(resolve));
   if (!safeStorage.isEncryptionAvailable()) throw new Error('El cifrado seguro del sistema operativo no está disponible; no se iniciará el servidor LAN.');
   const identity = await ensureServerCertificate({ directory: app.getPath('userData'), deviceId: networkConfig.deviceId, encryptPrivateKey: pem => safeStorage.encryptString(pem).toString('base64'), decryptPrivateKey: value => safeStorage.decryptString(Buffer.from(value, 'base64')) });
+  const previousConfig = networkConfig;
   networkConfig = { ...networkConfig, role: 'server', host: '', port, token: networkConfig.token || crypto.randomBytes(24).toString('hex'), tlsFingerprint: identity.fingerprint, serverCert: '' };
-  saveNetworkConfig();
-  networkServer = https.createServer({ key: identity.key, cert: identity.cert }, async (req, res) => {
+  try {
+    saveNetworkConfig();
+    networkServer = https.createServer({ key: identity.key, cert: identity.cert }, async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     if (!isLanAddress(req.socket.remoteAddress)) return sendJson(res, 403, { error: 'Acceso permitido únicamente desde la red local.' });
     if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Headers': 'content-type,authorization', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); return res.end(); }
@@ -392,8 +394,18 @@ async function startLanServer(requestedPort) {
     return sendJson(res, 404, { error: 'Ruta no encontrada' });
   });
   await new Promise((resolve, reject) => { networkServer.once('error', reject); networkServer.listen(port, '0.0.0.0', () => { networkServer.removeListener('error', reject); resolve(); }); });
-  startDiscoveryServer();
-  return { ...networkConfig, running: true, addresses: localAddresses() };
+    startDiscoveryServer();
+    return { ...networkConfig, running: true, addresses: localAddresses() };
+  } catch (error) {
+    stopDiscoveryServer();
+    const failedServer = networkServer;
+    networkServer = null;
+    if (failedServer) await new Promise(resolve => { try { failedServer.close(() => resolve()); } catch { resolve(); } });
+    networkConfig = previousConfig;
+    try { saveNetworkConfig(); }
+    catch (rollbackError) { throw new Error('No se pudo iniciar el servidor LAN y tampoco restaurar su configuración anterior. No use este equipo como servidor hasta revisar network-mode.json. ' + (rollbackError.message || String(rollbackError))); }
+    throw error;
+  }
 }
 function allocateCashboxSequence(cashboxId, operationType, minimumValue = 1) {
   return allocateCashboxSequenceDurable({ db, cashboxId, operationType, minimumValue, persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
