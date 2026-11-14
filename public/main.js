@@ -576,22 +576,6 @@ async function captureNewOperations(){
   }catch(error){console.warn('No se pudo encolar una operación para sincronización:',error);const status=$('#sbMsg');if(status)status.textContent='El servidor pudo confirmar el estado, pero falló la cola de auditoría LAN local. Revise antes de continuar: '+String(error&&error.message||error);}
   finally{operationCaptureBusy=false}
 }
-function mergeRemoteSnapshot(local,remote){
-  if(!remote||typeof remote!=='object')return false;
-  const merged={...local};
-  for(const [key,value] of Object.entries(remote)){
-    if(key==='sicoven')continue; // Ignora snapshots heredados del módulo contable retirado.
-    if(!Array.isArray(value)||!Array.isArray(local[key])){merged[key]=value;continue;}
-    const map=new Map();
-    const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
-    for(const item of local[key])map.set(ident(item),item);
-    for(const item of value)map.set(ident(item),item);
-    merged[key]=[...map.values()];
-  }
-  let changed=false;
-  for(const [key,value] of Object.entries(merged)){if(JSON.stringify(S[key])!==JSON.stringify(value)){S[key]=value;changed=true}}
-  return changed;
-}
 async function networkSyncAttempt(){
   if(networkSyncBusy||!window.posDesktop||typeof window.posDesktop.networkSyncNow!=='function')return;
   networkSyncBusy=true;
