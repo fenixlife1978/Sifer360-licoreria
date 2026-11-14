@@ -171,5 +171,5 @@ test('la cola rechaza IDs demasiado largos, secuencias agotadas y payloads exces
   assert.throws(() => outbox.enqueue({ ...operation('event-big'), payload: { record: { text: 'x'.repeat(4 * 1024 * 1024 + 1) } } }), /identificadores inválidos/);
   const file = path.join(options.directory, 'sifer360-network-outbox-v1.json');
   fs.writeFileSync(file, JSON.stringify({ version: 1, deviceId: options.deviceId, lastSeq: Number.MAX_SAFE_INTEGER, events: [] }));
-  assert.throws(() => outbox.enqueue(operation('event-exhausted')), /identificadores inválidos/);
+  assert.throws(() => outbox.enqueue(operation('event-exhausted')), /Se agotó el consecutivo local/);
 });
