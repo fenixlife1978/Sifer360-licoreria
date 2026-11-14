@@ -34,7 +34,12 @@ test('ventas, números de control, anulaciones y cortes Z solicitan correlativos
   assert.match(pos, /nextCajaSequence\('control',currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('void',currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('z',box\)/);
+  assert.match(pos, /nextCajaSequence\('purchase',currentCaja\(\)\)/);
+  assert.match(pos, /nextCajaSequence\('count',currentCaja\(\)\)/);
+  assert.match(pos, /nextCajaSequence\('cxc',currentCaja\(\)\)/);
   assert.match(pos, /ANU-'.*pad\(voidNo,6\)/);
+  assert.match(pos, /const saveBulk=async\(\)=>/);
+  assert.match(pos, /const processPurchase=async\(\)=>/);
 });
 
 test('las PCs cliente cargan y guardan el estado operativo mediante el servidor, no desde su SQLite local', () => {
