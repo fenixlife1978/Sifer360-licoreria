@@ -6210,25 +6210,7 @@ function currentCajaInvoice(){const box=currentCaja(),seqs=cajaSeqs();if(!seqs[b
 async function nextCajaSequence(operation,box=currentCaja()){
   if(!box||String(box)==='SIN-ASIGNAR')throw new Error('Asigne una caja antes de generar una operación numerada.');
   if(!window.posDesktop||typeof window.posDesktop.networkNextSequence!=='function')throw new Error('La numeración correlativa requiere el motor SQLite de escritorio.');
-  const sales=(S.sales||[]).filter(x=>String(x.cashbox||'01')===String(box));
-  const zRows=(S.cortesZ||[]).filter(x=>String(x.cashbox||'')===String(box));
-  let minimum=1;
-  if(operation==='invoice')minimum=Math.max(0,...sales.map(x=>Number(x.no)||0))+1;
-  else if(operation==='control')minimum=Math.max(0,...sales.map(x=>Number(String(x.ctrlNo||'').split('-').pop())||0))+1;
-  else if(operation==='z')minimum=Math.max(0,...zRows.map(x=>Number(String(x.id||'').split('-').pop())||0))+1;
-  else if(operation==='void')minimum=Math.max(0,...sales.map(x=>Number(x.voidNo)||0))+1;
-  else if(operation==='purchase')minimum=Math.max(0,...(S.purchases||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.no)||0))+1;
-  else if(operation==='count')minimum=Math.max(0,...(S.counts||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
-  else if(operation==='cxc')minimum=Math.max(0,...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
-  else if(operation.startsWith('retention-')){const period=operation.slice('retention-'.length);minimum=Math.max(0,...(S.retencionesIva||[]).filter(x=>String(x.cashbox||'')===String(box)&&String(x.periodo||'')===period).map(x=>Number(x.sequence)||Number(String(x.id||'').slice(-8))||0))+1;}
-  else if(operation==='cxp')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
-  else if(operation==='cashea')minimum=Math.max(0,...(S.casheaMovimientos||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
-  else if(operation==='cxc-payment')minimum=Math.max(0,...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)))+1;
-  else if(operation==='cxp-payment')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)))+1;
-  else if(operation==='currency-exchange')minimum=Math.max(0,...(S.cambiosDivisas||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0))+1;
-  else if(operation==='movement')minimum=Math.max(0,...(S.movimientosCaja||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0))+1;
-  else if(operation==='refund'||operation==='return')minimum=Math.max(0,...(S.returns||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.returnNo||x.sequence)||0))+1;
-  const result=await window.posDesktop.networkNextSequence({cashbox:String(box),operation,minimum});
+  const result=await window.posDesktop.networkNextSequence({cashbox:String(box),operation});
   const value=Number(result&&result.value);
   if(!result||!result.ok||!Number.isSafeInteger(value)||value<1)throw new Error('El servidor no confirmó el consecutivo de '+operation+'.');
   return value;
