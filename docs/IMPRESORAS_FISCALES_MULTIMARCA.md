@@ -13,7 +13,7 @@ Familias contempladas:
 | Epson Fiscal | EpsonFiscalInterface.dll | La interfaz y los comandos dependen del modelo/país. |
 | Quorion | QProg.dll (pendiente de confirmar) o protocolo del modelo | La página pública de Quorion ofrece QMP Programming Software y manuales; no se ha validado que QProg.dll sea un SDK redistribuible. No asumir que todos los equipos aceptan el mismo protocolo serial. |
 | Aclas | AclasSDK.dll | Confirmar versión del SDK y protocolo con el distribuidor. |
-| PNP | PnpFiscal.dll | Confirmar SDK correspondiente al equipo homologado; PF-SUNMI dispone de documentación del fabricante. |
+| PNP | pnpdll.dll o protocolo serial PNP 0141 | El fabricante publica pnpdll2025a.zip y PROTOCOLO0141.pdf. PF-SUNMI usa USB CDC serial, RS232 opcional y Wi-Fi; no todos los modelos usan el mismo cable/controlador. |
 | Hasar | SDK/protocolo específico del distribuidor | No se presupone un nombre de DLL; requiere puente específico y manual del modelo. |
 
 La lista de marcas/modelos es un catálogo de integración solicitado, no una certificación de homologación vigente. Las cuotas de mercado indicadas en la solicitud (70/15–20/10 y más de 95% de cobertura) no se consideran cifras verificadas y no se usan para prometer compatibilidad. Antes de activar facturación fiscal, verificar el modelo exacto, serial, representante y autorización aplicable ante SENIAT y el fabricante.
@@ -83,7 +83,7 @@ Los SDK de cada familia tienen APIs distintas. No se debe fabricar un puente gen
 
 ## Controladores USB-Serial
 
-La capa de configuración contempla los tres controladores mencionados:
+La capa de configuración contempla los tres controladores USB-Serial mencionados, pero no presupone que todas las impresoras los utilicen. Por ejemplo, PNP PF-SUNMI declara USB CDC serial, RS232 opcional y Wi-Fi, por lo que Windows puede utilizar su controlador CDC estándar en vez de PL2303/FTDI/CP210x. Los controladores contemplados son:
 - Prolific PL2303
 - FTDI Virtual COM Port (VCP)
 - Silicon Labs CP210x
@@ -100,6 +100,9 @@ El usuario/instalador autorizado debe instalar el paquete firmado que correspond
 - Epson Venezuela — portal de desarrolladores: https://epson.com.ve/developers-products (Epson indica que los materiales técnicos para desarrolladores se solicitan directamente; no se asume que la DLL sea de descarga libre).
 - Quorion — descargas y manuales: https://quorionus.com/downloads/ (incluye software QMP y manuales; validar API/SDK fiscal con el distribuidor).
 - Aclas: https://www.aclas.com/
+- PNP — integración oficial y biblioteca pnpdll.dll: https://desarrollospnp.com/pregunta/ (enlace al paquete pnpdll2025a.zip y protocolo serial 0141).
+- PNP — archivos oficiales: https://desarrollospnp.com/archivos/
+- PNP — ficha PF-SUNMI: https://desarrollospnp.com/pf-sunmi/
 - PNP / PF-SUNMI: https://desarrollospnp.com/archivos/PFSUNMI.pdf
 - Prolific PL2303 — soporte y controladores oficiales: https://www.prolific.com.tw/en/portfolio-item/pl2303gt/
 - FTDI — VCP Drivers oficiales: https://ftdichip.com/drivers/vcp-drivers/
@@ -107,7 +110,7 @@ El usuario/instalador autorizado debe instalar el paquete firmado que correspond
 
 ## Pendiente para certificar compatibilidad real
 
-1. Recibir SDK/manual original de cada modelo y comprobar sus términos de redistribución.
+1. Recibir SDK/manual original de cada modelo y comprobar sus términos de redistribución. Para PNP, utilizar como referencia inicial pnpdll2025a.zip y PROTOCOLO0141.pdf publicados por el fabricante.
 2. Construir los puentes específicos de fabricante; no basta con que exista el archivo DLL.
 3. Probar lectura de estado, papel/tapa, emisión, consulta del último documento, anulaciones/notas de crédito cuando el equipo lo permita y Reporte Z.
 4. Ejecutar pruebas físicas por cada modelo, firmware, interfaz (USB/COM/Ethernet) y arquitectura Windows.
