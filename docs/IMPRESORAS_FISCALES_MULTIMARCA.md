@@ -148,7 +148,7 @@ Preferir el controlador firmado que corresponda al identificador VID/PID y a la 
 
 Los SDKs fiscales (por ejemplo, TfhkaNet/tfhkaif, BemaFI, Epson Fiscal, QProg, AclasSDK y pnpdll) no se consideran redistribuibles solo por estar disponibles en Internet. Antes de empaquetarlos se requiere una licencia o autorización del fabricante que permita su redistribución. SIFER puede integrar bibliotecas gratuitas con licencia de redistribución explícita; no incluirá binarios propietarios obtenidos de repositorios no oficiales ni ejecutará instaladores sin consentimiento del administrador.
 
-La compilación actual no descarga controladores ni SDKs desde Internet durante la instalación o ejecución. La instalación sin impresora y la modalidad térmica genérica no requieren DLLs fiscales.
+La pantalla de configuración fiscal incorpora accesos a los portales oficiales permitidos (PNP, Prolific, FTDI, Silicon Labs, The Factory HKA, Epson, Quorion y Aclas) mediante una lista cerrada de destinos en el proceso principal Electron. No acepta URLs arbitrarias. La descarga se realiza en el navegador externo y el administrador selecciona luego los archivos originales desde el POS. Bematech requiere el paquete fiscal exacto del representante autorizado. La compilación actual no descarga ni instala controladores o SDKs silenciosamente durante la instalación o ejecución. La instalación sin impresora y la modalidad térmica genérica no requieren DLLs fiscales.
 
 ### Separación de documentos internos y fiscales
 
