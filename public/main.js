@@ -651,6 +651,13 @@ function save(){
   scheduleNetworkSync();
   return pending;
 }
+function restoreStateSnapshotIfNeeded(result,snapshot){
+  if(result&&(result.recovered||result.superseded))return false;
+  if(!snapshot||typeof snapshot!=='object')return false;
+  for(const key of Object.keys(S))delete S[key];
+  Object.assign(S,snapshot);
+  return true;
+}
 setInterval(()=>{if(window.posDesktop&&typeof window.posDesktop.networkSyncNow==='function')networkSyncAttempt()},20000);
 
 function load(){
