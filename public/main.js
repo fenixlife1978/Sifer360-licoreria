@@ -3781,9 +3781,10 @@ function divisasDlg(filterType){
       ask('Eliminar Operación Cambiaria',
         '¿Desea eliminar la operación '+cid+' ('+usd(op.montoUsd)+')?'+(op.cxpId?' Nota: esto no revertirá automáticamente el saldo de la factura en CxP salvo que lo modifique en ese módulo.':''),
         'Eliminar',
-        ()=>{
+        async()=>{
           S.cambiosDivisas=S.cambiosDivisas.filter(x=>x.id!==cid);
-          save();draw();msg('Operación cambiaria eliminada.');
+          const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la eliminación de la operación cambiaria.','bad');return false;}
+          draw();msg('Operación cambiaria eliminada.');return true;
         }
       );
       return;
@@ -4172,7 +4173,7 @@ function casheaSettlementDlg(onDone){
       {
         label: 'Confirmar y Liquidar Lote',
         primary: true,
-        fn: () => {
+        fn: async () => {
           const ref = refInp.value.trim();
           const depositRaw = depositInp.value.trim();
           const pct = Number(comPctInp.value);
@@ -4198,7 +4199,7 @@ function casheaSettlementDlg(onDone){
           });
           if(!Array.isArray(S.casheaLiquidaciones))S.casheaLiquidaciones=[];
           S.casheaLiquidaciones.push({id:loteId,fecha:now,operaciones:pendings.map(m=>m.id),cantidad:pendings.length,banco:bancoSel.value,referencia:ref,brutoUsd:r2(totFinanciado),comisionPct:pct,comisionUsd:comUsd,netoEsperadoUsd:netoUsd,depositadoUsd:depositUsd,diferenciaUsd:r2(depositUsd-netoUsd),tasaBcv:rate});
-          save();
+          const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la liquidación CASHEA; se restauró el estado durable anterior.','bad');return false;}
           msg('Lote '+loteId+' conciliado y guardado ('+pendings.length+' facturas).');
           if(onDone) onDone();
           return true;
@@ -4208,7 +4209,7 @@ function casheaSettlementDlg(onDone){
   });
 }
 
-function reverseCasheaSettlement(movementId,onDone){
+async function reverseCasheaSettlement(movementId,onDone){
   const movement=(S.casheaMovimientos||[]).find(m=>String(m.id)===String(movementId));
   if(!movement||movement.estado!=='Liquidado'||!movement.loteLiquidacion){msg('La operación no tiene una liquidación activa que pueda revertirse.','bad');return false;}
   const lot=(S.casheaLiquidaciones||[]).find(item=>item.id===movement.loteLiquidacion&&item.tipo!=='REVERSIÓN');
@@ -4229,7 +4230,7 @@ function reverseCasheaSettlement(movementId,onDone){
     delete m.bancoReceptor;delete m.refBancaria;delete m.comisionPct;delete m.comisionUsd;delete m.netoEsperadoUsd;delete m.tasaBcvLiquidacion;delete m.fechaLiquidacion;
   });
   S.casheaLiquidaciones.push({id:revId,tipo:'REVERSIÓN',fecha:now,loteOriginal:lot.id,operaciones:affected.map(m=>m.id),cantidad:affected.length,operador:currentCajero(),motivo:motivo.trim(),estado:'Registrada'});
-  save();
+  const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la reversión CASHEA; se restauró el estado durable anterior.','bad');return false;}
   msg('Reversión '+revId+' registrada. '+affected.length+' operaciones regresaron a pendientes.');
   if(onDone)onDone();
   return true;
@@ -4366,11 +4367,11 @@ function casheaDlg(defaultTab){
     msg('Archivo CSV de Cashea exportado correctamente.');
   });
 
-  $('#cshRows', el).addEventListener('click', e => {
+  $('#cshRows', el).addEventListener('click', async e => {
     const bReverse = e.target.closest('[data-csh-reverse]');
     if(bReverse){
       const movement=(S.casheaMovimientos||[]).find(x=>x.id===bReverse.dataset.cshReverse);
-      if(movement)reverseCasheaSettlement(movement.id,()=>render());
+      if(movement)await reverseCasheaSettlement(movement.id,()=>render());
       return;
     }
     const bVouch = e.target.closest('[data-csh-vouch]');
