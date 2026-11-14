@@ -504,19 +504,29 @@ function registerNetworkIpc() {
     const eventId = String(input.eventId || crypto.randomUUID());
     const occurredAt = String(input.occurredAt || new Date().toISOString());
     const payload = JSON.stringify(input.payload);
+    const databaseBefore = db.export();
+    let transactionCommitted = false;
     db.run('BEGIN IMMEDIATE');
     try {
       const duplicate = one('SELECT event_id FROM local_operation_outbox WHERE event_id=?', [eventId]);
-      if (duplicate) { db.run('COMMIT'); return one('SELECT * FROM local_operation_outbox WHERE event_id=?', [eventId]); }
+      if (duplicate) { db.run('COMMIT'); transactionCommitted = true; return one('SELECT * FROM local_operation_outbox WHERE event_id=?', [eventId]); }
       run('INSERT OR IGNORE INTO device_sequences(device_id,last_seq) VALUES(?,0)', [networkConfig.deviceId]);
       run('UPDATE device_sequences SET last_seq=last_seq+1 WHERE device_id=?', [networkConfig.deviceId]);
       const seq = Number(one('SELECT last_seq FROM device_sequences WHERE device_id=?', [networkConfig.deviceId]).last_seq);
       run('INSERT INTO local_operation_outbox(event_id,device_id,device_seq,event_type,entity_type,entity_id,occurred_at,payload,status) VALUES(?,?,?,?,?,?,?,?,\'pending\')',
         [eventId, networkConfig.deviceId, seq, eventType, entityType, entityId, occurredAt, payload]);
       db.run('COMMIT');
-      persistDb();
+      transactionCommitted = true;
+      try { persistDb(); }
+      catch (persistError) {
+        restoreDatabaseSnapshot(databaseBefore);
+        throw new Error('No se confirmó el registro de auditoría en SQLite; se restauró el estado anterior y no se confirmó la operación. ' + (persistError.message || String(persistError)));
+      }
       return one('SELECT * FROM local_operation_outbox WHERE event_id=?', [eventId]);
-    } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
+    } catch (error) {
+      if (!transactionCommitted) { try { db.run('ROLLBACK'); } catch {} }
+      throw error;
+    }
   });
   ipcMain.handle('network:operation-pending', () => networkConfig.role === 'client' ? (clientOutbox ? clientOutbox.pending() : []) : all("SELECT event_id AS eventId,device_id AS deviceId,device_seq AS deviceSeq,event_type AS eventType,entity_type AS entityType,entity_id AS entityId,occurred_at AS occurredAt,payload,status FROM local_operation_outbox WHERE status='pending' ORDER BY device_seq LIMIT 500"));
   ipcMain.handle('network:operation-status', () => networkConfig.role === 'client' ? (clientOutbox ? clientOutbox.status() : { pending: 0, acknowledged: 0, conflicts: 0 }) : ({
