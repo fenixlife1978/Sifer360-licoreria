@@ -1363,7 +1363,7 @@ function conteoDlg(focusCode){
 }
 
 function countsHistoryDlg(){
-  const list=(S.counts||[]).slice().reverse();
+  const list=(S.counts||[]).filter(x=>String(x.cashbox||currentCaja())===currentCaja()).slice().reverse();
   const el=h('<div class="form"><div class="gridwrap tallwrap"><table class="grid"><thead><tr><th>Documento</th><th>Fecha / Hora</th><th>Operador</th><th>Productos Ajustados</th></tr></thead><tbody>'+
     (list.length?list.map(c=>'<tr><td class="mono"><b>'+esc(c.id)+'</b></td><td>'+fmtDT(c.ts)+'</td><td>'+esc(c.user)+'</td><td>'+c.items.map(i=>'<div><b>'+esc(i.code)+' '+esc(i.desc)+'</b>: '+fq(i.prev)+' &rarr; '+fq(i.next)+' ('+(i.diff>0?'+'+fq(i.diff):fq(i.diff))+') · <span class="dim">'+esc(i.reason)+'</span></div>').join('')+'</td></tr>').join(''):'<tr class="empty"><td colspan="4">Aún no se han guardado lotes de conteo.</td></tr>')+
   '</tbody></table></div></div>');
@@ -2603,10 +2603,11 @@ function comprasDlg(initialTab){
     }
     S.purchases.push(comp);
     if(payableTotal-effPaid>=0.01){
-      const cxpId='CXP-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(no,6);
+      const cxpNo=await nextCajaSequence('cxp',currentCaja());
+      const cxpId='CXP-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxpNo,6);
       const payments=effPaid>0?[{ts,method:payMethod,cur:'VES',amountBs:r2(effPaid*S.cfg.rate),amountUsd:effPaid,ref:'INI-'+no,note:'Abono inicial en compra'}]:[];
       S.cxp.push({
-        id:cxpId,purchaseNo:no,cashbox:currentCaja(),doc:docProv+' (COM-'+pad(no)+')',
+        id:cxpId,sequence:cxpNo,purchaseNo:no,cashbox:currentCaja(),doc:docProv+' (COM-'+pad(no)+')',
         supplier:Object.assign({},sup),
         concept:'Compra mercancía ('+lines.length+' reng.)'+(retUsd>0?' — retención IVA '+usd(retUsd):''),
         ts,dueTs,total:payableTotal,invoiceTotal:total,retIva:retUsd,paid:effPaid,payments
@@ -2971,7 +2972,7 @@ function cxpDlg(selId){
   '</div>');
 
   const draw=()=>{
-    const now=Date.now(), rate=S.cfg.rate, all=(S.cxp||[]).filter(x=>!x.void);
+    const now=Date.now(), rate=S.cfg.rate, all=(S.cxp||[]).filter(x=>!x.void&&String(x.cashbox||currentCaja())===currentCaja());
     const totPend=r8(all.reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
     const totOver=r8(all.filter(x=>r8(Number(x.total||0)-Number(x.paid||0))>=0.00000001&&x.dueTs<now).reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
     const totVig=r8(Math.max(0,totPend-totOver));
@@ -3225,7 +3226,7 @@ function cxpDlg(selId){
       });
       item.paid=r8(Math.min(Number(item.total)||0,(Number(item.paid)||0)+totalMix));
       if(item.purchaseNo){
-        const comp=(S.purchases||[]).find(x=>x.no===item.purchaseNo);
+        const comp=(S.purchases||[]).find(x=>x.no===item.purchaseNo&&String(x.cashbox||currentCaja())===String(item.cashbox||currentCaja()));
         if(comp)comp.paid=item.paid;
       }
       resetMix();
@@ -3256,13 +3257,14 @@ function newCxpManualDlg(){
   '</div></div>');
   openWin({title:'Registrar Obligación en Cuentas por Pagar (CxP)',w:540,body:el,foot:[
     {label:'Cancelar',fn:()=>{cxpDlg();return false;}},
-    {label:'Guardar CxP',primary:true,fn:()=>{
+    {label:'Guardar CxP',primary:true,fn:async()=>{
       const rif=$('#mpSup',el).value, sup=S.suppliers.find(s=>s.rif===rif)||S.suppliers[0];
       const amt=pn($('#mpAmt',el).value);
       if(!amt){msg('Indique el monto en US$.','bad');return false;}
-      const id='CXP-'+pad(S.cxp.length+1,4);
+      let cxpNo;try{cxpNo=await nextCajaSequence('cxp',currentCaja());}catch(error){msg('No se pudo reservar el número de CxP: '+error.message,'bad');return false;}
+      const id='CXP-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxpNo,6);
       S.cxp.push({
-        id,purchaseNo:null,doc:$('#mpDoc',el).value.trim()||id,
+        id,sequence:cxpNo,cashbox:currentCaja(),purchaseNo:null,doc:$('#mpDoc',el).value.trim()||id,
         supplier:Object.assign({},sup),
         concept:$('#mpConc',el).value.trim()||'Obligación con proveedor',
         ts:Date.now(),dueTs:parseIsoD($('#mpDue',el).value),
@@ -3350,7 +3352,7 @@ function newOperacionCambiariaDlg(opts, onDone){
   const initialCxp=opts.cxpId?((S.cxp||[]).find(x=>x.id===opts.cxpId)):null;
   const initialType='ZELLE_PROV';
 
-  const pendingCxp=(S.cxp||[]).filter(x=>r2(x.total-x.paid)>=0.01);
+  const pendingCxp=(S.cxp||[]).filter(x=>String(x.cashbox||currentCaja())===currentCaja()&&r2(x.total-x.paid)>=0.01);
   const cxpOptions='<option value="">-- No vincular a factura CxP --</option>'+
     pendingCxp.map(c=>'<option value="'+esc(c.id)+'"'+(initialCxp&&initialCxp.id===c.id?' selected':'')+'>'+esc(c.supplier.name)+' &middot; Doc: '+esc(c.doc)+' (Saldo: '+usd(r2(c.total-c.paid))+')</option>').join('');
 
@@ -6075,6 +6077,7 @@ async function nextCajaSequence(operation,box=currentCaja()){
   else if(operation==='purchase')minimum=Math.max(0,...(S.purchases||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.no)||0))+1;
   else if(operation==='count')minimum=Math.max(0,...(S.counts||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
   else if(operation==='cxc')minimum=Math.max(0,...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
+  else if(operation==='cxp')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
   else if(operation==='refund'||operation==='return')minimum=Math.max(0,...(S.returns||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.returnNo||x.sequence)||0))+1;
   const cached=cajaSeqs()[String(box)]||{};
   const cacheKey={invoice:'invoice',control:'ctrl',z:'z',void:'void',refund:'refund',return:'refund'}[operation];
