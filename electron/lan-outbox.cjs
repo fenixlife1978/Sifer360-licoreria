@@ -61,6 +61,7 @@ function createDurableOutbox({ directory, deviceId, fsImpl = fs, pathImpl = path
     const payloadText = JSON.stringify(input.payload);
     const existing = state.events.find(event =>
       event.status === 'pending' &&
+      event.serverDeviceId === String(input.serverDeviceId || '') &&
       event.eventType === String(input.eventType) &&
       event.entityType === String(input.entityType) &&
       event.entityId === String(input.entityId) &&
@@ -71,6 +72,7 @@ function createDurableOutbox({ directory, deviceId, fsImpl = fs, pathImpl = path
     const event = {
       eventId: String(input.eventId || cryptoImpl.randomUUID()),
       deviceId: String(deviceId),
+      serverDeviceId: String(input.serverDeviceId || ''),
       deviceSeq: state.lastSeq + 1,
       eventType: String(input.eventType),
       entityType: String(input.entityType),
