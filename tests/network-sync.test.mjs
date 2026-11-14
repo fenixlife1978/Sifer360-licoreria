@@ -382,3 +382,8 @@ test('un fallo al persistir la cola de auditoría LAN se comunica y no se oculta
   assert.match(pos, /falló la cola de auditoría LAN local/);
   assert.match(pos, /Revise antes de continuar/);
 });
+
+test('el cliente impide enviar snapshots mayores que el límite del servidor', () => {
+  assert.match(electron, /Buffer\.byteLength\(options\.body, 'utf8'\) > MAX_SYNC_BODY/);
+  assert.match(electron, /La operación supera el límite de tamaño permitido para sincronización LAN/);
+});
