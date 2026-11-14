@@ -421,3 +421,10 @@ test('el cliente limita las respuestas LAN por bytes UTF-8', () => {
   assert.match(electron, /let receivedBytes = 0;\s*response\.setEncoding\('utf8'\)/);
   assert.match(electron, /receivedBytes \+= Buffer\.byteLength\(chunk, 'utf8'\)/);
 });
+
+test('el cliente distingue conflicto de hash, conflicto de eventos y desconexión', () => {
+  assert.match(pos, /base central cambió/);
+  assert.match(pos, /Recargue SIFER para traer la base central/);
+  assert.match(pos, /conflictos LAN/);
+  assert.match(pos, /Cliente LAN desconectado/);
+});
