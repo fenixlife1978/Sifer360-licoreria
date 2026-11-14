@@ -600,7 +600,7 @@ async function networkSyncAttempt(){
     }else networkLastStatus='local';
   }catch(error){
     networkLastStatus='offline';
-    const status=$('#sbMsg');if(status)status.textContent=String(error&&error.message||'').includes('conflictos')?'Conflicto LAN · no se aplicó el snapshot; revise las operaciones pendientes.':'Sin confirmación del servidor · las operaciones nuevas permanecen en la cola LAN local. Reconecte y revise el estado antes de continuar.';
+    const status=$('#sbMsg');if(status)status.textContent=String(error&&error.message||'').includes('conflicto')?'Conflicto LAN · no se aplicó el snapshot; revise las operaciones pendientes.':'Sin confirmación del servidor · las operaciones nuevas permanecen en la cola LAN local. Reconecte y revise el estado antes de continuar.';
   }finally{networkSyncBusy=false}
 }
 window.SIFERNetworkSync=()=>networkSyncAttempt();
