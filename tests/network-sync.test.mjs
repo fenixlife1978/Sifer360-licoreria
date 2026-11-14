@@ -519,3 +519,9 @@ test('la sincronización espera tanto la persistencia del snapshot como la captu
   assert.match(pos, /await captureTask/);
   assert.match(pos, /captureTask!==operationCapturePromise/);
 });
+
+test('el cliente no conserva snapshots locales antiguos por encima del estado autoritativo del servidor', () => {
+  assert.doesNotMatch(pos, /function mergeRemoteSnapshot\(local,remote\)/);
+  assert.match(pos, /Object\.assign\(S,result\.state\)/);
+  assert.match(pos, /saveSequence===syncRevision/);
+});
