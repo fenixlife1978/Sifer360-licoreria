@@ -236,16 +236,23 @@ async function idbGetSqlite() {
   }
 }
 
-async function idbPutSqlite(bytes) {
+async async function idbPutSqlite(bytes) {
   try {
     const idb = await openIndexedDb();
     if (!idb) return false;
-    return new Promise(resolve => {
-      const tx = idb.transaction(SQLITE_IDB_STORE, 'readwrite');
-      const store = tx.objectStore(SQLITE_IDB_STORE);
-      const req = store.put(bytes, SQLITE_IDB_KEY);
-      req.onsuccess = () => resolve(true);
-      req.onerror = () => resolve(false);
+    return await new Promise(resolve => {
+      let settled = false;
+      const done = value => { if (!settled) { settled = true; resolve(value); } };
+      let tx;
+      try {
+        tx = idb.transaction(SQLITE_IDB_STORE, 'readwrite', { durability: 'strict' });
+      } catch {
+        tx = idb.transaction(SQLITE_IDB_STORE, 'readwrite');
+      }
+      tx.objectStore(SQLITE_IDB_STORE).put(bytes, SQLITE_IDB_KEY);
+      tx.oncomplete = () => done(true);
+      tx.onerror = () => done(false);
+      tx.onabort = () => done(false);
     });
   } catch {
     return false;
@@ -334,12 +341,15 @@ const posSqliteDriver = {
     }
   },
   async persist() {
-    if (window.posDesktop || !sqliteDb) return;
+    if (window.posDesktop || !sqliteDb) return true;
     try {
       const bytes = sqliteDb.export();
-      await idbPutSqlite(bytes);
+      const committed = await idbPutSqlite(bytes);
+      if (!committed) throw new Error('IndexedDB no confirmó la escritura de la base SQLite.');
+      return true;
     } catch (e) {
       console.error('Error persistiendo SQLite a IndexedDB:', e);
+      throw e;
     }
   },
   async loadState() {
@@ -373,11 +383,22 @@ const posSqliteDriver = {
     if (window.posDesktop) {
       try {
         await window.posDesktop.saveState(state);
+        return { ok: true, durable: 'desktop' };
       } catch (e) {
         persistenceError(e);
+        return { ok: false, durable: 'none', error: e };
       }
-      return { ok: true };
     }
+    // Escribir primero el respaldo síncrono: no esperar a la exportación SQLite
+    // para que un corte eléctrico no deje el último estado fuera de localStorage.
+    let localBackup = false;
+    try {
+      localStorage.setItem(KEY, payload);
+      localBackup = true;
+    } catch (e) {
+      console.error('No se pudo escribir el respaldo local inmediato:', e);
+    }
+    let sqliteCommitted = false;
     if (sqliteDb) {
       try {
         sqliteDb.run(`
@@ -386,16 +407,21 @@ const posSqliteDriver = {
           ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = CURRENT_TIMESTAMP
         `, [payload]);
         await this.persist();
+        sqliteCommitted = true;
       } catch (e) {
-        console.error('Error guardando en SQLite:', e);
+        console.error('Error guardando/confirmando SQLite:', e);
       }
     }
-    try {
-      localStorage.setItem(KEY, payload);
-    } catch (e) {
-      persistenceError(e);
+    if (!localBackup && !sqliteCommitted) {
+      const error = new Error('No se pudo guardar el estado ni en el respaldo local ni en SQLite.');
+      persistenceError(error);
+      return { ok: false, durable: 'none', error };
     }
-    return { ok: true };
+    if (!sqliteCommitted && sqliteDb) {
+      const warning = new Error('Estado guardado en respaldo local; SQLite no confirmó la escritura.');
+      persistenceError(warning);
+    }
+    return { ok: true, durable: sqliteCommitted ? 'sqlite+localStorage' : 'localStorage' };
   },
   async listDocuments(filter = {}) {
     if (window.posDesktop) {
@@ -575,10 +601,15 @@ function scheduleNetworkSync(){
 }
 function save(){
   const state=stateSnapshot();
-  posSqliteDriver.saveState(state).catch(e=>persistenceError(e));
+  const pending=posSqliteDriver.saveState(state).then(result=>{
+    if(!result||!result.ok)throw (result&&result.error)||new Error('No se confirmó el guardado local.');
+    try{window.dispatchEvent(new Event('sifer:state-saved'));}catch(e){}
+    return result;
+  }).catch(e=>{persistenceError(e);return {ok:false,durable:'none',error:e};});
+  window.__SIFER_LAST_SAVE=pending;
   captureNewOperations();
   scheduleNetworkSync();
-  try{window.dispatchEvent(new Event('sifer:state-saved'));}catch(e){}
+  return pending;
 }
 setInterval(()=>{if(window.posDesktop&&typeof window.posDesktop.networkSyncNow==='function')networkSyncAttempt()},20000);
 
