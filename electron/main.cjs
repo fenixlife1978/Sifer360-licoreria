@@ -361,9 +361,32 @@ function allocateCashboxSequence(cashboxId, operationType, minimumValue = 1) {
     throw error;
   }
 }
+async function clientApi(route, options = {}) {
+  if (networkConfig.role !== 'client' || !networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión configurada al servidor LAN.');
+  const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + route, {
+    ...options,
+    headers: { Authorization: 'Bearer ' + networkConfig.token, ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) },
+    signal: options.signal || AbortSignal.timeout(10000)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.ok === false) throw new Error(result.error || 'El servidor LAN no confirmó la operación (' + response.status + ').');
+  return result;
+}
 function registerNetworkIpc() {
   ipcMain.handle('network:status', () => ({ ...networkConfig, running: !!networkServer, addresses: localAddresses() }));
-  ipcMain.handle('network:operation-create', (_e, input = {}) => {
+  ipcMain.handle('network:operation-create', async (_e, input = {}) => {
+    if (networkConfig.role === 'client') {
+      const eventType = String(input.eventType || '').trim();
+      const entityType = String(input.entityType || '').trim();
+      const entityId = String(input.entityId || '').trim();
+      if (!eventType || !entityType || !entityId || !input.payload || typeof input.payload !== 'object' || Array.isArray(input.payload)) throw new Error('Operación incompleta: tipo, entidad, identificador y payload son obligatorios.');
+      const event = { eventId: String(input.eventId || crypto.randomUUID()), deviceId: networkConfig.deviceId, deviceSeq: Date.now() * 1000 + Math.floor(Math.random() * 1000), eventType, entityType, entityId, occurredAt: String(input.occurredAt || new Date().toISOString()), payload: input.payload };
+      const result = await clientApi('/api/sync/events', { method: 'POST', body: JSON.stringify({ events: [event] }) });
+      if ((result.conflicts || []).length) throw new Error('El servidor detectó un conflicto al registrar la operación. Recargue el estado central.');
+      if (!(result.accepted || []).includes(event.eventId) && !(result.duplicates || []).includes(event.eventId)) throw new Error('El servidor no confirmó la recepción de la operación.');
+      if (result.stateHash) networkConfig.serverStateHash = result.stateHash;
+      return { eventId: event.eventId, deviceId: event.deviceId, deviceSeq: event.deviceSeq, eventType, entityType, entityId, occurredAt: event.occurredAt, payload: JSON.stringify(event.payload), status: 'acked' };
+    }
     const eventType = String(input.eventType || '').trim();
     const entityType = String(input.entityType || '').trim();
     const entityId = String(input.entityId || '').trim();
@@ -387,8 +410,8 @@ function registerNetworkIpc() {
       return one('SELECT * FROM local_operation_outbox WHERE event_id=?', [eventId]);
     } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
   });
-  ipcMain.handle('network:operation-pending', () => all("SELECT event_id AS eventId,device_id AS deviceId,device_seq AS deviceSeq,event_type AS eventType,entity_type AS entityType,entity_id AS entityId,occurred_at AS occurredAt,payload,status FROM local_operation_outbox WHERE status='pending' ORDER BY device_seq LIMIT 500"));
-  ipcMain.handle('network:operation-status', () => ({
+  ipcMain.handle('network:operation-pending', () => networkConfig.role === 'client' ? [] : all("SELECT event_id AS eventId,device_id AS deviceId,device_seq AS deviceSeq,event_type AS eventType,entity_type AS entityType,entity_id AS entityId,occurred_at AS occurredAt,payload,status FROM local_operation_outbox WHERE status='pending' ORDER BY device_seq LIMIT 500"));
+  ipcMain.handle('network:operation-status', () => networkConfig.role === 'client' ? ({ pending: 0, acknowledged: 0, conflicts: 0 }) : ({
     pending: Number(one("SELECT COUNT(*) AS n FROM local_operation_outbox WHERE status='pending'").n),
     acknowledged: Number(one("SELECT COUNT(*) AS n FROM local_operation_outbox WHERE status='acked'").n),
     conflicts: Number(one("SELECT COUNT(*) AS n FROM local_operation_outbox WHERE status='conflict'").n)
