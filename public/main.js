@@ -5170,6 +5170,94 @@ function newRetencionIvaDlg(onDone){
   });
 }
 
+
+function fiscalPrinterConfigDlg(){
+  const box=currentCaja();
+  const providerCatalog={
+    hka:{label:'The Factory HKA',files:['TfhkaNet.dll','tfhkaif.dll','IntTFHKA.exe']},
+    bematech:{label:'Bematech',files:['BemaFI32.dll','BemaFI64.dll','BemaFI32.ini']},
+    epson:{label:'Epson Fiscal',files:['EpsonFiscalInterface.dll']},
+    quorion:{label:'Quorion',files:['QProg.dll']},
+    aclas:{label:'Aclas',files:['AclasSDK.dll']},
+    pnp:{label:'PNP / Desarrollos PNP',files:['PnpFiscal.dll']}
+  };
+  const saved=(S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[box])||{};
+  let draft={provider:saved.provider||'hka',model:saved.model||'',port:saved.port||'',baudRate:saved.baudRate||9600,dataBits:saved.dataBits||8,parity:saved.parity||'none',stopBits:saved.stopBits||1,timeoutMs:saved.timeoutMs||8000,bridgePath:saved.bridgePath||'',sdkPaths:Object.assign({},saved.sdkPaths||{}),enabled:saved.enabled===true};
+  const el=h('<div class="form"><div class="hint"><b>Configuración fiscal de Caja '+esc(box)+'</b>. Los parámetros se guardan en SQLite y quedan asociados a esta caja. La conexión física se prueba en este equipo.</div><div class="newgrid">'+
+    '<div class="f"><label for="fpProvider">Fabricante / ecosistema</label><select class="fld" id="fpProvider">'+Object.keys(providerCatalog).map(k=>'<option value="'+k+'" '+(draft.provider===k?'selected':'')+'>'+providerCatalog[k].label+'</option>').join('')+'</select></div>'+
+    '<div class="f"><label for="fpModel">Modelo exacto</label><input class="fld" id="fpModel" maxlength="120" value="'+esc(draft.model)+'" placeholder="Ej. HKA80, MP-4000 TH FI"></div>'+
+    '<div class="f"><label for="fpPort">Puerto USB-Serial / COM</label><input class="fld mono" id="fpPort" list="fpPortList" value="'+esc(draft.port)+'" placeholder="COM4"><datalist id="fpPortList"></datalist></div>'+
+    '<div class="f"><label for="fpBaud">Velocidad (baudios)</label><select class="fld" id="fpBaud">'+[9600,19200,38400,57600,115200,230400].map(v=>'<option value="'+v+'" '+(Number(draft.baudRate)===v?'selected':'')+'>'+v+'</option>').join('')+'</select></div>'+
+    '<div class="f"><label for="fpBits">Bits de datos</label><select class="fld" id="fpBits"><option value="8" '+(Number(draft.dataBits)===8?'selected':'')+'>8</option><option value="7" '+(Number(draft.dataBits)===7?'selected':'')+'>7</option></select></div>'+
+    '<div class="f"><label for="fpParity">Paridad</label><select class="fld" id="fpParity">'+['none','even','odd','mark','space'].map(v=>'<option value="'+v+'" '+(draft.parity===v?'selected':'')+'>'+v.toUpperCase()+'</option>').join('')+'</select></div>'+
+    '<div class="f"><label for="fpStop">Bits de parada</label><select class="fld" id="fpStop"><option value="1" '+(Number(draft.stopBits)===1?'selected':'')+'>1</option><option value="2" '+(Number(draft.stopBits)===2?'selected':'')+'>2</option></select></div>'+
+    '<div class="f"><label for="fpTimeout">Tiempo de espera (ms)</label><input class="fld r" id="fpTimeout" type="number" min="1000" max="60000" value="'+esc(draft.timeoutMs)+'"></div>'+
+    '</div><div class="row" style="flex-wrap:wrap;margin:8px 0"><button class="btn" id="fpDetect">Detectar puertos COM</button><button class="btn" id="fpTestPort">Probar apertura del puerto</button></div>'+
+    '<div class="group"><div class="gtitle">SDK del fabricante</div><div id="fpSdkFields"></div><div class="hint">Selecciona únicamente archivos originales entregados por el fabricante o distribuidor autorizado. Detectar un DLL no significa que el protocolo esté integrado.</div></div>'+
+    '<div class="group"><div class="gtitle">Puente de comunicación fiscal</div><div class="f"><label for="fpBridge">Ejecutable adaptador del fabricante</label><input class="fld" id="fpBridge" readonly value="'+esc(draft.bridgePath)+'"></div><div class="row" style="flex-wrap:wrap;margin-top:8px"><button class="btn" id="fpChooseBridge">Seleccionar adaptador .exe</button><button class="btn" id="fpTestBridge">Comprobar adaptador</button></div><p class="hint">El adaptador debe implementar sifer-fiscal-bridge/v1 y usar el SDK oficial. No se envían comandos fiscales desde esta prueba.</p></div>'+
+    '<label class="chk"><input type="checkbox" id="fpEnabled" '+(draft.enabled?'checked':'')+'> Habilitar este dispositivo en la configuración de la caja</label>'+
+    '<div id="fpStatus" class="hint" role="status" aria-live="polite">Pendiente de diagnóstico.</div>'+
+    '<div class="group" style="border-color:#d7a44b;background:#fff9e9"><b>Importante:</b> la prueba COM solo abre y cierra el puerto. No emite facturas ni modifica la memoria fiscal. No se habilitará emisión fiscal real hasta instalar y validar el adaptador específico del modelo con el fabricante.</div></div>');
+  const profile=()=>{
+    const provider=$('#fpProvider',el).value;
+    return {provider,model:$('#fpModel',el).value.trim(),port:$('#fpPort',el).value.trim(),baudRate:Number($('#fpBaud',el).value),dataBits:Number($('#fpBits',el).value),parity:$('#fpParity',el).value,stopBits:Number($('#fpStop',el).value),timeoutMs:Number($('#fpTimeout',el).value),bridgePath:$('#fpBridge',el).value.trim(),sdkPaths:Object.assign({},draft.sdkPaths),enabled:$('#fpEnabled',el).checked};
+  };
+  const drawSdk=()=>{
+    const p=profile(),files=providerCatalog[p.provider].files;
+    $('#fpSdkFields',el).innerHTML=files.map(file=>'<div class="row" style="gap:6px;margin:5px 0;align-items:center"><div style="flex:1;min-width:0"><b>'+esc(file)+'</b><div class="hint" style="overflow-wrap:anywhere">'+esc(draft.sdkPaths[file]||'No seleccionado')+'</div></div><button class="btn mini2" data-sdk-file="'+esc(file)+'">Buscar archivo</button></div>').join('');
+  };
+  const status=async()=>{
+    const node=$('#fpStatus',el),p=profile();
+    if(!window.posDesktop||!window.posDesktop.fiscalPrinterStatus){node.textContent='La administración de impresoras fiscales requiere la aplicación Electron de escritorio.';return;}
+    try{const r=await window.posDesktop.fiscalPrinterStatus(p);node.textContent=(r.ready?'Adaptador y SDK detectados.':'Configuración incompleta.')+' '+r.note+' Archivos SDK: '+r.files.filter(x=>x.exists).length+'/'+r.files.length+'. Puente: '+(r.bridgeExists?'presente':'no configurado')+'.';}
+    catch(e){node.textContent='No se pudo verificar la configuración: '+e.message;}
+  };
+  const detect=async()=>{
+    const node=$('#fpStatus',el);node.textContent='Buscando puertos COM de Windows…';
+    try{const r=await window.posDesktop.fiscalPrinterListPorts();$('#fpPortList',el).innerHTML=(r.ports||[]).map(p=>'<option value="'+esc(p.port)+'">'+esc(p.name)+'</option>').join('');node.textContent=r.ports.length?'Puertos detectados: '+r.ports.map(p=>p.port+' — '+p.name).join(' · '):r.message;}
+    catch(e){node.textContent='No se pudieron detectar puertos: '+e.message;}
+  };
+  el.addEventListener('change',e=>{
+    if(e.target.id==='fpProvider'){draft.provider=e.target.value;drawSdk();status();}
+  });
+  el.addEventListener('click',async e=>{
+    const sdk=e.target.closest('[data-sdk-file]');
+    if(sdk){
+      try{const file=await window.posDesktop.fiscalPrinterSelectFile('sdk');if(file){draft.sdkPaths[sdk.dataset.sdkFile]=file;drawSdk();await status();}}
+      catch(err){$('#fpStatus',el).textContent='No se pudo seleccionar el SDK: '+err.message;}
+      return;
+    }
+    if(e.target.id==='fpDetect'){await detect();return;}
+    if(e.target.id==='fpTestPort'){
+      try{const r=await window.posDesktop.fiscalPrinterTestPort(profile());$('#fpStatus',el).textContent=r.message;}
+      catch(err){$('#fpStatus',el).textContent=err.message;}
+      return;
+    }
+    if(e.target.id==='fpChooseBridge'){
+      try{const file=await window.posDesktop.fiscalPrinterSelectFile('bridge');if(file){$('#fpBridge',el).value=file;draft.bridgePath=file;await status();}}
+      catch(err){$('#fpStatus',el).textContent='No se pudo seleccionar el adaptador: '+err.message;}
+      return;
+    }
+    if(e.target.id==='fpTestBridge'){
+      try{const r=await window.posDesktop.fiscalPrinterTestBridge(profile());$('#fpStatus',el).textContent='Adaptador respondió correctamente: '+JSON.stringify(r);}
+      catch(err){$('#fpStatus',el).textContent='Adaptador no validado: '+err.message;}
+    }
+  });
+  openWin({title:'Impresora fiscal · Caja '+esc(box),w:760,body:el,foot:[
+    {label:'Cerrar'},
+    {label:'Guardar configuración',primary:true,fn:async()=>{
+      const p=profile();
+      if(!p.model){msg('Indique el modelo exacto de la impresora fiscal.','bad');return false;}
+      if(!S.cfg.fiscalPrinters)S.cfg.fiscalPrinters={};
+      S.cfg.fiscalPrinters[box]=p;
+      const persisted=await save();
+      if(!persisted||!persisted.ok){msg('SQLite no confirmó la configuración de la impresora fiscal.','bad');return false;}
+      msg('Configuración fiscal guardada para Caja '+box+'.');
+      return true;
+    }}
+  ],onOpen:()=>{drawSdk();status();}});
+}
+
 function seniatSudebanDlg(initialTab){
   if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir el módulo Fiscal.','bad');return;}
   let activeTab=initialTab||'resumen';
@@ -5633,6 +5721,7 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="fRif">RIF de la Empresa</label><input class="fld" id="fRif" value="'+esc(c.rif)+'"></div>'+
       '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
       '<div class="f"><label for="fTipo">Modalidad de Facturación</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option></select></div>'+
+      '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button></div>'+
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
       '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
       '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
@@ -5695,6 +5784,7 @@ function seniatSudebanDlg(initialTab){
   };
 
   el.addEventListener('click',async e=>{
+    if(e.target.id==='btnFiscalPrinterManager'){fiscalPrinterConfigDlg();return;}
     const tabBtn=e.target.closest('.tab[data-tab]');
     if(tabBtn){
       $('.tab.active',el)?.classList.remove('active');
