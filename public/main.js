@@ -2938,19 +2938,20 @@ function newCxcManualDlg(){
   '</div></div>');
   openWin({title:'Registrar Cuenta por Cobrar',w:520,body:el,foot:[
     {label:'Cancelar',fn:()=>{cxcDlg();return false;}},
-    {label:'Guardar CxC',primary:true,fn:()=>{
+    {label:'Guardar CxC',primary:true,fn:async()=>{
       const rif=$('#mcClient',el).value, cl=S.clients.find(c=>c.rif===rif)||S.clients[1];
       const amt=pn($('#mcAmt',el).value);
       if(!amt){msg('Indique el monto en US$.','bad');return false;}
-      const id='CXC-'+pad(S.cxc.length+1,4);
+      let cxcNo;try{cxcNo=await nextCajaSequence('cxc',currentCaja());}catch(error){msg('No se pudo reservar el número de CxC: '+error.message,'bad');return false;}
+      const id='CXC-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxcNo,6),rollbackState=JSON.parse(JSON.stringify(S));
       S.cxc.push({
-        id,saleNo:null,doc:$('#mcDoc',el).value.trim()||id,
+        id,sequence:cxcNo,cashbox:currentCaja(),saleNo:null,doc:$('#mcDoc',el).value.trim()||id,
         client:Object.assign({},cl),
         concept:$('#mcConc',el).value.trim()||'Cargo a crédito',
         ts:Date.now(),dueTs:parseIsoD($('#mcDue',el).value),cashbox:currentCaja(),cashier:currentCajero(),
         total:amt,paid:0,payments:[]
       });
-      save();cxcDlg(id);msg('Cuenta por cobrar registrada.');return false;
+      const persisted=await save();if(!persisted||!persisted.ok){for(const key of Object.keys(S))delete S[key];Object.assign(S,rollbackState);msg('SQLite no confirmó la CxC; no se registró definitivamente.','bad');return false;}cxcDlg(id);msg('Cuenta por cobrar registrada.');return false;
     }}
   ]});
 }
@@ -3280,7 +3281,8 @@ function newCxpManualDlg(){
         ts:Date.now(),dueTs:parseIsoD($('#mpDue',el).value),
         total:amt,paid:0,payments:[]
       });
-      save();cxpDlg(id);msg('Cuenta por pagar registrada.');return false;
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      const persisted=await save();if(!persisted||!persisted.ok){S.cxp=S.cxp.filter(x=>x.id!==id);msg('SQLite no confirmó la CxP; no se registró definitivamente.','bad');return false;}cxpDlg(id);msg('Cuenta por pagar registrada.');return false;
     }}
   ]});
 }
