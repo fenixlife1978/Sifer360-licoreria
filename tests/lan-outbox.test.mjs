@@ -102,3 +102,16 @@ test('un fallo de escritura impide entregar el evento como operación encolada',
   assert.throws(() => outbox.enqueue(operation('event-disk-failure')), /No se pudo confirmar la cola LAN en disco/);
   assert.equal(fs.existsSync(path.join(options.directory, 'sifer360-network-outbox-v1.json')), false);
 });
+
+test('los conflictos conservan el evento completo para diagnóstico después de reiniciar', t => {
+  const options = fixture(t);
+  const first = createDurableOutbox(options);
+  first.enqueue(operation('event-diagnostic'));
+  first.conflict(['event-diagnostic'], 'entity-already-exists-with-different-data');
+  const restarted = createDurableOutbox(options);
+  const conflicts = restarted.conflicts();
+  assert.equal(conflicts.length, 1);
+  assert.equal(conflicts[0].entityId, 'SALE-0001');
+  assert.equal(conflicts[0].conflictReason, 'entity-already-exists-with-different-data');
+  assert.equal(conflicts[0].payload.record.total, 10);
+});
