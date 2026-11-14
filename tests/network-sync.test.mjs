@@ -295,3 +295,9 @@ test('la fusión de snapshots conserva cajas separadas para CASHEA y cambios de 
   assert.match(pos, /Operación en cola LAN local/);
   assert.match(pos, /Conflicto LAN en/);
 });
+
+test('los conflictos LAN anteriores mantienen bloqueado el snapshot hasta su conciliación', () => {
+  assert.match(electron, /const currentStatus = clientOutbox\.status\(\)/);
+  assert.match(electron, /currentStatus\.conflicts > 0/);
+  assert.match(electron, /snapshot completo hasta conciliar/);
+});
