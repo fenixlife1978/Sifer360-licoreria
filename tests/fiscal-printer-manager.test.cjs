@@ -7,7 +7,7 @@ const path = require('node:path');
 const manager = require('../electron/fiscal-printer-manager.cjs');
 
 test('registra las familias fiscales solicitadas y sus SDK esperados', () => {
-  for (const id of ['hka','bematech','epson','quorion','aclas','pnp']) {
+  for (const id of ['hka','bematech','epson','quorion','aclas','pnp','hasar']) {
     assert.ok(manager.PROVIDERS[id], 'Falta proveedor ' + id);
     assert.ok(manager.PROVIDERS[id].sdkFiles.length > 0);
   }
