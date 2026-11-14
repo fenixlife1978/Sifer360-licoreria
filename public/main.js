@@ -581,7 +581,7 @@ async function captureNewOperations(snapshotOverride){
     return {ok:true,role:'client',serverConfirmed:true};
   }catch(error){
     console.warn('No se pudo confirmar una operación en el servidor LAN:',error);
-    const status=$('#sbMsg');if(status)status.textContent='Operación no confirmada por el servidor LAN: '+String(error&&error.message||error);
+    const status=$('#sbMsg');if(status)status.textContent='Falló la cola de auditoría LAN local o su confirmación remota: '+String(error&&error.message||error)+'. Revise antes de continuar.';
     throw error;
   }finally{operationCaptureBusy=false}
 }
@@ -6279,7 +6279,8 @@ function readActiveOpening(boxOverride){
   if(openingMigrationBlocked)return null;
   const box=String(boxOverride||currentCaja());
   const openings=Array.isArray(S.openings)?S.openings:[];
-  const matches=openings.filter(item=>item&&String(item.cashbox||'')===box);
+  const user=activeUser();
+  const matches=openings.filter(item=>item&&String(item.cashbox||'')===box&&(user.role!=='cajero'||(String(item.username||'')===String(user.username||'')&&String(item.cashbox||'')===String(user.cashbox||''))));
   if(!matches.length)return null;
   const stamp=item=>openingTimestamp(item.closedAt||item.openedAt||item.ts);
   matches.sort((a,b)=>stamp(a)-stamp(b));
