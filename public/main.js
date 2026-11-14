@@ -5243,7 +5243,8 @@ function fiscalPrinterConfigDlg(){
     epson:{label:'Epson Fiscal',files:['EpsonFiscalInterface.dll']},
     quorion:{label:'Quorion',files:['QProg.dll']},
     aclas:{label:'Aclas',files:['AclasSDK.dll']},
-    pnp:{label:'PNP / Desarrollos PNP',files:['PnpFiscal.dll']}
+    pnp:{label:'PNP / Desarrollos PNP',files:['PnpFiscal.dll']},
+    hasar:{label:'Hasar',files:[]}
   };
   const readSavedDraft=boxId=>{const saved=(S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[boxId])||{};return{provider:saved.provider||'hka',model:saved.model||'',port:saved.port||'',baudRate:saved.baudRate||9600,dataBits:saved.dataBits||8,parity:saved.parity||'none',stopBits:saved.stopBits||1,timeoutMs:saved.timeoutMs||8000,bridgePath:saved.bridgePath||'',sdkPaths:Object.assign({},saved.sdkPaths||{}),enabled:saved.enabled===true};};
   let draft=readSavedDraft(box);
