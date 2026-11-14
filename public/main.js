@@ -526,6 +526,7 @@ let networkSyncTimer=null,networkSyncBusy=false,networkLastStatus='local';
 let saveQueue=Promise.resolve(),saveSequence=0,persistenceBlocked=false;
 let operationBaseline = null;
 let operationCaptureBusy = false;
+let openingMigrationBlocked=false;
 let operationCapturePromise=Promise.resolve();
 const OPERATION_COLLECTIONS = [
   ['sales','sale'], ['purchases','purchase'], ['cxc','receivable'], ['cxp','payable'],
@@ -6248,25 +6249,69 @@ function zOperationalTotals(sales,start,end,box){
   });
   return out;
 }
-function readActiveOpening(){
-  try{
-    const user=activeUser();
-    const sessionValue=JSON.parse(sessionStorage.getItem('sifer360_active_opening')||'null');
-    if(user.role==='cajero'){
-      if(!sessionValue||sessionValue.status!=='abierta')return null;
-      if(String(sessionValue.username||'')!==String(user.username||''))return null;
-      if(String(sessionValue.cashbox||'')!==String(user.cashbox||''))return null;
-      return sessionValue;
-    }
-    if(sessionValue&&sessionValue.status==='abierta')return sessionValue;
-    const localValue=JSON.parse(localStorage.getItem('sifer360_active_opening')||'null');
-    return localValue||sessionValue||null;
-  }catch(e){return null;}
+function readActiveOpening(boxOverride){
+  if(openingMigrationBlocked)return null;
+  const box=String(boxOverride||currentCaja());
+  const openings=Array.isArray(S.openings)?S.openings:[];
+  const matches=openings.filter(item=>item&&String(item.cashbox||'')===box);
+  if(!matches.length)return null;
+  const stamp=item=>Date.parse(String(item.closedAt||item.openedAt||''))||Number(item.ts)||0;
+  matches.sort((a,b)=>stamp(a)-stamp(b));
+  return matches[matches.length-1]||null;
+}
+function upsertOpeningState(opening){
+  if(!Array.isArray(S.openings))S.openings=[];
+  const index=S.openings.findIndex(item=>item&&String(item.id)===String(opening.id));
+  if(index>=0)S.openings[index]=opening;else S.openings.push(opening);
 }
 function writeActiveOpening(opening){
   const value=JSON.stringify(opening);
-  sessionStorage.setItem('sifer360_active_opening',value);
-  if(activeUser().role!=='cajero')localStorage.setItem('sifer360_active_opening',value);
+  try{
+    sessionStorage.setItem('sifer360_active_opening',value);
+    if(activeUser().role!=='cajero')localStorage.setItem('sifer360_active_opening',value);
+  }catch(error){console.warn('No se pudo actualizar la caché local de apertura:',error);}
+}
+async function migrateLegacyOpenings(){
+  openingMigrationBlocked=false;
+  if(!Array.isArray(S.openings))S.openings=[];
+  const candidates=[];
+  const addCandidate=value=>{if(value&&typeof value==='object'&&value.id&&value.cashbox&&['abierta','cerrada'].includes(value.status))candidates.push(value);};
+  try{
+    const history=JSON.parse(localStorage.getItem('sifer360_openings')||'[]');
+    if(Array.isArray(history))history.forEach(addCandidate);
+  }catch{}
+  try{addCandidate(JSON.parse(localStorage.getItem('sifer360_active_opening')||'null'));}catch{}
+  try{addCandidate(JSON.parse(sessionStorage.getItem('sifer360_active_opening')||'null'));}catch{}
+  const seen=new Set();
+  const unique=candidates.filter(item=>{const id=String(item.id);if(seen.has(id))return false;seen.add(id);return true;});
+  const existingIds=new Set(S.openings.map(item=>String(item.id)));
+  let changed=false;
+  for(const candidate of unique.filter(item=>item.status==='cerrada')){
+    if(existingIds.has(String(candidate.id)))continue;
+    S.openings.push(candidate);existingIds.add(String(candidate.id));changed=true;
+  }
+  const legacyActive=new Map();
+  for(const candidate of unique.filter(item=>item.status==='abierta')){
+    const box=String(candidate.cashbox);
+    const current=legacyActive.get(box);
+    const stamp=item=>Date.parse(String(item.openedAt||''))||Number(item.ts)||0;
+    if(!current||stamp(candidate)>stamp(current))legacyActive.set(box,candidate);
+  }
+  for(const [box,candidate] of legacyActive){
+    const existing=S.openings.filter(item=>String(item.cashbox||'')===box).sort((a,b)=>(Date.parse(String(a.closedAt||a.openedAt||''))||0)-(Date.parse(String(b.closedAt||b.openedAt||''))||0));
+    const latest=existing[existing.length-1];
+    if(latest&&(latest.status==='abierta'||(Date.parse(String(latest.closedAt||latest.openedAt||''))||0)>=(Date.parse(String(candidate.openedAt||''))||0)))continue;
+    if(existingIds.has(String(candidate.id)))continue;
+    S.openings.push(candidate);existingIds.add(String(candidate.id));changed=true;
+  }
+  if(!changed)return true;
+  const persisted=await save();
+  if(!persisted||!persisted.ok){
+    openingMigrationBlocked=true;
+    window.__POS_OPENING_MIGRATION_ERROR='No se pudo migrar la apertura histórica a SQLite central. La caja queda bloqueada para evitar operar con un turno local no confirmado. Reconecte con el servidor y vuelva a intentar.';
+    return false;
+  }
+  return true;
 }
 function zExpectedByMethod(sales,opening){
   const out={};
