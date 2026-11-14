@@ -114,7 +114,7 @@ test('los cobros CxC y pagos CxP usan consecutivo de movimiento por caja y guard
   assert.match(pos, /cashboxSequence:movementNo/);
   assert.match(pos, /id:movementId/);
   assert.match(pos, /const persisted=await save\(\)/);
-  assert.match(pos, /if\(!persisted\|\|!persisted\.ok\)\{Object\.assign\(S,rollbackState\)/);
+  assert.match(pos, /if\(!persisted\|\|!persisted\.ok\)\{restoreStateSnapshotIfNeeded\(persisted,rollbackState\)/);
   assert.match(pos, /operation==='movement'/);
   assert.match(pos, /cashboxSequence\)\|\|0/);
 });
