@@ -476,3 +476,10 @@ test('la outbox captura operaciones nuevas sin depender del éxito del snapshot 
 test('la reconexión recupera el estado del servidor y desbloquea escrituras previamente bloqueadas', () => {
   assert.match(pos, /if\(persistenceBlocked\)\{\s*for\(const key of Object\.keys\(S\)\)delete S\[key\];\s*Object\.assign\(S,result\.state\);\s*persistenceBlocked=false/);
 });
+
+test('desconectar conserva la identidad del servidor anterior para etiquetar nuevas operaciones pendientes', () => {
+  const handler = electron.slice(electron.indexOf("ipcMain.handle('network:disconnect-client'"), electron.indexOf("ipcMain.handle('network:configure-client'"));
+  assert.match(handler, /role: 'client'/);
+  assert.doesNotMatch(handler, /serverDeviceId: ''/);
+  assert.match(handler, /serverPromotionBlocked: true/);
+});
