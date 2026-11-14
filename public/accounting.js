@@ -206,10 +206,8 @@ function depreciateAsset(id,target){
  const periodEntries=(a.entries||[]).filter(e=>e.assetId===asset.id&&e.depreciationPeriod);
  const recorded=new Set(periodEntries.map(e=>String(e.depreciationPeriod)));
  const legacyLast=String(asset.lastDepreciationMonth||'').slice(0,7);
- const latestRecorded=[...recorded].map(x=>String(x).slice(0,7)).filter(x=>/^\\d{4}-(0[1-9]|1[0-2])$/.test(x)).sort().pop()||'';
- const lastKnown=[legacyLast,latestRecorded].filter(x=>/^\\d{4}-(0[1-9]|1[0-2])$/.test(x)).sort().pop()||'';
  let cursor=start;
- if(lastKnown>=start){const y=Number(lastKnown.slice(0,4)),m=Number(lastKnown.slice(5,7));cursor=m===12?String(y+1).padStart(4,'0')+'-01':String(y).padStart(4,'0')+'-'+String(m+1).padStart(2,'0');}
+ if(!recorded.size&&/^\\d{4}-(0[1-9]|1[0-2])$/.test(legacyLast)&&legacyLast>=start){const y=Number(legacyLast.slice(0,4)),m=Number(legacyLast.slice(5,7));cursor=m===12?String(y+1).padStart(4,'0')+'-01':String(y).padStart(4,'0')+'-'+String(m+1).padStart(2,'0');}
  const periods=[];
  while(cursor<=target&&periods.length<=asset.lifeMonths+240){
   if(!recorded.has(cursor))periods.push(cursor);
