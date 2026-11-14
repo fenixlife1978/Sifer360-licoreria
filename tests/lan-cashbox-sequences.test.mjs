@@ -94,3 +94,13 @@ test('la interfaz permite iniciar servidor, descubrir equipos y emparejar client
   assert.match(pos, /networkDisconnectClient/);
   assert.match(pos, /Conexión de red local \(LAN\)/);
 });
+
+test('un conflicto de entidad no se persiste como evento recibido ni se confirma como ACK', () => {
+  const conflict = main.indexOf("reason: 'entity-already-exists-with-different-data'");
+  const rejected = main.indexOf("continue;", conflict);
+  const received = main.indexOf("INSERT INTO network_received_operations", conflict);
+  const accepted = main.indexOf("accepted.push(String(ev.eventId))", conflict);
+  assert.ok(conflict >= 0, 'debe detectar una entidad existente con datos diferentes');
+  assert.ok(rejected > conflict && received > rejected, 'debe descartar el evento antes de insertarlo como recibido');
+  assert.ok(accepted > received, 'solo los eventos validados pueden quedar aceptados');
+});
