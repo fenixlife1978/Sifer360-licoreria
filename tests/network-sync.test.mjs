@@ -6,6 +6,7 @@ const electron = readFileSync(new URL('../electron/main.cjs', import.meta.url), 
 const eventStore = readFileSync(new URL('../electron/lan-event-store.cjs', import.meta.url), 'utf8');
 const stateMerge = readFileSync(new URL('../electron/lan-state-merge.cjs', import.meta.url), 'utf8');
 const sqliteRecovery = readFileSync(new URL('../electron/sqlite-recovery.cjs', import.meta.url), 'utf8');
+const lanAddress = readFileSync(new URL('../electron/lan-address.cjs', import.meta.url), 'utf8');
 const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
 const pos = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
@@ -231,8 +232,8 @@ test('reutilizar un eventId con contenido distinto se marca como conflicto y no 
 
 
 test('un cliente no transmite claves ni datos a hosts fuera de la red local', () => {
-  assert.match(electron, /function assertLanHost\(host\)/);
-  assert.match(electron, /if \(!isLanAddress\(host\)\) throw new Error/);
+  assert.match(lanAddress, /function assertLanHost\(host\)/);
+  assert.match(lanAddress, /if \(!isLanAddress\(host\)\) throw new Error/);
   assert.match(electron, /assertLanHost\(networkConfig\.host\)/);
   assert.match(electron, /assertLanHost\(host\)/);
 });
@@ -396,4 +397,11 @@ test('solo un proceso Electron puede abrir la base SQLite operativa en cada inst
   assert.match(electron, /app\.requestSingleInstanceLock\(\)/);
   assert.match(electron, /app\.on\('second-instance'/);
   assert.match(electron, /if \(!hasSingleInstanceLock\) \{\s*app\.quit\(\)/);
+});
+
+test('la validación de direcciones LAN estricta está aislada y se usa antes de enviar credenciales', () => {
+  assert.match(electron, /require\('\.\/lan-address\.cjs'\)/);
+  assert.match(electron, /assertLanHost\(networkConfig\.host\)/);
+  assert.match(electron, /assertLanHost\(host\)/);
+  assert.match(lanAddress, /net\.isIP\(host\)/);
 });
