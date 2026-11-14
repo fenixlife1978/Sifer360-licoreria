@@ -25,7 +25,7 @@ function mergeStateRecords(base, incoming) {
     if (!Array.isArray(base[key]) && !Array.isArray(incoming[key])) continue;
     const map = new Map();
     for (const item of [...(base[key] || []), ...(incoming[key] || [])]) {
-      const id = item && (item.id ?? item.uuid ?? item.eventId ?? item.no ?? item.number ?? item.code ?? item.sku);
+      const id = item && (key === 'kardex' ? (item.eventId ?? item.id ?? item.uuid ?? item.no ?? item.number ?? item.code ?? item.sku) : (item.id ?? item.uuid ?? item.eventId ?? item.no ?? item.number ?? item.code ?? item.sku));
       if (id === undefined || id === null) {
         map.set(crypto.createHash('sha256').update(JSON.stringify(item)).digest('hex'), item);
         continue;
