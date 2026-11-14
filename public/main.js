@@ -532,11 +532,11 @@ let operationCapturePromise=Promise.resolve();
 const OPERATION_COLLECTIONS = [
   ['sales','sale'], ['purchases','purchase'], ['cxc','receivable'], ['cxp','payable'],
   ['cortesZ','cash-close'], ['kardex','inventory-movement'], ['counts','inventory-count'],
-  ['held','held-sale'], ['movimientosCaja','cashbox-movement'], ['rateAudit','exchange-rate-audit'], ['lotesSudeban','bank-batch'],
+  ['held','held-sale'], ['heldDeletedIds','held-sale-delete'], ['movimientosCaja','cashbox-movement'], ['rateAudit','exchange-rate-audit'], ['lotesSudeban','bank-batch'],
   ['casheaMovimientos','cashea-operation'], ['casheaLiquidaciones','cashea-settlement'], ['cambiosDivisas','currency-movement'],
   ['retencionesIva','tax-retention'], ['retentions','tax-retention'], ['returns','return'], ['voids','void']
 ];
-const BOX_SCOPED_OPERATION_COLLECTIONS = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','movimientosCaja','rateAudit','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas']);
+const BOX_SCOPED_OPERATION_COLLECTIONS = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','held','heldDeletedIds','movimientosCaja','rateAudit','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas']);
 function operationIdentity(item,index,collection){
   if(!item||typeof item!=='object')return String(index)+':'+JSON.stringify(item);
   const eventIdCollections=new Set(['kardex','lotesSudeban','rateAudit','casheaLiquidaciones']);
@@ -796,6 +796,7 @@ function init(){
   saved=load();
   if(!Array.isArray(S.documents))S.documents=[];
   if(!Array.isArray(S.casheaMovimientos))S.casheaMovimientos=[];
+  if(!Array.isArray(S.heldDeletedIds))S.heldDeletedIds=[];
 }
 
 /* ---------- cálculos ---------- */
@@ -1006,7 +1007,7 @@ function recoverDlg(){
     const sub=r2(hd.cart.reduce((a,l)=>a+r2(r2(prod(l.code).price*l.qty)*(1-l.disc/100)),0));
     const tr=h('<table><tbody><tr><td>'+esc(hd.client.name)+'</td><td class="r">'+hd.cart.length+'</td><td class="r">'+nf(r2(sub*(1+IVA)))+'</td><td>'+fmtT(new Date(hd.ts))+'</td><td class="c"><button class="btn mini2" '+(busy?'disabled':'')+'>Recuperar</button></td></tr></tbody></table>').querySelector('tr');
     $('button',tr).addEventListener('click',async()=>{
-      S.cart=hd.cart;S.client=hd.client;S.sel=0;S.held.splice(i,1);
+      S.cart=hd.cart;S.client=hd.client;S.sel=0;if(!Array.isArray(S.heldDeletedIds))S.heldDeletedIds=[];S.heldDeletedIds.push({id:String(hd.id||('HOLD-LEGACY-'+hd.ts)),cashbox:String(hd.cashbox||currentCaja()),ts:Date.now()});S.held.splice(i,1);
       const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la recuperación; se conservó el estado durable anterior.','bad');return;}
       closeWin();renderAll();msg('Venta recuperada.');
     });
