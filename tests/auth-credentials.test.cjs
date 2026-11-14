@@ -8,7 +8,7 @@ test('scrypt hashes are salted, verifiable and never expose the original passwor
   const first = await createPasswordHash('ClaveSegura-123');
   const second = await createPasswordHash('ClaveSegura-123');
   assert.notEqual(first, second);
-  assert.match(first, /^scrypt-v1\\$/);
+  assert.match(first, /^scrypt-v1\$/);
   assert.equal(await verifyPassword('ClaveSegura-123', first), true);
   assert.equal(await verifyPassword('incorrecta', first), false);
   assert.equal(first.includes('ClaveSegura-123'), false);
