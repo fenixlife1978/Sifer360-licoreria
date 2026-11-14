@@ -108,6 +108,8 @@ test('activos fijos usan cuentas de depreciación acumulada existentes', () => {
 
 test('la depreciación mensual se ejecuta automáticamente y recupera períodos completos pendientes', () => {
   assert.match(accounting, /async function runAutomaticDepreciation\(\)/);
+  assert.match(accounting, /networkStatus\(\)/);
+  assert.match(accounting, /network&&network\.role==='client'\)return/);
   assert.match(accounting, /automaticDepreciationNeedsSave=true/);
   assert.match(accounting, /automaticDepreciationNeedsSave=false/);
   assert.match(accounting, /sqlite\+localStorage/);
