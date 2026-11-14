@@ -546,10 +546,8 @@ async function captureNewOperations(){
   if(!operationBaseline){primeOperationBaseline();return;}
   operationCaptureBusy=true;
   try{
-    const lastSave=window.__SIFER_LAST_SAVE;
-    if(lastSave){const persisted=await lastSave;if(!persisted||!persisted.ok)return;}
-    const net=await window.posDesktop.networkStatus();if(!net||net.role!=='client')return;
     const snap=stateSnapshot();
+    const net=await window.posDesktop.networkStatus();if(!net||net.role!=='client')return;
     for(const [key,eventType] of OPERATION_COLLECTIONS){
       const items=Array.isArray(snap[key])?snap[key]:[];
       const seen=operationBaseline[key]||new Set();
