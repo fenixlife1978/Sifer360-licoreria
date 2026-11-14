@@ -2931,7 +2931,7 @@ function newCxcManualDlg(){
   const clOpts=S.clients.filter(c=>c.rif!=='V-00000000').map((c,i)=>'<option value="'+esc(c.rif)+'">'+esc(c.name)+' ('+esc(c.rif)+')</option>').join('');
   const el=h('<div class="form"><div class="newgrid">'+
     '<div class="f wide"><label for="mcClient">Cliente</label><select class="fld" id="mcClient">'+clOpts+'</select></div>'+
-    '<div class="f"><label for="mcDoc">Documento / Ref.</label><input class="fld mono" id="mcDoc" value="ND-'+pad((S.cxc.length+101),6)+'"></div>'+
+    '<div class="f"><label for="mcDoc">Documento / Ref.</label><input class="fld mono" id="mcDoc" value="ND-'+pad(((S.cxc||[]).filter(x=>String(x.cashbox||'')===currentCaja()).length+101),6)+'"></div>'+
     '<div class="f"><label for="mcAmt">Monto Total US$</label><input class="fld r" id="mcAmt" inputmode="decimal" placeholder="0,00"></div>'+
     '<div class="f"><label for="mcDue">Fecha Vencimiento</label><input class="fld" type="date" id="mcDue" value="'+isoD(Date.now()+15*86400000)+'"></div>'+
     '<div class="f wide"><label for="mcConc">Concepto</label><input class="fld" id="mcConc" placeholder="Factura a crédito / Nota de débito"></div>'+
@@ -3261,7 +3261,7 @@ function newCxpManualDlg(){
   const supOpts=S.suppliers.map(s=>'<option value="'+esc(s.rif)+'">'+esc(s.name)+' ('+esc(s.rif)+')</option>').join('');
   const el=h('<div class="form"><div class="newgrid">'+
     '<div class="f wide"><label for="mpSup">Proveedor / Beneficiario</label><select class="fld" id="mpSup">'+supOpts+'</select></div>'+
-    '<div class="f"><label for="mpDoc">Nº Factura / Documento</label><input class="fld mono" id="mpDoc" value="F-'+pad(S.cxp.length+501,5)+'"></div>'+
+    '<div class="f"><label for="mpDoc">Nº Factura / Documento</label><input class="fld mono" id="mpDoc" value="F-'+pad(((S.cxp||[]).filter(x=>String(x.cashbox||'')===currentCaja()).length+501),5)+'"></div>'+
     '<div class="f"><label for="mpAmt">Monto Total US$</label><input class="fld r" id="mpAmt" inputmode="decimal" placeholder="0,00"></div>'+
     '<div class="f"><label for="mpDue">Fecha Vencimiento</label><input class="fld" type="date" id="mpDue" value="'+isoD(Date.now()+15*86400000)+'"></div>'+
     '<div class="f wide"><label for="mpConc">Concepto (Compra, flete, servicio, alquiler...)</label><input class="fld" id="mpConc" placeholder="Ej: Servicio de transporte de mercancía"></div>'+
