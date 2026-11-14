@@ -26,7 +26,7 @@ function createDurableOutbox({ directory, deviceId, fsImpl = fs, pathImpl = path
     for (const event of state.events) {
       if (!event || typeof event.eventId !== 'string' || !event.eventId ||
           event.deviceId !== String(deviceId) || !Number.isSafeInteger(event.deviceSeq) ||
-          event.deviceSeq < 1 || !['pending', 'acked', 'conflict'].includes(event.status)) {
+          event.deviceSeq < 1 || event.deviceSeq > state.lastSeq || !['pending', 'acked', 'conflict'].includes(event.status)) {
         throw new Error('La cola LAN contiene una operación inválida. Se conserva sin modificar.');
       }
     }
