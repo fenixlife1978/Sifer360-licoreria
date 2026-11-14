@@ -18,8 +18,8 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npm test
       - run: node --check electron/main.cjs && node --check electron/preload.cjs && node --check public/main.js && node --check public/access.js
+      - run: npm test
       - run: npm run build
 
   windows-desktop-package:
