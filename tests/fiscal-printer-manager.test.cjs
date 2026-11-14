@@ -76,7 +76,8 @@ test('no permite consultar PNP si se seleccionó otra familia o falta el puerto'
   await assert.rejects(()=>manager.testPnpFiscalStatus({provider:'hka',port:'COM4'},{platform:'win32'}),/solo aplica/);
   await assert.rejects(()=>manager.testPnpFiscalStatus({provider:'pnp'},{platform:'win32'}),/puerto COM/);
 });
-\ntest('la detección de puertos no Windows no inventa dispositivos', async () => {
+
+test('la detección de puertos no Windows no inventa dispositivos', async () => {
   const result = await manager.listSerialPorts({platform:'linux'});
   assert.equal(result.supported, false);
   assert.deepEqual(result.ports, []);
