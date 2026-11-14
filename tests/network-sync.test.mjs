@@ -387,3 +387,7 @@ test('el cliente impide enviar snapshots mayores que el límite del servidor', (
   assert.match(electron, /Buffer\.byteLength\(options\.body, 'utf8'\) > MAX_SYNC_BODY/);
   assert.match(electron, /La operación supera el límite de tamaño permitido para sincronización LAN/);
 });
+
+test('el estado de cliente desconectado se comunica sin presentarlo como modo independiente', () => {
+  assert.match(pos, /Cliente LAN desconectado · no se confirman operaciones ni se usa SQLite local/);
+});
