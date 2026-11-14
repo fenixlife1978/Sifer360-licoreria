@@ -2,10 +2,12 @@ const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const dgram = require('dgram');
 const os = require('os');
 const crypto = require('crypto');
 const { createDurableOutbox } = require('./lan-outbox.cjs');
+const { ensureServerCertificate, createPinnedAgent, retrievePeerCertificate, verifyFingerprint } = require('./lan-tls.cjs');
 const initSqlJs = require('sql.js');
 
 let db;
@@ -24,7 +26,7 @@ function startDiscoveryServer() {
     try {
       const packet = JSON.parse(message.toString('utf8'));
       if (packet.type !== 'SIFER360_DISCOVER_V1' || !networkServer || networkConfig.role !== 'server') return;
-      const response = Buffer.from(JSON.stringify({ type: 'SIFER360_SERVER_V1', deviceId: networkConfig.deviceId, port: networkConfig.port, name: os.hostname(), addresses: localAddresses() }));
+      const response = Buffer.from(JSON.stringify({ type: 'SIFER360_SERVER_V1', deviceId: networkConfig.deviceId, port: networkConfig.port, name: os.hostname(), addresses: localAddresses(), tlsFingerprint: networkConfig.tlsFingerprint }));
       discoveryServer.send(response, remote.port, remote.address, () => {});
     } catch {}
   });
@@ -43,7 +45,7 @@ async function discoverLanServers(timeoutMs = 2500) {
         if (data.type !== 'SIFER360_SERVER_V1' || !Number(data.port)) return;
         const ips = Array.isArray(data.addresses) ? data.addresses : [];
         const host = ips.includes(remote.address) ? remote.address : (ips[0] || remote.address);
-        found.set(data.deviceId || host, { host, port: Number(data.port), name: data.name || 'SIFER360', deviceId: data.deviceId, addresses: ips });
+        found.set(data.deviceId || host, { host, port: Number(data.port), name: data.name || 'SIFER360', deviceId: data.deviceId, addresses: ips, tlsFingerprint: data.tlsFingerprint || '' });
       } catch {}
     });
     socket.on('error', finish);
@@ -286,9 +288,10 @@ async function startLanServer(requestedPort) {
   if (!db) await initializeDatabase();
   const port = Math.max(1024, Math.min(65535, Number(requestedPort || networkConfig.port || 38760)));
   if (networkServer) await new Promise(resolve => networkServer.close(resolve));
-  networkConfig = { ...networkConfig, role: 'server', host: '', port, token: networkConfig.token || crypto.randomBytes(24).toString('hex') };
+  const identity = await ensureServerCertificate({ directory: app.getPath('userData'), deviceId: networkConfig.deviceId });
+  networkConfig = { ...networkConfig, role: 'server', host: '', port, token: networkConfig.token || crypto.randomBytes(24).toString('hex'), tlsFingerprint: identity.fingerprint, serverCert: '' };
   saveNetworkConfig();
-  networkServer = http.createServer(async (req, res) => {
+  networkServer = https.createServer({ key: identity.key, cert: identity.cert }, async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     if (!isLanAddress(req.socket.remoteAddress)) return sendJson(res, 403, { error: 'Acceso permitido únicamente desde la red local.' });
     if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Headers': 'content-type,authorization', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); return res.end(); }
@@ -464,17 +467,39 @@ function allocateCashboxSequence(cashboxId, operationType, minimumValue = 1) {
     throw error;
   }
 }
-async function clientApi(route, options = {}) {
-  if (networkConfig.role !== 'client' || !networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión configurada al servidor LAN.');
-  assertLanHost(networkConfig.host);
-  const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + route, {
-    ...options,
-    headers: { Authorization: 'Bearer ' + networkConfig.token, ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) },
-    signal: options.signal || AbortSignal.timeout(10000)
+function requestPinnedJson(route, options = {}) {
+  const agent = createPinnedAgent(networkConfig.serverCert, networkConfig.tlsFingerprint);
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      hostname: networkConfig.host,
+      port: networkConfig.port,
+      path: route,
+      method: options.method || 'GET',
+      headers: { Authorization: 'Bearer ' + networkConfig.token, ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) },
+      agent,
+      timeout: options.timeoutMs || 10000
+    }, response => {
+      let raw = '';
+      response.setEncoding('utf8');
+      response.on('data', chunk => { raw += chunk; if (raw.length > MAX_SYNC_BODY) request.destroy(new Error('La respuesta del servidor LAN excede el límite permitido.')); });
+      response.on('end', () => {
+        agent.destroy();
+        let result = {};
+        try { result = JSON.parse(raw || '{}'); } catch { return reject(new Error('El servidor LAN devolvió una respuesta JSON inválida.')); }
+        if (response.statusCode < 200 || response.statusCode >= 300 || result.ok === false) return reject(new Error(result.error || 'El servidor LAN no confirmó la operación (' + response.statusCode + ').'));
+        resolve(result);
+      });
+    });
+    request.on('timeout', () => request.destroy(new Error('Tiempo agotado al comunicarse con el servidor LAN.')));
+    request.on('error', error => { agent.destroy(); reject(error); });
+    if (options.body) request.write(options.body);
+    request.end();
   });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok || result.ok === false) throw new Error(result.error || 'El servidor LAN no confirmó la operación (' + response.status + ').');
-  return result;
+}
+async function clientApi(route, options = {}) {
+  if (networkConfig.role !== 'client' || !networkConfig.host || !networkConfig.token || !networkConfig.serverCert || !networkConfig.tlsFingerprint) throw new Error('Cliente sin conexión segura configurada al servidor LAN.');
+  assertLanHost(networkConfig.host);
+  return requestPinnedJson(route, options);
 }
 async function flushClientOutbox() {
   if (networkConfig.role !== 'client' || !networkConfig.host || !clientOutbox) return { pending: 0, accepted: [], conflicts: [] };
@@ -546,15 +571,7 @@ function registerNetworkIpc() {
     if (networkConfig.role === 'client') {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión configurada al servidor.');
       assertLanHost(networkConfig.host);
-      const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sequences/next', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + networkConfig.token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cashbox: input.cashbox, operation: input.operation, minimum: input.minimum }),
-        signal: AbortSignal.timeout(8000)
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) throw new Error(result.error || 'El servidor no pudo reservar el consecutivo.');
-      return result;
+      return clientApi('/api/sequences/next', { method: 'POST', body: JSON.stringify({ cashbox: input.cashbox, operation: input.operation, minimum: input.minimum }), timeoutMs: 8000 });
     }
     return allocateCashboxSequence(input.cashbox, input.operation, input.minimum);
   });
@@ -569,7 +586,7 @@ function registerNetworkIpc() {
     return { ...networkConfig, running: false, addresses: localAddresses() };
   });
   ipcMain.handle('network:disconnect-client', async () => {
-    if (networkConfig.role === 'client') { networkConfig = { ...networkConfig, role: 'standalone', host: '', token: crypto.randomBytes(24).toString('hex'), serverDeviceId: '' }; await initializeDatabase(); }
+    if (networkConfig.role === 'client') { networkConfig = { ...networkConfig, role: 'standalone', host: '', token: crypto.randomBytes(24).toString('hex'), serverDeviceId: '', serverCert: '', tlsFingerprint: '' }; await initializeDatabase(); }
     saveNetworkConfig();
     return { ...networkConfig, running: false, addresses: localAddresses() };
   });
@@ -577,12 +594,17 @@ function registerNetworkIpc() {
     const host = String(opts.host || '').trim();
     const port = Math.max(1024, Math.min(65535, Number(opts.port || 38760)));
     const token = String(opts.token || '').trim();
-    if (!host || !token) throw new Error('Indica IP del servidor y clave de emparejamiento.');
+    const expectedFingerprint = String(opts.fingerprint || '').trim();
+    if (!host || !token || !expectedFingerprint) throw new Error('Indica IP, clave de emparejamiento y huella TLS SHA-256 del servidor.');
     assertLanHost(host);
-    const response = await fetch('http://' + host + ':' + port + '/api/health', { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(5000) });
-    if (!response.ok) throw new Error('No se pudo autenticar con el servidor (' + response.status + ').');
-    const health = await response.json();
-    networkConfig = { ...networkConfig, role: 'client', host, port, token, serverDeviceId: health.deviceId };
+    const peer = await retrievePeerCertificate(host, port, 5000);
+    if (!verifyFingerprint(peer.fingerprint, expectedFingerprint)) throw new Error('La huella TLS recibida no coincide con la mostrada físicamente en el servidor. No se enviaron credenciales.');
+    const previous = networkConfig;
+    networkConfig = { ...networkConfig, role: 'client', host, port, token, serverCert: peer.certificate, tlsFingerprint: peer.fingerprint };
+    let health;
+    try { health = await clientApi('/api/health', { timeoutMs: 5000 }); }
+    catch (error) { networkConfig = previous; throw error; }
+    networkConfig.serverDeviceId = health.deviceId;
     if (db) { try { db.close(); } catch {} db = null; }
     saveNetworkConfig();
     return { ...networkConfig, running: false, addresses: localAddresses(), connected: true };
@@ -601,10 +623,7 @@ function registerNetworkIpc() {
     if (networkConfig.role !== 'client' || !networkConfig.host) return { ok: false, state, role: 'standalone', message: 'Esta caja no está conectada a un servidor.' };
     assertLanHost(networkConfig.host);
     await flushClientOutbox();
-    const endpoint = 'http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/state';
-    const pushed = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ deviceId: networkConfig.deviceId, state, expectedHash: networkConfig.serverStateHash || '' }), signal: AbortSignal.timeout(8000) });
-    if (!pushed.ok) throw new Error('Servidor rechazó la sincronización (' + pushed.status + ').');
-    const result = await pushed.json();
+    const result = await clientApi('/api/sync/state', { method: 'POST', body: JSON.stringify({ deviceId: networkConfig.deviceId, state, expectedHash: networkConfig.serverStateHash || '' }), timeoutMs: 8000 });
     networkConfig.serverStateHash = result.stateHash;
     return { ok: true, state: result.state, role: 'client', updatedAt: result.updatedAt };
   });
@@ -616,9 +635,7 @@ function registerIpc() {
     if (networkConfig.role === 'client') {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Este cliente no está conectado al servidor LAN.');
       assertLanHost(networkConfig.host);
-      const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/state', { headers: { Authorization: 'Bearer ' + networkConfig.token }, signal: AbortSignal.timeout(8000) });
-      if (!response.ok) throw new Error('No se pudo leer la base central (' + response.status + ').');
-      const result = await response.json();
+      const result = await clientApi('/api/sync/state', { timeoutMs: 8000 });
       networkConfig.serverStateHash = result.stateHash;
       return { mode: 'sqlite', state: result.state, source: 'lan-server' };
     }
@@ -630,12 +647,7 @@ function registerIpc() {
     if (networkConfig.role === 'client') {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión al servidor; no se guardó la operación.');
       assertLanHost(networkConfig.host);
-      const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/state', {
-        method: 'POST', headers: { Authorization: 'Bearer ' + networkConfig.token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId: networkConfig.deviceId, state, expectedHash: networkConfig.serverStateHash || '' }), signal: AbortSignal.timeout(10000)
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) throw new Error(result.error || (response.status === 409 ? 'Conflicto de concurrencia: otro equipo modificó la base central. Recargue SIFER antes de continuar.' : 'El servidor no confirmó el guardado central.'));
+      const result = await clientApi('/api/sync/state', { method: 'POST', body: JSON.stringify({ deviceId: networkConfig.deviceId, state, expectedHash: networkConfig.serverStateHash || '' }), timeoutMs: 10000 });
       networkConfig.serverStateHash = result.stateHash;
       return { ok: true, durable: 'server-sqlite', serverDeviceId: result.serverDeviceId };
     }
