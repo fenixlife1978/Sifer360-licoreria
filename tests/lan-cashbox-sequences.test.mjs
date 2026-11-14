@@ -104,3 +104,13 @@ test('un conflicto de entidad no se persiste como evento recibido ni se confirma
   assert.ok(rejected > conflict && received > rejected, 'debe descartar el evento antes de insertarlo como recibido');
   assert.ok(accepted > received, 'solo los eventos validados pueden quedar aceptados');
 });
+
+test('los cobros CxC y pagos CxP usan consecutivo de movimiento por caja y guardado durable', () => {
+  assert.match(pos, /nextCajaSequence\('movement',currentCaja\(\)\)/);
+  assert.match(pos, /cashboxSequence:movementNo/);
+  assert.match(pos, /id:movementId/);
+  assert.match(pos, /const persisted=await save\(\)/);
+  assert.match(pos, /if\(!persisted\|\|!persisted\.ok\)\{Object\.assign\(S,rollbackState\)/);
+  assert.match(pos, /operation==='movement'/);
+  assert.match(pos, /cashboxSequence\)\|\|0/);
+});
