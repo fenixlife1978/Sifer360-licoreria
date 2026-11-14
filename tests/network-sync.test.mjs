@@ -525,3 +525,9 @@ test('el cliente no conserva snapshots locales antiguos por encima del estado au
   assert.match(pos, /Object\.assign\(S,result\.state\)/);
   assert.match(pos, /saveSequence===syncRevision/);
 });
+
+test('el endpoint LAN valida Bearer con comparación constante y nunca compara cadenas directamente', () => {
+  assert.match(electron, /require\('\.\/lan-auth\.cjs'\)/);
+  assert.match(electron, /hasValidBearerToken\(req\.headers\.authorization, networkConfig\.token\)/);
+  assert.doesNotMatch(electron, /req\.headers\.authorization !== 'Bearer ' \+ networkConfig\.token/);
+});
