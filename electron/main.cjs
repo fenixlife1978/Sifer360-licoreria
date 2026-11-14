@@ -110,7 +110,7 @@ function localAddresses() {
 }
 
 function sendJson(res, status, data) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': 'null' }); res.end(JSON.stringify(data)); }
-function readBody(req) { return new Promise((resolve, reject) => { let raw = ''; req.on('data', chunk => { raw += chunk; if (raw.length > MAX_SYNC_BODY) { reject(new Error('La carga de sincronización excede 8 MB.')); req.destroy(); } }); req.on('end', () => { try { resolve(JSON.parse(raw || '{}')); } catch { reject(new Error('JSON inválido.')); } }); req.on('error', reject); }); }
+function readBody(req) { return new Promise((resolve, reject) => { let raw = ''; let receivedBytes = 0; let rejected = false; req.on('data', chunk => { receivedBytes += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk)); if (receivedBytes > MAX_SYNC_BODY) { rejected = true; reject(new Error('La carga de sincronización excede 8 MB.')); req.destroy(); return; } raw += chunk; }); req.on('end', () => { if (rejected) return; try { resolve(JSON.parse(raw || '{}')); } catch { reject(new Error('JSON inválido.')); } }); req.on('error', error => { if (!rejected) reject(error); }); }); }
 function statePayloadHash(payload) { return crypto.createHash('sha256').update(String(payload || '')).digest('hex'); }
 function userDbPath() {
   return path.join(app.getPath('userData'), 'sifer360-licoreria.sqlite');
