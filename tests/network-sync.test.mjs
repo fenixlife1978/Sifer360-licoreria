@@ -472,3 +472,7 @@ test('la outbox captura operaciones nuevas sin depender del éxito del snapshot 
   assert.doesNotMatch(pos, /const lastSave=window\.__SIFER_LAST_SAVE;\s*if\(lastSave\)\{const persisted=await lastSave/);
   assert.match(pos, /window\.posDesktop\.networkCreateOperation\(/);
 });
+
+test('la reconexión recupera el estado del servidor y desbloquea escrituras previamente bloqueadas', () => {
+  assert.match(pos, /if\(persistenceBlocked\)\{\s*for\(const key of Object\.keys\(S\)\)delete S\[key\];\s*Object\.assign\(S,result\.state\);\s*persistenceBlocked=false/);
+});
