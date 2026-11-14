@@ -522,6 +522,9 @@ function registerNetworkIpc() {
     acknowledged: Number(one("SELECT COUNT(*) AS n FROM local_operation_outbox WHERE status='acked'").n),
     conflicts: Number(one("SELECT COUNT(*) AS n FROM local_operation_outbox WHERE status='conflict'").n)
   }));
+  ipcMain.handle('network:operation-conflicts', () => networkConfig.role === 'client'
+    ? (clientOutbox ? clientOutbox.conflicts() : [])
+    : all("SELECT event_id AS eventId,device_id AS deviceId,device_seq AS deviceSeq,event_type AS eventType,entity_type AS entityType,entity_id AS entityId,occurred_at AS occurredAt,payload,status FROM local_operation_outbox WHERE status='conflict' ORDER BY device_seq LIMIT 200"));
   ipcMain.handle('network:next-sequence', async (_e, input = {}) => {
     if (networkConfig.role === 'client') {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión configurada al servidor.');
