@@ -73,14 +73,14 @@ function mergeStateRecords(base, incoming) {
   if (!base || typeof base !== 'object') return incoming;
   if (!incoming || typeof incoming !== 'object') return base;
   const out = { ...base, ...incoming };
-  const arrays = new Set(['sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','movements','returns','voids','openings','retentions','divisas','cashea','customers','clients','suppliers','documents','products']);
+  const arrays = new Set(['sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','movements','returns','voids','openings','retentions','retencionesIva','divisas','cashea','customers','clients','suppliers','documents','products']);
   for (const key of arrays) {
     if (!Array.isArray(base[key]) && !Array.isArray(incoming[key])) continue;
     const map = new Map();
     for (const item of [...(base[key] || []), ...(incoming[key] || [])]) {
       const id = item && (item.id ?? item.uuid ?? item.eventId ?? item.no ?? item.number ?? item.code ?? item.sku);
       if (id === undefined || id === null) { map.set(crypto.createHash('sha256').update(JSON.stringify(item)).digest('hex'), item); continue; }
-      const boxScoped = ['sales','cxc','cortesZ','openings','movements','returns','voids'].includes(key) ? String(item.cashbox || 'sin-caja') + ':' : '';
+      const boxScoped = ['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions'].includes(key) ? String(item.cashbox || 'sin-caja') + ':' : '';
       const k = boxScoped + String(id);
       const old = map.get(k);
       if (!old || Number(item.updatedAt || item.ts || item.createdAt || 0) >= Number(old.updatedAt || old.ts || old.createdAt || 0)) map.set(k, item);
@@ -282,7 +282,7 @@ async function startLanServer(requestedPort) {
               const state = stateRow ? JSON.parse(stateRow.payload) : {};
               const records = Array.isArray(state[collection]) ? state[collection] : [];
               const recordId = String(ev.entityId);
-              const boxScopedCollections = new Set(['sales','cxc','cortesZ','openings','movements','returns','voids']);
+              const boxScopedCollections = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions']);
               const recordIdentity = item => {
                 const id = String(item.id ?? item.uuid ?? item.eventId ?? item.no ?? item.number ?? item.ctrlNo ?? item.code ?? '');
                 return boxScopedCollections.has(collection) ? String(item.cashbox || 'sin-caja') + ':' + id : id;
