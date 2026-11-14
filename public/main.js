@@ -2849,7 +2849,7 @@ function cxcDlg(selId){
       mixState[mid].ref=e.target.value;
     }
   });
-  el.addEventListener('click',e=>{
+  el.addEventListener('click',async e=>{
     const tr=e.target.closest('tr[data-id]');
     if(tr){curId=tr.dataset.id;resetMix();draw();return;}
     if(e.target.id==='cxcNewBtn'){if(activeUser().role==='cajero'){msg('El rol cajero no tiene permiso para crear cargos manuales de CxC.','bad');return;}newCxcManualDlg();return;}
@@ -2874,18 +2874,24 @@ function cxcDlg(selId){
       const rawAmt=pn($('#abUsd',el).value);
       if(rawAmt<=0){msg('Indique un monto de abono válido mayor a cero.','bad');return;}
       if(rawAmt-bal>0.01){msg('El monto ingresado ('+usd(rawAmt)+') supera el saldo pendiente ('+usd(bal)+').','bad');return;}
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      let movementNo;try{movementNo=await nextCajaSequence('movement',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del cobro: '+error.message,'bad');return;}
+      const movementId='MOV-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(movementNo,6);
       const amt=Math.min(bal,rawAmt);
       const mId=$('#abMethod',el).value;
       const m=METHODS.find(x=>x.id===mId)||METHODS[0];
       item.paid=r2(item.paid+amt);
       item.payments=item.payments||[];
       item.payments.push({
+        id:movementId,cashbox:currentCaja(),cashboxSequence:movementNo,
         ts:Date.now(),method:m.name,cur:m.cur,
         amountUsd:amt,amountBs:r2(amt*S.cfg.rate),
         ref:$('#abRef',el).value.trim(),
         note:$('#abNote',el).value.trim()||'Abono de cliente'
       });
-      save();draw();renderStatus();
+      const persisted=await save();
+      if(!persisted||!persisted.ok){Object.assign(S,rollbackState);draw();renderStatus();msg('SQLite/servidor no confirmó el cobro; se restauró el saldo anterior.','bad');return;}
+      draw();renderStatus();
       msg('Abono de '+usd(amt)+' registrado en '+item.doc+' ('+item.client.name+').');
       return;
     }
@@ -2899,14 +2905,16 @@ function cxcDlg(selId){
         msg('La suma del cobro mixto ('+usd(totalMix)+') excede el saldo pendiente de la factura ('+usd(bal)+'). Ajuste los montos.','bad');
         return;
       }
-      const ts=Date.now();
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      let movementNo;try{movementNo=await nextCajaSequence('movement',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del cobro mixto: '+error.message,'bad');return;}
+      const ts=Date.now(),box=String(currentCaja()),movementId='MOV-'+box.replace(/\\W/g,'')+'-'+pad(movementNo,6);
       const baseNote=($('#abNote',el)?$('#abNote',el).value.trim():'')||(active.length>1?'Cobro mixto ('+active.length+' métodos)':'Abono de cliente');
       item.payments=item.payments||[];
-      const batchNo=item.payments.length+1;
       active.forEach((m,idx)=>{
         const st=mixState[m.id];
         const tag=active.length>1?'[Mixto '+(idx+1)+'/'+active.length+'] ':'';
         item.payments.push({
+          id:movementId+'-'+pad(idx+1,2),movementId,cashbox:box,cashboxSequence:movementNo,paymentPart:idx+1,
           ts,
           method:tag+m.name,
           cur:m.cur,
@@ -2917,8 +2925,9 @@ function cxcDlg(selId){
         });
       });
       item.paid=r2(Math.min(item.total,item.paid+totalMix));
-      resetMix();
-      save();draw();renderStatus();
+      const persisted=await save();
+      if(!persisted||!persisted.ok){Object.assign(S,rollbackState);draw();renderStatus();msg('SQLite/servidor no confirmó el cobro mixto; se restauró el saldo anterior.','bad');return;}
+      resetMix();draw();renderStatus();
       msg('Cobro mixto por '+usd(totalMix)+' ('+active.length+' métodos) registrado en '+item.doc+'.');
     }
   });
@@ -3163,7 +3172,7 @@ function cxpDlg(selId){
       mixState[mid].ref=e.target.value;
     }
   });
-  el.addEventListener('click',e=>{
+  el.addEventListener('click',async e=>{
     const tr=e.target.closest('tr[data-id]');
     if(tr){curId=tr.dataset.id;resetMix();draw();return;}
     if(e.target.id==='cxpNewBtn'){newCxpManualDlg();return;}
@@ -3189,12 +3198,16 @@ function cxpDlg(selId){
       const rawAmt=pn($('#pgUsd',el).value);
       if(rawAmt<=0){msg('Indique un monto de pago válido mayor a cero.','bad');return;}
       if(rawAmt-bal>0.00000001){msg('El monto ingresado ('+usd(rawAmt)+') supera el saldo por pagar ('+usd(bal)+').','bad');return;}
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      let movementNo;try{movementNo=await nextCajaSequence('movement',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del pago: '+error.message,'bad');return;}
+      const movementId='MOV-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(movementNo,6);
       const amt=r8(Math.min(bal,rawAmt));
       const mId=$('#pgMethod',el).value;
       const m=METHODS.find(x=>x.id===mId)||METHODS[5];
       item.paid=r8(Math.min(Number(item.total)||0,(Number(item.paid)||0)+amt));
       item.payments=item.payments||[];
       item.payments.push({
+        id:movementId,cashbox:currentCaja(),cashboxSequence:movementNo,
         ts:Date.now(),method:m.name,cur:m.cur,
         amountUsd:amt,amountBs:r2(amt*S.cfg.rate),
         ref:$('#pgRef',el).value.trim(),
@@ -3204,7 +3217,9 @@ function cxpDlg(selId){
         const comp=(S.purchases||[]).find(x=>x.no===item.purchaseNo&&String(x.cashbox||currentCaja())===String(item.cashbox||currentCaja()));
         if(comp)comp.paid=item.paid;
       }
-      save();draw();
+      const persisted=await save();
+      if(!persisted||!persisted.ok){Object.assign(S,rollbackState);draw();msg('SQLite/servidor no confirmó el pago; se restauró el saldo anterior.','bad');return;}
+      draw();
       msg('Pago de '+usd(amt)+' registrado para '+item.supplier.name+'.');
       return;
     }
@@ -3218,14 +3233,16 @@ function cxpDlg(selId){
         msg('La suma del pago mixto ('+usd(totalMix)+') excede el saldo pendiente de la obligación ('+usd(bal)+'). Ajuste los montos.','bad');
         return;
       }
-      const ts=Date.now();
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      let movementNo;try{movementNo=await nextCajaSequence('movement',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del pago mixto: '+error.message,'bad');return;}
+      const ts=Date.now(),box=String(currentCaja()),movementId='MOV-'+box.replace(/\\W/g,'')+'-'+pad(movementNo,6);
       const baseNote=($('#pgNote',el)?$('#pgNote',el).value.trim():'')||(active.length>1?'Pago mixto ('+active.length+' medios)':'Pago a proveedor');
       item.payments=item.payments||[];
-      const batchNo=item.payments.length+1;
       active.forEach((m,idx)=>{
         const st=mixState[m.id];
         const tag=active.length>1?'[Mixto '+(idx+1)+'/'+active.length+'] ':'';
         item.payments.push({
+          id:movementId+'-'+pad(idx+1,2),movementId,cashbox:box,cashboxSequence:movementNo,paymentPart:idx+1,
           ts,
           method:tag+m.name,
           cur:m.cur,
@@ -3240,8 +3257,9 @@ function cxpDlg(selId){
         const comp=(S.purchases||[]).find(x=>x.no===item.purchaseNo&&String(x.cashbox||currentCaja())===String(item.cashbox||currentCaja()));
         if(comp)comp.paid=item.paid;
       }
-      resetMix();
-      save();draw();
+      const persisted=await save();
+      if(!persisted||!persisted.ok){Object.assign(S,rollbackState);draw();msg('SQLite/servidor no confirmó el pago mixto; se restauró el saldo anterior.','bad');return;}
+      resetMix();draw();
       msg('Pago mixto por '+usd(totalMix)+' ('+active.length+' medios) registrado para '+item.supplier.name+'.');
     }
   });
@@ -6102,6 +6120,7 @@ async function nextCajaSequence(operation,box=currentCaja()){
   else if(operation.startsWith('retention-')){const period=operation.slice('retention-'.length);minimum=Math.max(0,...(S.retencionesIva||[]).filter(x=>String(x.cashbox||'')===String(box)&&String(x.periodo||'')===period).map(x=>Number(x.sequence)||Number(String(x.id||'').slice(-8))||0))+1;}
   else if(operation==='cxp')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
   else if(operation==='cashea')minimum=Math.max(0,...(S.casheaMovimientos||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
+  else if(operation==='movement')minimum=Math.max(0,...(S.movimientosCaja||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0),...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)),...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)))+1;
   else if(operation==='refund'||operation==='return')minimum=Math.max(0,...(S.returns||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.returnNo||x.sequence)||0))+1;
   const cached=cajaSeqs()[String(box)]||{};
   const cacheKey={invoice:'invoice',control:'ctrl',z:'z',void:'void',refund:'refund',return:'refund'}[operation];
