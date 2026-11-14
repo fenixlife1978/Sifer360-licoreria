@@ -1325,6 +1325,7 @@ function conteoDlg(focusCode){
     }
     let countNo;try{countNo=await nextCajaSequence('count',currentCaja());}catch(error){msg('No se pudo reservar el número del conteo: '+error.message,'bad');return false;}
     const docId='CNT-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(countNo,6);
+    const rollbackState=JSON.parse(JSON.stringify(S)),draftBefore=JSON.parse(JSON.stringify(draftConteo));
     const ts=Date.now();
     const auditItems=[];
     modEntries.forEach(item=>{
@@ -1346,7 +1347,8 @@ function conteoDlg(focusCode){
     });
     S.counts.push({id:docId,cashbox:currentCaja(),sequence:countNo,ts,user:S.cfg.cajero,items:auditItems});
     draftConteo={};
-    save();renderAll();
+    const persisted=await save();if(!persisted||!persisted.ok){for(const key of Object.keys(S))delete S[key];Object.assign(S,rollbackState);draftConteo=draftBefore;renderAll();msg('SQLite no confirmó el conteo; se restauraron inventario y borrador anterior.','bad');return false;}
+    renderAll();
     msg('Conteo masivo '+docId+' guardado con éxito ('+auditItems.length+' productos actualizados en inventario y Kardex).');
     return true;
   };
