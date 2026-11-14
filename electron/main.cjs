@@ -285,9 +285,10 @@ async function startLanServer(requestedPort) {
         const doc = await readBody(req);
         if (!doc || !doc.id || !['sale','purchase'].includes(doc.transactionType) || !doc.transactionId || !doc.dataUrl) return sendJson(res, 400, { error: 'Documento incompleto.' });
         if (String(doc.dataUrl).length > 4300000) return sendJson(res, 413, { error: 'El archivo supera el límite local de 3 MB.' });
+        const databaseBefore = db.export();
         run('INSERT OR REPLACE INTO fiscal_documents(id,transaction_type,transaction_id,file_name,mime_type,file_size,sha256,data_url,created_at,notes) VALUES(?,?,?,?,?,?,?,?,?,?)',
           [String(doc.id), doc.transactionType, String(doc.transactionId), String(doc.fileName || 'documento'), String(doc.mimeType || 'application/octet-stream'), Number(doc.fileSize || 0), String(doc.sha256 || ''), String(doc.dataUrl), String(doc.createdAt || new Date().toISOString()), String(doc.notes || '')]);
-        persistDb();
+        try { persistDb(); } catch (error) { restoreDatabaseSnapshot(databaseBefore); throw error; }
         return sendJson(res, 200, { ok: true, durable: 'server-sqlite' });
       } catch (error) { return sendJson(res, 400, { error: error.message || 'No se pudo guardar el documento.' }); }
     }
@@ -298,8 +299,9 @@ async function startLanServer(requestedPort) {
     }
     if (url.pathname.startsWith('/api/documents/') && req.method === 'DELETE') {
       const id = decodeURIComponent(url.pathname.slice('/api/documents/'.length));
+      const databaseBefore = db.export();
       run('DELETE FROM fiscal_documents WHERE id=?', [id]);
-      persistDb();
+      try { persistDb(); } catch (error) { restoreDatabaseSnapshot(databaseBefore); throw error; }
       return sendJson(res, 200, { ok: true, durable: 'server-sqlite' });
     }
     if (url.pathname === '/api/sequences/next' && req.method === 'POST') {
@@ -383,12 +385,13 @@ async function startLanServer(requestedPort) {
         const existing = one('SELECT payload FROM app_state WHERE id=1');
         const currentHash = statePayloadHash(existing ? existing.payload : '');
         if (body.expectedHash !== currentHash) return sendJson(res, 409, { error: 'La base central cambió desde la última lectura. Recargue los datos del servidor antes de volver a guardar.', conflict: true, stateHash: currentHash });
+        const databaseBefore = db.export();
         const current = existing ? JSON.parse(existing.payload) : null;
         const merged = mergeStateRecords(current, incoming);
         run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(merged)]);
         const eventId = String(body.deviceId) + '-' + crypto.createHash('sha256').update(JSON.stringify(incoming)).digest('hex');
         run('INSERT OR IGNORE INTO network_sync_events(event_id,device_id,created_at,payload) VALUES(?,?,?,?)', [eventId, String(body.deviceId), new Date().toISOString(), JSON.stringify({ state: incoming })]);
-        persistDb();
+        try { persistDb(); } catch (error) { restoreDatabaseSnapshot(databaseBefore); throw error; }
         const savedRow = one('SELECT payload FROM app_state WHERE id=1');
         return sendJson(res, 200, { ok: true, state: merged, stateHash: statePayloadHash(savedRow && savedRow.payload), serverDeviceId: networkConfig.deviceId, updatedAt: new Date().toISOString() });
       } catch (error) { return sendJson(res, 400, { error: error.message || 'Error sincronizando' }); }
@@ -411,13 +414,14 @@ function allocateCashboxSequence(cashboxId, operationType, minimumValue = 1) {
   const periodRetention = /^retention-\d{6}$/.test(operation);
   if (!cashbox || cashbox.length > 32 || !/^[A-Za-z0-9_-]+$/.test(cashbox)) throw new Error('Caja inválida para numeración.');
   if (!allowed.has(operation) && !periodRetention) throw new Error('Tipo de operación no permitido para numeración.');
+  const databaseBefore = db.export();
   db.run('BEGIN IMMEDIATE');
   try {
     run('INSERT OR IGNORE INTO cashbox_sequences(cashbox_id,operation_type,last_value) VALUES(?,?,0)', [cashbox, operation]);
     run('UPDATE cashbox_sequences SET last_value=MAX(last_value,?)+1,updated_at=CURRENT_TIMESTAMP WHERE cashbox_id=? AND operation_type=?', [minimum - 1, cashbox, operation]);
     const row = one('SELECT last_value FROM cashbox_sequences WHERE cashbox_id=? AND operation_type=?', [cashbox, operation]);
     db.run('COMMIT');
-    persistDb();
+    try { persistDb(); } catch (error) { restoreDatabaseSnapshot(databaseBefore); throw new Error('No se confirmó el consecutivo en disco; se restauró el estado anterior. ' + (error.message || String(error))); }
     return { ok: true, cashbox, operation, value: Number(row.last_value) };
   } catch (error) {
     try { db.run('ROLLBACK'); } catch {}
