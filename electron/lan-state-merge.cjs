@@ -41,7 +41,7 @@ function mergeStateRecords(base, incoming) {
     out[key] = [...map.values()];
   }
   const deletedHeld = new Set((out.heldDeletedIds || []).map(item =>
-    String(item && item.cashbox || 'sin-caja') + ':' + String(item && item.id || '')
+    String(item && item.cashbox || 'sin-caja') + ':' + String(item && (item.id || ('HOLD-LEGACY-' + item.ts)) || '')
   ));
   out.held = (out.held || []).filter(item =>
     !deletedHeld.has(String(item && item.cashbox || 'sin-caja') + ':' + String(item && item.id || ''))
