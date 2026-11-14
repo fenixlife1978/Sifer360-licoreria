@@ -12,7 +12,7 @@ const PROVIDERS = Object.freeze({
   epson:{id:'epson',label:'Epson Fiscal',sdkFiles:['EpsonFiscalInterface.dll'],sdkGroups:[['EpsonFiscalInterface.dll']],models:['Epson Fiscal compatible (confirmar modelo exacto)']},
   quorion:{id:'quorion',label:'Quorion',sdkFiles:['QProg.dll'],sdkGroups:[['QProg.dll']],models:['QPrint','CR20']},
   aclas:{id:'aclas',label:'Aclas',sdkFiles:['AclasSDK.dll'],sdkGroups:[['AclasSDK.dll']],models:['Aclas fiscal compatible (confirmar modelo exacto)']},
-  pnp:{id:'pnp',label:'PNP / Desarrollos PNP',sdkFiles:['PnpFiscal.dll'],sdkGroups:[['PnpFiscal.dll']],models:['PF-SUNMI','Otros modelos compatibles confirmados por fabricante']}
+  pnp:{id:'pnp',label:'PNP / Desarrollos PNP',sdkFiles:['pnpdll.dll'],sdkGroups:[['pnpdll.dll']],models:['PF-SUNMI','PF-88A','PF-220A','PF-220DA','PF-950A','PF-675A','PF-300A']}
   ,hasar:{id:'hasar',label:'Hasar',sdkFiles:[],sdkGroups:[],models:['Hasar fiscal compatible (confirmar modelo y SDK con distribuidor)']}
 });
 const USB_SERIAL_DRIVERS = Object.freeze([
