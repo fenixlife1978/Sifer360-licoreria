@@ -418,8 +418,8 @@ function registerNetworkIpc() {
     saveNetworkConfig();
     return { ...networkConfig, running: false, addresses: localAddresses() };
   });
-  ipcMain.handle('network:disconnect-client', () => {
-    if (networkConfig.role === 'client') networkConfig = { ...networkConfig, role: 'standalone', host: '', token: crypto.randomBytes(24).toString('hex'), serverDeviceId: '' };
+  ipcMain.handle('network:disconnect-client', async () => {
+    if (networkConfig.role === 'client') { networkConfig = { ...networkConfig, role: 'standalone', host: '', token: crypto.randomBytes(24).toString('hex'), serverDeviceId: '' }; await initializeDatabase(); }
     saveNetworkConfig();
     return { ...networkConfig, running: false, addresses: localAddresses() };
   });
@@ -432,6 +432,7 @@ function registerNetworkIpc() {
     if (!response.ok) throw new Error('No se pudo autenticar con el servidor (' + response.status + ').');
     const health = await response.json();
     networkConfig = { ...networkConfig, role: 'client', host, port, token, serverDeviceId: health.deviceId };
+    if (db) { try { db.close(); } catch {} db = null; }
     saveNetworkConfig();
     return { ...networkConfig, running: false, addresses: localAddresses(), connected: true };
   });
@@ -474,8 +475,8 @@ function registerNetworkIpc() {
   });
 }
 function registerIpc() {
-  ipcMain.handle('posdb:get-mode', () => ({ mode: 'sqlite', databasePath: userDbPath() }));
-  ipcMain.handle('posdb:set-mode', () => ({ mode: 'sqlite', databasePath: userDbPath() }));
+  ipcMain.handle('posdb:get-mode', () => ({ mode: 'sqlite', databasePath: networkConfig.role === 'client' ? null : userDbPath(), source: networkConfig.role === 'client' ? 'lan-server' : 'local' }));
+  ipcMain.handle('posdb:set-mode', () => ({ mode: 'sqlite', databasePath: networkConfig.role === 'client' ? null : userDbPath(), source: networkConfig.role === 'client' ? 'lan-server' : 'local' }));
   ipcMain.handle('posdb:load-state', async () => {
     if (networkConfig.role === 'client') {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Este cliente no está conectado al servidor LAN.');
@@ -558,8 +559,8 @@ function createWindow() {
   return win;
 }
 app.whenReady().then(async () => {
-  await initializeDatabase();
   readNetworkConfig();
+  if (networkConfig.role !== 'client') await initializeDatabase();
   registerIpc();
   registerNetworkIpc();
   if (networkConfig.role === 'server') { try { await startLanServer(networkConfig.port); } catch (error) { networkConfig.role = 'standalone'; saveNetworkConfig(); } }
