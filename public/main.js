@@ -5279,6 +5279,7 @@ function fiscalPrinterConfigDlg(){
     '<div class="f"><label for="fpTimeout">Tiempo de espera (ms)</label><input class="fld r" id="fpTimeout" type="number" min="1000" max="60000" value="'+esc(draft.timeoutMs)+'"></div>'+
     '</div><div class="row" style="flex-wrap:wrap;margin:8px 0"><button class="btn" id="fpDetect">Detectar puertos COM</button><button class="btn" id="fpTestPort">Probar apertura del puerto</button></div>'+
     '<div class="group"><div class="gtitle">SDK del fabricante</div><div id="fpSdkFields"></div><div class="hint">Selecciona únicamente archivos originales entregados por el fabricante o distribuidor autorizado. Detectar un DLL no significa que el protocolo esté integrado.</div></div>'+
+    '<div class="group"><div class="gtitle">Descargas gratuitas de fabricantes y controladores</div><p class="hint">Abre los portales del fabricante para descargar el componente que corresponda al modelo y al chipset detectado. SIFER no instala ni ejecuta controladores silenciosamente. La descarga gratuita no concede por sí sola permiso para redistribuir un DLL dentro del instalador.</p><div class="row" style="flex-wrap:wrap"><button class="btn mini2" data-fiscal-download="pnpSdk32">SDK PNP 32 bits</button><button class="btn mini2" data-fiscal-download="pnpSdk64">SDK PNP 64 bits</button><button class="btn mini2" data-fiscal-download="prolific">Driver Prolific PL2303</button><button class="btn mini2" data-fiscal-download="ftdi">Driver FTDI VCP</button><button class="btn mini2" data-fiscal-download="silabs">Driver Silicon Labs CP210x</button><button class="btn mini2" data-fiscal-download="hka">Integración The Factory HKA</button><button class="btn mini2" data-fiscal-download="epson">Portal Epson Developers</button><button class="btn mini2" data-fiscal-download="quorion">Portal Quorion</button><button class="btn mini2" data-fiscal-download="aclas">Portal Aclas</button></div><p class="hint">Para Bematech, solicite la versión fiscal de BemaFI al fabricante o representante autorizado del modelo. No se instalará una DLL de procedencia/licencia no verificadas.</p></div>'+
     '<div class="group"><div class="gtitle">Puente de comunicación fiscal</div><div class="f"><label for="fpBridge">Ejecutable adaptador del fabricante</label><input class="fld" id="fpBridge" readonly value="'+esc(draft.bridgePath)+'"></div><div class="row" style="flex-wrap:wrap;margin-top:8px"><button class="btn" id="fpChooseBridge">Seleccionar adaptador .exe</button><button class="btn" id="fpTestBridge">Comprobar adaptador</button></div><p class="hint">El adaptador debe implementar sifer-fiscal-bridge/v1 y usar el SDK oficial. No se envían comandos fiscales desde esta prueba.</p></div>'+
     '<label class="chk"><input type="checkbox" id="fpEnabled" '+(draft.enabled?'checked':'')+'> Habilitar este dispositivo en la configuración de la caja</label>'+
     '<div id="fpStatus" class="hint" role="status" aria-live="polite">Pendiente de diagnóstico.</div><div id="fpPendingJobs" class="group" hidden></div>'+
@@ -5420,6 +5421,12 @@ function fiscalPrinterConfigDlg(){
       const saved=await save();
       if(!saved||!saved.ok){restoreStateSnapshotIfNeeded(saved,snapshot);msg('SQLite no confirmó la resolución; la caja seguirá bloqueada.','bad');return;}
       msg('Incidencia marcada como no emitida. Puede reintentar la venta como una nueva operación.');drawPendingJobs();
+      return;
+    }
+    const downloadButton=e.target.closest('[data-fiscal-download]');
+    if(downloadButton){
+      try{await window.posDesktop.fiscalPrinterOpenDownload(downloadButton.dataset.fiscalDownload);}
+      catch(error){$('#fpStatus',el).textContent='No se pudo abrir el portal de descarga: '+error.message;}
       return;
     }
     if(e.target.id==='fpDetect'){await detect();return;}
