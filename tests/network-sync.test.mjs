@@ -250,3 +250,10 @@ test('el cliente captura el registro nuevo antes de esperar la red y conserva la
   assert.ok(capture.indexOf('const snap=stateSnapshot()') < capture.indexOf('await window.posDesktop.networkStatus()'));
   assert.doesNotMatch(capture, /__SIFER_LAST_SAVE/);
 });
+
+test('un evento pendiente en disco no detiene la captura de las siguientes operaciones del cliente', () => {
+  const clientBranch = electron.slice(electron.indexOf("if (networkConfig.role === 'client') {", electron.indexOf("ipcMain.handle('network:operation-create'")), electron.indexOf("    const eventType =", electron.indexOf("ipcMain.handle('network:operation-create'")));
+  assert.match(clientBranch, /durable: 'client-outbox'/);
+  assert.match(clientBranch, /serverConfirmed: !!delivery && delivery\.status === 'acked'/);
+  assert.doesNotMatch(clientBranch, /throw new Error\('La operación quedó guardada en la cola local durable/);
+});
