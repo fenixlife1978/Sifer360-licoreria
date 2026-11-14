@@ -603,6 +603,7 @@ async function networkSyncAttempt(){
       if(persistenceBlocked||saveSequence===syncRevision){
         for(const key of Object.keys(S))delete S[key];
         Object.assign(S,result.state);
+        primeOperationBaseline();
         persistenceBlocked=false;
         try{renderAll();}catch(e){}
       }else scheduleNetworkSync();
