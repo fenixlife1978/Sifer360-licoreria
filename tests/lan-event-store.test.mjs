@@ -174,6 +174,18 @@ test('el evento debe tener una secuencia entera segura y positiva', () => {
   assert.equal(db.received(), 0);
 });
 
+test('rechaza entidades con numeración por caja cuando falta una caja válida', () => {
+  const db = fixture();
+  const withoutCashbox = event();
+  delete withoutCashbox.payload.record.cashbox;
+  assert.throws(() => db.apply([withoutCashbox]), /requiere una caja válida/);
+  const invalidCashbox = event({ eventId: 'event-invalid-box' });
+  invalidCashbox.payload.record.cashbox = 'Caja 01';
+  assert.throws(() => db.apply([invalidCashbox]), /requiere una caja válida/);
+  assert.equal(db.received(), 0);
+  assert.equal(db.state().sales.length, 0);
+});
+
 test('el identificador declarado debe coincidir con el identificador real del registro', () => {
   const db = fixture();
   const invalid = event();
