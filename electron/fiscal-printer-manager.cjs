@@ -13,6 +13,7 @@ const PROVIDERS = Object.freeze({
   quorion:{id:'quorion',label:'Quorion',sdkFiles:['QProg.dll'],sdkGroups:[['QProg.dll']],models:['QPrint','CR20']},
   aclas:{id:'aclas',label:'Aclas',sdkFiles:['AclasSDK.dll'],sdkGroups:[['AclasSDK.dll']],models:['Aclas fiscal compatible (confirmar modelo exacto)']},
   pnp:{id:'pnp',label:'PNP / Desarrollos PNP',sdkFiles:['PnpFiscal.dll'],sdkGroups:[['PnpFiscal.dll']],models:['PF-SUNMI','Otros modelos compatibles confirmados por fabricante']}
+  ,hasar:{id:'hasar',label:'Hasar',sdkFiles:[],sdkGroups:[],models:['Hasar fiscal compatible (confirmar modelo y SDK con distribuidor)']}
 });
 const USB_SERIAL_DRIVERS = Object.freeze([
   {id:'prolific',label:'Prolific PL2303',vendorId:'067B'},
