@@ -7,6 +7,7 @@ const os = require('os');
 const crypto = require('crypto');
 const { createDurableOutbox } = require('./lan-outbox.cjs');
 const { ensureServerCertificate, createPinnedAgent, retrievePeerCertificate, verifyFingerprint } = require('./lan-tls.cjs');
+const { applyIncomingEvents } = require('./lan-event-store.cjs');
 const initSqlJs = require('sql.js');
 
 let db;
@@ -360,76 +361,14 @@ async function startLanServer(requestedPort) {
       try {
         const body = await readBody(req);
         if (!body || !Array.isArray(body.events) || body.events.length > 500) return sendJson(res, 400, { error: 'Lote inválido (máximo 500 operaciones).' });
-        const accepted = [], duplicates = [], conflicts = [];
-        const databaseBefore = db.export();
-        db.run('BEGIN IMMEDIATE');
-        try {
-          for (const ev of body.events) {
-            if (!ev || !ev.eventId || !ev.deviceId || !Number.isSafeInteger(Number(ev.deviceSeq)) || Number(ev.deviceSeq) < 1 || !ev.eventType || !ev.entityType || !ev.entityId || !ev.payload || typeof ev.payload !== 'object') {
-              throw new Error('Operación inválida.');
-            }
-            const eventPayload = JSON.stringify(ev.payload);
-            const existing = one('SELECT event_id AS eventId,device_id AS deviceId,device_seq AS deviceSeq,event_type AS eventType,entity_type AS entityType,entity_id AS entityId,payload FROM network_received_operations WHERE event_id=?', [String(ev.eventId)]);
-            const seqOwner = one('SELECT event_id FROM network_received_operations WHERE device_id=? AND device_seq=?', [String(ev.deviceId), Number(ev.deviceSeq)]);
-            if (existing) {
-              const sameEvent = existing.deviceId === String(ev.deviceId) &&
-                Number(existing.deviceSeq) === Number(ev.deviceSeq) &&
-                existing.eventType === String(ev.eventType) &&
-                existing.entityType === String(ev.entityType) &&
-                existing.entityId === String(ev.entityId) &&
-                existing.payload === eventPayload;
-              if (sameEvent) duplicates.push(String(ev.eventId));
-              else conflicts.push({ eventId: String(ev.eventId), reason: 'event-id-reused-with-different-data', existingEventId: existing.eventId });
-              continue;
-            }
-            if (seqOwner) { conflicts.push({ eventId: String(ev.eventId), reason: 'device-sequence-already-used', existingEventId: seqOwner.event_id }); continue; }
-            const collection = String(ev.entityType);
-            const record = ev.payload && ev.payload.record;
-            const allowedCollections = new Set(['sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','casheaMovimientos','casheaLiquidaciones','cambiosDivisas','retencionesIva','retentions','returns','voids']);
-            if (!allowedCollections.has(collection) || !record || typeof record !== 'object' || Array.isArray(record)) {
-              throw new Error('La operación no contiene una entidad permitida y un registro válido.');
-            }
-            let state = null, records = [], existingRecord = null;
-            const boxScopedCollections = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas']);
-            const recordId = String(ev.entityId);
-            if (allowedCollections.has(collection) && record && typeof record === 'object' && !Array.isArray(record)) {
-              const stateRow = one('SELECT payload FROM app_state WHERE id=1');
-              state = stateRow ? JSON.parse(stateRow.payload) : {};
-              records = Array.isArray(state[collection]) ? state[collection] : [];
-              const recordIdentity = item => {
-                const id = String(item.id ?? item.uuid ?? item.eventId ?? item.no ?? item.number ?? item.ctrlNo ?? item.code ?? '');
-                return boxScopedCollections.has(collection) ? String(item.cashbox || 'sin-caja') + ':' + id : id;
-              };
-              const incomingIdentity = boxScopedCollections.has(collection)
-                ? String(record.cashbox || 'sin-caja') + ':' + recordId
-                : recordId;
-              existingRecord = records.find(item => item && recordIdentity(item) === incomingIdentity);
-              if (existingRecord && JSON.stringify(existingRecord) !== JSON.stringify(record)) {
-                conflicts.push({ eventId: String(ev.eventId), reason: 'entity-already-exists-with-different-data', entityType: collection, entityId: recordId });
-                continue;
-              }
-            }
-            // Solo se registra como recibido después de superar la validación
-            // de identidad. Un conflicto no debe quedar marcado como duplicado
-            // en el siguiente intento ni poder convertirse en un ACK falso.
-            run('INSERT INTO network_received_operations(event_id,device_id,device_seq,event_type,entity_type,entity_id,occurred_at,payload) VALUES(?,?,?,?,?,?,?,?)',
-              [String(ev.eventId), String(ev.deviceId), Number(ev.deviceSeq), String(ev.eventType), String(ev.entityType), String(ev.entityId), String(ev.occurredAt || new Date().toISOString()), JSON.stringify(ev.payload)]);
-            if (state && !existingRecord) {
-              state[collection] = [...records, record];
-              run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(state)]);
-            }
-            accepted.push(String(ev.eventId));
-          }
-          db.run('COMMIT');
-        } catch (error) { db.run('ROLLBACK'); throw error; }
-        try {
-          persistDb();
-        } catch (persistError) {
-          restoreDatabaseSnapshot(databaseBefore);
-          throw new Error('No se confirmó la persistencia en disco; el servidor restauró el estado anterior y rechazó el lote. ' + (persistError.message || String(persistError)));
-        }
-        const stateRow = one('SELECT payload FROM app_state WHERE id=1');
-        return sendJson(res, 200, { ok: true, accepted, duplicates, conflicts, stateHash: statePayloadHash(stateRow && stateRow.payload), note: 'Las operaciones aceptadas se aplicaron al estado central y se persistieron en SQLite.' });
+        const result = applyIncomingEvents({
+          db,
+          events: body.events,
+          persist: () => persistDb(),
+          restore: snapshot => restoreDatabaseSnapshot(snapshot),
+          statePayloadHash
+        });
+        return sendJson(res, 200, result);
       } catch (error) { return sendJson(res, 400, { error: error.message || 'Error recibiendo operaciones' }); }
     }
     if (url.pathname === '/api/sync/events' && req.method === 'GET') {
