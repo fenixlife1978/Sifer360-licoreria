@@ -173,4 +173,4 @@ async function testPnpFiscalStatus(profile, options = {}) {
   }
 }
 
-module.exports={PROVIDERS,USB_SERIAL_DRIVERS,normalizeProfile,getSdkStatus,listSerialPorts,testSerialPort,testPnpFiscalStatus,runBridge,emitInvoice};
+module.exports={PROVIDERS,USB_SERIAL_DRIVERS,normalizeProfile,getSdkStatus,listSerialPorts,testSerialPort,testPnpFiscalStatus,interpretPnpStatus,runBridge,emitInvoice};
