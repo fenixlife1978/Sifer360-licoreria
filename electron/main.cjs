@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -63,8 +63,15 @@ const MAX_SYNC_BODY = 8 * 1024 * 1024;
 function readNetworkConfig() {
   networkConfigPath = path.join(app.getPath('userData'), 'network-mode.json');
   if (fs.existsSync(networkConfigPath)) {
-    try { networkConfig = { ...networkConfig, ...JSON.parse(fs.readFileSync(networkConfigPath, 'utf8')) }; }
-    catch (error) { throw new Error('La configuración LAN está dañada y no se reemplazará automáticamente. ' + (error.message || String(error))); }
+    try {
+      const stored = JSON.parse(fs.readFileSync(networkConfigPath, 'utf8'));
+      if (stored.tokenEncrypted) {
+        if (!safeStorage.isEncryptionAvailable()) throw new Error('El cifrado seguro del sistema operativo no está disponible para abrir la clave LAN.');
+        stored.token = safeStorage.decryptString(Buffer.from(stored.tokenEncrypted, 'base64'));
+        delete stored.tokenEncrypted;
+      }
+      networkConfig = { ...networkConfig, ...stored };
+    } catch (error) { throw new Error('La configuración LAN está dañada o no se pudo descifrar; no se reemplazará automáticamente. ' + (error.message || String(error))); }
   }
   if (!networkConfig.deviceId) networkConfig.deviceId = crypto.randomUUID();
   if (!networkConfig.token) networkConfig.token = crypto.randomBytes(24).toString('hex');
@@ -76,8 +83,14 @@ function saveNetworkConfig() {
   const temporary = networkConfigPath + '.tmp';
   let fd;
   try {
+    const stored = { ...networkConfig };
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('El cifrado seguro del sistema operativo no está disponible; no se guardará la clave LAN en texto claro.');
+    if (stored.token) {
+      stored.tokenEncrypted = safeStorage.encryptString(stored.token).toString('base64');
+      delete stored.token;
+    }
     fd = fs.openSync(temporary, 'w', 0o600);
-    fs.writeFileSync(fd, JSON.stringify(networkConfig, null, 2), 'utf8');
+    fs.writeFileSync(fd, JSON.stringify(stored, null, 2), 'utf8');
     fs.fsyncSync(fd);
     fs.closeSync(fd);
     fd = undefined;
@@ -288,7 +301,8 @@ async function startLanServer(requestedPort) {
   if (!db) await initializeDatabase();
   const port = Math.max(1024, Math.min(65535, Number(requestedPort || networkConfig.port || 38760)));
   if (networkServer) await new Promise(resolve => networkServer.close(resolve));
-  const identity = await ensureServerCertificate({ directory: app.getPath('userData'), deviceId: networkConfig.deviceId });
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('El cifrado seguro del sistema operativo no está disponible; no se iniciará el servidor LAN.');
+  const identity = await ensureServerCertificate({ directory: app.getPath('userData'), deviceId: networkConfig.deviceId, encryptPrivateKey: pem => safeStorage.encryptString(pem).toString('base64'), decryptPrivateKey: value => safeStorage.decryptString(Buffer.from(value, 'base64')) });
   networkConfig = { ...networkConfig, role: 'server', host: '', port, token: networkConfig.token || crypto.randomBytes(24).toString('hex'), tlsFingerprint: identity.fingerprint, serverCert: '' };
   saveNetworkConfig();
   networkServer = https.createServer({ key: identity.key, cert: identity.cert }, async (req, res) => {
