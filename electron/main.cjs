@@ -15,6 +15,7 @@ const { hasValidBearerToken } = require('./lan-auth.cjs');
 const { allocateCashboxSequence: allocateCashboxSequenceDurable } = require('./cashbox-sequence.cjs');
 const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
 const { createPasswordHash, verifyPassword, normalizeLegacyUser, publicUser } = require('./auth-credentials.cjs');
+const FiscalPrinterManager = require('./fiscal-printer-manager.cjs');
 const authSessions = new Map();
 const initSqlJs = require('sql.js');
 
@@ -788,6 +789,19 @@ function registerIpc() {
     persistMutation(() => run('DELETE FROM fiscal_documents WHERE id=?', [String(id)]));
     return { ok: true, durable: 'sqlite-file' };
   });
+  ipcMain.handle('fiscal-printer:list-ports', async () => FiscalPrinterManager.listSerialPorts());
+  ipcMain.handle('fiscal-printer:select-file', async (_e, kind = 'sdk') => {
+    const filters = kind === 'bridge'
+      ? [{ name: 'Adaptador fiscal ejecutable', extensions: ['exe'] }]
+      : [{ name: 'SDK fiscal', extensions: ['dll', 'ini', 'exe'] }, { name: 'Todos los archivos', extensions: ['*'] }];
+    const result = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow(), { title: kind === 'bridge' ? 'Seleccionar puente fiscal autorizado' : 'Seleccionar archivo SDK del fabricante', properties: ['openFile'], filters });
+    return result.canceled || !result.filePaths[0] ? null : result.filePaths[0];
+  });
+  ipcMain.handle('fiscal-printer:status', async (_e, profile = {}) => FiscalPrinterManager.getSdkStatus(profile));
+  ipcMain.handle('fiscal-printer:test-port', async (_e, profile = {}) => FiscalPrinterManager.testSerialPort(profile));
+  ipcMain.handle('fiscal-printer:test-bridge', async (_e, profile = {}) => FiscalPrinterManager.runBridge(profile, 'status', { requestId: crypto.randomUUID() }));
+  ipcMain.handle('fiscal-printer:emit-invoice', async (_e, profile = {}, invoice = {}) => FiscalPrinterManager.emitInvoice(profile, invoice));
+
 }
 function createWindow() {
   const win = new BrowserWindow({
