@@ -24,6 +24,11 @@ test('los clientes reservan números exclusivamente en el servidor LAN autentica
   assert.match(main, /\/api\/sequences\/next/);
   assert.match(main, /networkConfig\.role === 'client'/);
   assert.match(main, /Authorization: 'Bearer ' \+ networkConfig\.token/);
+  assert.match(main, /expectedHash: networkConfig\.serverStateHash/);
+  assert.match(main, /statePayloadHash/);
+  assert.match(main, /status, 409/);
+  assert.match(main, /body\.expectedHash !== currentHash/);
+  assert.match(main, /networkConfig\.serverStateHash = eventResult\.stateHash/);
   assert.match(main, /network:next-sequence/);
   assert.match(preload, /networkNextSequence: input => ipcRenderer\.invoke\('network:next-sequence', input\)/);
 });
@@ -48,6 +53,7 @@ test('las PCs cliente cargan y guardan el estado operativo mediante el servidor,
   assert.match(main, /source: 'lan-server'/);
   assert.match(main, /posdb:save-state', async/);
   assert.match(main, /El servidor no confirmó el guardado central/);
+  assert.match(main, /serverStateHash = result\.stateHash/);
   assert.match(main, /server-sqlite/);
 });
 
