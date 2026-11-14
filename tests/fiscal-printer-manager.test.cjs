@@ -59,11 +59,18 @@ test('la emisión exige clave idempotente y puente autorizado', async () => {
 
 
 test('consulta estado PNP mediante comando de solo lectura y valida la respuesta completa', async () => {
-  const response = require('../electron/pnp-protocol.cjs').encodeCommand(0x38,
-    ['0000','0000','34','0','56','260101','120000','7','0','7','0','3'], 0x21);
+  const protocol = require('../electron/pnp-protocol.cjs');
   const result = await manager.testPnpFiscalStatus(
     {provider:'pnp',model:'PF-220A',port:'COM4',baudRate:9600,dataBits:8,parity:'none',stopBits:1},
-    {platform:'win32',execFileAsync:async()=>({stdout:response.toString('base64')})}
+    {platform:'win32',execFileAsync:async(_command,args)=>{
+      const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
+      const match=script.match(/\\$hex='([0-9a-f]+)'/i);
+      assert.ok(match,'El puente debe enviar la trama PNP codificada.');
+      const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));
+      const response=protocol.encodeCommand(0x38,
+        ['0000','0000','34','0','56','260101','120000','7','0','7','0','3'],request.sequence);
+      return {stdout:response.toString('base64')};
+    }}
   );
   assert.equal(result.ok,true);
   assert.equal(result.printerStatus,'0000');
