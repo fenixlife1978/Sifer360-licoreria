@@ -417,7 +417,6 @@ button.sp:hover{background:var(--sel)}
 body.cashier-mode .topr>#btnDashboard,
 body.cashier-mode .topr>#btnCasheaTop,
 body.cashier-mode .topr>#btnDivisasTop,
-body.cashier-mode .topr>#btnAccountingTop,
 body.cashier-mode .topr>#btnSeniatTop,
 body.cashier-mode .topr>#btnMenu{display:none!important;}
 body.cashier-mode .topr{justify-content:flex-end;}
