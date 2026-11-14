@@ -1,7 +1,9 @@
 function allocateCashboxSequence({ db, cashboxId, operationType, minimumValue = 1, persist, restore }) {
   const cashbox = String(cashboxId || '').trim();
   const operation = String(operationType || '').trim();
-  const minimum = Math.max(1, Math.floor(Number(minimumValue) || 1));
+  const requestedMinimum = Number(minimumValue);
+  const flooredMinimum = Math.floor(Number.isFinite(requestedMinimum) ? requestedMinimum : 1);
+  const minimum = Number.isSafeInteger(flooredMinimum) ? Math.max(1, flooredMinimum) : 1;
   const allowed = new Set(['invoice','control','z','void','refund','return','cxc','cxp','cashea','movement','opening','purchase','count']);
   const periodRetention = /^retention-\d{6}$/.test(operation);
   if (!cashbox || cashbox.length > 32 || !/^[A-Za-z0-9_-]+$/.test(cashbox)) throw new Error('Caja inválida para numeración.');
