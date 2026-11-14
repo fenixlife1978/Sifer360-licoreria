@@ -367,3 +367,8 @@ test('SQLite y su respaldo se vacían a disco antes del reemplazo atómico', () 
   assert.match(electron, /fs\.fsyncSync\(backupFd\)/);
   assert.match(electron, /fs\.renameSync\(temporary, target\)/);
 });
+
+test('la inicialización recupera una copia SQLite si falta o está dañada la principal', () => {
+  assert.match(electron, /require\('\.\/sqlite-recovery\.cjs'\)/);
+  assert.match(electron, /openOrRecoverDatabase\(\{ SQL, file \}\)/);
+});
