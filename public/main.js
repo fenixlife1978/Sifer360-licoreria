@@ -5416,6 +5416,34 @@ function fiscalPrinterConfigDlg(){
   ],onOpen:()=>{applyDraft();status();}});
 }
 
+
+function printerSetupWizardDlg(){
+  const user=activeUser();
+  if(!user||user.role!=='admin'){msg('El asistente de impresoras debe ejecutarlo el administrador.','bad');return;}
+  const current=S.cfg.printMode||'NOT_CONFIGURED';
+  const el=h('<div class="form" style="gap:12px"><div class="hint"><b>Bienvenido a SIFER360-LICORERIA.</b> Seleccione cómo desea trabajar. Puede cambiar esta opción posteriormente desde Parámetros Fiscales. La base de datos y toda la configuración se guardan localmente en SQLite.</div>'+
+    '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="FISCAL_PRINTER" '+(current==='FISCAL_PRINTER'?'checked':'')+'> <b>Impresora fiscal homologada</b><p class="hint">Vincular una máquina fiscal por marca, modelo, puerto y adaptador oficial. La emisión fiscal solo se habilitará cuando el protocolo del equipo esté validado.</p></label>'+
+    '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="INTERNAL_THERMAL" '+(current==='INTERNAL_THERMAL'?'checked':'')+'> <b>Impresora térmica genérica</b><p class="hint">Imprimir tickets de control interno mediante el diálogo de impresión de Windows. Cada documento indicará: “Ticket de Venta - No válido como factura fiscal”.</p></label>'+
+    '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="NO_PRINTER" '+(current==='NO_PRINTER'||current==='NOT_CONFIGURED'?'checked':'')+'> <b>Instalar sin impresora</b><p class="hint">El POS funcionará normalmente y guardará las ventas en SQLite. No intentará imprimir ni comunicarse con una máquina fiscal. Podrá configurar una impresora más adelante.</p></label>'+
+    '<div class="group"><b>Detección de dispositivos</b><p class="hint">En Windows se pueden enumerar los puertos COM. La identificación fiscal automática requiere una respuesta válida del protocolo de cada fabricante; no se confundirá un puerto abierto con una impresora fiscal reconocida.</p><button class="btn" type="button" id="printerWizardDetect">Buscar dispositivos conectados</button><div class="hint" id="printerWizardStatus" role="status" aria-live="polite">La búsqueda no enviará comandos fiscales de emisión ni de cierre.</div></div></div>');
+  $('#printerWizardDetect',el).addEventListener('click',async()=>{
+    const node=$('#printerWizardStatus',el);node.textContent='Consultando dispositivos y puertos COM…';
+    try{if(!window.posDesktop||!window.posDesktop.fiscalPrinterListPorts)throw new Error('La detección requiere la aplicación de escritorio.');const r=await window.posDesktop.fiscalPrinterListPorts();node.textContent=(r.ports||[]).length?'Puertos detectados: '+r.ports.map(p=>p.port+' — '+p.name).join(' · '):r.message||'No se detectaron impresoras seriales. Puede continuar sin impresora o elegir ticket térmico genérico.';}
+    catch(e){node.textContent=e.message+' Puede continuar con ticket interno o sin impresora.';}
+  });
+  openWin({title:'Asistente inicial · Impresoras y tickets',w:620,body:el,foot:[{label:'Configurar y continuar',primary:true,fn:async()=>{
+    const choice=$('input[name="printerSetupMode"]:checked',el)?.value;
+    if(!['FISCAL_PRINTER','INTERNAL_THERMAL','NO_PRINTER'].includes(choice)){msg('Seleccione una modalidad para continuar.','bad');return false;}
+    S.cfg.printMode=choice;S.cfg.printSetupCompleted=true;
+    if(choice==='FISCAL_PRINTER')S.cfg.fiscalTipo='MAQUINA_FISCAL';
+    const persisted=await save();if(!persisted||!persisted.ok){msg('SQLite no confirmó la modalidad de impresión. No se aplicaron los cambios.','bad');return false;}
+    closeWin();
+    if(choice==='FISCAL_PRINTER')setTimeout(()=>fiscalPrinterConfigDlg(),150);
+    else msg(choice==='INTERNAL_THERMAL'?'Modo ticket interno activado. Los comprobantes no son facturas fiscales.':'Instalación sin impresora activada. Las ventas se guardarán en SQLite sin impresión automática.');
+    return false;
+  }}]});
+}
+
 function seniatSudebanDlg(initialTab){
   if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir el módulo Fiscal.','bad');return;}
   let activeTab=initialTab||'resumen';
@@ -5878,7 +5906,8 @@ function seniatSudebanDlg(initialTab){
       '<div class="f wide"><label for="fEmp">Razón Social</label><input class="fld" id="fEmp" value="'+esc(c.empresa)+'"></div>'+
       '<div class="f"><label for="fRif">RIF de la Empresa</label><input class="fld" id="fRif" value="'+esc(c.rif)+'"></div>'+
       '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
-      '<div class="f"><label for="fTipo">Modalidad de Facturación</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option></select></div>'+
+      '<div class="f"><label for="fTipo">Modalidad de Facturación Fiscal</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option></select></div>'+
+      '<div class="f wide"><label for="fPrintMode">Modo de impresión del POS</label><select class="fld" id="fPrintMode"><option value="FISCAL_PRINTER" '+((c.printMode||'LEGACY')==='FISCAL_PRINTER'?'selected':'')+'>Impresora fiscal homologada</option><option value="INTERNAL_THERMAL" '+(c.printMode==='INTERNAL_THERMAL'?'selected':'')+'>Impresora térmica genérica · Ticket interno</option><option value="NO_PRINTER" '+(c.printMode==='NO_PRINTER'?'selected':'')+'>Sin impresora · Solo registro en SQLite</option><option value="LEGACY" '+((c.printMode||'LEGACY')==='LEGACY'?'selected':'')+'>Conservar configuración anterior</option></select><p class="hint">Los modos de ticket interno no emiten documentos fiscales. Cada comprobante llevará la leyenda “Ticket de Venta - No válido como factura fiscal”.</p><button class="btn" type="button" id="btnPrinterSetupWizard">Abrir asistente de instalación de impresoras</button></div>'+
       '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button></div>'+
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
       '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
@@ -6067,11 +6096,14 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnQuickLote')registerLoteSudebanDlg(()=>{seniatSudebanDlg('sudeban');});
         if(ev.target.id==='btnGotoVentas'){activeTab='ventas';$('.tab[data-tab="ventas"]',el)?.click();}
         if(ev.target.id==='btnGotoIgtf'){activeTab='igtf';$('.tab[data-tab="igtf"]',el)?.click();}
+        if(ev.target.id==='btnPrinterSetupWizard'){printerSetupWizardDlg();return;}
         if(ev.target.id==='btnSaveF'){
           S.cfg.empresa=$('#fEmp',el).value.trim()||S.cfg.empresa;
           S.cfg.rif=$('#fRif',el).value.trim()||S.cfg.rif;
           S.cfg.dir=$('#fDir',el).value.trim();
           S.cfg.fiscalTipo=$('#fTipo',el).value;
+          S.cfg.printMode=$('#fPrintMode',el).value;
+          S.cfg.printSetupCompleted=true;
           S.cfg.contribEspecial=$('#fEsp',el).value==='1';
           S.cfg.retIvaPct=75;
           S.cfg.retencionHabilitadaConfirmada=$('#fRetConfirm',el).checked===true;
@@ -7205,6 +7237,7 @@ async function prepareDatabaseBeforeStartup(){
 function restoreWorkspaceAfterReload(){
   const user=activeUser();
   if(!user||!user.username||!user.role)return;
+  if(user.role==='admin'&&S.cfg.printSetupCompleted!==true&&S.cfg.printMode==='NOT_CONFIGURED')setTimeout(()=>printerSetupWizardDlg(),900);
   if(user.role==='cajero'){
     if(window.SIFERCashier&&typeof window.SIFERCashier.start==='function')window.SIFERCashier.start(user);
     return;
