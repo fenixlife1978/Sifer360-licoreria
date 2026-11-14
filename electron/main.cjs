@@ -242,6 +242,7 @@ async function setMode(mode) {
   return { mode: 'sqlite', databasePath: userDbPath() };
 }
 async function startLanServer(requestedPort) {
+  if (!db) await initializeDatabase();
   const port = Math.max(1024, Math.min(65535, Number(requestedPort || networkConfig.port || 38760)));
   if (networkServer) await new Promise(resolve => networkServer.close(resolve));
   networkConfig = { ...networkConfig, role: 'server', host: '', port, token: networkConfig.token || crypto.randomBytes(24).toString('hex') };
