@@ -36,7 +36,7 @@ test('no permite anular localmente una factura que ya emitió una máquina fisca
 });
 
 test('Electron expone las acciones fiscales solo mediante IPC del proceso principal', () => {
-  for (const method of ['fiscalPrinterListPorts','fiscalPrinterSelectFile','fiscalPrinterStatus','fiscalPrinterTestPort','fiscalPrinterTestPnp','fiscalPrinterTestBridge','fiscalPrinterEmitInvoice']) {
+  for (const method of ['fiscalPrinterOpenDownload','fiscalPrinterListPorts','fiscalPrinterSelectFile','fiscalPrinterStatus','fiscalPrinterTestPort','fiscalPrinterTestPnp','fiscalPrinterTestBridge','fiscalPrinterEmitInvoice']) {
     assert.ok(preload.includes(method), 'Falta método preload: ' + method);
   }
   assert.match(electronMain, /FiscalPrinterManager\.emitInvoice/);
@@ -94,4 +94,13 @@ test('el modo interno deja explícita la modalidad sin emisión fiscal', () => {
   assert.match(main, /value="NO_FISCAL_INTERNAL"/);
   assert.match(main, /S\.cfg\.fiscalTipo=choice==='FISCAL_PRINTER'\?'MAQUINA_FISCAL':'NO_FISCAL_INTERNAL'/);
   assert.match(main, /if\(S\.cfg\.printMode==='INTERNAL_THERMAL'\|\|S\.cfg\.printMode==='NO_PRINTER'\)S\.cfg\.fiscalTipo='NO_FISCAL_INTERNAL'/);
+});
+
+test('las descargas externas solo pueden abrir destinos oficiales permitidos', () => {
+  assert.match(electronMain, /fiscal-printer:open-download/);
+  assert.match(electronMain, /const downloads = \{/);
+  assert.match(electronMain, /if \(!url\) throw new Error\('Descarga no reconocida/);
+  assert.match(electronMain, /shell\.openExternal\(url\)/);
+  assert.match(main, /data-fiscal-download="pnpSdk32"/);
+  assert.match(main, /data-fiscal-download="prolific"/);
 });
