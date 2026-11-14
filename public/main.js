@@ -595,15 +595,18 @@ async function networkSyncAttempt(){
   if(networkSyncBusy||!window.posDesktop||typeof window.posDesktop.networkSyncNow!=='function')return;
   networkSyncBusy=true;
   try{
+    const pendingSave=window.__SIFER_LAST_SAVE;
+    if(pendingSave)await pendingSave;
     const local=stateSnapshot();
+    const syncRevision=saveSequence;
     const result=await window.posDesktop.networkSyncNow(local);
     if(result&&result.ok&&result.state){
-      if(persistenceBlocked){
+      if(persistenceBlocked||saveSequence===syncRevision){
         for(const key of Object.keys(S))delete S[key];
         Object.assign(S,result.state);
         persistenceBlocked=false;
         try{renderAll();}catch(e){}
-      }else mergeRemoteSnapshot(local,result.state);
+      }else scheduleNetworkSync();
       networkLastStatus=result.role||'connected';
 
       const status=$('#sbMsg');if(status)status.textContent=networkLastStatus==='server'?'Servidor LAN · sincronizado':networkLastStatus==='client'?'Cliente LAN · sincronizado':'Modo local';
