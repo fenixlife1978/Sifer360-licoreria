@@ -303,6 +303,7 @@ async function setMode(mode) {
   return { mode: 'sqlite', databasePath: userDbPath() };
 }
 async function startLanServer(requestedPort) {
+  if (networkConfig.role === 'client' || networkConfig.serverPromotionBlocked) throw new Error('Este equipo ya fue cliente LAN y su SQLite local no se considera autoridad. No puede convertirse en servidor automáticamente; restaure o migre la base central mediante un procedimiento explícito antes de promoverlo.');
   if (!db) await initializeDatabase();
   const port = Math.max(1024, Math.min(65535, Number(requestedPort || networkConfig.port || 38760)));
   if (networkServer) await new Promise(resolve => networkServer.close(resolve));
@@ -618,7 +619,7 @@ function registerNetworkIpc() {
     const peer = await retrievePeerCertificate(host, port, 5000);
     if (!verifyFingerprint(peer.fingerprint, expectedFingerprint)) throw new Error('La huella TLS recibida no coincide con la mostrada físicamente en el servidor. No se enviaron credenciales.');
     const previous = networkConfig;
-    networkConfig = { ...networkConfig, role: 'client', host, port, token, serverCert: peer.certificate, tlsFingerprint: peer.fingerprint };
+    networkConfig = { ...networkConfig, role: 'client', host, port, token, serverCert: peer.certificate, tlsFingerprint: peer.fingerprint, serverPromotionBlocked: true };
     let health;
     try { health = await clientApi('/api/health', { timeoutMs: 5000 }); }
     catch (error) { networkConfig = previous; throw error; }
