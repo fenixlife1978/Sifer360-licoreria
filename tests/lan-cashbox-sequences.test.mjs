@@ -69,6 +69,23 @@ test('las PCs cliente cargan y guardan el estado operativo mediante el servidor,
   assert.match(main, /server-sqlite/);
 });
 
+
+test('los clientes LAN no inicializan ni consultan SQLite local para el estado operativo', () => {
+  assert.match(main, /readNetworkConfig\(\);\s*if \(networkConfig\.role !== 'client'\) await initializeDatabase\(\)/);
+  assert.match(main, /networkConfig\.role === 'client' \? \[\] : all\("SELECT event_id AS eventId/);
+  assert.match(main, /networkConfig\.role === 'client' \? \(\{ pending: 0, acknowledged: 0, conflicts: 0 \}\)/);
+  assert.match(main, /if \(db\) \{ try \{ db\.close\(\); \} catch \{\} db = null; \}/);
+});
+
+test('los documentos fiscales y eventos de cliente se guardan directamente en el servidor LAN', () => {
+  assert.match(main, /url\.pathname === '\/api\/documents' && req\.method === 'POST'/);
+  assert.match(main, /url\.pathname === '\/api\/documents' && req\.method === 'GET'/);
+  assert.match(main, /clientApi\('\/api\/documents'/);
+  assert.match(main, /clientApi\('\/api\/documents\/' \+ encodeURIComponent/);
+  assert.match(main, /clientApi\('\/api\/sync\/events'/);
+  assert.match(main, /status: 'acked'/);
+});
+
 test('la interfaz permite iniciar servidor, descubrir equipos y emparejar clientes por IP y clave', () => {
   assert.match(pos, /function networkSettingsDlg\(\)/);
   assert.match(pos, /networkStartServer/);
