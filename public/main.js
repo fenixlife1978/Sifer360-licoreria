@@ -2547,6 +2547,7 @@ function comprasDlg(initialTab){
   });
 
   const processPurchase=async()=>{
+    const rollbackState=JSON.parse(JSON.stringify(S));
     if(tab!=='new')return true;
     if(!pLines.length){msg('Agregue al menos un producto a la compra.','bad');return false;}
     const sup=S.suppliers[supIdx]||S.suppliers[0];
@@ -2602,7 +2603,7 @@ function comprasDlg(initialTab){
       comp.retIvaDoc=retDoc;
       if(!S.retencionesIva)S.retencionesIva=[];
       S.retencionesIva.push({
-        id:retDoc,ts,periodo,cashbox:currentCaja(),supplier:Object.assign({},sup),purchaseNo:no,docProv,
+        id:retDoc,ts,periodo,cashbox:currentCaja(),sequence:retSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,
         ctrlProv:comp.ctrlProv,base,iva,pct:retPct,rate:S.cfg.rate,
         retainedUsd:retUsd,retainedBs:retBs,
         estado:'Pendiente de revisión del contador',declarada:false,pagada:false,comprobanteEntregado:false,observaciones:''
@@ -2619,7 +2620,8 @@ function comprasDlg(initialTab){
         ts,dueTs,total:payableTotal,invoiceTotal:total,retIva:retUsd,paid:effPaid,payments
       });
     }
-    save();renderAll();
+    const persisted=await save();if(!persisted||!persisted.ok){for(const key of Object.keys(S))delete S[key];Object.assign(S,rollbackState);renderAll();msg('SQLite no confirmó la compra; se restauró el estado anterior y no se confirmó el registro.','bad');return false;}
+    renderAll();
     msg('Compra COM-'+pad(no)+' guardada. Factura: '+usd(total)+(retUsd>0?'; IVA retenido: '+usd(retUsd)+'; saldo a proveedor: '+usd(payableTotal):'')+'. Stock, costos y Kardex actualizados.');
     return true;
   };
@@ -4435,6 +4437,7 @@ function showSaleCompletion(sale){
 async function finalize(st,amts,isCred,cDays,refs,payEl){
   const ctx=cajaContext();if(ctx.role==='cajero'&&ctx.status!=='abierta'){msg('La caja no está abierta. Solicite al administrador una nueva apertura antes de facturar.','bad');return;}
   const t=totals(), ts=Date.now(), invNo=await nextCajaInvoice();
+  const rollbackState=JSON.parse(JSON.stringify(S));
   const lines=S.cart.map(l=>{
     const i=lineInfo(l);
     return{
@@ -4551,7 +4554,8 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
     });
   }
   S.sales.push(sale);S.invoice=Math.max(S.invoice,invNo+1);S.cart=[];S.sel=-1;S.client=S.clients[0];
-  save();renderAll();
+  const persisted=await save();if(!persisted||!persisted.ok){for(const key of Object.keys(S))delete S[key];Object.assign(S,rollbackState);renderAll();msg('SQLite no confirmó la venta; se restauró el estado anterior y no se confirmó la factura.','bad');return;}
+  renderAll();
   msg('Factura '+pad(sale.no)+' procesada por '+usd(r2(sale.total+sale.igtf))+(casheaAmt>0?' (Financiado Cashea: '+usd(casheaAmt)+')':'')+(creditAmt>0?' (Saldo a CxC: '+usd(creditAmt)+')':'')+'.');
   showSaleCompletion(sale);
 }
