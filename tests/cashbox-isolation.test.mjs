@@ -54,7 +54,10 @@ test('el contexto activo de caja se prioriza por sesión de usuario', () => {
 
 test('la apertura de caja es obligatoria para finalizar ventas de cajero', () => {
   assert.match(main, /ctx\.role==='cajero'&&ctx\.status!=='abierta'/);
-  assert.match(access, /id="sa-open"/);
+  assert.match(access, /window\.SIFERCashier\.start\(u\)/);
+  assert.match(main, /function openCashboxDlg\(\)/);
+  assert.match(main, /Confirmar apertura e ingresar al POS/);
+  assert.match(main, /const persisted=await save\(\)/);
 });
 
 test('la anulación de una venta revierte inventario y estado si el servidor/SQLite no confirma el guardado', () => {
