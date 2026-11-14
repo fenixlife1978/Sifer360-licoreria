@@ -539,7 +539,8 @@ const OPERATION_COLLECTIONS = [
 const BOX_SCOPED_OPERATION_COLLECTIONS = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','movimientosCaja','rateAudit','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas']);
 function operationIdentity(item,index,collection){
   if(!item||typeof item!=='object')return String(index)+':'+JSON.stringify(item);
-  const id=collection==='kardex'?(item.eventId??item.id??item.uuid??item.no??item.number??item.ctrlNo??item.code):(item.id??item.uuid??item.eventId??item.no??item.number??item.ctrlNo??item.code);
+  const eventIdCollections=new Set(['kardex','lotesSudeban','rateAudit','casheaLiquidaciones']);
+  const id=eventIdCollections.has(collection)?(item.eventId??item.id??item.uuid??item.no??item.number??item.ctrlNo??item.code):(item.id??item.uuid??item.eventId??item.no??item.number??item.ctrlNo??item.code);
   if(id===undefined)return String(index)+':'+JSON.stringify(item);
   const box=BOX_SCOPED_OPERATION_COLLECTIONS.has(collection)?String(item.cashbox||'sin-caja')+':':'';
   return box+String(id);
@@ -4225,7 +4226,7 @@ function casheaSettlementDlg(onDone){
             m.tasaBcvLiquidacion = rate;
           });
           if(!Array.isArray(S.casheaLiquidaciones))S.casheaLiquidaciones=[];
-          S.casheaLiquidaciones.push({id:loteId,fecha:now,operaciones:pendings.map(m=>m.id),cantidad:pendings.length,banco:bancoSel.value,referencia:ref,brutoUsd:r2(totFinanciado),comisionPct:pct,comisionUsd:comUsd,netoEsperadoUsd:netoUsd,depositadoUsd:depositUsd,diferenciaUsd:r2(depositUsd-netoUsd),tasaBcv:rate});
+          S.casheaLiquidaciones.push({id:loteId,eventId:'CSH-LIQ-EVT-'+(crypto.randomUUID?crypto.randomUUID():now+'-'+Math.random().toString(36).slice(2)),fecha:now,operaciones:pendings.map(m=>m.id),cantidad:pendings.length,banco:bancoSel.value,referencia:ref,brutoUsd:r2(totFinanciado),comisionPct:pct,comisionUsd:comUsd,netoEsperadoUsd:netoUsd,depositadoUsd:depositUsd,diferenciaUsd:r2(depositUsd-netoUsd),tasaBcv:rate});
           const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la liquidación CASHEA; se restauró el estado durable anterior.','bad');return false;}
           msg('Lote '+loteId+' conciliado y guardado ('+pendings.length+' facturas).');
           if(onDone) onDone();
@@ -5086,6 +5087,7 @@ function registerLoteSudebanDlg(onDone){
           refLote:$('#ltNum',el).value.trim()
         };
         if(!S.lotesSudeban)S.lotesSudeban=[];
+        lote.eventId='LOT-EVT-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2));
         S.lotesSudeban.push(lote);
         const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el lote bancario; se restauró el estado durable anterior.','bad');return false;}
         msg('Lote bancario '+lote.refLote+' registrado y conciliado.');
@@ -5892,7 +5894,7 @@ function tasaBcvDlg(){
     if(Math.abs(next-oldRate)<0.000001){msg('La tasa indicada es igual a la tasa actual. No hay cambios que registrar.','bad');return false;}
     const ts=Date.now();
     if(!Array.isArray(S.rateAudit))S.rateAudit=[];
-    S.rateAudit.push({id:'BCV-'+ts+'-'+String(S.rateAudit.length+1).padStart(4,'0'),ts,previousRate:oldRate,newRate:next,reason,username:user.username,name:user.name||user.username,role:user.role,cashbox:opening.cashbox,openingId:opening.id});
+    S.rateAudit.push({id:'BCV-'+ts+'-'+String(S.rateAudit.length+1).padStart(4,'0'),eventId:'BCV-EVT-'+(crypto.randomUUID?crypto.randomUUID():ts+'-'+Math.random().toString(36).slice(2)),ts,previousRate:oldRate,newRate:next,reason,username:user.username,name:user.name||user.username,role:user.role,cashbox:opening.cashbox,openingId:opening.id});
     S.cfg.rate=next;opening.rate=next;writeActiveOpening(opening);
     const persisted=await save();if(!persisted||!persisted.ok){const restoredOpening=Object.assign({},opening,{rate:oldRate});writeActiveOpening(restoredOpening);try{localStorage.setItem('sifer360_bcv_rate',String(oldRate));}catch(e){}msg('El servidor no confirmó el cambio de tasa BCV; se restauró la apertura y el último estado durable.','bad');return false;}
     try{localStorage.setItem('sifer360_bcv_rate',String(next));}catch(e){}
