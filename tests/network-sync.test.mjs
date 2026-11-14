@@ -531,3 +531,13 @@ test('el endpoint LAN valida Bearer con comparación constante y nunca compara c
   assert.match(electron, /hasValidBearerToken\(req\.headers\.authorization, networkConfig\.token\)/);
   assert.doesNotMatch(electron, /req\.headers\.authorization !== 'Bearer ' \+ networkConfig\.token/);
 });
+
+test('si falla el bind del servidor LAN restaura la configuración anterior y no deja el equipo marcado como servidor', () => {
+  const startup = electron.slice(electron.indexOf('async function startLanServer'), electron.indexOf('function allocateCashboxSequence'));
+  assert.match(startup, /const previousConfig = networkConfig/);
+  assert.match(startup, /try \{\s*saveNetworkConfig\(\)/);
+  assert.match(startup, /catch \(error\) \{\s*stopDiscoveryServer\(\)/);
+  assert.match(startup, /networkServer = null/);
+  assert.match(startup, /networkConfig = previousConfig/);
+  assert.match(startup, /No se pudo iniciar el servidor LAN y tampoco restaurar su configuración anterior/);
+});
