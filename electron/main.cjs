@@ -688,17 +688,29 @@ function createWindow() {
   }
   return win;
 }
-app.whenReady().then(async () => {
-  readNetworkConfig();
-  if (networkConfig.role !== 'client') await initializeDatabase();
-  registerIpc();
-  registerNetworkIpc();
-  if (networkConfig.role === 'server') { try { await startLanServer(networkConfig.port); } catch (error) { networkConfig.role = 'standalone'; saveNetworkConfig(); } }
-  createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-}).catch(error => {
-  dialog.showErrorBox('No se pudo iniciar SIFER 360', error && error.message ? error.message : String(error));
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
   app.quit();
-});
+} else {
+  app.on('second-instance', () => {
+    const existing = BrowserWindow.getAllWindows()[0];
+    if (existing) {
+      if (existing.isMinimized()) existing.restore();
+      existing.focus();
+    }
+  });
+  app.whenReady().then(async () => {
+    readNetworkConfig();
+    if (networkConfig.role !== 'client') await initializeDatabase();
+    registerIpc();
+    registerNetworkIpc();
+    if (networkConfig.role === 'server') { try { await startLanServer(networkConfig.port); } catch (error) { networkConfig.role = 'standalone'; saveNetworkConfig(); } }
+    createWindow();
+    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  }).catch(error => {
+    dialog.showErrorBox('No se pudo iniciar SIFER 360', error && error.message ? error.message : String(error));
+    app.quit();
+  });
+}
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('before-quit', () => { clearTimeout(saveTimer); if (networkServer) networkServer.close(); stopDiscoveryServer(); persistDb(); });
