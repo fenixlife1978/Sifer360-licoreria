@@ -275,3 +275,9 @@ test('el descubrimiento anuncia la huella TLS, pero la conexión exige compararl
   assert.match(ui, /cópiala desde la pantalla del servidor/);
   assert.match(ui, /compare la huella mostrada aquí con la pantalla del servidor/);
 });
+
+test('una PC cliente no puede convertirse en servidor usando silenciosamente una SQLite local antigua', () => {
+  assert.match(electron, /networkConfig\.role === 'client' \|\| networkConfig\.serverPromotionBlocked/);
+  assert.match(electron, /serverPromotionBlocked: true/);
+  assert.match(electron, /No puede convertirse en servidor automáticamente/);
+});
