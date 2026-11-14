@@ -321,3 +321,8 @@ test('la pantalla alternativa de acceso tampoco muestra instrucciones LAN insegu
   assert.match(ui, /https:\/\//);
   assert.match(ui, /fingerprint:\$\('#sa-net-fingerprint'\)\.value/);
 });
+
+test('los conflictos HTTP 409 se identifican explícitamente como concurrencia', () => {
+  assert.match(electron, /response\.statusCode === 409 \? 'Conflicto de concurrencia: '/);
+  assert.match(pos, /includes\('conflicto'\)/);
+});
