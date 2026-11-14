@@ -36,9 +36,9 @@ test('no permite anular localmente una factura que ya emitió una máquina fisca
 });
 
 test('Electron expone las acciones fiscales solo mediante IPC del proceso principal', () => {
-  for (const method of ['fiscalPrinterListPorts','fiscalPrinterSelectFile','fiscalPrinterStatus','fiscalPrinterTestPort','fiscalPrinterTestBridge','fiscalPrinterEmitInvoice']) {
+  for (const method of ['fiscalPrinterListPorts','fiscalPrinterSelectFile','fiscalPrinterStatus','fiscalPrinterTestPort','fiscalPrinterTestPnp','fiscalPrinterTestBridge','fiscalPrinterEmitInvoice']) {
     assert.ok(preload.includes(method), 'Falta método preload: ' + method);
   }
   assert.match(electronMain, /FiscalPrinterManager\.emitInvoice/);
-  assert.match(electronMain, /FiscalPrinterManager\.testSerialPort/);
+  assert.match(electronMain, /FiscalPrinterManager\.testSerialPort/);\n  assert.match(electronMain, /FiscalPrinterManager\.testPnpFiscalStatus/);
 });
