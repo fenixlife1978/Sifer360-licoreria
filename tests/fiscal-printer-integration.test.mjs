@@ -13,7 +13,7 @@ test('la configuración fiscal se guarda por caja dentro del estado SQLite', () 
 });
 
 test('la modalidad máquina fiscal falla de forma segura si no hay adaptador listo', () => {
-  assert.match(main, /fiscalMode=S\.cfg\.fiscalTipo==='MAQUINA_FISCAL'/);
+  assert.match(main, /const fiscalMode=printMode==='FISCAL_PRINTER'\|\|\(printMode==='LEGACY'&&S\.cfg\.fiscalTipo==='MAQUINA_FISCAL'\)/);
   assert.match(main, /if\(!diagnostic\.ready\)/);
   assert.match(main, /fiscalPrinterTestBridge\(fiscalProfile\)/);
   assert.match(main, /unresolvedFiscalJobs\.length/);
@@ -61,4 +61,16 @@ test('los tickets internos no reservan número de control fiscal ni generan emis
   assert.match(main, /const ctrlNext=internalTicketMode\?null:await nextCajaSequence\('control',currentCaja\(\)\)/);
   assert.match(main, /docType:internalTicketMode\?'TICKET-INTERNO':'01-FACTURA'/);
   assert.match(main, /concept:\(internalTicketMode\?'Ticket de venta':'Factura de venta'\)/);
+});
+
+test('el modo interno muestra una advertencia inequívoca y nunca simula un número de control fiscal', () => {
+  const ticketAt = main.indexOf('function ticketText(s)');
+  const ticketEnd = main.indexOf('function showTicket(s)', ticketAt);
+  const ticket = main.slice(ticketAt, ticketEnd);
+  assert.match(ticket, /TICKET DE VENTA/);
+  assert.match(ticket, /NO VÁLIDO COMO FACTURA FISCAL/);
+  assert.match(ticket, /internalTicket\?\[\]:\[row\('Nº Control:/);
+  assert.match(main, /const noPrinter=s\.documentMode==='NO_PRINTER'/);
+  assert.match(main, /if\(noPrinter\)\{msg\('Esta instalación está configurada sin impresora/);
+  assert.match(main, /document\.body\.classList\.add\('printing-ticket-80mm'\)/);
 });
