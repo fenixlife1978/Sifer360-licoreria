@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, safeStorage, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -788,6 +788,23 @@ function registerIpc() {
     if (databaseMode !== 'sqlite') throw new Error('SQLite local no está seleccionado.');
     persistMutation(() => run('DELETE FROM fiscal_documents WHERE id=?', [String(id)]));
     return { ok: true, durable: 'sqlite-file' };
+  });
+  ipcMain.handle('fiscal-printer:open-download', async (_e, key) => {
+    const downloads = {
+      pnpSdk32: 'https://desarrollospnp.com/archivos/pnpdll2025a.zip',
+      pnpSdk64: 'https://desarrollospnp.com/archivos/pnpdll2022.zip',
+      prolific: 'https://prolificusa.com/product/pl2303gl-8-pin-usb-uart-bridge-controller/',
+      ftdi: 'https://ftdichip.com/drivers/',
+      silabs: 'https://www.silabs.com/software-and-tools/usb-to-uart-bridge-vcp-drivers',
+      hka: 'https://thefactoryhka.com/ve/',
+      epson: 'https://epson.com.ve/developers-products',
+      quorion: 'https://quorionus.com/downloads/',
+      aclas: 'https://www.aclas.com/'
+    };
+    const url = downloads[String(key || '')];
+    if (!url) throw new Error('Descarga no reconocida. Solo se permiten portales oficiales incluidos en SIFER360.');
+    await shell.openExternal(url);
+    return { ok: true };
   });
   ipcMain.handle('fiscal-printer:list-ports', async () => FiscalPrinterManager.listSerialPorts());
   ipcMain.handle('fiscal-printer:select-file', async (_e, kind = 'sdk') => {
