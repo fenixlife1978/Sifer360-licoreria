@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const initSqlJs = require('sql.js');
 
 let db;
+let SqlDatabase;
 let dbConfigPath;
 let databaseMode = 'sqlite';
 let saveTimer;
@@ -111,6 +112,13 @@ function databaseIntegrityStatus(database) {
   } catch (error) {
     return 'error: ' + (error && error.message ? error.message : String(error));
   }
+}
+function restoreDatabaseSnapshot(snapshot) {
+  if (!SqlDatabase || !snapshot) throw new Error('No se pudo restaurar la instantánea de SQLite.');
+  try { if (db) db.close(); } catch {}
+  db = new SqlDatabase(snapshot);
+  const integrity = databaseIntegrityStatus(db);
+  if (integrity !== 'ok') throw new Error('La instantánea restaurada no superó integrity_check: ' + integrity);
 }
 function persistDb() {
   if (!db) return;
@@ -220,6 +228,7 @@ function initializeSchema() {
 }
 async function initializeDatabase() {
   const SQL = await initSqlJs({ locateFile: (file) => require.resolve('sql.js/dist/' + file) });
+  SqlDatabase = SQL.Database;
   const file = userDbPath();
   if (fs.existsSync(file)) {
     try { db = new SQL.Database(new Uint8Array(fs.readFileSync(file))); }
@@ -305,6 +314,7 @@ async function startLanServer(requestedPort) {
         const body = await readBody(req);
         if (!body || !Array.isArray(body.events) || body.events.length > 500) return sendJson(res, 400, { error: 'Lote inválido (máximo 500 operaciones).' });
         const accepted = [], duplicates = [], conflicts = [];
+        const databaseBefore = db.export();
         db.run('BEGIN IMMEDIATE');
         try {
           for (const ev of body.events) {
@@ -351,7 +361,12 @@ async function startLanServer(requestedPort) {
           }
           db.run('COMMIT');
         } catch (error) { db.run('ROLLBACK'); throw error; }
-        persistDb();
+        try {
+          persistDb();
+        } catch (persistError) {
+          restoreDatabaseSnapshot(databaseBefore);
+          throw new Error('No se confirmó la persistencia en disco; el servidor restauró el estado anterior y rechazó el lote. ' + (persistError.message || String(persistError)));
+        }
         const stateRow = one('SELECT payload FROM app_state WHERE id=1');
         return sendJson(res, 200, { ok: true, accepted, duplicates, conflicts, stateHash: statePayloadHash(stateRow && stateRow.payload), note: 'Las operaciones aceptadas se aplicaron al estado central y se persistieron en SQLite.' });
       } catch (error) { return sendJson(res, 400, { error: error.message || 'Error recibiendo operaciones' }); }
