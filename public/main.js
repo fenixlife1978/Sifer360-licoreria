@@ -264,6 +264,12 @@ const posSqliteDriver = {
   mode: 'sqlite',
   async init() {
     window.__POS_DB_MODE = 'sqlite';
+    if (!window.posDesktop || typeof window.posDesktop.loadState !== 'function' || typeof window.posDesktop.saveState !== 'function') {
+      throw new Error('SIFER360 Licorería solo puede operar desde la aplicación de escritorio. La modalidad navegador está deshabilitada para proteger la base de datos SQLite local.');
+    }
+    this.isReady = true;
+    return true;
+    /* Compatibilidad web deshabilitada: la única base operativa es el archivo SQLite administrado por Electron.
     if (window.posDesktop) {
       this.isReady = true;
       return true;
@@ -7023,6 +7029,10 @@ function restoreWorkspaceAfterReload(){
   if(user.role==='admin')showDashboardScreen();else if(user.role==='contador'&&window.SIFERAccountantDashboard)window.SIFERAccountantDashboard.show();
 }
 prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(async()=>{
+  if(window.__POS_BOOT_ERROR){
+    document.body.innerHTML='<main style="max-width:720px;margin:10vh auto;padding:32px;font:16px Segoe UI,Arial,sans-serif;color:#18324b"><h1>SIFER360 Licorería requiere la aplicación de escritorio</h1><p>'+String(window.__POS_BOOT_ERROR).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))+'</p><p>Los datos operativos se guardan exclusivamente en SQLite local. Abra el programa instalado; no utilice la versión del navegador.</p></main>';
+    return;
+  }
   init();
   await migrateLegacyOpenings();
   buildChrome();
