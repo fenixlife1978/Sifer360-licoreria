@@ -90,6 +90,12 @@ test('el flujo de efectivo se calcula desde movimientos reales de cuentas de efe
   assert.match(accounting, /Variación neta de efectivo/);
 });
 
+test('la numeración de asientos contables se recupera del mayor número existente', () => {
+  assert.match(accounting, /function nextEntrySequence\(a=state\(\)\)/);
+  assert.match(accounting, /Math\.max\(1,Number\(a\.nextEntry\)\|\|1,max\+1\)/);
+  assert.match(accounting, /const sequence=nextEntrySequence\(a\)/);
+});
+
 test('activos fijos usan cuentas de depreciación acumulada existentes', () => {
   for (const code of ['1.2.1.05','1.2.1.06','1.2.1.07','6.1.1.06']) {
     assert.ok(chart.accounts.some(a => a.code === code && a.isMovement), 'falta cuenta imputable '+code);
