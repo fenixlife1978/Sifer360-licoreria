@@ -372,3 +372,7 @@ test('la inicialización recupera una copia SQLite si falta o está dañada la p
   assert.match(electron, /require\('\.\/sqlite-recovery\.cjs'\)/);
   assert.match(electron, /openOrRecoverDatabase\(\{ SQL, file \}\)/);
 });
+
+test('una base recuperada persiste también el esquema actualizado antes de aceptar operaciones', () => {
+  assert.match(electron, /if \(opened\.recovered\) persistDb\(\)/);
+});
