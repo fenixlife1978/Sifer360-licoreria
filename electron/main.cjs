@@ -5,6 +5,7 @@ const http = require('http');
 const dgram = require('dgram');
 const os = require('os');
 const crypto = require('crypto');
+const { createDurableOutbox } = require('./lan-outbox.cjs');
 const initSqlJs = require('sql.js');
 
 let db;
@@ -54,12 +55,14 @@ async function discoverLanServers(timeoutMs = 2500) {
 }
 let networkConfig = { role: 'standalone', host: '', port: 38760, token: '', deviceId: '' };
 let networkConfigPath;
+let clientOutbox = null;
 const MAX_SYNC_BODY = 8 * 1024 * 1024;
 function readNetworkConfig() {
   networkConfigPath = path.join(app.getPath('userData'), 'network-mode.json');
   try { networkConfig = { ...networkConfig, ...JSON.parse(fs.readFileSync(networkConfigPath, 'utf8')) }; } catch {}
   if (!networkConfig.deviceId) networkConfig.deviceId = crypto.randomUUID();
   if (!networkConfig.token) networkConfig.token = crypto.randomBytes(24).toString('hex');
+  clientOutbox = createDurableOutbox({ directory: app.getPath('userData'), deviceId: networkConfig.deviceId });
   saveNetworkConfig();
 }
 function saveNetworkConfig() { try { fs.writeFileSync(networkConfigPath, JSON.stringify(networkConfig, null, 2), 'utf8'); } catch {} }
@@ -473,6 +476,20 @@ async function clientApi(route, options = {}) {
   if (!response.ok || result.ok === false) throw new Error(result.error || 'El servidor LAN no confirmó la operación (' + response.status + ').');
   return result;
 }
+async function flushClientOutbox() {
+  if (networkConfig.role !== 'client' || !networkConfig.host || !clientOutbox) return { pending: 0, accepted: [], conflicts: [] };
+  const pending = clientOutbox.pending().slice(0, 500);
+  if (!pending.length) return { pending: 0, accepted: [], conflicts: [] };
+  const result = await clientApi('/api/sync/events', { method: 'POST', body: JSON.stringify({ events: pending.map(({ status, conflictReason, ...event }) => event) }) });
+  const conflicts = Array.isArray(result.conflicts) ? result.conflicts : [];
+  const conflictIds = new Set(conflicts.map(item => String(item.eventId)));
+  const accepted = [...(result.accepted || []), ...(result.duplicates || [])].map(String).filter(id => !conflictIds.has(id));
+  clientOutbox.acknowledge(accepted);
+  for (const conflict of conflicts) clientOutbox.conflict([String(conflict.eventId)], conflict.reason || 'conflicto-servidor');
+  if (typeof result.stateHash === 'string') networkConfig.serverStateHash = result.stateHash;
+  saveNetworkConfig();
+  return { pending: clientOutbox.status().pending, accepted, conflicts };
+}
 function registerNetworkIpc() {
   ipcMain.handle('network:status', () => ({ ...networkConfig, running: !!networkServer, addresses: localAddresses() }));
   ipcMain.handle('network:operation-create', async (_e, input = {}) => {
@@ -481,12 +498,18 @@ function registerNetworkIpc() {
       const entityType = String(input.entityType || '').trim();
       const entityId = String(input.entityId || '').trim();
       if (!eventType || !entityType || !entityId || !input.payload || typeof input.payload !== 'object' || Array.isArray(input.payload)) throw new Error('Operación incompleta: tipo, entidad, identificador y payload son obligatorios.');
-      const event = { eventId: String(input.eventId || crypto.randomUUID()), deviceId: networkConfig.deviceId, deviceSeq: Date.now() * 1000 + Math.floor(Math.random() * 1000), eventType, entityType, entityId, occurredAt: String(input.occurredAt || new Date().toISOString()), payload: input.payload };
-      const result = await clientApi('/api/sync/events', { method: 'POST', body: JSON.stringify({ events: [event] }) });
-      if ((result.conflicts || []).length) throw new Error('El servidor detectó un conflicto al registrar la operación. Recargue el estado central.');
-      if (!(result.accepted || []).includes(event.eventId) && !(result.duplicates || []).includes(event.eventId)) throw new Error('El servidor no confirmó la recepción de la operación.');
-      if (result.stateHash) networkConfig.serverStateHash = result.stateHash;
-      return { eventId: event.eventId, deviceId: event.deviceId, deviceSeq: event.deviceSeq, eventType, entityType, entityId, occurredAt: event.occurredAt, payload: JSON.stringify(event.payload), status: 'acked' };
+      const event = clientOutbox.enqueue({ ...input, eventType, entityType, entityId });
+      try { await flushClientOutbox(); } catch (error) {
+        throw new Error('La operación quedó guardada en la cola local durable y se reenviará al reconectar. El servidor aún no la ha confirmado. ' + (error.message || String(error)));
+      }
+      const status = clientOutbox.status();
+      const current = clientOutbox.pending().find(item => item.eventId === event.eventId);
+      if (current) throw new Error('La operación quedó guardada en la cola local durable, pero el servidor todavía no confirmó su recepción.');
+      if (status.conflicts && !clientOutbox.pending().some(item => item.eventId === event.eventId)) {
+        const allStatus = clientOutbox.status();
+        if (allStatus.conflicts > 0) throw new Error('El servidor rechazó la operación por conflicto. Revise la cola LAN antes de reintentar.');
+      }
+      return { ...event, payload: JSON.stringify(event.payload), status: 'acked' };
     }
     const eventType = String(input.eventType || '').trim();
     const entityType = String(input.entityType || '').trim();
@@ -511,8 +534,8 @@ function registerNetworkIpc() {
       return one('SELECT * FROM local_operation_outbox WHERE event_id=?', [eventId]);
     } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
   });
-  ipcMain.handle('network:operation-pending', () => networkConfig.role === 'client' ? [] : all("SELECT event_id AS eventId,device_id AS deviceId,device_seq AS deviceSeq,event_type AS eventType,entity_type AS entityType,entity_id AS entityId,occurred_at AS occurredAt,payload,status FROM local_operation_outbox WHERE status='pending' ORDER BY device_seq LIMIT 500"));
-  ipcMain.handle('network:operation-status', () => networkConfig.role === 'client' ? ({ pending: 0, acknowledged: 0, conflicts: 0 }) : ({
+  ipcMain.handle('network:operation-pending', () => networkConfig.role === 'client' ? (clientOutbox ? clientOutbox.pending() : []) : all("SELECT event_id AS eventId,device_id AS deviceId,device_seq AS deviceSeq,event_type AS eventType,entity_type AS entityType,entity_id AS entityId,occurred_at AS occurredAt,payload,status FROM local_operation_outbox WHERE status='pending' ORDER BY device_seq LIMIT 500"));
+  ipcMain.handle('network:operation-status', () => networkConfig.role === 'client' ? (clientOutbox ? clientOutbox.status() : { pending: 0, acknowledged: 0, conflicts: 0 }) : ({
     pending: Number(one("SELECT COUNT(*) AS n FROM local_operation_outbox WHERE status='pending'").n),
     acknowledged: Number(one("SELECT COUNT(*) AS n FROM local_operation_outbox WHERE status='acked'").n),
     conflicts: Number(one("SELECT COUNT(*) AS n FROM local_operation_outbox WHERE status='conflict'").n)
@@ -576,7 +599,8 @@ function registerNetworkIpc() {
     if (networkConfig.role !== 'client' || !networkConfig.host) return { ok: false, state, role: 'standalone', message: 'Esta caja no está conectada a un servidor.' };
     assertLanHost(networkConfig.host);
     const headers = { Authorization: 'Bearer ' + networkConfig.token, 'Content-Type': 'application/json' };
-    const pendingEvents = networkConfig.role === 'client' ? [] : all("SELECT event_id AS eventId,device_id AS deviceId,device_seq AS deviceSeq,event_type AS eventType,entity_type AS entityType,entity_id AS entityId,occurred_at AS occurredAt,payload FROM local_operation_outbox WHERE status='pending' ORDER BY device_seq LIMIT 500").map(ev => ({ ...ev, payload: JSON.parse(ev.payload) }));
+    await flushClientOutbox();
+    const pendingEvents = []; 
     if (pendingEvents.length) {
       const eventResponse = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/events', {
         method: 'POST', headers, body: JSON.stringify({ events: pendingEvents }), signal: AbortSignal.timeout(8000)
