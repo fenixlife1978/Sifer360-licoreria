@@ -14,6 +14,8 @@ const { isLanAddress, assertLanHost } = require('./lan-address.cjs');
 const { hasValidBearerToken } = require('./lan-auth.cjs');
 const { allocateCashboxSequence: allocateCashboxSequenceDurable } = require('./cashbox-sequence.cjs');
 const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
+const { createPasswordHash, verifyPassword, normalizeLegacyUser, publicUser } = require('./auth-credentials.cjs');
+const authSessions = new Map();
 const initSqlJs = require('sql.js');
 
 let db;
@@ -258,6 +260,17 @@ function initializeSchema() {
       UNIQUE(device_id, device_seq)
     );
     CREATE TABLE IF NOT EXISTS schema_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS app_users (
+      username TEXT PRIMARY KEY COLLATE NOCASE,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin','cajero','contador')),
+      cashbox TEXT NOT NULL DEFAULT '—',
+      password_hash TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_app_users_role_active ON app_users(role, active);
     CREATE TABLE IF NOT EXISTS cashbox_sequences (
       cashbox_id TEXT NOT NULL,
       operation_type TEXT NOT NULL,
@@ -618,6 +631,91 @@ function registerNetworkIpc() {
   });
 }
 function registerIpc() {
+
+  function requireAuthSession(token, adminOnly = false) {
+    const session = authSessions.get(String(token || ''));
+    if (!session || session.expiresAt <= Date.now()) {
+      if (session) authSessions.delete(String(token));
+      throw new Error('La sesión expiró. Inicie sesión nuevamente.');
+    }
+    if (adminOnly && session.user.role !== 'admin') throw new Error('Solo el administrador puede gestionar usuarios.');
+    return session.user;
+  }
+  ipcMain.handle('auth:initialize-legacy', async (_event, legacyUsers) => {
+    if (networkConfig.role === 'client') throw new Error('La gestión de usuarios debe realizarse en el servidor LAN.');
+    const count = one('SELECT COUNT(*) AS total FROM app_users');
+    if (Number(count && count.total) > 0) return { migrated: false, count: Number(count.total), users: all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username') };
+    if (!Array.isArray(legacyUsers) || legacyUsers.length < 1 || legacyUsers.length > 500) throw new Error('No se recibió una lista válida de usuarios para la migración inicial.');
+    const normalized = legacyUsers.map(normalizeLegacyUser);
+    const seen = new Set();
+    for (const user of normalized) {
+      const key = user.username.toLowerCase();
+      if (seen.has(key)) throw new Error('Hay nombres de usuario duplicados en los datos heredados: ' + user.username);
+      seen.add(key);
+    }
+    const prepared = [];
+    for (const user of normalized) prepared.push({ ...user, password_hash: await createPasswordHash(user.password) });
+    persistMutation(() => {
+      db.run('BEGIN IMMEDIATE');
+      try {
+        for (const user of prepared) run('INSERT INTO app_users(username,name,role,cashbox,password_hash,active) VALUES(?,?,?,?,?,1)', [user.username,user.name,user.role,user.cashbox,user.password_hash]);
+        run("INSERT OR REPLACE INTO schema_migrations(migration_key) VALUES('auth-users-scrypt-v1')");
+        db.run('COMMIT');
+      } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
+    });
+    const migrated = all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username');
+    if (migrated.length !== prepared.length) throw new Error('La verificación posterior a la migración de usuarios no coincide; conserve los datos heredados.');
+    return { migrated: true, count: migrated.length, users: migrated };
+  });
+  ipcMain.handle('auth:login', async (_event, credentials = {}) => {
+    const username = String(credentials.username || '').trim();
+    const password = typeof credentials.password === 'string' ? credentials.password : '';
+    if (!username || !password || username.length > 64 || password.length > 1024) throw new Error('Usuario o contraseña incorrectos.');
+    const user = one('SELECT username,name,role,cashbox,password_hash FROM app_users WHERE username=? COLLATE NOCASE AND active=1', [username]);
+    if (!user || !(await verifyPassword(password, user.password_hash))) throw new Error('Usuario o contraseña incorrectos.');
+    const token = crypto.randomBytes(32).toString('hex');
+    const safeUser = publicUser(user);
+    authSessions.set(token, { user: safeUser, expiresAt: Date.now() + 12 * 60 * 60 * 1000 });
+    return { token, user: safeUser, expiresAt: Date.now() + 12 * 60 * 60 * 1000 };
+  });
+  ipcMain.handle('auth:verify-session', (_event, token) => {
+    try { return { user: requireAuthSession(token), valid: true }; }
+    catch { return { user: null, valid: false }; }
+  });
+  ipcMain.handle('auth:logout', (_event, token) => { authSessions.delete(String(token || '')); return { ok: true }; });
+  ipcMain.handle('auth:list-users', (_event, token) => {
+    requireAuthSession(token, true);
+    return all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username');
+  });
+  ipcMain.handle('auth:save-user', async (_event, token, input = {}) => {
+    requireAuthSession(token, true);
+    const username = String(input.username || '').trim();
+    const name = String(input.name || '').trim();
+    const role = String(input.role || '').trim().toLowerCase();
+    const cashbox = String(input.cashbox || '—').trim();
+    const password = typeof input.password === 'string' ? input.password : '';
+    if (!/^[a-zA-Z0-9._-]{1,64}$/.test(username) || !name || name.length > 120 || !['admin','cajero','contador'].includes(role) || cashbox.length > 40) throw new Error('Datos de usuario inválidos.');
+    if (role === 'cajero' && ['—','Todas','SIN-ASIGNAR'].includes(cashbox)) throw new Error('Todo cajero debe tener una caja asignada.');
+    const existing = one('SELECT username,password_hash FROM app_users WHERE username=? COLLATE NOCASE', [username]);
+    if (!existing && !password) throw new Error('La contraseña es obligatoria para crear un usuario.');
+    if (password.length > 1024) throw new Error('La contraseña supera el límite permitido.');
+    const passwordHash = password ? await createPasswordHash(password) : existing.password_hash;
+    persistMutation(() => run(
+      'INSERT INTO app_users(username,name,role,cashbox,password_hash,active) VALUES(?,?,?,?,?,1) ON CONFLICT(username) DO UPDATE SET name=excluded.name,role=excluded.role,cashbox=excluded.cashbox,password_hash=excluded.password_hash,active=1,updated_at=CURRENT_TIMESTAMP',
+      [username,name,role,cashbox,passwordHash]
+    ));
+    return { ok: true, user: { username,name,role,cashbox } };
+  });
+  ipcMain.handle('auth:delete-user', (_event, token, usernameInput) => {
+    const actor = requireAuthSession(token, true);
+    const username = String(usernameInput || '').trim();
+    if (!username || username.toLowerCase() === actor.username.toLowerCase()) throw new Error('No puede eliminar el usuario de la sesión actual.');
+    const target = one('SELECT username,role FROM app_users WHERE username=? COLLATE NOCASE AND active=1', [username]);
+    if (!target) return { ok: true, deleted: false };
+    if (target.role === 'admin' && Number(one("SELECT COUNT(*) AS total FROM app_users WHERE role='admin' AND active=1").total) <= 1) throw new Error('Debe conservarse al menos un administrador activo.');
+    persistMutation(() => run('UPDATE app_users SET active=0,updated_at=CURRENT_TIMESTAMP WHERE username=? COLLATE NOCASE', [username]));
+    return { ok: true, deleted: true };
+  });
   ipcMain.handle('posdb:get-mode', () => ({ mode: 'sqlite', databasePath: networkConfig.role === 'client' ? null : userDbPath(), source: networkConfig.role === 'client' ? 'lan-server' : 'local' }));
   ipcMain.handle('posdb:set-mode', () => ({ mode: 'sqlite', databasePath: networkConfig.role === 'client' ? null : userDbPath(), source: networkConfig.role === 'client' ? 'lan-server' : 'local' }));
   ipcMain.handle('posdb:load-state', async () => {
