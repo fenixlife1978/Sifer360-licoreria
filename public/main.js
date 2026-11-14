@@ -4689,7 +4689,7 @@ S.cart.forEach(l=>{
       ts,dueTs:ts+cDays*86400000,
       total:t.total,
       paid:paidUpfront,
-      payments:paidUpfront>0?[{ts,method:'Pago inicial en caja',cur:'USD',amountUsd:paidUpfront,amountBs:r2(paidUpfront*S.cfg.rate),ref:'FAC-'+pad(invNo),note:'Abono en caja al facturar'}]:[]
+      payments:paidUpfront>0?[{ts,method:'Pago inicial en caja',cur:'USD',amountUsd:paidUpfront,amountBs:r2(paidUpfront*S.cfg.rate),ref:(internalTicketMode?'TKT-':'FAC-')+pad(invNo),note:'Abono en caja al registrar la venta'}]:[]
     });
   }
   S.sales.push(sale);S.invoice=Math.max(S.invoice,invNo+1);S.cart=[];S.sel=-1;S.client=S.clients[0];
@@ -4864,7 +4864,7 @@ function showTicket(s){
 /* ---------- ventas del día / cierre ---------- */
 function salesDlg(){
   let selNo=null,armed=0;
-  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>Factura</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver ticket</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><p class="hint" id="saNote"></p></div>');
+  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>'+(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER'?'Ticket':'Documento')+'</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver ticket</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><p class="hint" id="saNote"></p></div>');
   const todays=()=>S.sales.filter(s=>sameDay(s.ts)&&s.cashbox===currentCaja()).sort((a,b)=>b.no-a.no);
   const draw=()=>{
     const list=todays();
@@ -4886,7 +4886,7 @@ function salesDlg(){
     if(e.target.id==='saView'&&s){showTicket(s);}
     if(e.target.id==='saVoid'&&s&&!s.void&&s.fiscal){msg('Esta factura ya fue emitida por una máquina fiscal. No se permite anularla solo en el POS. Debe integrarse y ejecutarse la anulación/nota de crédito en la propia máquina.','bad');return;}
     if(e.target.id==='saVoid'&&s&&!s.void){
-      if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin('Anular factura '+pad(s.no)))return;
+      if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin((s.docType==='TICKET-INTERNO'?'Anular ticket ':'Anular factura ')+pad(s.no)))return;
       if(!armed||Date.now()-armed>5000){armed=Date.now();e.target.textContent='Confirmar anulación';return;}
       let voidNo;try{voidNo=await nextCajaSequence('void',currentCaja());}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
       const rollbackState=JSON.parse(JSON.stringify(S));
@@ -4899,8 +4899,8 @@ function salesDlg(){
         if(p){
           p.stock=r2(p.stock+l.qty);
           addKardex({
-            code:p.code,type:'ANULACIÓN',dir:'IN',doc:'FAC-'+pad(s.no),
-            party:'Reingreso por anulación factura ('+s.client.name+')',
+            code:p.code,type:'ANULACIÓN',dir:'IN',doc:(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no),
+            party:'Reingreso por anulación de venta ('+s.client.name+')',
             qty:l.qty,stockAfter:p.stock,cost:p.cost,user:S.cfg.cajero
           });
         }
@@ -4908,7 +4908,7 @@ function salesDlg(){
       S.cxc=(S.cxc||[]).filter(x=>!(x.saleNo===s.no&&x.cashbox===currentCaja()));
       const persisted=await save();
       if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);armed=0;renderCatalog();draw();msg('SQLite/servidor no confirmó la anulación; se mostró el último estado durable disponible.','bad');return;}
-      armed=0;renderCatalog();draw();msg('Factura '+pad(s.no)+' anulada. Se devolvió la mercancía al inventario y Kardex.');
+      armed=0;renderCatalog();draw();msg((s.docType==='TICKET-INTERNO'?'Ticket de Venta ':'Factura ')+pad(s.no)+' anulado. Se devolvió la mercancía al inventario y Kardex.');
     }
   });
   openWin({title:'Ventas del día y cierre de caja',w:900,body:el,foot:[
