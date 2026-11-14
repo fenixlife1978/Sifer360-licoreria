@@ -341,3 +341,13 @@ test('los conflictos LAN se pueden inspeccionar desde ambas pantallas de adminis
   assert.match(pos, /networkOperationConflicts\(\)/);
   assert.match(ui, /Sincronización bloqueada/);
 });
+
+test('desconectar una PC cliente no la convierte en independiente ni abre una SQLite local obsoleta', () => {
+  const disconnect = electron.slice(electron.indexOf("ipcMain.handle('network:disconnect-client'"), electron.indexOf("ipcMain.handle('network:configure-client'"));
+  assert.match(disconnect, /role: 'client'/);
+  assert.match(disconnect, /serverPromotionBlocked: true/);
+  assert.doesNotMatch(disconnect, /role: 'standalone'/);
+  assert.doesNotMatch(disconnect, /initializeDatabase\(\)/);
+  assert.match(electron, /Cliente LAN desconectado\. No se usará SQLite local como autoridad/);
+  assert.match(pos, /seguirá sin base operativa local/);
+});
