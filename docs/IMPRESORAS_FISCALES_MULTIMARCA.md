@@ -71,7 +71,7 @@ Los SDK de cada familia tienen APIs distintas. No se debe fabricar un puente gen
 ## Control de emisión y seguridad
 
 - La prueba COM solo abre y cierra el puerto; no ejecuta comandos fiscales ni modifica memoria fiscal.
-- Un timeout durante emisión deja el resultado potencialmente incierto. El operador debe consultar la máquina antes de reintentar; no se debe duplicar una factura.
+- Un timeout durante emisión deja el resultado potencialmente incierto. El POS conserva la venta propuesta, bloquea nuevas emisiones de esa caja y ofrece conciliación manual al administrador: confirmar número/serial si la factura sí existe o marcarla como no emitida solo después de comprobar físicamente la máquina.
 - Una factura emitida por máquina fiscal no puede anularse únicamente en el POS. La anulación/nota de crédito en la máquina debe integrarse con un comando específico del fabricante; hasta entonces, el POS bloquea la anulación local de esa factura.
 - La emisión se encuentra conectada al contrato del puente, pero no se incluye un puente binario de ningún fabricante en este repositorio. Sin un puente específico y probado, la modalidad Máquina Fiscal falla de forma segura y no registra la venta.
 - La emisión fiscal requiere número de documento y serial confirmados por el adaptador.
@@ -108,7 +108,7 @@ El usuario/instalador autorizado debe instalar el paquete firmado que correspond
 2. Construir los puentes específicos de fabricante; no basta con que exista el archivo DLL.
 3. Probar lectura de estado, papel/tapa, emisión, consulta del último documento, anulaciones/notas de crédito cuando el equipo lo permita y Reporte Z.
 4. Ejecutar pruebas físicas por cada modelo, firmware, interfaz (USB/COM/Ethernet) y arquitectura Windows.
-5. Integrar y probar anulaciones/notas de crédito, Reporte Z, consulta del último documento y conciliación de trabajos fiscales inciertos.
+5. Integrar y probar anulaciones/notas de crédito y Reporte Z. La conciliación manual de emisiones inciertas ya reconstruye la venta y el inventario en SQLite, pero debe probarse con documentos reales de cada familia.
 6. Verificar que la caja asignada utiliza el dispositivo configurado y que el número fiscal de la máquina queda vinculado a la venta SQLite.
 
 Hasta completar estas pruebas, una familia se considera «configurable/preparada para adaptador», no «compatibilidad fiscal certificada».
