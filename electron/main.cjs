@@ -13,6 +13,7 @@ const { openOrRecoverDatabase } = require('./sqlite-recovery.cjs');
 const { isLanAddress, assertLanHost } = require('./lan-address.cjs');
 const { hasValidBearerToken } = require('./lan-auth.cjs');
 const { allocateCashboxSequence: allocateCashboxSequenceDurable } = require('./cashbox-sequence.cjs');
+const { getCashboxSequenceMinimum } = require('./cashbox-sequence-minimum.cjs');
 const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
 const initSqlJs = require('sql.js');
 
@@ -350,7 +351,7 @@ async function startLanServer(requestedPort) {
     if (url.pathname === '/api/sequences/next' && req.method === 'POST') {
       try {
         const body = await readBody(req);
-        const result = allocateCashboxSequence(body.cashbox, body.operation, body.minimum);
+        const result = allocateCashboxSequence(body.cashbox, body.operation);
         return sendJson(res, 200, result);
       } catch (error) { return sendJson(res, 400, { error: error.message || 'No se pudo reservar el consecutivo.' }); }
     }
@@ -411,7 +412,17 @@ async function startLanServer(requestedPort) {
     throw error;
   }
 }
-function allocateCashboxSequence(cashboxId, operationType, minimumValue = 1) {
+function allocateCashboxSequence(cashboxId, operationType) {
+  if (!db) throw new Error('La base SQLite central no está disponible para reservar consecutivos.');
+  const statement = db.prepare('SELECT payload FROM app_state WHERE id=1');
+  let state = {};
+  try {
+    if (statement.step()) {
+      const row = statement.getAsObject();
+      state = JSON.parse(String(row.payload || '{}'));
+    }
+  } finally { statement.free(); }
+  const minimumValue = getCashboxSequenceMinimum(state, cashboxId, operationType);
   return allocateCashboxSequenceDurable({ db, cashboxId, operationType, minimumValue, persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
 }
 function requestPinnedJson(route, options = {}) {
@@ -552,7 +563,7 @@ function registerNetworkIpc() {
       assertLanHost(networkConfig.host);
       return clientApi('/api/sequences/next', { method: 'POST', body: JSON.stringify({ cashbox: input.cashbox, operation: input.operation, minimum: input.minimum }), timeoutMs: 8000 });
     }
-    return allocateCashboxSequence(input.cashbox, input.operation, input.minimum);
+    return allocateCashboxSequence(input.cashbox, input.operation);
   });
   ipcMain.handle('network:discover', () => discoverLanServers());
   ipcMain.handle('network:configure-server', (_e, opts = {}) => startLanServer(opts.port));
