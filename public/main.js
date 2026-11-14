@@ -885,7 +885,18 @@ function openWin(o){
   (o.foot||[]).forEach(b=>{
     const el=document.createElement('button');
     el.className='btn'+(b.primary?' primary':'');el.textContent=b.label;if(b.id)el.id=b.id;
-    el.addEventListener('click',()=>{if(b.fn&&b.fn()===false)return;closeWin();});
+    el.addEventListener('click',async()=>{
+      if(b.fn){
+        el.disabled=true;
+        try{
+          const result=b.fn();
+          const resolved=result&&typeof result.then==='function'?await result:result;
+          if(resolved===false)return;
+        }catch(error){msg('No se pudo completar la operación: '+String(error&&error.message||error),'bad');return;}
+        finally{el.disabled=false;}
+      }
+      if(W&&W.el===bd)closeWin();
+    });
     (b.left?footL:footR).appendChild(el);
   });
   bd.addEventListener('click',e=>{if(e.target.closest('[data-close]')){if(o.onClose)o.onClose();else closeWin();}});
@@ -909,7 +920,7 @@ function closeWin(silent){
   if(!silent&&prev&&prev.focus&&document.contains(prev))prev.focus();
 }
 function ask(title,text,okLabel,fn){
-  openWin({title,w:420,body:h('<p style="margin:0">'+esc(text)+'</p>'),foot:[{label:'Cancelar'},{label:okLabel,primary:true,fn:()=>{fn();}}]});
+  openWin({title,w:420,body:h('<p style="margin:0">'+esc(text)+'</p>'),foot:[{label:'Cancelar'},{label:okLabel,primary:true,fn:()=>fn()}]});
 }
 
 /* ---------- carrito ---------- */
