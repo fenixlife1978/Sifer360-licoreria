@@ -9,6 +9,7 @@ const { createDurableOutbox } = require('./lan-outbox.cjs');
 const { ensureServerCertificate, createPinnedAgent, retrievePeerCertificate, verifyFingerprint } = require('./lan-tls.cjs');
 const { applyIncomingEvents } = require('./lan-event-store.cjs');
 const { mergeStateRecords } = require('./lan-state-merge.cjs');
+const { openOrRecoverDatabase } = require('./sqlite-recovery.cjs');
 const initSqlJs = require('sql.js');
 
 let db;
@@ -278,25 +279,9 @@ async function initializeDatabase() {
   const SQL = await initSqlJs({ locateFile: (file) => require.resolve('sql.js/dist/' + file) });
   SqlDatabase = SQL.Database;
   const file = userDbPath();
-  if (fs.existsSync(file)) {
-    try { db = new SQL.Database(new Uint8Array(fs.readFileSync(file))); }
-    catch (error) {
-      throw new Error('No se pudo abrir la base SQLite existente. El archivo original se conserva sin sobrescribir. Si existe, revise el respaldo automático ' + file + '.bak. Detalle: ' + (error && error.message ? error.message : String(error)));
-    }
-    const integrity = databaseIntegrityStatus(db);
-    if (integrity !== 'ok') {
-      const backup = file + '.bak';
-      if (!fs.existsSync(backup)) throw new Error('La base SQLite no superó integrity_check (' + integrity + ') y no existe respaldo automático. Se conserva el archivo original: ' + file);
-      let restored;
-      try { restored = new SQL.Database(new Uint8Array(fs.readFileSync(backup))); }
-      catch (error) { throw new Error('SQLite está corrupta y el respaldo tampoco se puede abrir. Se conservan ambos archivos para recuperación manual.'); }
-      const backupIntegrity = databaseIntegrityStatus(restored);
-      if (backupIntegrity !== 'ok') throw new Error('SQLite y su respaldo fallaron integrity_check. No se sobrescribió ninguno de los dos archivos.');
-      fs.renameSync(file, file + '.corrupt-' + Date.now());
-      fs.copyFileSync(backup, file);
-      db = restored;
-    }
-  } else db = new SQL.Database();
+  const opened = openOrRecoverDatabase({ SQL, file });
+  db = opened.database;
+  if (opened.recovered) console.warn('SIFER360 recuperó la base SQLite desde el respaldo automático:', opened.source, opened.corruptFile || '');
   initializeSchema();
   dbConfigPath = path.join(app.getPath('userData'), 'database-mode.json');
   databaseMode = 'sqlite';
