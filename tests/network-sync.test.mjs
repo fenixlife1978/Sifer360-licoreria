@@ -570,3 +570,21 @@ test('los botones de diálogo esperan promesas de persistencia y los cuadros de 
   assert.match(pos, /if\(W&&W\.el===bd\)closeWin\(\)/);
   assert.match(pos, /fn:()=>fn\(\)/);
 });
+
+test('un fallo de persistencia nunca restaura una instantánea local antigua sobre un estado autoritativo recuperado', () => {
+  assert.match(pos, /let recovered=false;\s*const superseded=sequence!==saveSequence/);
+  assert.match(pos, /recovered=true;\s*persistenceBlocked=false/);
+  assert.match(pos, /return \{ok:false,durable:'none',error,recovered,superseded\}/);
+  assert.match(pos, /function restoreStateSnapshotIfNeeded\(result,snapshot\)\{\s*if\(result&&\(result\.recovered\|\|result\.superseded\)\)return false/);
+});
+
+test('la reserva de consecutivo CxP captura el estado anterior antes de agregar la obligación', () => {
+  const handler = pos.slice(pos.indexOf('function newCxpManualDlg'), pos.indexOf('/* ==========================================================================', pos.indexOf('function newCxpManualDlg')));
+  assert.ok(handler.indexOf('const rollbackState=JSON.parse(JSON.stringify(S))') < handler.indexOf('S.cxp.push('));
+});
+
+test('un fallo al guardar el Corte Z no puede borrar el último corte histórico por un índice -1', () => {
+  assert.match(pos, /const zStateBefore=JSON\.parse\(JSON\.stringify\(S\)\);\s*getZHistory\(\)\.push\(z\)/);
+  assert.match(pos, /restoreStateSnapshotIfNeeded\(persisted,zStateBefore\)/);
+  assert.doesNotMatch(pos, /getZHistory\(\)\.splice\(getZHistory\(\)\.findIndex/);
+});
