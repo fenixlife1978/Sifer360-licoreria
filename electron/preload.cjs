@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('posDesktop', {
   networkCreateOperation: operation => ipcRenderer.invoke('network:operation-create', operation),
   networkPendingOperations: () => ipcRenderer.invoke('network:operation-pending'),
   networkOperationStatus: () => ipcRenderer.invoke('network:operation-status'),
+  networkOperationConflicts: () => ipcRenderer.invoke('network:operation-conflicts'),
   networkNextSequence: input => ipcRenderer.invoke('network:next-sequence', input),
   networkStartServer: options => ipcRenderer.invoke('network:configure-server', options),
   networkStopServer: () => ipcRenderer.invoke('network:stop-server'),
