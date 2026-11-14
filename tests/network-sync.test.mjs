@@ -385,7 +385,7 @@ test('una base recuperada persiste también el esquema actualizado antes de acep
 
 test('un fallo al persistir la cola de auditoría LAN se comunica y no se oculta en consola', () => {
   assert.match(pos, /No se pudo confirmar una operación en el servidor LAN/);
-  assert.match(pos, /Revise antes de continuar/);
+  assert.match(pos, /Operación no confirmada por el servidor LAN/);
 });
 
 test('el cliente impide enviar snapshots mayores que el límite del servidor', () => {
@@ -470,14 +470,14 @@ test('la sincronización también bloquea operaciones antiguas sin identidad de 
   assert.match(electron, /server-identity-changed/);
 });
 
-test('la outbox captura operaciones nuevas sin depender del éxito del snapshot completo', () => {
-  assert.match(pos, /Capturar primero en la outbox durable del cliente/);
+test('el renderer captura y confirma operaciones nuevas antes del snapshot completo', () => {
+  assert.match(pos, /await captureNewOperations\(state\)/);
   assert.doesNotMatch(pos, /const lastSave=window\.__SIFER_LAST_SAVE;\s*if\(lastSave\)\{const persisted=await lastSave/);
   assert.match(pos, /window\.posDesktop\.networkCreateOperation\(/);
 });
 
 test('la reconexión recupera el estado del servidor y desbloquea escrituras previamente bloqueadas', () => {
-  assert.match(pos, /if\(persistenceBlocked\|\|saveSequence===syncRevision\)\{\s*for\(const key of Object\.keys\(S\)\)delete S\[key\];\s*Object\.assign\(S,result\.state\);\s*persistenceBlocked=false/);
+  assert.match(pos, /if\(persistenceBlocked\|\|saveSequence===syncRevision\)\{\s*for\(const key of Object\.keys\(S\)\)delete S\[key\];\s*Object\.assign\(S,result\.state\);\s*primeOperationBaseline\(\);\s*persistenceBlocked=false/);
 });
 
 test('desconectar conserva la identidad del servidor anterior para etiquetar nuevas operaciones pendientes', () => {
