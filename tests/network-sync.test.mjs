@@ -6,6 +6,7 @@ const electron = readFileSync(new URL('../electron/main.cjs', import.meta.url), 
 const eventStore = readFileSync(new URL('../electron/lan-event-store.cjs', import.meta.url), 'utf8');
 const stateMerge = readFileSync(new URL('../electron/lan-state-merge.cjs', import.meta.url), 'utf8');
 const sqliteRecovery = readFileSync(new URL('../electron/sqlite-recovery.cjs', import.meta.url), 'utf8');
+const cashboxSequenceMigration = readFileSync(new URL('../electron/cashbox-sequence-migration.cjs', import.meta.url), 'utf8');
 const lanAddress = readFileSync(new URL('../electron/lan-address.cjs', import.meta.url), 'utf8');
 const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
@@ -445,5 +446,5 @@ test('el arranque migra una sola vez los consecutivos históricos compartidos', 
   assert.match(electron, /require\('\.\/cashbox-sequence-migration\.cjs'\)/);
   assert.match(electron, /CREATE TABLE IF NOT EXISTS schema_migrations/);
   assert.match(electron, /migrateCashboxSequenceCategories\(\{ db, state:/);
-  assert.match(electron, /cashbox-operation-sequences-v1/);
+  assert.match(cashboxSequenceMigration, /cashbox-operation-sequences-v1/);
 });
