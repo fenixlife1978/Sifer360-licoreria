@@ -409,3 +409,10 @@ test('la validación de direcciones LAN estricta está aislada y se usa antes de
 test('al cambiar o volver a emparejar servidor se invalida el hash anterior hasta leer la base central', () => {
   assert.match(electron, /serverCert: peer\.certificate, tlsFingerprint: peer\.fingerprint, serverStateHash: ''/);
 });
+
+test('el servidor limita cuerpos LAN por bytes y no por caracteres Unicode', () => {
+  assert.match(electron, /let receivedBytes = 0/);
+  assert.match(electron, /receivedBytes \+= Buffer\.isBuffer\(chunk\) \? chunk\.length : Buffer\.byteLength/);
+  assert.match(electron, /if \(receivedBytes > MAX_SYNC_BODY\)/);
+  assert.match(electron, /if \(rejected\) return/);
+});
