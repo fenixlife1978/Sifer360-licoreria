@@ -59,12 +59,13 @@ test('fusiona movimientos de caja y auditorías de tasa por identificador y caja
   assert.deepEqual(merged.fiscalBankOperations.map(x=>x.id).sort(), ['BANK-1','BANK-2']);
 });
 
-test('las eliminaciones de borradores y documentos se respetan en el snapshot autoritativo', () => {
+test('las eliminaciones de ventas suspendidas se propagan mediante tombstones sin borrar ventas de otros clientes', () => {
   const merged = mergeStateRecords(
-    { held:[{id:'HELD-1'}], documents:[{id:'DOC-1'}] },
-    { held:[], documents:[] }
+    { held:[{id:'HELD-1',cashbox:'01'},{id:'HELD-2',cashbox:'02'}], heldDeletedIds:[], documents:[{id:'DOC-1'}] },
+    { held:[], heldDeletedIds:[{id:'HELD-1',cashbox:'01',ts:200}], documents:[] }
   );
-  assert.deepEqual(merged.held, []);
+  assert.deepEqual(merged.held, [{id:'HELD-2',cashbox:'02'}]);
+  assert.deepEqual(merged.heldDeletedIds, [{id:'HELD-1',cashbox:'01',ts:200}]);
   assert.deepEqual(merged.documents, []);
 });
 
