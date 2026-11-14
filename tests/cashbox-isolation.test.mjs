@@ -56,3 +56,9 @@ test('la apertura de caja es obligatoria para finalizar ventas de cajero', () =>
   assert.match(main, /ctx\.role==='cajero'&&ctx\.status!=='abierta'/);
   assert.match(access, /id="sa-open"/);
 });
+
+test('la anulación de una venta revierte inventario y estado si el servidor/SQLite no confirma el guardado', () => {
+  assert.match(main, /const rollbackState=JSON\.parse\(JSON\.stringify\(S\)\);\s*s\.void=true/);
+  assert.match(main, /const persisted=await save\(\);\s*if\(!persisted\|\|!persisted\.ok\)\{Object\.assign\(S,rollbackState\)/);
+  assert.match(main, /SQLite\/servidor no confirmó la anulación/);
+});
