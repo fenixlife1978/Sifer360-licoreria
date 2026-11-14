@@ -1,6 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('posDesktop', {
+  authInitializeLegacyUsers: users => ipcRenderer.invoke('auth:initialize-legacy', users),
+  authLogin: credentials => ipcRenderer.invoke('auth:login', credentials),
+  authVerifySession: token => ipcRenderer.invoke('auth:verify-session', token),
+  authLogout: token => ipcRenderer.invoke('auth:logout', token),
+  authListUsers: token => ipcRenderer.invoke('auth:list-users', token),
+  authSaveUser: (token, user) => ipcRenderer.invoke('auth:save-user', token, user),
+  authDeleteUser: (token, username) => ipcRenderer.invoke('auth:delete-user', token, username),
   loadState: () => ipcRenderer.invoke('posdb:load-state'),
   saveState: state => ipcRenderer.invoke('posdb:save-state', state),
   listDocuments: filter => ipcRenderer.invoke('posdb:list-documents', filter),
