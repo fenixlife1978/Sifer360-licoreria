@@ -95,9 +95,12 @@ test('la depreciación mensual se ejecuta automáticamente y recupera períodos 
   assert.match(accounting, /automaticDepreciationNeedsSave=true/);
   assert.match(accounting, /automaticDepreciationNeedsSave=false/);
   assert.match(accounting, /sqlite\+localStorage/);
+  assert.match(accounting, /sqlite-file/);
+  assert.match(accounting, /server-sqlite/);
   assert.match(accounting, /function startAutomaticDepreciation\(\)/);
   assert.match(accounting, /setInterval\(runAutomaticDepreciation,60000\)/);
   assert.match(accounting, /window\.addEventListener\('sifer:ready',startAutomaticDepreciation/);
+  assert.match(accounting, /const persisted=await save\(\)/);
   assert.match(accounting, /function lastCompletedMonth\(/);
   assert.match(accounting, /const recorded=new Set\(periodEntries\.map\(e=>String\(e\.depreciationPeriod\)\)\)/);
   assert.match(accounting, /if\(!recorded\.has\(cursor\)\)periods\.push\(cursor\)/);
