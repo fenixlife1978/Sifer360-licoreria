@@ -420,8 +420,9 @@ function requestPinnedJson(route, options = {}) {
       timeout: options.timeoutMs || 10000
     }, response => {
       let raw = '';
+      let receivedBytes = 0;
       response.setEncoding('utf8');
-      response.on('data', chunk => { raw += chunk; if (raw.length > MAX_SYNC_BODY) request.destroy(new Error('La respuesta del servidor LAN excede el límite permitido.')); });
+      response.on('data', chunk => { receivedBytes += Buffer.byteLength(chunk, 'utf8'); if (receivedBytes > MAX_SYNC_BODY) { request.destroy(new Error('La respuesta del servidor LAN excede el límite permitido.')); return; } raw += chunk; });
       response.on('end', () => {
         agent.destroy();
         let result = {};
