@@ -213,3 +213,15 @@ test('la sincronización iniciada por el servidor también revierte su snapshot 
   assert.match(electron, /let merged;\s*\n\s*persistMutation\(\(\) => \{/);
   assert.match(electron, /merged = mergeStateRecords\(row \? JSON\.parse\(row\.payload\) : null, state\)/);
 });
+
+
+test('el servidor no confirma eventos desconocidos o sin un registro aplicable', () => {
+  assert.match(electron, /!allowedCollections\.has\(collection\) \|\| !record/);
+  assert.match(electron, /La operación no contiene una entidad permitida y un registro válido/);
+});
+
+test('reutilizar un eventId con contenido distinto se marca como conflicto y no como duplicado', () => {
+  assert.match(electron, /event-id-reused-with-different-data/);
+  assert.match(electron, /existing\.payload === eventPayload/);
+  assert.match(electron, /if \(sameEvent\) duplicates\.push/);
+});
