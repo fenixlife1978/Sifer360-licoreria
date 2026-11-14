@@ -333,3 +333,11 @@ test('las claves de emparejamiento se almacenan cifradas con el almacén seguro 
   assert.match(electron, /safeStorage\.decryptString\(Buffer\.from\(stored\.tokenEncrypted, 'base64'\)\)/);
   assert.match(electron, /no se guardará la clave LAN en texto claro/);
 });
+
+test('los conflictos LAN se pueden inspeccionar desde ambas pantallas de administración', () => {
+  assert.match(electron, /network:operation-conflicts/);
+  assert.match(preload, /networkOperationConflicts/);
+  assert.match(ui, /networkOperationConflicts\(\)/);
+  assert.match(pos, /networkOperationConflicts\(\)/);
+  assert.match(ui, /Sincronización bloqueada/);
+});
