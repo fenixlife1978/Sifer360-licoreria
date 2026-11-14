@@ -8,7 +8,7 @@ const access = readFileSync(new URL('../public/access.js', import.meta.url), 'ut
 test('las secuencias operativas se indexan por caja', () => {
   assert.match(main, /async function nextCajaSequence\(operation,box=currentCaja\(\)\)/);
   assert.match(main, /if\(!box\|\|String\(box\)==='SIN-ASIGNAR'\)throw new Error\('Asigne una caja antes de generar una operación numerada\.'/);
-  assert.match(main, /networkNextSequence\(\{cashbox:box,operation,minimum\}\)/);
+  assert.match(main, /window\.posDesktop\.networkNextSequence\(\{cashbox:String\(box\),operation,minimum\}\)/);
   assert.match(main, /const sales=\(S\.sales\|\|\[\]\)\.filter\(x=>String\(x\.cashbox\|\|'01'\)===String\(box\)\)/);
 });
 
