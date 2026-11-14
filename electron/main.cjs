@@ -192,6 +192,13 @@ function initializeSchema() {
       received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(device_id, device_seq)
     );
+    CREATE TABLE IF NOT EXISTS cashbox_sequences (
+      cashbox_id TEXT NOT NULL,
+      operation_type TEXT NOT NULL,
+      last_value INTEGER NOT NULL DEFAULT 0 CHECK (last_value >= 0),
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (cashbox_id, operation_type)
+    );
     CREATE TABLE IF NOT EXISTS device_sequences (
       device_id TEXT PRIMARY KEY,
       last_seq INTEGER NOT NULL DEFAULT 0
@@ -243,6 +250,13 @@ async function startLanServer(requestedPort) {
     if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Headers': 'content-type,authorization', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); return res.end(); }
     if (req.headers.authorization !== 'Bearer ' + networkConfig.token) return sendJson(res, 401, { error: 'No autorizado' });
     if (url.pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { ok: true, deviceId: networkConfig.deviceId, role: 'server', protocol: 1 });
+    if (url.pathname === '/api/sequences/next' && req.method === 'POST') {
+      try {
+        const body = await readBody(req);
+        const result = allocateCashboxSequence(body.cashbox, body.operation);
+        return sendJson(res, 200, result);
+      } catch (error) { return sendJson(res, 400, { error: error.message || 'No se pudo reservar el consecutivo.' }); }
+    }
     if (url.pathname === '/api/sync/events' && req.method === 'POST') {
       try {
         const body = await readBody(req);
@@ -321,6 +335,25 @@ async function startLanServer(requestedPort) {
   startDiscoveryServer();
   return { ...networkConfig, running: true, addresses: localAddresses() };
 }
+function allocateCashboxSequence(cashboxId, operationType) {
+  const cashbox = String(cashboxId || '').trim();
+  const operation = String(operationType || '').trim();
+  const allowed = new Set(['invoice','control','z','void','refund','return','cxc','movement','opening','purchase','count']);
+  if (!cashbox || cashbox.length > 32 || !/^[A-Za-z0-9_-]+$/.test(cashbox)) throw new Error('Caja inválida para numeración.');
+  if (!allowed.has(operation)) throw new Error('Tipo de operación no permitido para numeración.');
+  db.run('BEGIN IMMEDIATE');
+  try {
+    run('INSERT OR IGNORE INTO cashbox_sequences(cashbox_id,operation_type,last_value) VALUES(?,?,0)', [cashbox, operation]);
+    run('UPDATE cashbox_sequences SET last_value=last_value+1,updated_at=CURRENT_TIMESTAMP WHERE cashbox_id=? AND operation_type=?', [cashbox, operation]);
+    const row = one('SELECT last_value FROM cashbox_sequences WHERE cashbox_id=? AND operation_type=?', [cashbox, operation]);
+    persistDb();
+    db.run('COMMIT');
+    return { ok: true, cashbox, operation, value: Number(row.last_value) };
+  } catch (error) {
+    try { db.run('ROLLBACK'); } catch {}
+    throw error;
+  }
+}
 function registerNetworkIpc() {
   ipcMain.handle('network:status', () => ({ ...networkConfig, running: !!networkServer, addresses: localAddresses() }));
   ipcMain.handle('network:operation-create', (_e, input = {}) => {
@@ -353,6 +386,21 @@ function registerNetworkIpc() {
     acknowledged: Number(one("SELECT COUNT(*) AS n FROM local_operation_outbox WHERE status='acked'").n),
     conflicts: Number(one("SELECT COUNT(*) AS n FROM local_operation_outbox WHERE status='conflict'").n)
   }));
+  ipcMain.handle('network:next-sequence', async (_e, input = {}) => {
+    if (networkConfig.role === 'client') {
+      if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión configurada al servidor.');
+      const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sequences/next', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + networkConfig.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cashbox: input.cashbox, operation: input.operation }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error || 'El servidor no pudo reservar el consecutivo.');
+      return result;
+    }
+    return allocateCashboxSequence(input.cashbox, input.operation);
+  });
   ipcMain.handle('network:discover', () => discoverLanServers());
   ipcMain.handle('network:configure-server', (_e, opts = {}) => startLanServer(opts.port));
   ipcMain.handle('network:stop-server', async () => {
