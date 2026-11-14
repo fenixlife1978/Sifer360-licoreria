@@ -4385,7 +4385,7 @@ function payDlg(draft){
     upd();inp.focus();inp.select();
   });
   openWin({title:'Cobrar factura '+pad(S.invoice),w:760,body:el,
-    foot:[{label:'Cancelar'},{id:'btnConfirm',label:'Confirmar cobro',primary:true,fn:()=>{
+    foot:[{label:'Cancelar'},{id:'btnConfirm',label:'Confirmar cobro',primary:true,fn:async()=>{
       const isCred=$('#payCreditChk',el).checked;
       if(!last||(last.pending>=0.01&&!isCred))return false;
       const enteredAmts=amts(),enteredRefs=refs();
@@ -6057,7 +6057,18 @@ function cajaSeqs(){
 function currentCajaInvoice(){const box=currentCaja(),seqs=cajaSeqs();if(!seqs[box])seqs[box]={invoice:1,void:1,refund:1,cxc:1,movement:1,z:1};return Number(seqs[box].invoice)||1;}
 async function nextCajaSequence(operation,box=currentCaja()){
   if(!window.posDesktop||typeof window.posDesktop.networkNextSequence!=='function')throw new Error('La numeración correlativa requiere el motor SQLite de escritorio.');
-  const result=await window.posDesktop.networkNextSequence({cashbox:String(box),operation});
+  const sales=(S.sales||[]).filter(x=>String(x.cashbox||'01')===String(box));
+  const zRows=(S.cortesZ||[]).filter(x=>String(x.cashbox||'')===String(box));
+  let minimum=1;
+  if(operation==='invoice')minimum=Math.max(0,...sales.map(x=>Number(x.no)||0))+1;
+  else if(operation==='control')minimum=Math.max(0,...sales.map(x=>Number(String(x.ctrlNo||'').split('-').pop())||0))+1;
+  else if(operation==='z')minimum=Math.max(0,...zRows.map(x=>Number(String(x.id||'').split('-').pop())||0))+1;
+  else if(operation==='void')minimum=Math.max(0,...sales.map(x=>Number(x.voidNo)||0))+1;
+  else if(operation==='refund'||operation==='return')minimum=Math.max(0,...(S.returns||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.returnNo||x.sequence)||0))+1;
+  const cached=cajaSeqs()[String(box)]||{};
+  const cacheKey={invoice:'invoice',control:'ctrl',z:'z',void:'void',refund:'refund',return:'refund'}[operation];
+  if(cacheKey)minimum=Math.max(minimum,Number(cached[cacheKey])||1);
+  const result=await window.posDesktop.networkNextSequence({cashbox:String(box),operation,minimum});
   const value=Number(result&&result.value);
   if(!result||!result.ok||!Number.isSafeInteger(value)||value<1)throw new Error('El servidor no confirmó el consecutivo de '+operation+'.');
   return value;
