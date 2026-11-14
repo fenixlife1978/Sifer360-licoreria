@@ -107,7 +107,7 @@ function applyIncomingEvents({ db, events, persist, restore, statePayloadHash })
           const deletedId = String(record.id);
           const deletedBox = String(record.cashbox || 'sin-caja');
           state.held = (Array.isArray(state.held) ? state.held : []).filter(item =>
-            !(String(item && item.id || '') === deletedId && String(item && item.cashbox || 'sin-caja') === deletedBox)
+            !(String(item && (item.id || ('HOLD-LEGACY-' + item.ts)) || '') === deletedId && String(item && item.cashbox || 'sin-caja') === deletedBox)
           );
         }
         run(
