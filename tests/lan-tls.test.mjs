@@ -126,3 +126,16 @@ test('una identidad TLS heredada se migra a clave cifrada sin cambiar su huella'
   assert.equal(typeof stored.keyEncrypted, 'string');
   assert.equal(Object.hasOwn(stored, 'key'), false);
 });
+
+test('devuelve la clave privada descifrada al servidor HTTPS aunque esté cifrada en disco', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sifer-tls-encrypted-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const encryptPrivateKey = pem => Buffer.from(pem, 'utf8').toString('base64');
+  const decryptPrivateKey = value => Buffer.from(value, 'base64').toString('utf8');
+  const identity = await ensureServerCertificate({ directory, deviceId: 'server-encrypted-test', encryptPrivateKey, decryptPrivateKey });
+  assert.equal(typeof identity.key, 'string');
+  assert.match(identity.key, /BEGIN PRIVATE KEY/);
+  assert.equal(new crypto.X509Certificate(identity.cert).publicKey.asymmetricKeyType, 'ec');
+  assert.equal(fs.readFileSync(path.join(directory, 'sifer360-lan-identity-v1.json'), 'utf8').includes('"key"'), false);
+  assert.equal(fs.readFileSync(path.join(directory, 'sifer360-lan-identity-v1.json'), 'utf8').includes('"keyEncrypted"'), true);
+});
