@@ -326,3 +326,10 @@ test('los conflictos HTTP 409 se identifican explícitamente como concurrencia',
   assert.match(electron, /response\.statusCode === 409 \? 'Conflicto de concurrencia: '/);
   assert.match(pos, /includes\('conflicto'\)/);
 });
+
+test('las claves de emparejamiento se almacenan cifradas con el almacén seguro del sistema operativo', () => {
+  assert.match(electron, /safeStorage\.isEncryptionAvailable\(\)/);
+  assert.match(electron, /safeStorage\.encryptString\(stored\.token\)/);
+  assert.match(electron, /safeStorage\.decryptString\(Buffer\.from\(stored\.tokenEncrypted, 'base64'\)\)/);
+  assert.match(electron, /no se guardará la clave LAN en texto claro/);
+});
