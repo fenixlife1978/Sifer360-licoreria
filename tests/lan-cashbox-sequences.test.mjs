@@ -118,7 +118,7 @@ test('los cobros CxC y pagos CxP usan consecutivo de movimiento por caja y guard
 test('las operaciones cambiarias y los pagos Zelle vinculados a CxP también quedan numerados y confirmados', () => {
   assert.match(pos, /fn:async\(\)=>\{/);
   assert.match(pos, /nextCajaSequence\('movement',box\)/);
-  assert.match(pos, /id:'MOV-'[^\n]*cashboxSequence:movementNo/);
+  assert.match(pos, /id:movementId,cashbox:box,cashboxSequence:movementNo/);
   assert.match(pos, /id='CAMB-'\+boxCode\+'-'\+pad\(movementNo,6\)/);
   assert.match(pos, /cashbox:box,sequence:movementNo/);
   assert.match(pos, /El pago Zelle supera el saldo pendiente de la obligación CxP/);
