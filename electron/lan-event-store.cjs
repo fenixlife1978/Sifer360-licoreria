@@ -22,7 +22,7 @@ function applyIncomingEvents({ db, events, persist, restore, statePayloadHash })
     'retencionesIva','retentions','returns','voids'
   ]);
   const boxScopedCollections = new Set([
-    'sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','movimientosCaja','rateAudit',
+    'sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','held','movimientosCaja','rateAudit',
     'returns','voids','retencionesIva','retentions','casheaMovimientos',
     'casheaLiquidaciones','cambiosDivisas'
   ]);
@@ -74,7 +74,8 @@ function applyIncomingEvents({ db, events, persist, restore, statePayloadHash })
       if (!allowedCollections.has(collection) || !record || typeof record !== 'object' || Array.isArray(record)) {
         throw new Error('La operación no contiene una entidad permitida y un registro válido.');
       }
-      const recordId = String(collection === 'kardex' ? (record.eventId ?? record.id ?? record.uuid ?? record.no ?? record.number ?? record.ctrlNo ?? record.code ?? '') : (record.id ?? record.uuid ?? record.eventId ?? record.no ?? record.number ?? record.ctrlNo ?? record.code ?? ''));
+      const eventIdCollections = new Set(['kardex','lotesSudeban','rateAudit','casheaLiquidaciones']);
+      const recordId = String(eventIdCollections.has(collection) ? (record.eventId ?? record.id ?? record.uuid ?? record.no ?? record.number ?? record.ctrlNo ?? record.code ?? '') : (record.id ?? record.uuid ?? record.eventId ?? record.no ?? record.number ?? record.ctrlNo ?? record.code ?? ''));
       if (!recordId || recordId !== entityId) throw new Error('El identificador de entidad no coincide con el identificador del registro.');
 
       let state = null;
@@ -84,7 +85,7 @@ function applyIncomingEvents({ db, events, persist, restore, statePayloadHash })
       state = stateRow ? JSON.parse(stateRow.payload) : {};
       records = Array.isArray(state[collection]) ? state[collection] : [];
       const recordIdentity = item => {
-        const id = String(collection === 'kardex' ? (item.eventId ?? item.id ?? item.uuid ?? item.no ?? item.number ?? item.ctrlNo ?? item.code ?? '') : (item.id ?? item.uuid ?? item.eventId ?? item.no ?? item.number ?? item.ctrlNo ?? item.code ?? ''));
+        const id = String(eventIdCollections.has(collection) ? (item.eventId ?? item.id ?? item.uuid ?? item.no ?? item.number ?? item.ctrlNo ?? item.code ?? '') : (item.id ?? item.uuid ?? item.eventId ?? item.no ?? item.number ?? item.ctrlNo ?? item.code ?? ''));
         return boxScopedCollections.has(collection) ? String(item.cashbox || 'sin-caja') + ':' + id : id;
       };
       const incomingIdentity = boxScopedCollections.has(collection)
