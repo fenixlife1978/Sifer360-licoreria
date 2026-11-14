@@ -106,3 +106,12 @@ test('un mínimo no finito o fuera del rango seguro no puede corromper la secuen
   assert.equal(f.allocate('01', 'invoice', Infinity).value, 1);
   assert.equal(f.allocate('01', 'invoice', Number.MAX_SAFE_INTEGER + 1).value, 2);
 });
+
+test('bloquea el desbordamiento de un consecutivo antes de confirmar la transacción', () => {
+  const f = fixture();
+  const db = f.database();
+  const stmt = db.prepare('INSERT INTO cashbox_sequences(cashbox_id,operation_type,last_value) VALUES(?,?,?)');
+  try { stmt.run(['01', 'invoice', Number.MAX_SAFE_INTEGER]); } finally { stmt.free(); }
+  assert.throws(() => f.allocate('01', 'invoice'), /Se agotó el rango seguro de numeración/);
+  assert.equal(f.rows()[0].last_value, Number.MAX_SAFE_INTEGER);
+});
