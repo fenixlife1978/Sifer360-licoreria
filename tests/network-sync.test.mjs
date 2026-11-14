@@ -483,3 +483,13 @@ test('desconectar conserva la identidad del servidor anterior para etiquetar nue
   assert.doesNotMatch(handler, /serverDeviceId: ''/);
   assert.match(handler, /serverPromotionBlocked: true/);
 });
+
+test('la sincronización LAN preserva y captura movimientos de caja, auditoría de tasa y lotes bancarios', () => {
+  assert.match(pos, /\['movimientosCaja','cashbox-movement'\]/);
+  assert.match(pos, /\['rateAudit','exchange-rate-audit'\]/);
+  assert.match(pos, /\['lotesSudeban','bank-batch'\]/);
+  assert.match(stateMerge, /movimientosCaja/);
+  assert.match(stateMerge, /rateAudit/);
+  assert.match(eventStore, /movimientosCaja/);
+  assert.match(eventStore, /lotesSudeban/);
+});
