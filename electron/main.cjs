@@ -251,6 +251,36 @@ async function startLanServer(requestedPort) {
     if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Headers': 'content-type,authorization', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); return res.end(); }
     if (req.headers.authorization !== 'Bearer ' + networkConfig.token) return sendJson(res, 401, { error: 'No autorizado' });
     if (url.pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { ok: true, deviceId: networkConfig.deviceId, role: 'server', protocol: 1 });
+    if (url.pathname === '/api/documents' && req.method === 'GET') {
+      const type = url.searchParams.get('transactionType');
+      const transactionId = url.searchParams.get('transactionId');
+      const documents = type && transactionId
+        ? all('SELECT id,transaction_type AS transactionType,transaction_id AS transactionId,file_name AS fileName,mime_type AS mimeType,file_size AS fileSize,sha256,created_at AS createdAt,notes FROM fiscal_documents WHERE transaction_type=? AND transaction_id=? ORDER BY created_at DESC', [type, transactionId])
+        : all('SELECT id,transaction_type AS transactionType,transaction_id AS transactionId,file_name AS fileName,mime_type AS mimeType,file_size AS fileSize,sha256,created_at AS createdAt,notes FROM fiscal_documents ORDER BY created_at DESC');
+      return sendJson(res, 200, { ok: true, documents });
+    }
+    if (url.pathname === '/api/documents' && req.method === 'POST') {
+      try {
+        const doc = await readBody(req);
+        if (!doc || !doc.id || !['sale','purchase'].includes(doc.transactionType) || !doc.transactionId || !doc.dataUrl) return sendJson(res, 400, { error: 'Documento incompleto.' });
+        if (String(doc.dataUrl).length > 4300000) return sendJson(res, 413, { error: 'El archivo supera el límite local de 3 MB.' });
+        run('INSERT OR REPLACE INTO fiscal_documents(id,transaction_type,transaction_id,file_name,mime_type,file_size,sha256,data_url,created_at,notes) VALUES(?,?,?,?,?,?,?,?,?,?)',
+          [String(doc.id), doc.transactionType, String(doc.transactionId), String(doc.fileName || 'documento'), String(doc.mimeType || 'application/octet-stream'), Number(doc.fileSize || 0), String(doc.sha256 || ''), String(doc.dataUrl), String(doc.createdAt || new Date().toISOString()), String(doc.notes || '')]);
+        persistDb();
+        return sendJson(res, 200, { ok: true, durable: 'server-sqlite' });
+      } catch (error) { return sendJson(res, 400, { error: error.message || 'No se pudo guardar el documento.' }); }
+    }
+    if (url.pathname.startsWith('/api/documents/') && req.method === 'GET') {
+      const id = decodeURIComponent(url.pathname.slice('/api/documents/'.length));
+      const document = one('SELECT id,transaction_type AS transactionType,transaction_id AS transactionId,file_name AS fileName,mime_type AS mimeType,file_size AS fileSize,sha256,data_url AS dataUrl,created_at AS createdAt,notes FROM fiscal_documents WHERE id=?', [id]);
+      return sendJson(res, document ? 200 : 404, document ? { ok: true, document } : { error: 'Documento no encontrado.' });
+    }
+    if (url.pathname.startsWith('/api/documents/') && req.method === 'DELETE') {
+      const id = decodeURIComponent(url.pathname.slice('/api/documents/'.length));
+      run('DELETE FROM fiscal_documents WHERE id=?', [id]);
+      persistDb();
+      return sendJson(res, 200, { ok: true, durable: 'server-sqlite' });
+    }
     if (url.pathname === '/api/sequences/next' && req.method === 'POST') {
       try {
         const body = await readBody(req);
