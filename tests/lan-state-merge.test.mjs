@@ -58,3 +58,12 @@ test('fusiona movimientos de caja y auditorías de tasa por identificador y caja
   assert.deepEqual(merged.rateAudit.map(x=>x.id).sort(), ['RATE-1','RATE-2']);
   assert.deepEqual(merged.fiscalBankOperations.map(x=>x.id).sort(), ['BANK-1','BANK-2']);
 });
+
+test('las eliminaciones de borradores y documentos se respetan en el snapshot autoritativo', () => {
+  const merged = mergeStateRecords(
+    { held:[{id:'HELD-1'}], documents:[{id:'DOC-1'}] },
+    { held:[], documents:[] }
+  );
+  assert.deepEqual(merged.held, []);
+  assert.deepEqual(merged.documents, []);
+});
