@@ -58,8 +58,9 @@ function decodeFrame(input) {
   if (checksum !== parseInt(bccText, 16)) throw new Error('BCC PNP incorrecto; la respuesta no es confiable.');
   const payload = frame.subarray(3, etxAt);
   const fields = [];
-  let start = 0;
-  for (let i = 0; i <= payload.length; i++) {
+  // PNP places the field separator immediately after the command byte.
+  let start = payload[0] === FS ? 1 : 0;
+  for (let i = start; i <= payload.length; i++) {
     if (i === payload.length || payload[i] === FS) {
       fields.push(payload.subarray(start, i).toString('latin1'));
       start = i + 1;
