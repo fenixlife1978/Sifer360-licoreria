@@ -13,7 +13,7 @@ Familias contempladas:
 | Epson Fiscal | EpsonFiscalInterface.dll | La interfaz y los comandos dependen del modelo/país. |
 | Quorion | QProg.dll (pendiente de confirmar) o protocolo del modelo | La página pública de Quorion ofrece QMP Programming Software y manuales; no se ha validado que QProg.dll sea un SDK redistribuible. No asumir que todos los equipos aceptan el mismo protocolo serial. |
 | Aclas | AclasSDK.dll | Confirmar versión del SDK y protocolo con el distribuidor. |
-| PNP | pnpdll.dll o protocolo serial PNP 0141 | El fabricante publica pnpdll2025a.zip y PROTOCOLO0141.pdf. PF-SUNMI usa USB CDC serial, RS232 opcional y Wi-Fi; no todos los modelos usan el mismo cable/controlador. |
+| PNP | pnpdll.dll / pnpdll64.dll o protocolo serial PNP 0141 | El fabricante publica pnpdll2025a.zip y PROTOCOLO0141.pdf; documenta además una DLL x64 en pnpdll2022.zip. PF-SUNMI usa USB CDC serial, RS232 opcional y Wi-Fi; no todos los modelos usan el mismo cable/controlador. |
 | Hasar | SDK/protocolo específico del distribuidor | No se presupone un nombre de DLL; requiere puente específico y manual del modelo. |
 
 La lista de marcas/modelos es un catálogo de integración solicitado, no una certificación de homologación vigente. Las cuotas de mercado indicadas en la solicitud (70/15–20/10 y más de 95% de cobertura) no se consideran cifras verificadas y no se usan para prometer compatibilidad. Antes de activar facturación fiscal, verificar el modelo exacto, serial, representante y autorización aplicable ante SENIAT y el fabricante.
@@ -110,7 +110,7 @@ El usuario/instalador autorizado debe instalar el paquete firmado que correspond
 
 ## Pendiente para certificar compatibilidad real
 
-1. Recibir SDK/manual original de cada modelo y comprobar sus términos de redistribución. Para PNP, utilizar como referencia inicial pnpdll2025a.zip y PROTOCOLO0141.pdf publicados por el fabricante.
+1. Recibir SDK/manual original de cada modelo y comprobar sus términos de redistribución. Para PNP, utilizar como referencia inicial pnpdll2025a.zip y PROTOCOLO0141.pdf publicados por el fabricante; la biblioteca x64 pnpdll64.dll aparece documentada en el paquete pnpdll2022.zip. Validar la DLL y firmware con el modelo exacto.
 2. Construir los puentes específicos de fabricante; no basta con que exista el archivo DLL.
 3. Probar lectura de estado, papel/tapa, emisión, consulta del último documento, anulaciones/notas de crédito cuando el equipo lo permita y Reporte Z.
 4. Ejecutar pruebas físicas por cada modelo, firmware, interfaz (USB/COM/Ethernet) y arquitectura Windows.
