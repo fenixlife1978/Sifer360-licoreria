@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('posDesktop', {
   networkNextSequence: input => ipcRenderer.invoke('network:next-sequence', input),
   networkStartServer: options => ipcRenderer.invoke('network:configure-server', options),
   networkStopServer: () => ipcRenderer.invoke('network:stop-server'),
+  networkDisconnectClient: () => ipcRenderer.invoke('network:disconnect-client'),
   networkConfigureClient: options => ipcRenderer.invoke('network:configure-client', options),
   networkSyncNow: state => ipcRenderer.invoke('network:sync-now', state)
 });
