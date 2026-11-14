@@ -12,6 +12,8 @@ test('registra las familias fiscales solicitadas y sus SDK esperados', () => {
     if (id !== 'hasar') assert.ok(manager.PROVIDERS[id].sdkFiles.length > 0);
   }
   assert.deepEqual(manager.USB_SERIAL_DRIVERS.map(x => x.id), ['prolific','ftdi','silabs']);
+  assert.deepEqual(manager.PROVIDERS.pnp.sdkFiles, ['pnpdll.dll']);
+  assert.ok(manager.PROVIDERS.pnp.models.includes('PF-220DA'));
 });
 
 test('normaliza configuración COM y parámetros seriales', () => {
