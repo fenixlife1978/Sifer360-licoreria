@@ -6070,17 +6070,22 @@ function openCashboxDlg(){
     openWin({title:'Caja ya abierta · '+box,w:430,body:h('<div class="form"><h3>El turno ya está abierto</h3><p class="hint">Caja '+esc(box)+' · Apertura '+esc(fmtDT(existing.openedAt))+'</p><p>Para hacer el arqueo y cerrar la jornada, entra a Corte Z.</p></div>'),foot:[{label:'Ir al POS',primary:true,fn:()=>{showPosScreen();return true;}},{label:'Cerrar'}]});return;
   }
   const body=h('<div class="form"><div class="hint">Registra y confirma los fondos físicos reales antes de vender. La apertura se asociará exclusivamente al usuario y a la caja asignada.</div><div class="newgrid"><div class="f"><label>'+(isCashier?'Cajero':'Administrador')+'</label><input class="fld" value="'+esc(user.name||user.username)+'" readonly></div><div class="f"><label>Caja asignada</label><input class="fld" value="'+esc(boxMeta.name+' ('+box+')')+'" readonly></div><div class="f"><label for="posOpenBs">Fondo inicial en Bs.</label><input class="fld r" id="posOpenBs" value="0,00" inputmode="decimal"></div><div class="f"><label for="posOpenUsd">Fondo inicial en US$</label><input class="fld r" id="posOpenUsd" value="0,00" inputmode="decimal"></div><div class="f"><label for="posOpenRate">Tasa BCV (Bs./US$)</label><input class="fld r" id="posOpenRate" value="'+esc(nf(Number(S.cfg.rate)||0))+'" inputmode="decimal"></div></div><div class="hint" id="posOpenError" role="status"></div></div>');
-  const confirmOpening=()=>{
+  const confirmOpening=async()=>{
     const parse=v=>{const raw=String(v||'').trim().replace(/\s/g,'').replace(/\./g,'').replace(',','.');const n=Number(raw);return Number.isFinite(n)&&n>=0?n:null;};
     const bs=parse($('#posOpenBs',body).value),usd=parse($('#posOpenUsd',body).value),rate=parse($('#posOpenRate',body).value);
     if(bs===null||usd===null||rate===null||rate<=0){$('#posOpenError',body).textContent='Ingrese fondos válidos y una tasa BCV mayor que cero.';return false;}
-    const all=(()=>{try{return JSON.parse(localStorage.getItem('sifer360_openings')||'[]')||[];}catch(e){return [];}})();
-    const openedAt=new Date().toISOString(),op={id:'OPEN-'+Date.now(),invoiceStart:'FAC-'+String(currentCajaInvoice()).padStart(8,'0'),cashier:user.name||user.username,username:user.username,cashbox:box,bs,usd,rate,openedAt,status:'abierta'};
-    all.push(op);localStorage.setItem('sifer360_openings',JSON.stringify(all));localStorage.setItem('sifer360_bcv_rate',String(rate));
+    const openedAt=new Date().toISOString(),op={id:'OPEN-'+box.replace(/\W/g,'')+'-'+Date.now(),invoiceStart:'FAC-'+String(currentCajaInvoice()).padStart(8,'0'),cashier:user.name||user.username,username:user.username,cashbox:box,bs,usd,rate,openedAt,status:'abierta'};
+    if(!Array.isArray(S.openings))S.openings=[];
+    S.openings.push(op);
+    S.cfg.rate=rate;
+    const persisted=await save();
+    if(!persisted||!persisted.ok){$('#posOpenError',body).textContent='SQLite/servidor no confirmó la apertura. No se habilitó el POS; revise la conexión y vuelva a intentar.';return false;}
+    writeActiveOpening(op);
+    try{localStorage.setItem('sifer360_bcv_rate',String(rate));}catch(e){}
     const context={username:user.username,name:user.name||user.username,role:user.role,cashbox:box,openingId:op.id,openedAt,bs,usd,rate,status:'abierta'};
     sessionStorage.setItem('sifer360_active_box',JSON.stringify(context));sessionStorage.setItem('sifer360_active_opening',JSON.stringify(op));
-    if(!isCashier){localStorage.setItem('sifer360_active_box',JSON.stringify(context));localStorage.setItem('sifer360_active_opening',JSON.stringify(op));}
-    S.cfg.rate=rate;applyCashierWorkspace();showPosScreen();msg('Apertura de caja '+box+' registrada. Ya puedes operar en el POS.','ok');return true;
+    if(!isCashier)localStorage.setItem('sifer360_active_box',JSON.stringify(context));
+    applyCashierWorkspace();showPosScreen();msg('Apertura de caja '+box+' confirmada en SQLite. Ya puedes operar en el POS.','ok');return true;
   };
   openWin({title:(isCashier?'POS · Apertura obligatoria de caja ':'POS · Apertura de caja ')+box,w:560,body,foot:(isCashier?[]:[{label:'Cancelar'}]).concat([{label:'Confirmar apertura e ingresar al POS',primary:true,fn:confirmOpening}]),onClose:isCashier?()=>{}:undefined});
 }
