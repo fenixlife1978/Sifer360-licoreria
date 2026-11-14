@@ -132,3 +132,10 @@ test('el servidor restaura la instantánea SQLite si falla la persistencia de un
   assert.match(main, /catch \(persistError\) \{\s*restoreDatabaseSnapshot\(databaseBefore\)/);
   assert.match(main, /restauró el estado anterior y rechazó el lote/);
 });
+
+test('las reservas correlativas y documentos fiscales revierten memoria si falla el guardado SQLite', () => {
+  assert.match(main, /const databaseBefore = db\.export\(\)/);
+  assert.match(main, /No se confirmó el consecutivo en disco; se restauró el estado anterior/);
+  assert.match(main, /catch \(error\) \{ restoreDatabaseSnapshot\(databaseBefore\); throw error; \}/);
+  assert.match(main, /restoreDatabaseSnapshot\(snapshot\)/);
+});
