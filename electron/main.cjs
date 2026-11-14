@@ -412,6 +412,11 @@ function registerNetworkIpc() {
     saveNetworkConfig();
     return { ...networkConfig, running: false, addresses: localAddresses() };
   });
+  ipcMain.handle('network:disconnect-client', () => {
+    if (networkConfig.role === 'client') networkConfig = { ...networkConfig, role: 'standalone', host: '', token: crypto.randomBytes(24).toString('hex'), serverDeviceId: '' };
+    saveNetworkConfig();
+    return { ...networkConfig, running: false, addresses: localAddresses() };
+  });
   ipcMain.handle('network:configure-client', async (_e, opts = {}) => {
     const host = String(opts.host || '').trim();
     const port = Math.max(1024, Math.min(65535, Number(opts.port || 38760)));
@@ -463,12 +468,29 @@ function registerNetworkIpc() {
 function registerIpc() {
   ipcMain.handle('posdb:get-mode', () => ({ mode: 'sqlite', databasePath: userDbPath() }));
   ipcMain.handle('posdb:set-mode', () => ({ mode: 'sqlite', databasePath: userDbPath() }));
-  ipcMain.handle('posdb:load-state', () => {
+  ipcMain.handle('posdb:load-state', async () => {
+    if (networkConfig.role === 'client') {
+      if (!networkConfig.host || !networkConfig.token) throw new Error('Este cliente no está conectado al servidor LAN.');
+      const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/state', { headers: { Authorization: 'Bearer ' + networkConfig.token }, signal: AbortSignal.timeout(8000) });
+      if (!response.ok) throw new Error('No se pudo leer la base central (' + response.status + ').');
+      const result = await response.json();
+      return { mode: 'sqlite', state: result.state, source: 'lan-server' };
+    }
     const row = one('SELECT payload FROM app_state WHERE id=1');
-    return { mode: 'sqlite', state: row ? JSON.parse(row.payload) : null };
+    return { mode: 'sqlite', state: row ? JSON.parse(row.payload) : null, source: 'local-server' };
   });
-  ipcMain.handle('posdb:save-state', (_e, state) => {
+  ipcMain.handle('posdb:save-state', async (_e, state) => {
     if (databaseMode !== 'sqlite') throw new Error('SQLite local no está seleccionado.');
+    if (networkConfig.role === 'client') {
+      if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión al servidor; no se guardó la operación.');
+      const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/state', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + networkConfig.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId: networkConfig.deviceId, state }), signal: AbortSignal.timeout(10000)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error || 'El servidor no confirmó el guardado central.');
+      return { ok: true, durable: 'server-sqlite', serverDeviceId: result.serverDeviceId };
+    }
     const payload = JSON.stringify(state);
     run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, updated_at=CURRENT_TIMESTAMP', [payload]);
     clearTimeout(saveTimer);
