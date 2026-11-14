@@ -466,3 +466,9 @@ test('la sincronización también bloquea operaciones antiguas sin identidad de 
   assert.match(electron, /const foreignServerEvents = pending\.filter\(event => !event\.serverDeviceId \|\| event\.serverDeviceId !== networkConfig\.serverDeviceId\)/);
   assert.match(electron, /server-identity-changed/);
 });
+
+test('la outbox captura operaciones nuevas sin depender del éxito del snapshot completo', () => {
+  assert.match(pos, /Capturar primero en la outbox durable del cliente/);
+  assert.doesNotMatch(pos, /const lastSave=window\.__SIFER_LAST_SAVE;\s*if\(lastSave\)\{const persisted=await lastSave/);
+  assert.match(pos, /window\.posDesktop\.networkCreateOperation\(/);
+});
