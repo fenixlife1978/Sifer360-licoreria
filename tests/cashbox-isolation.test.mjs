@@ -62,3 +62,10 @@ test('la anulación de una venta revierte inventario y estado si el servidor/SQL
   assert.match(main, /const persisted=await save\(\);\s*if\(!persisted\|\|!persisted\.ok\)\{Object\.assign\(S,rollbackState\)/);
   assert.match(main, /SQLite\/servidor no confirmó la anulación/);
 });
+
+test('los movimientos manuales de caja usan consecutivo central y no se confirman sin persistencia', () => {
+  assert.match(main, /nextCajaSequence\('movement',box\)/);
+  assert.match(main, /sequence:movementNo/);
+  assert.match(main, /const persisted=await save\(\);\s*if\(!persisted\|\|!persisted\.ok\)\{Object\.assign\(S,rollbackState\)/);
+  assert.match(main, /SQLite\/servidor no confirmó el movimiento/);
+});
