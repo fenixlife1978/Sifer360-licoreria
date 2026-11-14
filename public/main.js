@@ -5794,7 +5794,9 @@ function showPosScreen(){
   renderHeader();renderAll();
 }
 function showDashboardScreen(){
-  if(activeUser().role==='contador'){window.SIFERAccountantDashboard.show();return;}
+  const dashboardUser=activeUser();
+  if(dashboardUser.username)try{localStorage.setItem('sifer360_last_module_v1:'+dashboardUser.username,'dashboard');}catch(e){}
+  if(dashboardUser.role==='contador'){window.SIFERAccountantDashboard.show();return;}
   const d=$('#adminDashboard'),main=$('.main'),left=$('.left');
   if(!d||!main)return;
   if(left)left.hidden=true; // Ocultar toda el área de venta; la cabecera y la toolbar están fuera de .main y permanecen visibles.
@@ -6725,6 +6727,7 @@ function restoreWorkspaceAfterReload(){
   }
   const key='sifer360_last_module_v1:'+user.username;
   let last='';try{last=localStorage.getItem(key)||'';}catch(e){}
+  if(last==='dashboard'&&user.role==='admin'){showDashboardScreen();return;}
   const allowed={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','contabilidad','documentos','basedatos','tasa','usuarios','cajas'],contador:['seniat','contabilidad']};
   if(last&&(allowed[user.role]||[]).includes(last)){
     const button=$('#toolbar [data-tb="'+last+'"]');
