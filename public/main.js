@@ -4624,7 +4624,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
   if(fiscalMode){
     if(!Array.isArray(S.fiscalPrinterJobs))S.fiscalPrinterJobs=[];
     const idempotencyKey='SIFER360-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+String(invNo)+'-'+String(ts);
-    fiscalJob={id:'FISCAL-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+pad(invNo,8),idempotencyKey,cashbox:currentCaja(),saleNo:invNo,createdAt:ts,status:'pending',fiscalSerial:'',fiscalDocumentNumber:'',lastError:'',saleSnapshot:JSON.parse(JSON.stringify(sale))};
+    fiscalJob={id:'FISCAL-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+pad(invNo,8),idempotencyKey,cashbox:currentCaja(),saleNo:invNo,createdAt:ts,status:'pending',fiscalSerial:'',fiscalDocumentNumber:'',lastError:'',printerProvider:fiscalProfile.provider,printerModel:fiscalProfile.model,creditSequence:cxcNo,creditDays:cDays,saleSnapshot:JSON.parse(JSON.stringify(sale))};
     S.fiscalPrinterJobs.push(fiscalJob);
     const journal=await save();
     if(!journal||!journal.ok){restoreStateSnapshotIfNeeded(journal,rollbackState);msg('SQLite no confirmó la intención de emisión fiscal. La impresora no recibió comandos y la venta no se registró.','bad');return;}
@@ -5272,7 +5272,7 @@ function fiscalPrinterConfigDlg(){
     const jobs=(S.fiscalPrinterJobs||[]).filter(job=>String(job.cashbox)===String(box)&&['pending','uncertain'].includes(job.status));
     const node=$('#fpPendingJobs',el);if(!node)return;
     node.hidden=!jobs.length;
-    node.innerHTML=jobs.length?'<div class="gtitle">Emisiones que requieren conciliación</div>'+jobs.map(job=>'<div class="hint"><b>'+esc(job.id)+'</b> · Estado: '+esc(job.status)+' · Factura POS '+esc(pad(job.saleNo))+' · '+esc(job.lastError||'Consultar el último documento de la máquina antes de reintentar.')+'</div>').join(''):'';
+    node.innerHTML=jobs.length?'<div class="gtitle">Emisiones que requieren conciliación</div>'+jobs.map(job=>'<div class="group" style="margin:6px 0"><b>'+esc(job.id)+'</b> · Estado: '+esc(job.status)+' · Factura POS '+esc(pad(job.saleNo))+' · '+esc(job.lastError||'Consultar el último documento de la máquina antes de reintentar.')+'<div class="newgrid"><div class="f"><label>Número fiscal confirmado en la máquina</label><input class="fld mono" data-fiscal-doc="'+esc(job.id)+'" placeholder="Número exacto impreso"></div><div class="f"><label>Serial de máquina</label><input class="fld mono" data-fiscal-serial="'+esc(job.id)+'" value="'+esc(job.fiscalSerial||'')+'" placeholder="Serial fiscal"></div></div><div class="row" style="flex-wrap:wrap"><button class="btn mini2 primary" data-fiscal-reconcile="'+esc(job.id)+'">Confirmar emisión verificada</button><button class="btn mini2" data-fiscal-not-issued="'+esc(job.id)+'">Confirmar que no se emitió</button></div></div>').join('')+'<p class="hint">Solo use estas acciones después de consultar físicamente el último documento de la máquina. La primera reconstruye la venta y el inventario en SQLite; la segunda libera la caja para reintentar como una operación nueva.</p>':'';
   };
   const drawSdk=()=>{
     const p=profile(),files=providerCatalog[p.provider].files;
@@ -5320,6 +5320,56 @@ function fiscalPrinterConfigDlg(){
     if(sdk){
       try{const file=await window.posDesktop.fiscalPrinterSelectFile('sdk');if(file){draft.sdkPaths[sdk.dataset.sdkFile]=file;drawSdk();await status();}}
       catch(err){$('#fpStatus',el).textContent='No se pudo seleccionar el SDK: '+err.message;}
+      return;
+    }
+    const reconcile=e.target.closest('[data-fiscal-reconcile]');
+    if(reconcile){
+      const job=(S.fiscalPrinterJobs||[]).find(x=>x.id===reconcile.dataset.fiscalReconcile&&String(x.cashbox)===String(box));
+      if(!job)return;
+      const doc=$('[data-fiscal-doc="'+job.id+'"]',el).value.trim();
+      const serial=$('[data-fiscal-serial="'+job.id+'"]',el).value.trim();
+      if(!doc||!serial){msg('Indique el número fiscal y serial exactos que aparecen en la máquina.','bad');return;}
+      if(!confirm('Confirma que consultó la impresora física y verificó que la factura '+pad(job.saleNo)+' fue emitida con el número '+doc+' y serial '+serial+'?'))return;
+      const snapshot=JSON.parse(JSON.stringify(S));
+      try{
+        const sale=JSON.parse(JSON.stringify(job.saleSnapshot||{}));
+        if(!sale.no||!Array.isArray(sale.lines))throw new Error('La intención fiscal no contiene una venta recuperable.');
+        sale.fiscal={provider:job.printerProvider||draft.provider,model:job.printerModel||draft.model,documentNumber:doc,serial,status:'issued',manualReconciliation:true};
+        const existing=S.sales.find(x=>Number(x.no)===Number(sale.no)&&String(x.cashbox)===String(job.cashbox));
+        if(existing)existing.fiscal=sale.fiscal;
+        else{
+          sale.lines.forEach(line=>{
+            const product=prod(line.code);
+            if(!product)throw new Error('No se encuentra en SQLite el producto '+line.code+'; no se reconstruyó la venta.');
+            product.stock=Math.max(0,r2(product.stock-line.qty));
+            addKardex({ts:Date.now(),code:product.code,type:'VENTA',dir:'OUT',doc:'FAC-'+pad(sale.no),cashbox:job.cashbox,party:sale.client&&sale.client.name||'',qty:line.qty,stockAfter:product.stock,cost:product.cost,user:sale.cashier||'Sistema'});
+          });
+          if(Number(sale.credit)>0&&!S.cxc.some(x=>Number(x.saleNo)===Number(sale.no)&&String(x.cashbox)===String(job.cashbox))){
+            if(!job.creditSequence)throw new Error('Falta el consecutivo reservado de CxC; solicite revisión antes de confirmar.');
+            const paidUpfront=r2(Math.max(0,Number(sale.total)-Number(sale.credit)));
+            S.cxc.push({id:'CXC-'+String(job.cashbox).replace(/[^A-Za-z0-9]/g,'')+'-'+pad(job.creditSequence,6),sequence:job.creditSequence,cashbox:job.cashbox,cashier:sale.cashier,saleNo:sale.no,doc:'FAC-'+pad(sale.no),client:sale.client,concept:'Factura de venta ('+sale.lines.length+' reng.)',ts:sale.ts,dueTs:sale.ts+(Number(job.creditDays)||15)*86400000,total:sale.total,paid:paidUpfront,payments:paidUpfront>0?[{ts:sale.ts,method:'Pago inicial en caja',cur:'USD',amountUsd:paidUpfront,amountBs:r2(paidUpfront*sale.rate),ref:'FAC-'+pad(sale.no),note:'Abono en caja al facturar'}]:[]});
+          }
+          S.sales.push(sale);
+        }
+        S.invoice=Math.max(Number(S.invoice)||1,Number(sale.no)+1);
+        S.cart=[];S.sel=-1;S.client=S.clients[0];
+        job.status='issued';job.fiscalDocumentNumber=doc;job.fiscalSerial=serial;job.reconciledAt=Date.now();job.reconciliation='confirmed-by-admin-after-physical-check';
+        const saved=await save();
+        if(!saved||!saved.ok){restoreStateSnapshotIfNeeded(saved,snapshot);throw new Error('SQLite no confirmó la conciliación; la intención anterior permanece pendiente.');}
+        renderAll();msg('Emisión fiscal '+doc+' conciliada y venta reconstruida en SQLite.');drawPendingJobs();
+      }catch(error){restoreStateSnapshotIfNeeded({ok:false},snapshot);msg('No se pudo conciliar la emisión: '+error.message,'bad');}
+      return;
+    }
+    const notIssued=e.target.closest('[data-fiscal-not-issued]');
+    if(notIssued){
+      const job=(S.fiscalPrinterJobs||[]).find(x=>x.id===notIssued.dataset.fiscalNotIssued&&String(x.cashbox)===String(box));
+      if(!job)return;
+      if(!confirm('Confirma que consultó la impresora física y verificó que NO existe documento fiscal emitido para esta operación?'))return;
+      const snapshot=JSON.parse(JSON.stringify(S));
+      job.status='not-issued';job.reconciledAt=Date.now();job.reconciliation='confirmed-not-issued-by-admin';
+      const saved=await save();
+      if(!saved||!saved.ok){restoreStateSnapshotIfNeeded(saved,snapshot);msg('SQLite no confirmó la resolución; la caja seguirá bloqueada.','bad');return;}
+      msg('Incidencia marcada como no emitida. Puede reintentar la venta como una nueva operación.');drawPendingJobs();
       return;
     }
     if(e.target.id==='fpDetect'){await detect();return;}
