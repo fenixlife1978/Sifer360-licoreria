@@ -90,6 +90,10 @@ test('activos fijos usan cuentas de depreciación acumulada existentes', () => {
   assert.match(accounting, /asset\.monthsDepreciated=months\+1/);
 });
 
-test('el módulo impide depreciar dos veces un período', () => {
-  assert.match(accounting, /month<=asset\.lastDepreciationMonth/);
+test('la depreciación recupera meses omitidos sin duplicar períodos', () => {
+  assert.match(accounting, /const recorded=new Set\\(periodEntries\\.map\\(e=>String\\(e\\.depreciationPeriod\\)\\)\\)/);
+  assert.match(accounting, /if\\(!recorded\\.has\\(cursor\\)\\)periods\\.push\\(cursor\\)/);
+  assert.match(accounting, /Se registrarán también los meses anteriores pendientes/);
+  assert.match(accounting, /asset\\.monthsDepreciated=count/);
+  assert.match(accounting, /assetId:asset\\.id,depreciationPeriod:month/);
 });
