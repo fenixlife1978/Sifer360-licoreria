@@ -621,3 +621,11 @@ test('si el servidor LAN no puede reanudarse al iniciar, la aplicación falla ce
   assert.doesNotMatch(startup, /networkConfig\.role = 'standalone'/);
   assert.match(startup, /app\.quit\(\)/);
 });
+
+test('el renderer solicita consecutivos sin enviar mínimos calculados desde su snapshot local', () => {
+  const sequence = pos.slice(pos.indexOf('async function nextCajaSequence'), pos.indexOf('async function nextCajaInvoice'));
+  assert.match(sequence, /networkNextSequence\(\{cashbox:String\(box\),operation\}\)/);
+  assert.doesNotMatch(sequence, /let minimum=1|S\.sales|S\.cortesZ|localStorage/);
+  assert.match(electron, /getCashboxSequenceMinimum\(state, cashboxId, operationType\)/);
+  assert.doesNotMatch(electron.slice(electron.indexOf("url.pathname === '\/api\/sequences\/next'"), electron.indexOf("url.pathname === '\/api\/sync\/events'")), /body\.minimum/);
+});
