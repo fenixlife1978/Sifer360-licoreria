@@ -494,7 +494,7 @@ function registerIpc() {
         body: JSON.stringify({ deviceId: networkConfig.deviceId, state, expectedHash: networkConfig.serverStateHash || '' }), signal: AbortSignal.timeout(10000)
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) throw new Error(result.error || (response.status === 409 ? 'La base central cambió; recargue antes de continuar.' : 'El servidor no confirmó el guardado central.'));
+      if (!response.ok || !result.ok) throw new Error(result.error || (response.status === 409 ? 'Conflicto de concurrencia: otro equipo modificó la base central. Recargue SIFER antes de continuar.' : 'El servidor no confirmó el guardado central.'));
       networkConfig.serverStateHash = result.stateHash;
       return { ok: true, durable: 'server-sqlite', serverDeviceId: result.serverDeviceId };
     }
