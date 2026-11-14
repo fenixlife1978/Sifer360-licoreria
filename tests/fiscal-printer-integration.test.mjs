@@ -16,6 +16,10 @@ test('la modalidad máquina fiscal falla de forma segura si no hay adaptador lis
   assert.match(main, /fiscalMode=S\.cfg\.fiscalTipo==='MAQUINA_FISCAL'/);
   assert.match(main, /if\(!diagnostic\.ready\)/);
   assert.match(main, /fiscalPrinterTestBridge\(fiscalProfile\)/);
+  assert.match(main, /unresolvedFiscalJobs\.length/);
+  assert.match(main, /saleSnapshot/);
+  assert.match(main, /data-fiscal-reconcile/);
+  assert.match(main, /data-fiscal-not-issued/);
   assert.match(main, /La venta quedó sin confirmar en el POS/);
 });
 
