@@ -75,10 +75,10 @@ function createDurableOutbox({ directory, deviceId, fsImpl = fs, pathImpl = path
     const serverDeviceId = String(input.serverDeviceId || '');
     const occurredAt = String(input.occurredAt || new Date().toISOString());
     const payloadText = JSON.stringify(input.payload);
+    if (!Number.isSafeInteger(state.lastSeq + 1)) throw new Error('Se agotó el consecutivo local de operaciones LAN.');
     if (!eventId || eventId.length > 256 || !eventType || eventType.length > 64 ||
         !entityType || entityType.length > 64 || !entityId || entityId.length > 256 ||
         serverDeviceId.length > 128 || occurredAt.length > 100 ||
-        !Number.isSafeInteger(state.lastSeq + 1) ||
         Buffer.byteLength(payloadText, 'utf8') > 4 * 1024 * 1024) {
       throw new Error('La operación LAN excede los límites o contiene identificadores inválidos.');
     }
