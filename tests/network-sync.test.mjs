@@ -629,3 +629,13 @@ test('el renderer solicita consecutivos sin enviar mínimos calculados desde su 
   assert.match(electron, /getCashboxSequenceMinimum\(state, cashboxId, operationType\)/);
   assert.doesNotMatch(electron.slice(electron.indexOf("url.pathname === '\/api\/sequences\/next'"), electron.indexOf("url.pathname === '\/api\/sync\/events'")), /body\.minimum/);
 });
+
+test('al reconectar después de un fallo, el cliente vacía la outbox y recarga el estado autoritativo sin enviar snapshots locales no confirmados', () => {
+  const sync = pos.slice(pos.indexOf('async function networkSyncAttempt'), pos.indexOf('window.SIFERNetworkSync'));
+  assert.match(sync, /if\(persistenceBlocked\)\{[\s\S]{0,300}networkFlushOutbox\(\)/);
+  assert.match(sync, /const authoritative=await posSqliteDriver\.loadState\(\)/);
+  assert.match(sync, /Object\.assign\(S,authoritative\)/);
+  assert.ok(sync.indexOf('if(persistenceBlocked)') < sync.indexOf('networkSyncNow(local)'));
+  assert.match(electron, /ipcMain\.handle\('network:flush-outbox'/);
+  assert.match(preload, /networkFlushOutbox: \(\) => ipcRenderer\.invoke\('network:flush-outbox'\)/);
+});
