@@ -205,7 +205,12 @@ function depreciateAsset(id,target){
  const start=available.slice(0,7);if(target<start)return 0;
  const periodEntries=(a.entries||[]).filter(e=>e.assetId===asset.id&&e.depreciationPeriod);
  const recorded=new Set(periodEntries.map(e=>String(e.depreciationPeriod)));
- const periods=[];let cursor=start;
+ const legacyLast=String(asset.lastDepreciationMonth||'').slice(0,7);
+ const latestRecorded=[...recorded].map(x=>String(x).slice(0,7)).filter(x=>/^\\d{4}-(0[1-9]|1[0-2])$/.test(x)).sort().pop()||'';
+ const lastKnown=[legacyLast,latestRecorded].filter(x=>/^\\d{4}-(0[1-9]|1[0-2])$/.test(x)).sort().pop()||'';
+ let cursor=start;
+ if(lastKnown>=start){const y=Number(lastKnown.slice(0,4)),m=Number(lastKnown.slice(5,7));cursor=m===12?String(y+1).padStart(4,'0')+'-01':String(y).padStart(4,'0')+'-'+String(m+1).padStart(2,'0');}
+ const periods=[];
  while(cursor<=target&&periods.length<=asset.lifeMonths+240){
   if(!recorded.has(cursor))periods.push(cursor);
   const y=Number(cursor.slice(0,4)),m=Number(cursor.slice(5,7));
@@ -234,13 +239,13 @@ function depreciateAsset(id,target){
  a.nextEntry=sequence;return posted;
 }
 let automaticDepreciationBusy=false,automaticDepreciationTimer=null;
-function runAutomaticDepreciation(){
+async function runAutomaticDepreciation(){
  if(automaticDepreciationBusy||!bridge())return;
  automaticDepreciationBusy=true;
  try{
   const a=state(),target=lastCompletedMonth(),assets=a.fixedAssets||[];let total=0;
   for(const asset of assets)if(asset.status==='active')total+=depreciateAsset(asset.id,target);
-  if(total){save();if(dialog&&activeTab==='assets')render();}
+  if(total){const persisted=await save();if(persisted&&!persisted.ok)throw persisted.error||new Error('No se confirmó la persistencia SQLite de la depreciación.');if(dialog&&activeTab==='assets')render();}
  }catch(error){console.error('No se pudo completar la depreciación automática:',error);}
  finally{automaticDepreciationBusy=false;}
 }
