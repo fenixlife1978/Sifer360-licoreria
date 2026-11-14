@@ -229,3 +229,14 @@ test('las colecciones con IDs locales no globales usan eventId para evitar colis
   assert.equal(result.accepted.length, 8);
   for (const collection of collections) assert.equal(db.state()[collection].length, 2, collection);
 });
+
+test('el evento de eliminación de venta suspendida conserva el tombstone y elimina solo esa venta', () => {
+  const db = fixture();
+  const held = { id: 'HOLD-01-a', cashbox: '01', cart: [{ code: 'A', qty: 1 }], ts: 100 };
+  db.apply([{ eventId: 'held-add', deviceId: 'device-a', deviceSeq: 1, eventType: 'held-sale', entityType: 'held', entityId: held.id, occurredAt: new Date(100).toISOString(), payload: { record: held } }]);
+  const tombstone = { id: held.id, cashbox: '01', ts: 200 };
+  const result = db.apply([{ eventId: 'held-delete', deviceId: 'device-a', deviceSeq: 2, eventType: 'held-sale-delete', entityType: 'heldDeletedIds', entityId: tombstone.id, occurredAt: new Date(200).toISOString(), payload: { record: tombstone } }]);
+  assert.deepEqual(result.accepted, ['held-delete']);
+  assert.deepEqual(db.state().held, []);
+  assert.deepEqual(db.state().heldDeletedIds, [tombstone]);
+});
