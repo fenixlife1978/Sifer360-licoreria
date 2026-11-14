@@ -22,8 +22,8 @@ test('cashier POS is blocked until an opening matches the logged-in cashier and 
 });
 
 test('cashier opening state is isolated to the authenticated browser session',()=>{
-  const start=main.indexOf('function readActiveOpening()');
-  const end=main.indexOf('function zExpectedByMethod',start);
+  const start=main.indexOf('function readActiveOpening(boxOverride)');
+  const end=main.indexOf('function upsertOpeningState',start);
   const block=main.slice(start,end);
   assert.match(block,/if\(user\.role==='cajero'\)/);
   assert.match(block,/String\(sessionValue\.username\|\|''\)!==String\(user\.username\|\|''\)/);
