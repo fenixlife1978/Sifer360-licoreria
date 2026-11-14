@@ -118,6 +118,10 @@ function createDurableOutbox({ directory, deviceId, fsImpl = fs, pathImpl = path
     pending: () => readState().events.filter(event => event.status === 'pending').map(event => ({ ...event, payload: JSON.parse(JSON.stringify(event.payload)) })),
     acknowledge: ids => mark(ids, 'acked'),
     conflict: (ids, reason) => mark(ids, 'conflict', reason),
+    get: eventId => {
+      const event = readState().events.find(item => item.eventId === String(eventId));
+      return event ? { ...event, payload: JSON.parse(JSON.stringify(event.payload)) } : null;
+    },
     status: () => {
       const events = readState().events;
       return {
