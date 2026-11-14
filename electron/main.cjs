@@ -162,7 +162,7 @@ function persistDb() {
   writeDurableFile(temporary, Buffer.from(bytes));
   if (fs.existsSync(target)) {
     fs.copyFileSync(target, backupTemporary);
-    const backupFd = fs.openSync(backupTemporary, 'r');
+    const backupFd = fs.openSync(backupTemporary, 'r+');
     try { fs.fsyncSync(backupFd); } finally { fs.closeSync(backupFd); }
     fs.renameSync(backupTemporary, backup);
   }
