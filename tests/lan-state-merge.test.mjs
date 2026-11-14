@@ -85,3 +85,11 @@ test('merge conserva movimientos de Kardex, lotes y ventas suspendidas con IDs l
   assert.equal(merged.lotesSudeban.length, 2);
   assert.equal(merged.held.length, 2);
 });
+
+test('un tombstone también elimina registros suspendidos heredados sin id', () => {
+  const merged = mergeStateRecords(
+    { held: [{ cashbox: '01', ts: 100, cart: [] }], heldDeletedIds: [] },
+    { held: [], heldDeletedIds: [{ id: 'HOLD-LEGACY-100', cashbox: '01', ts: 200 }] }
+  );
+  assert.deepEqual(merged.held, []);
+});
