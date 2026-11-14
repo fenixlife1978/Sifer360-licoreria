@@ -526,6 +526,7 @@ let networkSyncTimer=null,networkSyncBusy=false,networkLastStatus='local';
 let saveQueue=Promise.resolve(),saveSequence=0,persistenceBlocked=false;
 let operationBaseline = null;
 let operationCaptureBusy = false;
+let operationCapturePromise=Promise.resolve();
 const OPERATION_COLLECTIONS = [
   ['sales','sale'], ['purchases','purchase'], ['cxc','receivable'], ['cxp','payable'],
   ['cortesZ','cash-close'], ['kardex','inventory-movement'], ['counts','inventory-count'],
@@ -595,8 +596,13 @@ async function networkSyncAttempt(){
   if(networkSyncBusy||!window.posDesktop||typeof window.posDesktop.networkSyncNow!=='function')return;
   networkSyncBusy=true;
   try{
-    let pendingSave;
-    do{pendingSave=window.__SIFER_LAST_SAVE;if(pendingSave)await pendingSave;}while(pendingSave!==window.__SIFER_LAST_SAVE);
+    let pendingSave,captureTask;
+    do{
+      pendingSave=window.__SIFER_LAST_SAVE;
+      captureTask=operationCapturePromise;
+      if(pendingSave)await pendingSave;
+      await captureTask;
+    }while(pendingSave!==window.__SIFER_LAST_SAVE||captureTask!==operationCapturePromise);
     const local=stateSnapshot();
     const syncRevision=saveSequence;
     const result=await window.posDesktop.networkSyncNow(local);
@@ -654,7 +660,7 @@ function save(){
   });
   saveQueue=pending.then(()=>undefined,()=>undefined);
   window.__SIFER_LAST_SAVE=pending;
-  captureNewOperations();
+  operationCapturePromise=operationCapturePromise.then(()=>captureNewOperations());
   scheduleNetworkSync();
   return pending;
 }
