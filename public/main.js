@@ -3517,7 +3517,8 @@ function newOperacionCambiariaDlg(opts, onDone){
     w:680,body:el,
     foot:[
       {label:'Cancelar',fn:()=>{if(onDone)onDone();return false;}},
-      {label:'Guardar y Generar Comprobante',primary:true,fn:()=>{
+      {label:'Guardar y Generar Comprobante',primary:true,fn:async()=>{
+        const rollbackState=JSON.parse(JSON.stringify(S));
         const tipo=$('#opTipo',el).value;
         const nombre=$('#opVendNombre',el).value.trim();
         const ci=$('#opVendCi',el).value.trim();
@@ -3534,6 +3535,11 @@ function newOperacionCambiariaDlg(opts, onDone){
         if(!nombre||!ci){msg('Indique el nombre y la cédula/RIF del vendedor de divisas.','bad');return false;}
         if(!montoUsd||montoUsd<=0){msg('Indique el monto en US$ de la operación.','bad');return false;}
         if(!refBs){msg('Indique el número de referencia del pago en Bolívares para la trazabilidad bancaria.','bad');return false;}
+        const box=String(currentCaja());
+        if(!box||box==='SIN-ASIGNAR'){msg('Asigne una caja antes de registrar una operación cambiaria.','bad');return false;}
+        let movementNo;try{movementNo=await nextCajaSequence('movement',box);}catch(error){msg('No se pudo reservar el consecutivo de la operación cambiaria: '+error.message,'bad');return false;}
+        const boxCode=box.replace(/\W/g,'');
+        const movementId='MOV-'+boxCode+'-'+pad(movementNo,6);
 
         let destinoTipo='CAJA', destinoNombre='Caja Principal', cxpId=null, cxpDoc=null;
         let destinatarioZelle='', titularZelle='', confZelle='', seriales='';
@@ -3547,11 +3553,14 @@ function newOperacionCambiariaDlg(opts, onDone){
           if(cxpId){
             const it=(S.cxp||[]).find(x=>x.id===cxpId);
             if(it){
+              const remaining=r2(Math.max(0,Number(it.total||0)-Number(it.paid||0)));
+              if(montoUsd-remaining>0.01){msg('El pago Zelle supera el saldo pendiente de la obligación CxP ('+usd(remaining)+').','bad');return false;}
               destinoNombre=it.supplier.name;
               cxpDoc=it.doc;
-              /* Abonar o cancelar automáticamente la obligación en CxP */
+              /* El pago queda numerado en la secuencia de movimientos de esta caja. */
               if(!it.payments)it.payments=[];
               it.payments.push({
+                id:movementId,cashbox:box,cashboxSequence:movementNo,
                 ts:Date.now(),
                 method:'Zelle (USD) - Triangulado',
                 cur:'USD',
@@ -3560,7 +3569,7 @@ function newOperacionCambiariaDlg(opts, onDone){
                 ref:'ZEL:'+(confZelle||'S/R')+' | PM/TRF:'+refBs,
                 note:'Pagado vía compra Zelle a '+nombre+' ('+ci+')'
               });
-              it.paid=r2((it.paid||0)+montoUsd);
+              it.paid=r2(Math.min(Number(it.total||0),(it.paid||0)+montoUsd));
             }
           }else{
             destinoNombre=titularZelle||'Proveedor Externo';
@@ -3579,9 +3588,9 @@ function newOperacionCambiariaDlg(opts, onDone){
           destinoNombre=$('#opDestBs',el)?$('#opDestBs',el).value.trim():'Cuenta Bancaria Empresa';
         }
 
-        const id='CAMB-'+pad((S.cambiosDivisas||[]).length+1,4);
+        const id='CAMB-'+boxCode+'-'+pad(movementNo,6);
         const op={
-          id,tipo,ts:Date.now(),
+          id,tipo,ts:Date.now(),cashbox:box,sequence:movementNo,
           vendedor:{nombre,ci,tel},
           montoUsd,tasa,tasaBcv:S.cfg.rate,montoBs,
           medioBs,bancoOrigen:bancoOrig,bancoDestino:bancoDest,refBs,
@@ -3592,7 +3601,8 @@ function newOperacionCambiariaDlg(opts, onDone){
 
         if(!S.cambiosDivisas)S.cambiosDivisas=[];
         S.cambiosDivisas.push(op);
-        save();
+        const persisted=await save();
+        if(!persisted||!persisted.ok){Object.assign(S,rollbackState);msg('SQLite/servidor no confirmó la operación cambiaria; se restauró el estado anterior.','bad');return false;}
         msg('Operación cambiaria '+id+' registrada con éxito.');
         if(onDone)onDone();
         printComprobanteDivisas(op);
@@ -6120,7 +6130,7 @@ async function nextCajaSequence(operation,box=currentCaja()){
   else if(operation.startsWith('retention-')){const period=operation.slice('retention-'.length);minimum=Math.max(0,...(S.retencionesIva||[]).filter(x=>String(x.cashbox||'')===String(box)&&String(x.periodo||'')===period).map(x=>Number(x.sequence)||Number(String(x.id||'').slice(-8))||0))+1;}
   else if(operation==='cxp')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
   else if(operation==='cashea')minimum=Math.max(0,...(S.casheaMovimientos||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
-  else if(operation==='movement')minimum=Math.max(0,...(S.movimientosCaja||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0),...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)),...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)))+1;
+  else if(operation==='movement')minimum=Math.max(0,...(S.movimientosCaja||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0),...(S.cambiosDivisas||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0),...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)),...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)))+1;
   else if(operation==='refund'||operation==='return')minimum=Math.max(0,...(S.returns||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.returnNo||x.sequence)||0))+1;
   const cached=cajaSeqs()[String(box)]||{};
   const cacheKey={invoice:'invoice',control:'ctrl',z:'z',void:'void',refund:'refund',return:'refund'}[operation];
