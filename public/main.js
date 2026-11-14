@@ -2457,7 +2457,7 @@ function comprasDlg(initialTab){
   };
 
   const renderPurchaseHist=v=>{
-    const list=(S.purchases||[]).slice().sort((a,b)=>b.no-a.no);
+    const list=(S.purchases||[]).filter(x=>String(x.cashbox||currentCaja())===currentCaja()).slice().sort((a,b)=>b.no-a.no);
     v.innerHTML=
       '<div class="gridwrap tallwrap"><table class="grid" style="min-width:820px">'+
         '<thead><tr><th>Compra Nº</th><th>Fac. Prov.</th><th>Fecha</th><th>Proveedor</th><th>Condición</th><th class="r">Total US$</th><th class="r">Pagado / Retenido US$</th><th class="r">Saldo CxP</th><th>Acción</th></tr></thead>'+
@@ -2481,7 +2481,7 @@ function comprasDlg(initialTab){
     v.onclick=e=>{
       const b=e.target.closest('[data-void-comp]');
       if(!b)return;
-      const c=S.purchases.find(x=>x.no===+b.dataset.voidComp);
+      const c=S.purchases.find(x=>x.no===+b.dataset.voidComp&&String(x.cashbox||currentCaja())===currentCaja());
       if(!c||c.void)return;
       c.void=true;
       c.lines.forEach(l=>{
@@ -2494,8 +2494,8 @@ function comprasDlg(initialTab){
           });
         }
       });
-      (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
-      (S.retencionesIva||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||''))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
+      (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja())).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
+      (S.retencionesIva||[]).filter(x=>(Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||'')&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
       save();renderAll();renderPurchaseHist(v);
       msg('Compra COM-'+pad(c.no)+' anulada. Se revirtió el ingreso en inventario y Kardex.');
     };
@@ -2591,7 +2591,7 @@ function comprasDlg(initialTab){
       comp.retIvaDoc=retDoc;
       if(!S.retencionesIva)S.retencionesIva=[];
       S.retencionesIva.push({
-        id:retDoc,ts,periodo,supplier:Object.assign({},sup),purchaseNo:no,docProv,
+        id:retDoc,ts,periodo,cashbox:currentCaja(),supplier:Object.assign({},sup),purchaseNo:no,docProv,
         ctrlProv:comp.ctrlProv,base,iva,pct:retPct,rate:S.cfg.rate,
         retainedUsd:retUsd,retainedBs:retBs,
         estado:'Pendiente de revisión del contador',declarada:false,pagada:false,comprobanteEntregado:false,observaciones:''
@@ -3185,7 +3185,7 @@ function cxpDlg(selId){
         note:$('#pgNote',el).value.trim()||'Pago a proveedor'
       });
       if(item.purchaseNo){
-        const comp=(S.purchases||[]).find(x=>x.no===item.purchaseNo);
+        const comp=(S.purchases||[]).find(x=>x.no===item.purchaseNo&&String(x.cashbox||currentCaja())===String(item.cashbox||currentCaja()));
         if(comp)comp.paid=item.paid;
       }
       save();draw();
