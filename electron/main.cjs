@@ -470,7 +470,7 @@ function registerNetworkIpc() {
     }
     if (networkConfig.role !== 'client' || !networkConfig.host) return { ok: false, state, role: 'standalone', message: 'Esta caja no está conectada a un servidor.' };
     const headers = { Authorization: 'Bearer ' + networkConfig.token, 'Content-Type': 'application/json' };
-    const pendingEvents = all("SELECT event_id AS eventId,device_id AS deviceId,device_seq AS deviceSeq,event_type AS eventType,entity_type AS entityType,entity_id AS entityId,occurred_at AS occurredAt,payload FROM local_operation_outbox WHERE status='pending' ORDER BY device_seq LIMIT 500").map(ev => ({ ...ev, payload: JSON.parse(ev.payload) }));
+    const pendingEvents = networkConfig.role === 'client' ? [] : all("SELECT event_id AS eventId,device_id AS deviceId,device_seq AS deviceSeq,event_type AS eventType,entity_type AS entityType,entity_id AS entityId,occurred_at AS occurredAt,payload FROM local_operation_outbox WHERE status='pending' ORDER BY device_seq LIMIT 500").map(ev => ({ ...ev, payload: JSON.parse(ev.payload) }));
     if (pendingEvents.length) {
       const eventResponse = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/events', {
         method: 'POST', headers, body: JSON.stringify({ events: pendingEvents }), signal: AbortSignal.timeout(8000)
@@ -535,13 +535,21 @@ function registerIpc() {
     persistDb();
     return { ok: true, durable: 'sqlite-file' };
   });
-  ipcMain.handle('posdb:list-documents', (_e, filter = {}) => {
+  ipcMain.handle('posdb:list-documents', async (_e, filter = {}) => {
+    if (networkConfig.role === 'client') {
+      const params = new URLSearchParams();
+      if (filter.transactionType) params.set('transactionType', String(filter.transactionType));
+      if (filter.transactionId) params.set('transactionId', String(filter.transactionId));
+      const result = await clientApi('/api/documents' + (params.size ? '?' + params.toString() : ''));
+      return result.documents || [];
+    }
     if (databaseMode !== 'sqlite') return [];
     const type = filter.transactionType;
     if (type === 'sale' || type === 'purchase') return all('SELECT id,transaction_type AS transactionType,transaction_id AS transactionId,file_name AS fileName,mime_type AS mimeType,file_size AS fileSize,sha256,created_at AS createdAt,notes FROM fiscal_documents WHERE transaction_type=? AND transaction_id=? ORDER BY created_at DESC', [type, String(filter.transactionId || '')]);
     return all('SELECT id,transaction_type AS transactionType,transaction_id AS transactionId,file_name AS fileName,mime_type AS mimeType,file_size AS fileSize,sha256,created_at AS createdAt,notes FROM fiscal_documents ORDER BY created_at DESC');
   });
-  ipcMain.handle('posdb:save-document', (_e, doc) => {
+  ipcMain.handle('posdb:save-document', async (_e, doc) => {
+    if (networkConfig.role === 'client') return clientApi('/api/documents', { method: 'POST', body: JSON.stringify(doc) });
     if (databaseMode !== 'sqlite') throw new Error('SQLite local no está seleccionado.');
     if (!doc || !doc.id || !['sale','purchase'].includes(doc.transactionType) || !doc.transactionId || !doc.dataUrl) throw new Error('Documento incompleto.');
     if (String(doc.dataUrl).length > 4_300_000) throw new Error('El archivo supera el límite local de 3 MB.');
@@ -550,11 +558,16 @@ function registerIpc() {
     persistDb();
     return { ok: true };
   });
-  ipcMain.handle('posdb:get-document', (_e, id) => {
+  ipcMain.handle('posdb:get-document', async (_e, id) => {
+    if (networkConfig.role === 'client') {
+      const result = await clientApi('/api/documents/' + encodeURIComponent(String(id)));
+      return result.document || null;
+    }
     if (databaseMode !== 'sqlite') return null;
     return one('SELECT id,transaction_type AS transactionType,transaction_id AS transactionId,file_name AS fileName,mime_type AS mimeType,file_size AS fileSize,sha256,data_url AS dataUrl,created_at AS createdAt,notes FROM fiscal_documents WHERE id=?', [String(id)]);
   });
-  ipcMain.handle('posdb:delete-document', (_e, id) => {
+  ipcMain.handle('posdb:delete-document', async (_e, id) => {
+    if (networkConfig.role === 'client') return clientApi('/api/documents/' + encodeURIComponent(String(id)), { method: 'DELETE' });
     if (databaseMode !== 'sqlite') throw new Error('SQLite local no está seleccionado.');
     run('DELETE FROM fiscal_documents WHERE id=?', [String(id)]);
     persistDb();
