@@ -523,6 +523,7 @@ const posSqliteDriver = {
 };
 
 let networkSyncTimer=null,networkSyncBusy=false,networkLastStatus='local';
+let saveQueue=Promise.resolve(),saveSequence=0,persistenceBlocked=false;
 let operationBaseline = null;
 let operationCaptureBusy = false;
 const OPERATION_COLLECTIONS = [
@@ -609,12 +610,37 @@ function scheduleNetworkSync(){
   networkSyncTimer=setTimeout(()=>{networkSyncAttempt();},1800);
 }
 function save(){
+  if(persistenceBlocked){
+    const error=new Error('Las escrituras están bloqueadas porque la última operación no pudo confirmarse ni recargarse desde la base autoritativa. Reconecte o reinicie para recuperar el estado.');
+    persistenceError(error);
+    return Promise.resolve({ok:false,durable:'none',error});
+  }
   const state=stateSnapshot();
-  const pending=posSqliteDriver.saveState(state).then(result=>{
-    if(!result||!result.ok)throw (result&&result.error)||new Error('No se confirmó el guardado local.');
+  const sequence=++saveSequence;
+  const pending=saveQueue.then(()=>posSqliteDriver.saveState(state)).then(result=>{
+    if(!result||!result.ok)throw (result&&result.error)||new Error('SQLite/servidor no confirmó el guardado.');
     try{window.dispatchEvent(new Event('sifer:state-saved'));}catch(e){}
     return result;
-  }).catch(e=>{persistenceError(e);return {ok:false,durable:'none',error:e};});
+  }).catch(async error=>{
+    persistenceError(error);
+    if(sequence===saveSequence){
+      try{
+        const authoritative=await posSqliteDriver.loadState();
+        if(!authoritative||typeof authoritative!=='object')throw new Error('La base autoritativa no devolvió un estado recuperable.');
+        for(const key of Object.keys(S))delete S[key];
+        Object.assign(S,authoritative);
+        persistenceBlocked=false;
+        try{renderAll();}catch(e){}
+        const node=$('#sbMsg')||$('#sbStatus');
+        if(node){node.textContent='OPERACIÓN NO CONFIRMADA: se recargó el último estado durable. Verifique antes de continuar.';node.classList.add('bad');}
+      }catch(recoveryError){
+        persistenceBlocked=true;
+        persistenceError(new Error('No se confirmó la operación y tampoco se pudo recargar el estado autoritativo. Las nuevas escrituras quedan bloqueadas. '+(recoveryError&&recoveryError.message||recoveryError)));
+      }
+    }
+    return {ok:false,durable:'none',error};
+  });
+  saveQueue=pending.then(()=>undefined,()=>undefined);
   window.__SIFER_LAST_SAVE=pending;
   captureNewOperations();
   scheduleNetworkSync();
