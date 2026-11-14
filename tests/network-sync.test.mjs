@@ -302,7 +302,7 @@ test('un conflicto de evento bloquea el envío del snapshot completo para no sob
 test('la fusión de snapshots conserva cajas separadas para CASHEA y cambios de divisas', () => {
   assert.match(stateMerge, /'casheaLiquidaciones','cambiosDivisas'/);
   assert.match(stateMerge, /timestampValue = value =>/);
-  assert.match(stateMerge, /timestampValue\(item\.updatedAt \|\| item\.ts \|\| item\.createdAt\)/);
+  assert.match(stateMerge, /timestampValue\(item\.updatedAt \|\| item\.voidTs \|\| item\.ts \|\| item\.createdAt\)/);
   assert.match(pos, /'casheaLiquidaciones','cambiosDivisas'/);
   assert.match(pos, /Operación guardada en la cola LAN local/);
   assert.match(pos, /Conflicto LAN en/);
