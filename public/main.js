@@ -575,7 +575,7 @@ function mergeRemoteSnapshot(local,remote){
     if(key==='sicoven')continue; // Ignora snapshots heredados del módulo contable retirado.
     if(!Array.isArray(value)||!Array.isArray(local[key])){merged[key]=value;continue;}
     const map=new Map();
-    const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
+    const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
     for(const item of local[key])map.set(ident(item),item);
     for(const item of value)map.set(ident(item),item);
     merged[key]=[...map.values()];
@@ -684,6 +684,7 @@ function load(){
     if(Array.isArray(d.counts))S.counts=d.counts;
     if(Array.isArray(d.lotesSudeban))S.lotesSudeban=d.lotesSudeban;
     if(Array.isArray(d.retencionesIva))S.retencionesIva=d.retencionesIva;
+    if(Array.isArray(d.casheaMovimientos))S.casheaMovimientos=d.casheaMovimientos;
     if(Array.isArray(d.documents))S.documents=d.documents;
     else if(!S.documents)S.documents=[];
     S.accounting=d.accounting&&typeof d.accounting==='object'?d.accounting:(S.accounting||{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false});
@@ -6090,6 +6091,7 @@ async function nextCajaSequence(operation,box=currentCaja()){
   else if(operation==='cxc')minimum=Math.max(0,...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
   else if(operation.startsWith('retention-')){const period=operation.slice('retention-'.length);minimum=Math.max(0,...(S.retencionesIva||[]).filter(x=>String(x.cashbox||'')===String(box)&&String(x.periodo||'')===period).map(x=>Number(x.sequence)||Number(String(x.id||'').slice(-8))||0))+1;}
   else if(operation==='cxp')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
+  else if(operation==='cashea')minimum=Math.max(0,...(S.casheaMovimientos||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
   else if(operation==='refund'||operation==='return')minimum=Math.max(0,...(S.returns||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.returnNo||x.sequence)||0))+1;
   const cached=cajaSeqs()[String(box)]||{};
   const cacheKey={invoice:'invoice',control:'ctrl',z:'z',void:'void',refund:'refund',return:'refund'}[operation];
