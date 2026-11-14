@@ -598,6 +598,24 @@ async function networkSyncAttempt(){
       if(pendingSave)await pendingSave;
       await captureTask;
     }while(pendingSave!==window.__SIFER_LAST_SAVE||captureTask!==operationCapturePromise);
+    if(persistenceBlocked){
+      const flushed=typeof window.posDesktop.networkFlushOutbox==='function'
+        ?await window.posDesktop.networkFlushOutbox()
+        :{accepted:[]};
+      const authoritative=await posSqliteDriver.loadState();
+      if(!authoritative||typeof authoritative!=='object')throw new Error('No se pudo recuperar el estado autoritativo después de la reconexión.');
+      for(const key of Object.keys(S))delete S[key];
+      Object.assign(S,authoritative);
+      primeOperationBaseline();
+      persistenceBlocked=false;
+      try{renderAll();}catch(e){}
+      networkLastStatus='recovered';
+      const status=$('#sbMsg');
+      if(status)status.textContent=(flushed&&flushed.accepted&&flushed.accepted.length)
+        ?'Reconexión confirmada · '+flushed.accepted.length+' operación(es) pendiente(s) aceptada(s) por el servidor; se recargó el estado durable.'
+        :'Estado autoritativo recargado · no se enviaron cambios locales no confirmados.';
+      return;
+    }
     const local=stateSnapshot();
     const syncRevision=saveSequence;
     const result=await window.posDesktop.networkSyncNow(local);
