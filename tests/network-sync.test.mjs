@@ -20,7 +20,8 @@ test('el ejecutable implementa un servidor LAN con puerto configurable', () => {
 });
 
 test('las rutas de sincronización requieren clave de emparejamiento', () => {
-  assert.match(electron, /authorization !== 'Bearer ' \+ networkConfig\.token/);
+  assert.match(electron, /hasValidBearerToken\(req\.headers\.authorization, networkConfig\.token\)/);
+  assert.match(electron, /require\('\.\/lan-auth\.cjs'\)/);
   assert.match(electron, /crypto\.randomBytes\(24\)\.toString\('hex'\)/);
   assert.match(electron, /network:configure-client/);
 });
