@@ -48,8 +48,8 @@ function migrateCashboxSequenceCategories({ db, state, persist, restore }) {
     for (const cashbox of boxes) {
       const movementMax = maxFor(list('movimientosCaja').filter(item => String(item.cashbox || '') === cashbox).map(item => item.sequence));
       const exchangeMax = maxFor(list('cambiosDivisas').filter(item => String(item.cashbox || '') === cashbox).map(item => item.sequence));
-      const cxcPaymentMax = maxFor(list('cxc').filter(item => String(item.cashbox || '') === cashbox).flatMap(item => (item.payments || []).filter(payment => String(payment.cashbox || cashbox) === cashbox).map(payment => payment.cashboxSequence)));
-      const cxpPaymentMax = maxFor(list('cxp').filter(item => String(item.cashbox || '') === cashbox).flatMap(item => (item.payments || []).filter(payment => String(payment.cashbox || cashbox) === cashbox).map(payment => payment.cashboxSequence)));
+      const cxcPaymentMax = maxFor(list('cxc').flatMap(item => (Array.isArray(item.payments) ? item.payments : []).filter(payment => String(payment.cashbox || item.cashbox || '') === cashbox).map(payment => payment.cashboxSequence)));
+      const cxpPaymentMax = maxFor(list('cxp').flatMap(item => (Array.isArray(item.payments) ? item.payments : []).filter(payment => String(payment.cashbox || item.cashbox || '') === cashbox).map(payment => payment.cashboxSequence)));
 
       run('INSERT INTO cashbox_sequences(cashbox_id,operation_type,last_value) VALUES(?,?,?) ON CONFLICT(cashbox_id,operation_type) DO UPDATE SET last_value=excluded.last_value,updated_at=CURRENT_TIMESTAMP', [cashbox, 'movement', movementMax]);
       for (const [operation, value] of [['currency-exchange', exchangeMax], ['cxc-payment', cxcPaymentMax], ['cxp-payment', cxpPaymentMax]]) {
