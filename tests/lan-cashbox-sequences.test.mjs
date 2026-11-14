@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const main = readFileSync(new URL('../electron/main.cjs', import.meta.url), 'utf8');
+const eventStore = readFileSync(new URL('../electron/lan-event-store.cjs', import.meta.url), 'utf8');
 const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
 const pos = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
 
@@ -96,10 +97,10 @@ test('la interfaz permite iniciar servidor, descubrir equipos y emparejar client
 });
 
 test('un conflicto de entidad no se persiste como evento recibido ni se confirma como ACK', () => {
-  const conflict = main.indexOf("reason: 'entity-already-exists-with-different-data'");
-  const rejected = main.indexOf("continue;", conflict);
-  const received = main.indexOf("INSERT INTO network_received_operations", conflict);
-  const accepted = main.indexOf("accepted.push(String(ev.eventId))", conflict);
+  const conflict = eventStore.indexOf("reason: 'entity-already-exists-with-different-data'");
+  const rejected = eventStore.indexOf("continue;", conflict);
+  const received = eventStore.indexOf("INSERT INTO network_received_operations", conflict);
+  const accepted = eventStore.indexOf("accepted.push(eventId)", conflict);
   assert.ok(conflict >= 0, 'debe detectar una entidad existente con datos diferentes');
   assert.ok(rejected > conflict && received > rejected, 'debe descartar el evento antes de insertarlo como recibido');
   assert.ok(accepted > received, 'solo los eventos validados pueden quedar aceptados');
@@ -128,9 +129,9 @@ test('las operaciones cambiarias y los pagos Zelle vinculados a CxP también que
 test('el servidor restaura la instantánea SQLite si falla la persistencia de un lote LAN', () => {
   assert.match(main, /let SqlDatabase;/);
   assert.match(main, /function restoreDatabaseSnapshot\(snapshot\)/);
-  assert.match(main, /const databaseBefore = db\.export\(\)/);
-  assert.match(main, /catch \(persistError\) \{\s*restoreDatabaseSnapshot\(databaseBefore\)/);
-  assert.match(main, /restauró el estado anterior y rechazó el lote/);
+  assert.match(eventStore, /const databaseBefore = db\.export\(\)/);
+  assert.match(eventStore, /catch \(persistError\) \{\s*restore\(databaseBefore\)/);
+  assert.match(eventStore, /restauró el estado anterior y rechazó el lote/);
 });
 
 test('las reservas correlativas y documentos fiscales revierten memoria si falla el guardado SQLite', () => {
