@@ -31,9 +31,10 @@ function applyIncomingEvents({ db, events, persist, restore, statePayloadHash })
   db.run('BEGIN IMMEDIATE');
   try {
     for (const event of events) {
-      if (!event || !event.eventId || !event.deviceId ||
+      if (!event || !event.eventId || String(event.eventId).length > 256 || !event.deviceId || String(event.deviceId).length > 128 ||
           !Number.isSafeInteger(Number(event.deviceSeq)) || Number(event.deviceSeq) < 1 ||
-          !event.eventType || !event.entityType || !event.entityId ||
+          !event.eventType || String(event.eventType).length > 64 || !event.entityType || String(event.entityType).length > 64 ||
+          !event.entityId || String(event.entityId).length > 256 || String(event.occurredAt || '').length > 100 ||
           !event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) {
         throw new Error('Operación inválida.');
       }
@@ -73,6 +74,8 @@ function applyIncomingEvents({ db, events, persist, restore, statePayloadHash })
       if (!allowedCollections.has(collection) || !record || typeof record !== 'object' || Array.isArray(record)) {
         throw new Error('La operación no contiene una entidad permitida y un registro válido.');
       }
+      const recordId = String(record.id ?? record.uuid ?? record.eventId ?? record.no ?? record.number ?? record.ctrlNo ?? record.code ?? '');
+      if (!recordId || recordId !== entityId) throw new Error('El identificador de entidad no coincide con el identificador del registro.');
 
       let state = null;
       let records = [];
