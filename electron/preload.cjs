@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('posDesktop', {
   fiscalPrinterSelectFile: kind => ipcRenderer.invoke('fiscal-printer:select-file', kind),
   fiscalPrinterStatus: profile => ipcRenderer.invoke('fiscal-printer:status', profile),
   fiscalPrinterTestPort: profile => ipcRenderer.invoke('fiscal-printer:test-port', profile),
+  fiscalPrinterTestPnp: profile => ipcRenderer.invoke('fiscal-printer:test-pnp', profile),
   fiscalPrinterTestBridge: profile => ipcRenderer.invoke('fiscal-printer:test-bridge', profile),
   fiscalPrinterEmitInvoice: (profile, invoice) => ipcRenderer.invoke('fiscal-printer:emit-invoice', profile, invoice)
 });
