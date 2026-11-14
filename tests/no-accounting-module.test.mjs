@@ -15,7 +15,7 @@ test('general accounting module assets and navigation are completely absent', ()
     '../public/accountant-dashboard.css',
     '../public/data/plan-cuentas-predeterminado-ven-nif.json'
   ]) assert.equal(existsSync(new URL(path, import.meta.url)), false, path);
-  assert.doesNotMatch(html, /accounting\\.(?:js|css)|accountant-dashboard/);
+  assert.doesNotMatch(html, /accounting\.(?:js|css)|accountant-dashboard/);
   assert.doesNotMatch(main, /SIFERAccounting|SIFERAccountantDashboard|openAccountingModule|accountingSourceId|accountingEntryId|Referencia contable|Contabilidad VEN-NIF|accounting:/i);
   assert.doesNotMatch(access, /SIFERAccountantDashboard|accounting|contabilidad/i);
   assert.doesNotMatch(styles, /accounting|accountant|contabilidad|btnAccountingTop/i);
