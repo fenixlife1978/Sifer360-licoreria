@@ -246,8 +246,10 @@ function depreciateAsset(id,target){
  let posted=0,usedUsd=alreadyUsd,usedBs=alreadyBs,count=countBefore,sequence=nextEntrySequence(a);
  for(const month of periods){
   if(count>=asset.lifeMonths)break;
-  const debitUsd=Math.min(Number(asset.monthlyUsd)||0,Math.max(0,asset.costUsd-asset.residualUsd-usedUsd));
-  const debitBs=Math.min(Number(asset.monthlyBs)||0,Math.max(0,asset.costBs-asset.residualBs-usedBs));
+  const remainingUsd=Math.max(0,Math.round((Number(asset.costUsd)-Number(asset.residualUsd)-usedUsd)*100)/100);
+  const remainingBs=Math.max(0,Math.round((Number(asset.costBs)-Number(asset.residualBs)-usedBs)*100)/100);
+  const debitUsd=Math.min(Math.round((Number(asset.monthlyUsd)||0)*100)/100,remainingUsd);
+  const debitBs=Math.min(Math.round((Number(asset.monthlyBs)||0)*100)/100,remainingBs);
   if(!(debitUsd>0)||!(debitBs>0))break;
   const entryId='ACC-'+String(sequence).padStart(6,'0'),y=Number(month.slice(0,4)),m=Number(month.slice(5,7)),date=month+'-'+String(new Date(y,m,0).getDate()).padStart(2,'0');
   a.entries.push({id:entryId,number:entryId,sequence,date,reference:asset.id+' / '+month,description:'Depreciación mensual automática · '+asset.name,rate:debitBs/debitUsd,lines:[{accountCode:expense.code,accountName:expense.name,debitUsd,creditUsd:0,debitBs,creditBs:0},{accountCode:accum.code,accountName:accum.name,debitUsd:0,creditUsd:debitUsd,debitBs:0,creditBs:debitBs}],totalDebitUsd:debitUsd,totalCreditUsd:debitUsd,totalDebitBs:debitBs,totalCreditBs:debitBs,status:'posted',createdAt:new Date().toISOString(),createdBy:'Sistema · depreciación automática',assetId:asset.id,depreciationPeriod:month});
