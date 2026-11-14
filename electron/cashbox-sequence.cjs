@@ -26,13 +26,15 @@ function allocateCashboxSequence({ db, cashboxId, operationType, minimumValue = 
     run('INSERT OR IGNORE INTO cashbox_sequences(cashbox_id,operation_type,last_value) VALUES(?,?,0)', [cashbox, operation]);
     run('UPDATE cashbox_sequences SET last_value=MAX(last_value,?)+1,updated_at=CURRENT_TIMESTAMP WHERE cashbox_id=? AND operation_type=?', [minimum - 1, cashbox, operation]);
     const row = one('SELECT last_value FROM cashbox_sequences WHERE cashbox_id=? AND operation_type=?', [cashbox, operation]);
+    const value = Number(row && row.last_value);
+    if (!Number.isSafeInteger(value) || value < 1) throw new Error('Se agotó el rango seguro de numeración para esta caja y operación.');
     db.run('COMMIT');
     try { persist(); }
     catch (error) {
       restore(databaseBefore);
       throw new Error('No se confirmó el consecutivo en disco; se restauró el estado anterior. ' + (error.message || String(error)));
     }
-    return { ok: true, cashbox, operation, value: Number(row.last_value) };
+    return { ok: true, cashbox, operation, value };
   } catch (error) {
     try { db.run('ROLLBACK'); } catch {}
     throw error;
