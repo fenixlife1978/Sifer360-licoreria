@@ -357,6 +357,15 @@ const posSqliteDriver = {
       const res = await window.posDesktop.loadState();
       return res ? res.state : null;
     }
+    // El último guardado síncrono en localStorage tiene prioridad: SQLite/IndexedDB
+    // puede estar terminando de confirmar su escritura cuando ocurre un apagón.
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {
+      console.warn('No se pudo leer el respaldo local inmediato:', e);
+    }
+    // Si el respaldo local falta o está dañado, recuperar la última copia SQLite.
     if (sqliteDb) {
       try {
         const stmt = sqliteDb.prepare('SELECT payload FROM app_state WHERE id=1');
@@ -371,12 +380,7 @@ const posSqliteDriver = {
         console.warn('Error leyendo estado desde SQLite:', e);
       }
     }
-    try {
-      const raw = localStorage.getItem(KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
+    return null;
   },
   async saveState(state) {
     const payload = JSON.stringify(state);
