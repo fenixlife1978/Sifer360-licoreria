@@ -48,3 +48,13 @@ test('los registros sin identificador se deduplican por contenido y los campos s
   assert.equal(merged.products.length, 1);
   assert.deepEqual(merged.cfg, { currency: 'VES', note: 'new' });
 });
+
+test('fusiona movimientos de caja y auditorías de tasa por identificador y caja sin reemplazar el historial', () => {
+  const merged = mergeStateRecords(
+    { movimientosCaja:[{id:'MOV-1',cashbox:'01',amount:10}], rateAudit:[{id:'RATE-1',cashbox:'01',newRate:800}], fiscalBankOperations:[{id:'BANK-1',amount:5}] },
+    { movimientosCaja:[{id:'MOV-2',cashbox:'02',amount:20}], rateAudit:[{id:'RATE-2',cashbox:'02',newRate:900}], fiscalBankOperations:[{id:'BANK-2',amount:15}] }
+  );
+  assert.deepEqual(merged.movimientosCaja.map(x=>x.id).sort(), ['MOV-1','MOV-2']);
+  assert.deepEqual(merged.rateAudit.map(x=>x.id).sort(), ['RATE-1','RATE-2']);
+  assert.deepEqual(merged.fiscalBankOperations.map(x=>x.id).sort(), ['BANK-1','BANK-2']);
+});
