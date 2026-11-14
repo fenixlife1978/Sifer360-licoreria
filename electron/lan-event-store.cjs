@@ -76,6 +76,9 @@ function applyIncomingEvents({ db, events, persist, restore, statePayloadHash })
       }
       const recordId = String(record.id ?? record.uuid ?? record.eventId ?? record.no ?? record.number ?? record.ctrlNo ?? record.code ?? '');
       if (!recordId || recordId !== entityId) throw new Error('El identificador de entidad no coincide con el identificador del registro.');
+      if (boxScopedCollections.has(collection) && (!/^[A-Za-z0-9_-]{1,32}$/.test(String(record.cashbox || '').trim()))) {
+        throw new Error('La operación LAN requiere una caja válida para esta entidad; no se aceptan registros sin caja.');
+      }
 
       let state = null;
       let records = [];
