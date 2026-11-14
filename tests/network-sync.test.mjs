@@ -42,7 +42,7 @@ test('la aplicación reintenta sincronización automáticamente en segundo plano
   assert.match(pos, /setInterval\(\(\)=>\{if\(window\.posDesktop&&typeof window\.posDesktop\.networkSyncNow==='function'\)networkSyncAttempt\(\)\},20000\)/);
   assert.match(pos, /scheduleNetworkSync\(\)/);
   assert.match(pos, /Sin confirmación del servidor · las operaciones nuevas permanecen en la cola LAN local/);
-  assert.match(pos, /const pending=posSqliteDriver\.saveState\(state\)\.then/);
+  assert.match(pos, /const pending=saveQueue\.then\(\(\)=>posSqliteDriver\.saveState\(state\)\)\.then/);
 });
 
 test('el administrador tiene panel para servidor y clientes LAN', () => {
