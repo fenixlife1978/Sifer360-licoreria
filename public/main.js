@@ -4727,11 +4727,19 @@ function ticketText(s){
   const row=(a,b)=>{a=String(a);b=String(b);return a+' '.repeat(Math.max(1,Wd-a.length-b.length))+b;};
   const cut=(t,n)=>t.length>n?t.slice(0,n-1)+'…':t;
   const L=[];
-  if(s.void)L.push(dln,ctr('*** VENTA ANULADA ***'),dln);
   const internalTicket=s.documentMode==='INTERNAL_THERMAL'||s.documentMode==='NO_PRINTER'||s.docType==='TICKET-INTERNO';
+  if(s.void)L.push(dln,ctr('*** VENTA ANULADA ***'),dln);
   L.push(ctr(cut(S.cfg.empresa.toUpperCase(),Wd)),ctr('RIF: '+S.cfg.rif));
   if(internalTicket)L.push(dln,ctr('TICKET DE VENTA'),ctr('NO VÁLIDO COMO FACTURA FISCAL'),dln);
-  L.push(dln,row((internalTicket?'VENTA Nº ':'RECIBO / TICKET: ')+pad(s.no),fmtDT(s.ts)),...(internalTicket?[]:[row('Nº Control: '+(s.ctrlNo||('00-'+pad(s.no,8))),'Tasa BCV: '+nf(s.rate||S.cfg.rate)+' Bs.')]),...(internalTicket?[row('Tasa BCV: '+nf(s.rate||S.cfg.rate)+' Bs.','Caja '+s.cashbox)]:[]),row('Cajero: '+S.cfg.cajero,'Caja '+S.cfg.caja),'Cliente: '+cut(s.client.name,Wd-9),'RIF/C.I.: '+s.client.rif,ln,row('CANT·U.M. x PRECIO (IVA)','SUBTOTAL US
+  L.push(dln,
+    row((internalTicket?'VENTA Nº ':'RECIBO / TICKET: ')+pad(s.no),fmtDT(s.ts)),
+    ...(internalTicket?[]:[row('Nº Control: '+(s.ctrlNo||('00-'+pad(s.no,8))),'Tasa BCV: '+nf(s.rate||S.cfg.rate)+' Bs.')]),
+    ...(internalTicket?[row('Tasa BCV: '+nf(s.rate||S.cfg.rate)+' Bs.','Caja '+s.cashbox)]:[]),
+    row('Cajero: '+(s.cashier||S.cfg.cajero),'Caja '+(s.cashbox||S.cfg.caja)),
+    'Cliente: '+cut(s.client.name,Wd-9),
+    'RIF/C.I.: '+s.client.rif,
+    ln,row('CANT·U.M. x PRECIO (IVA)','SUBTOTAL US$'),ln
+  );
   s.lines.forEach(l=>{
     const uLabel=(l.unit||'und').toUpperCase();
     const tTag=l.taxRate===0?'(E 0%)':(l.taxRate===8?'(R 8%)':(l.taxRate===31?'(A 31%)':'(G 16%)'));
@@ -4753,6 +4761,7 @@ function ticketText(s){
   L.push(row('Total I.V.A. US$',nf(s.iva)));
   if(s.igtf)L.push(row('IGTF (3 % Divisas) US$',nf(s.igtf)));
   const due=r2(s.total+s.igtf);
+  L.push(row('TOTAL US$',nf(due)),row('TOTAL Bs.',nf(due*(s.rate||S.cfg.rate))));
   s.pays.forEach(p=>{
     const refTxt=p.ref?(' Ref:'+p.ref):'';
     L.push(row(' '+cut(p.name+refTxt,26),(p.cur==='USD'?'US$ ':'Bs. ')+nf(p.amount)));
@@ -4762,55 +4771,12 @@ function ticketText(s){
     L.push(ln,ctr('PAGADO CON CASHEA (3 CUOTAS BNPL)'));
     L.push(row(' Aprobación / Token:',s.cashea.aprobacion));
     L.push(row(' C.I. Cliente:',s.cashea.ci||s.client.rif));
-    if(s.cashea.inicialUsd>0){
-      L.push(row(' Inicial en caja:',usd(s.cashea.inicialUsd)));
-    }
+    if(s.cashea.inicialUsd>0)L.push(row(' Inicial en caja:',usd(s.cashea.inicialUsd)));
     L.push(row(' Financiado Cashea:',usd(s.cashea.financiadoUsd)));
     L.push(row(' '+(s.cashea.cuotasCount||3)+' cuota(s) quincenales:',usd(s.cashea.cuotaUsd)+' c/u'));
   }
-  if(s.fiscal){L.push(ln,ctr('COPIA INTERNA · NO ES ORIGINAL FISCAL'),row('Documento fiscal:',s.fiscal.documentNumber),row('Serial máquina:',s.fiscal.serial));}
-  L.push(ln,ctr('¡GRACIAS POR SU COMPRA!'),ctr('Impresora Térmica 80mm · Control Interno'));
-  return L.join('\n');
-}
-),ln);
-  s.lines.forEach(l=>{
-    const uLabel=(l.unit||'und').toUpperCase();
-    const tTag=l.taxRate===0?'(E 0%)':(l.taxRate===8?'(R 8%)':(l.taxRate===31?'(A 31%)':'(G 16%)'));
-    L.push(cut(l.desc,Wd));
-    L.push(row('  '+fq(l.qty)+' '+uLabel+' x '+nf(l.price)+' '+tTag+(l.disc?' (-'+fq(l.disc)+'%)':''),nf(l.net)));
-  });
-  L.push(ln,row('Subtotal US$',nf(s.sub)));
-  if(s.disc)L.push(row('Descuento US$','-'+nf(s.disc)));
-  if(s.baseEx>0&&s.baseG16>0){
-    L.push(row('Base Gravada 16 % US$',nf(s.baseG16)));
-    if(s.baseR8>0)L.push(row('Base Reducida 8 % US$',nf(s.baseR8)));
-    if(s.baseA31>0)L.push(row('Base Suntuaria 31 % US$',nf(s.baseA31)));
-    L.push(row('Ventas Exentas (0 %) US$',nf(s.baseEx)));
-  }else if(s.baseEx>0){
-    L.push(row('Ventas Exentas (0 %) US$',nf(s.baseEx)));
-  }else{
-    L.push(row('Base imponible US$',nf(s.base)));
-  }
-  L.push(row('Total I.V.A. US$',nf(s.iva)));
-  if(s.igtf)L.push(row('IGTF (3 % Divisas) US$',nf(s.igtf)));
-  const due=r2(s.total+s.igtf);
-  s.pays.forEach(p=>{
-    const refTxt=p.ref?(' Ref:'+p.ref):'';
-    L.push(row(' '+cut(p.name+refTxt,26),(p.cur==='USD'?'US$ ':'Bs. ')+nf(p.amount)));
-  });
-  if(s.change>=0.01)L.push(row(' Vuelto (equiv. US$)',nf(s.change)));
-  if(s.cashea){
-    L.push(ln,ctr('PAGADO CON CASHEA (3 CUOTAS BNPL)'));
-    L.push(row(' Aprobación / Token:',s.cashea.aprobacion));
-    L.push(row(' C.I. Cliente:',s.cashea.ci||s.client.rif));
-    if(s.cashea.inicialUsd>0){
-      L.push(row(' Inicial en caja:',usd(s.cashea.inicialUsd)));
-    }
-    L.push(row(' Financiado Cashea:',usd(s.cashea.financiadoUsd)));
-    L.push(row(' '+(s.cashea.cuotasCount||3)+' cuota(s) quincenales:',usd(s.cashea.cuotaUsd)+' c/u'));
-  }
-  if(s.fiscal){L.push(ln,ctr('COPIA INTERNA · NO ES ORIGINAL FISCAL'),row('Documento fiscal:',s.fiscal.documentNumber),row('Serial máquina:',s.fiscal.serial));}
-  L.push(ln,ctr('¡GRACIAS POR SU COMPRA!'),ctr('Impresora Térmica 80mm · Control Interno'));
+  if(s.fiscal)L.push(ln,ctr('COPIA INTERNA · NO ES ORIGINAL FISCAL'),row('Documento fiscal:',s.fiscal.documentNumber),row('Serial máquina:',s.fiscal.serial));
+  L.push(ln,ctr('¡GRACIAS POR SU COMPRA!'),ctr(internalTicket?'Comprobante interno · No fiscal':'Impresora Térmica 80mm · Control Interno'));
   return L.join('\n');
 }
 function showTicket(s){
