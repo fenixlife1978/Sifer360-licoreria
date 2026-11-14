@@ -49,7 +49,7 @@ test('el administrador tiene panel para servidor y clientes LAN', () => {
 
 test('el panel explica límites de red y recomienda reserva de IP', () => {
   assert.match(ui, /Reserva esta IP en el router/);
-  assert.match(ui, /no cifra el tráfico/);
+  assert.match(ui, /HTTPS con certificado fijado por huella SHA-256/);
   assert.match(ui, /diferencias de inventario por ventas simultáneas requieren conciliación/);
 });
 
@@ -255,4 +255,23 @@ test('un evento pendiente en disco no detiene la captura de las siguientes opera
   assert.match(electron, /durable: 'client-outbox'/);
   assert.match(electron, /serverConfirmed: !!delivery && delivery\.status === 'acked'/);
   assert.doesNotMatch(electron, /throw new Error\('La operación quedó guardada en la cola local durable/);
+});
+
+test('todo el transporte de operaciones LAN usa HTTPS con certificado y huella fijados', () => {
+  assert.match(electron, /ensureServerCertificate/);
+  assert.match(electron, /https\.createServer\(\{ key: identity\.key, cert: identity\.cert \}/);
+  assert.match(electron, /createPinnedAgent\(networkConfig\.serverCert, networkConfig\.tlsFingerprint\)/);
+  assert.match(electron, /retrievePeerCertificate\(host, port, 5000\)/);
+  assert.match(electron, /verifyFingerprint\(peer\.fingerprint, expectedFingerprint\)/);
+  assert.doesNotMatch(electron, /fetch\('http:\/\//);
+  assert.match(ui, /lanFingerprintInput/);
+  assert.match(ui, /Huella TLS SHA-256/);
+});
+
+test('el descubrimiento anuncia la huella TLS, pero la conexión exige compararla manualmente', () => {
+  assert.match(electron, /tlsFingerprint: networkConfig\.tlsFingerprint/);
+  assert.match(electron, /tlsFingerprint: data\.tlsFingerprint/);
+  assert.match(electron, /No se enviaron credenciales/);
+  assert.match(ui, /cópiala desde la pantalla del servidor/);
+  assert.match(ui, /compare la huella mostrada aquí con la pantalla del servidor/);
 });
