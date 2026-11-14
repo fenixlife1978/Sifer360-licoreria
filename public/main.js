@@ -4621,8 +4621,8 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
   let fiscalJob=null;
   if(fiscalMode){
     if(!Array.isArray(S.fiscalPrinterJobs))S.fiscalPrinterJobs=[];
-    const idempotencyKey='SIFER360-'+String(currentCaja()).replace(/\\W/g,'')+'-'+String(invNo)+'-'+String(ts);
-    fiscalJob={id:'FISCAL-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(invNo,8),idempotencyKey,cashbox:currentCaja(),saleNo:invNo,createdAt:ts,status:'pending',fiscalSerial:'',fiscalDocumentNumber:'',lastError:''};
+    const idempotencyKey='SIFER360-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+String(invNo)+'-'+String(ts);
+    fiscalJob={id:'FISCAL-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+pad(invNo,8),idempotencyKey,cashbox:currentCaja(),saleNo:invNo,createdAt:ts,status:'pending',fiscalSerial:'',fiscalDocumentNumber:'',lastError:''};
     S.fiscalPrinterJobs.push(fiscalJob);
     const journal=await save();
     if(!journal||!journal.ok){restoreStateSnapshotIfNeeded(journal,rollbackState);msg('SQLite no confirmó la intención de emisión fiscal. La impresora no recibió comandos y la venta no se registró.','bad');return;}
@@ -4827,6 +4827,7 @@ function salesDlg(){
     if(tr){selNo=+tr.dataset.no;armed=0;draw();return;}
     const s=S.sales.find(x=>x.no===selNo&&x.cashbox===currentCaja());
     if(e.target.id==='saView'&&s){showTicket(s);}
+    if(e.target.id==='saVoid'&&s&&!s.void&&s.fiscal){msg('Esta factura ya fue emitida por una máquina fiscal. No se permite anularla solo en el POS. Debe integrarse y ejecutarse la anulación/nota de crédito en la propia máquina.','bad');return;}
     if(e.target.id==='saVoid'&&s&&!s.void){
       if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin('Anular factura '+pad(s.no)))return;
       if(!armed||Date.now()-armed>5000){armed=Date.now();e.target.textContent='Confirmar anulación';return;}
