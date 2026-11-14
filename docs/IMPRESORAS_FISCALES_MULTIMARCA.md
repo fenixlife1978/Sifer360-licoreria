@@ -11,7 +11,7 @@ Familias contempladas:
 | The Factory HKA | TfhkaNet.dll, tfhkaif.dll, IntTFHKA.exe | Confirmar DLL, versión, arquitectura y modelo con el soporte oficial. |
 | Bematech | BemaFI32.dll, BemaFI64.dll, BemaFI32.ini | Seleccionar el SDK compatible con 32/64 bits y el modelo exacto. |
 | Epson Fiscal | EpsonFiscalInterface.dll | La interfaz y los comandos dependen del modelo/país. |
-| Quorion | QProg.dll o protocolo del modelo | No asumir que todos los equipos aceptan el mismo protocolo serial. |
+| Quorion | QProg.dll (pendiente de confirmar) o protocolo del modelo | La página pública de Quorion ofrece QMP Programming Software y manuales; no se ha validado que QProg.dll sea un SDK redistribuible. No asumir que todos los equipos aceptan el mismo protocolo serial. |
 | Aclas | AclasSDK.dll | Confirmar versión del SDK y protocolo con el distribuidor. |
 | PNP | PnpFiscal.dll | Confirmar SDK correspondiente al equipo homologado; PF-SUNMI dispone de documentación del fabricante. |
 | Hasar | SDK/protocolo específico del distribuidor | No se presupone un nombre de DLL; requiere puente específico y manual del modelo. |
@@ -96,9 +96,9 @@ El usuario/instalador autorizado debe instalar el paquete firmado que correspond
 - Catálogo oficial de impresoras fiscales The Factory HKA: https://thefactoryhka.com/ve/productos/impresoras
 - Wiki The Factory HKA: https://wiki.thefactoryhka.com.ve/doku.php (la documentación pública consultada corresponde a Imprenta Digital REST API; no se debe confundir con el SDK local de impresora fiscal).
 - Manual HKA de impresora SRP-350 (referencia de conexión USB Prolific y puerto serial; confirmar aplicabilidad al modelo/país): https://www.thefactoryhka.com/extranet-pa/downloads/MANUAL%20DE%20USUARIO%20SRP-350.pdf
-- Bematech: solicitar el SDK fiscal de la referencia exacta al fabricante o representante autorizado.
-- Epson: solicitar Epson Fiscal Driver / Fiscal Interface del modelo y país exactos al soporte Epson.
-- Quorion: https://quorion.com/
+- Bematech: solicitar el SDK fiscal de la referencia exacta al fabricante o representante autorizado. La documentación técnica pública de BemaFI32 describe configuración de puerto y archivos de retorno, pero debe confirmarse la versión y licencia de la DLL instalada.
+- Epson Venezuela — portal de desarrolladores: https://epson.com.ve/developers-products (Epson indica que los materiales técnicos para desarrolladores se solicitan directamente; no se asume que la DLL sea de descarga libre).
+- Quorion — descargas y manuales: https://quorionus.com/downloads/ (incluye software QMP y manuales; validar API/SDK fiscal con el distribuidor).
 - Aclas: https://www.aclas.com/
 - PNP / PF-SUNMI: https://desarrollospnp.com/archivos/PFSUNMI.pdf
 - Prolific PL2303 — soporte y controladores oficiales: https://www.prolific.com.tw/en/portfolio-item/pl2303gt/
