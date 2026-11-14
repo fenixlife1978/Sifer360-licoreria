@@ -461,3 +461,8 @@ test('una operación pendiente sin identidad de servidor también bloquea el emp
   assert.match(electron, /clientOutbox\.pending\(\)\.some\(event => !event\.serverDeviceId \|\| event\.serverDeviceId !== health\.deviceId\)/);
   assert.match(electron, /conciliar esas operaciones antes de cambiar de servidor/);
 });
+
+test('la sincronización también bloquea operaciones antiguas sin identidad de servidor', () => {
+  assert.match(electron, /const foreignServerEvents = pending\.filter\(event => !event\.serverDeviceId \|\| event\.serverDeviceId !== networkConfig\.serverDeviceId\)/);
+  assert.match(electron, /server-identity-changed/);
+});
