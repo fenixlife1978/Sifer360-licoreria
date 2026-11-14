@@ -85,6 +85,47 @@ async function emitInvoice(profile,invoice,options={}){
 }
 
 let pnpSequence = 0x20;
+const PNP_CURRENT_STATUS = Object.freeze({
+  0x00: 'Lista para abrir una factura, documento no fiscal o reporte.',
+  0x01: 'Hay una factura fiscal abierta; requiere completar o conciliar ese documento.',
+  0x02: 'Hay un documento no fiscal abierto; requiere cerrarlo.',
+  0x03: 'El modo SLIP está activo.',
+  0x04: 'La jornada fiscal requiere un Reporte Z antes de emitir otra factura.',
+  0x05: 'La factura fiscal ya inició la impresión de líneas descriptivas.',
+  0x08: 'El equipo está bloqueado por una incidencia durante un Reporte Z; requiere revisión del equipo.',
+  0x10: 'Error crítico de BCC en RAM; requiere servicio técnico.',
+  0x11: 'Error crítico de BCC en ROM; requiere servicio técnico.',
+  0x12: 'Error crítico de fecha en RAM; requiere servicio técnico.',
+  0x13: 'Error crítico de datos de Reporte Z; requiere servicio técnico.',
+  0x14: 'Límite de memoria fiscal alcanzado; requiere servicio técnico.'
+});
+
+function interpretPnpStatus(fields) {
+  if (!Array.isArray(fields) || fields.length < 12) throw new Error('La respuesta de estado PNP está incompleta.');
+  const printerStatus = String(fields[0] || '');
+  const fiscalStatus = String(fields[1] || '');
+  if (!/^[0-9A-Fa-f]{4}$/.test(printerStatus) || !/^[0-9A-Fa-f]{4}$/.test(fiscalStatus)) {
+    throw new Error('La impresora devolvió estados no válidos.');
+  }
+  const currentStatusText = String(fields[3] || '').trim();
+  if (!/^[0-9A-Fa-f]{1,2}$/.test(currentStatusText)) throw new Error('El código de estado actual PNP no es válido.');
+  const currentStatusCode = Number.parseInt(currentStatusText, 16);
+  const printerFlags = Number.parseInt(printerStatus, 16);
+  const fiscalFlags = Number.parseInt(fiscalStatus, 16);
+  const statusDescription = PNP_CURRENT_STATUS[currentStatusCode] || ('Estado PNP no documentado: 0x' + currentStatusCode.toString(16).toUpperCase().padStart(2, '0'));
+  const printerFaults = printerFlags & 0x400c; // bits 2 (falla), 3 (fuera de línea), 14 (sin papel)
+  const fiscalFaults = fiscalFlags & 0x08ff; // bits 0–7 y 11: errores/condiciones que impiden facturar
+  const fiscalMemoryNearFull = (fiscalFlags & 0x0100) !== 0; // bit 8: advertencia de memoria casi llena
+  const ready = currentStatusCode === 0 && printerFaults === 0 && fiscalFaults === 0;
+  const warnings = [];
+  if (fiscalMemoryNearFull) warnings.push('La memoria fiscal está próxima a llenarse.');
+  if (printerFaults & 0x0004) warnings.push('La impresora informa falla.');
+  if (printerFaults & 0x0008) warnings.push('La impresora está fuera de línea.');
+  if (printerFaults & 0x4000) warnings.push('La impresora no tiene papel.');
+  if (fiscalFaults) warnings.push('El estado fiscal contiene indicadores de error (0x' + fiscalStatus + ').');
+  return { printerStatus, fiscalStatus, currentStatusCode, statusDescription, printerFlags, fiscalFlags, printerFaults, fiscalFaults, fiscalMemoryNearFull, ready, warnings };
+}
+
 async function testPnpFiscalStatus(profile, options = {}) {
   const p = normalizeProfile(profile);
   if (p.provider !== 'pnp') throw new Error('La consulta de estado PNP solo aplica al ecosistema PNP.');
@@ -115,16 +156,17 @@ async function testPnpFiscalStatus(profile, options = {}) {
     if (!output) throw new Error('Windows no devolvió datos de la impresora.');
     const response = PnpProtocol.decodeFrame(Buffer.from(output, 'base64'));
     PnpProtocol.validateResponse(response, { sequence, command:0x38 });
-    if (response.fields.length < 12) throw new Error('La respuesta de estado PNP está incompleta.');
-    if (!/^[0-9A-Fa-f]{4}$/.test(response.fields[0]) || !/^[0-9A-Fa-f]{4}$/.test(response.fields[1])) throw new Error('La impresora devolvió estados no válidos.');
+    const interpreted = interpretPnpStatus(response.fields);
     return {
       ok:true, provider:'pnp', model:p.model, port:p.port, sequence,
-      printerStatus:response.fields[0], fiscalStatus:response.fields[1],
+      ...interpreted,
       lastSequence:response.fields[2], currentStatus:response.fields[3],
       lastCommand:response.fields[4], fiscalDate:response.fields[5],
       fiscalTime:response.fields[6], invoicesSinceZ:response.fields[7],
       currentInvoice:response.fields[9], lastZ:response.fields[11],
-      message:'La impresora PNP respondió a la consulta de estado de solo lectura. No se emitió factura ni reporte.'
+      message: interpreted.ready
+        ? 'La impresora PNP respondió y su estado permite iniciar una factura. La consulta fue de solo lectura; no se emitió factura ni reporte.'
+        : 'La comunicación PNP funciona, pero el equipo no está listo para iniciar una factura: ' + interpreted.statusDescription + (interpreted.warnings.length ? ' ' + interpreted.warnings.join(' ') : '') + ' No se emitió factura ni reporte.'
     };
   } catch (error) {
     throw new Error('No se pudo consultar el estado fiscal PNP: ' + (error.message || String(error)));
