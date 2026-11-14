@@ -115,3 +115,15 @@ test('bloquea el desbordamiento de un consecutivo antes de confirmar la transacc
   assert.throws(() => f.allocate('01', 'invoice'), /Se agotó el rango seguro de numeración/);
   assert.equal(f.rows()[0].last_value, Number.MAX_SAFE_INTEGER);
 });
+
+test('los pagos CxC, pagos CxP, cambios de divisas y movimientos de caja tienen secuencias independientes', () => {
+  const f = fixture();
+  assert.equal(f.allocate('01', 'cxc-payment').value, 1);
+  assert.equal(f.allocate('01', 'cxp-payment').value, 1);
+  assert.equal(f.allocate('01', 'currency-exchange').value, 1);
+  assert.equal(f.allocate('01', 'movement').value, 1);
+  assert.equal(f.allocate('01', 'cxc-payment').value, 2);
+  assert.equal(f.allocate('01', 'cxp-payment').value, 2);
+  assert.equal(f.allocate('01', 'currency-exchange').value, 2);
+  assert.equal(f.allocate('01', 'movement').value, 2);
+});
