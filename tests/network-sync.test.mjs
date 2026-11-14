@@ -552,3 +552,10 @@ test('la outbox local del servidor restaura la base SQLite si falla la persisten
   assert.match(handler, /no se confirmó la operación/);
   assert.match(handler, /if \(!transactionCommitted\) \{ try \{ db\.run\('ROLLBACK'\)/);
 });
+
+test('la outbox local del servidor rechaza reutilizar un eventId con contenido distinto', () => {
+  const handler = electron.slice(electron.indexOf("ipcMain.handle('network:operation-create'"), electron.indexOf("ipcMain.handle('network:operation-pending'"));
+  assert.match(handler, /SELECT event_id,device_id,event_type,entity_type,entity_id,occurred_at,payload FROM local_operation_outbox/);
+  assert.match(handler, /const sameEvent = duplicate\.device_id === networkConfig\.deviceId/);
+  assert.match(handler, /El identificador de operación ya fue usado con datos diferentes/);
+});
