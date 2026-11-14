@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - auto-depreciacion-mensual
+      - integration/sqlite-lan-stage-1
   workflow_dispatch:
 
 permissions:
