@@ -2100,7 +2100,7 @@ function productFormDlg(editCode,initialTab){
     };
 
     box.onchange=e=>{if(e.target.id==='asSel')syncSupFields();};
-    box.onclick=e=>{
+    box.onclick=async e=>{
       if(e.target.id==='asAddBtn'){
         const rif=$('#asRif',box).value.trim().toUpperCase(), name=$('#asName',box).value.trim();
         const cost=pn($('#asCost',box).value)||D.cost;
@@ -2119,9 +2119,8 @@ function productFormDlg(editCode,initialTab){
           minOrder:Math.round(pn($('#asMin',box).value)||1),
           notes:$('#asNotes',box).value.trim()
         });
-        save();
-        renderSupTab(box);
-        msg('Proveedor '+sup.name+' asociado al producto.');
+        const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la asociación del proveedor.','bad');return;}
+        renderSupTab(box);msg('Proveedor '+sup.name+' asociado al producto.');
       }
       const uc=e.target.closest('[data-usecost]');
       if(uc){
@@ -2214,7 +2213,7 @@ function productFormDlg(editCode,initialTab){
     if(b){tab=b.dataset.pftab;renderTab();}
   });
 
-  const saveProduct=(closeAfter=true)=>{
+  const saveProduct=async(closeAfter=true)=>{
     if(!D.code||!D.desc.trim()||!D.price){
       msg('Complete el código, la descripción y el precio de venta del producto.','bad');
       return false;
@@ -2242,8 +2241,8 @@ function productFormDlg(editCode,initialTab){
         party:'Alta de producto ('+D.sku+')',qty:D.stock,stockAfter:D.stock,cost:D.cost,user:S.cfg.cajero
       });
     }
-    save();renderCatOptions();renderAll();
-    msg('Producto '+D.desc+' ('+D.sku+') guardado correctamente.');
+    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el producto; se restauró el estado durable anterior.','bad');return false;}
+    renderCatOptions();renderAll();msg('Producto '+D.desc+' ('+D.sku+') guardado correctamente.');
     if(closeAfter){inventoryDlg();return false;}
     return true;
   };
@@ -2253,7 +2252,7 @@ function productFormDlg(editCode,initialTab){
     w:1020,
     body:el,
     foot:[
-      {label:'Generar Etiqueta / Hablador SKU (US$)',left:true,fn:()=>{if(saveProduct(false))labelGeneratorDlg(D.code);return false;}},
+      {label:'Generar Etiqueta / Hablador SKU (US$)',left:true,fn:async()=>{const saved=await saveProduct(false);if(saved)labelGeneratorDlg(D.code);return false;}},
       {label:'Volver a Inventario',fn:()=>{inventoryDlg();return false;}},
       {label:'Guardar Producto',primary:true,fn:()=>saveProduct(true)}
     ],
