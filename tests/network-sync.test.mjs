@@ -448,3 +448,11 @@ test('el arranque migra una sola vez los consecutivos históricos compartidos', 
   assert.match(electron, /migrateCashboxSequenceCategories\(\{ db, state:/);
   assert.match(cashboxSequenceMigration, /cashbox-operation-sequences-v1/);
 });
+
+test('las escrituras del renderer se serializan y un fallo recarga el estado autoritativo o bloquea nuevas escrituras', () => {
+  assert.match(pos, /let saveQueue=Promise\.resolve\(\),saveSequence=0,persistenceBlocked=false/);
+  assert.match(pos, /saveQueue\.then\(\(\)=>posSqliteDriver\.saveState\(state\)\)/);
+  assert.match(pos, /const authoritative=await posSqliteDriver\.loadState\(\)/);
+  assert.match(pos, /OPERACIÓN NO CONFIRMADA: se recargó el último estado durable/);
+  assert.match(pos, /persistenceBlocked=true/);
+});
