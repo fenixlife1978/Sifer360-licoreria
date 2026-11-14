@@ -603,3 +603,8 @@ test('una operación pendiente o conflictiva no se marca como capturada en la l�
   assert.match(capture, /throw new Error\(delivery&&delivery\.deliveryError/);
   assert.ok(capture.indexOf('seen.add(identity)') > capture.indexOf('delivery.serverConfirmed!==true'));
 });
+
+test('el handler de guardado de snapshots cliente vacía y confirma la outbox antes de enviar el snapshot', () => {
+  const handler = electron.slice(electron.indexOf("ipcMain.handle('posdb:save-state'"), electron.indexOf("ipcMain.handle('posdb:list-documents'"));
+  assert.match(handler, /if \(networkConfig\.role === 'client'\)[\s\S]{0,350}await flushClientOutbox\(\);[\s\S]{0,300}clientApi\('\/api\/sync\/state'/);
+});
