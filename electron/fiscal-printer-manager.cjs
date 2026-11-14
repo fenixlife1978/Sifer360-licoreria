@@ -90,7 +90,9 @@ async function testPnpFiscalStatus(profile, options = {}) {
   if (p.provider !== 'pnp') throw new Error('La consulta de estado PNP solo aplica al ecosistema PNP.');
   if (!p.port) throw new Error('Seleccione el puerto COM de la impresora PNP.');
   if ((options.platform || process.platform) !== 'win32') throw new Error('La consulta PNP directa requiere Windows.');
-  pnpSequence = pnpSequence >= 0x7f ? 0x20 : pnpSequence + 1;
+  const previousSequence = pnpSequence;
+  pnpSequence = crypto.randomInt(0x20, 0x80);
+  if (pnpSequence === previousSequence) pnpSequence = pnpSequence >= 0x7f ? 0x20 : pnpSequence + 1;
   const sequence = pnpSequence;
   const request = PnpProtocol.createStatusQuery(sequence);
   const hex = request.toString('hex');
