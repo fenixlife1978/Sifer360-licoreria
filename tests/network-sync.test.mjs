@@ -225,3 +225,11 @@ test('reutilizar un eventId con contenido distinto se marca como conflicto y no 
   assert.match(electron, /existing\.payload === eventPayload/);
   assert.match(electron, /if \(sameEvent\) duplicates\.push/);
 });
+
+
+test('un cliente no transmite claves ni datos a hosts fuera de la red local', () => {
+  assert.match(electron, /function assertLanHost\(host\)/);
+  assert.match(electron, /if \(!isLanAddress\(host\)\) throw new Error/);
+  assert.match(electron, /assertLanHost\(networkConfig\.host\)/);
+  assert.match(electron, /assertLanHost\(host\)/);
+});
