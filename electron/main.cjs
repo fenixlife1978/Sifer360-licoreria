@@ -458,8 +458,13 @@ async function flushClientOutbox() {
   const currentStatus = clientOutbox.status();
   if (currentStatus.conflicts > 0) throw new Error('Hay conflictos LAN sin resolver. Se bloqueó el snapshot completo hasta conciliar las operaciones afectadas.');
   const pending = clientOutbox.pending().slice(0, 500);
+  const foreignServerEvents = pending.filter(event => event.serverDeviceId && event.serverDeviceId !== networkConfig.serverDeviceId);
+  if (foreignServerEvents.length) {
+    clientOutbox.conflict(foreignServerEvents.map(event => event.eventId), 'server-identity-changed');
+    throw new Error('La cola LAN contiene operaciones del servidor anterior. No se enviarán a otra base de datos; concilie esas operaciones antes de cambiar de servidor.');
+  }
   if (!pending.length) return { pending: 0, accepted: [], conflicts: [] };
-  const result = await clientApi('/api/sync/events', { method: 'POST', body: JSON.stringify({ events: pending.map(({ status, conflictReason, ...event }) => event) }) });
+  const result = await clientApi('/api/sync/events', { method: 'POST', body: JSON.stringify({ events: pending.map(({ status, conflictReason, serverDeviceId, ...event }) => event) }) });
   const conflicts = Array.isArray(result.conflicts) ? result.conflicts : [];
   const conflictIds = new Set(conflicts.map(item => String(item.eventId)));
   const accepted = [...(result.accepted || []), ...(result.duplicates || [])].map(String).filter(id => !conflictIds.has(id));
@@ -478,7 +483,7 @@ function registerNetworkIpc() {
       const entityType = String(input.entityType || '').trim();
       const entityId = String(input.entityId || '').trim();
       if (!eventType || !entityType || !entityId || !input.payload || typeof input.payload !== 'object' || Array.isArray(input.payload)) throw new Error('Operación incompleta: tipo, entidad, identificador y payload son obligatorios.');
-      const event = clientOutbox.enqueue({ ...input, eventType, entityType, entityId });
+      const event = clientOutbox.enqueue({ ...input, eventType, entityType, entityId, serverDeviceId: networkConfig.serverDeviceId });
       let deliveryError = '';
       try { await flushClientOutbox(); } catch (error) {
         deliveryError = error.message || String(error);
@@ -565,6 +570,11 @@ function registerNetworkIpc() {
     let health;
     try { health = await clientApi('/api/health', { timeoutMs: 5000 }); }
     catch (error) { networkConfig = previous; throw error; }
+    const pendingForAnotherServer = clientOutbox.pending().some(event => event.serverDeviceId && event.serverDeviceId !== health.deviceId);
+    if (pendingForAnotherServer || clientOutbox.status().conflicts > 0) {
+      networkConfig = previous;
+      throw new Error('Esta PC conserva operaciones pendientes o conflictos del servidor anterior. No se cambiará de base central hasta conciliarlos.');
+    }
     networkConfig.serverDeviceId = health.deviceId;
     try { saveNetworkConfig(); }
     catch (error) { networkConfig = previous; throw error; }
