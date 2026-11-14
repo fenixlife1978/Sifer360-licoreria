@@ -248,8 +248,8 @@ test('Electron usa la cola durable del cliente y reintenta eventos pendientes an
 
 test('el cliente captura el registro nuevo antes de esperar la red y conserva la operación si falla el guardado remoto', () => {
   const capture = pos.slice(pos.indexOf('async function captureNewOperations'), pos.indexOf('function mergeRemoteSnapshot'));
-  assert.ok(capture.indexOf('const snap=stateSnapshot()') < capture.indexOf('await window.posDesktop.networkStatus()'));
-  assert.doesNotMatch(capture, /__SIFER_LAST_SAVE/);
+  assert.ok(capture.indexOf('const snap=stateSnapshot()') < capture.indexOf('await lastSave'));
+  assert.match(capture, /if\(lastSave\)\{const persisted=await lastSave;if\(!persisted\|\|!persisted\.ok\)return;\}/);
 });
 
 test('un evento pendiente en disco no detiene la captura de las siguientes operaciones del cliente', () => {
