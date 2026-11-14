@@ -508,8 +508,17 @@ function registerNetworkIpc() {
     let transactionCommitted = false;
     db.run('BEGIN IMMEDIATE');
     try {
-      const duplicate = one('SELECT event_id FROM local_operation_outbox WHERE event_id=?', [eventId]);
-      if (duplicate) { db.run('COMMIT'); transactionCommitted = true; return one('SELECT * FROM local_operation_outbox WHERE event_id=?', [eventId]); }
+      const duplicate = one('SELECT event_id,device_id,event_type,entity_type,entity_id,occurred_at,payload FROM local_operation_outbox WHERE event_id=?', [eventId]);
+      if (duplicate) {
+        const sameEvent = duplicate.device_id === networkConfig.deviceId &&
+          duplicate.event_type === eventType && duplicate.entity_type === entityType &&
+          duplicate.entity_id === entityId && duplicate.occurred_at === occurredAt &&
+          duplicate.payload === payload;
+        if (!sameEvent) throw new Error('El identificador de operación ya fue usado con datos diferentes; no se registró una segunda operación.');
+        db.run('COMMIT');
+        transactionCommitted = true;
+        return one('SELECT * FROM local_operation_outbox WHERE event_id=?', [eventId]);
+      }
       run('INSERT OR IGNORE INTO device_sequences(device_id,last_seq) VALUES(?,0)', [networkConfig.deviceId]);
       run('UPDATE device_sequences SET last_seq=last_seq+1 WHERE device_id=?', [networkConfig.deviceId]);
       const seq = Number(one('SELECT last_seq FROM device_sequences WHERE device_id=?', [networkConfig.deviceId]).last_seq);
