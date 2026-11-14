@@ -136,6 +136,22 @@ function persistDb() {
   }
   fs.renameSync(temporary, target);
 }
+function persistMutation(mutate) {
+  if (!db) throw new Error('SQLite no está inicializada.');
+  const snapshot = db.export();
+  try {
+    const result = mutate();
+    persistDb();
+    return result;
+  } catch (error) {
+    try {
+      restoreDatabaseSnapshot(snapshot);
+    } catch (restoreError) {
+      throw new Error('Falló la persistencia y también la restauración de SQLite. No continúe operando; conserve el archivo y el respaldo para recuperación. Error original: ' + (error.message || String(error)) + '. Error de restauración: ' + (restoreError.message || String(restoreError)));
+    }
+    throw error;
+  }
+}
 function run(sql, params = []) {
   const stmt = db.prepare(sql);
   try { stmt.run(params); } finally { stmt.free(); }
@@ -529,10 +545,12 @@ function registerNetworkIpc() {
   ipcMain.handle('network:sync-now', async (_e, state) => {
     if (networkConfig.role === 'server') {
       if (!networkServer) throw new Error('El servidor no está iniciado.');
-      const row = one('SELECT payload FROM app_state WHERE id=1');
-      const merged = mergeStateRecords(row ? JSON.parse(row.payload) : null, state);
-      run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(merged)]);
-      persistDb();
+      let merged;
+      persistMutation(() => {
+        const row = one('SELECT payload FROM app_state WHERE id=1');
+        merged = mergeStateRecords(row ? JSON.parse(row.payload) : null, state);
+        run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(merged)]);
+      });
       return { ok: true, state: merged, role: 'server', updatedAt: new Date().toISOString() };
     }
     if (networkConfig.role !== 'client' || !networkConfig.host) return { ok: false, state, role: 'standalone', message: 'Esta caja no está conectada a un servidor.' };
@@ -593,13 +611,11 @@ function registerIpc() {
       return { ok: true, durable: 'server-sqlite', serverDeviceId: result.serverDeviceId };
     }
     const payload = JSON.stringify(state);
-    run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, updated_at=CURRENT_TIMESTAMP', [payload]);
+    // El cambio en memoria se revierte si el archivo no puede persistirse.
+    // Así una operación rechazada no reaparece más tarde por un guardado posterior.
+    persistMutation(() => run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, updated_at=CURRENT_TIMESTAMP', [payload]));
     clearTimeout(saveTimer);
     saveTimer = null;
-    // Confirmar escritura del archivo SQLite antes de responder al renderer.
-    // La depreciación automática y las operaciones POS no deben interpretar
-    // una escritura solo en memoria como persistencia durable en disco.
-    persistDb();
     return { ok: true, durable: 'sqlite-file' };
   });
   ipcMain.handle('posdb:list-documents', async (_e, filter = {}) => {
@@ -620,10 +636,9 @@ function registerIpc() {
     if (databaseMode !== 'sqlite') throw new Error('SQLite local no está seleccionado.');
     if (!doc || !doc.id || !['sale','purchase'].includes(doc.transactionType) || !doc.transactionId || !doc.dataUrl) throw new Error('Documento incompleto.');
     if (String(doc.dataUrl).length > 4_300_000) throw new Error('El archivo supera el límite local de 3 MB.');
-    run('INSERT OR REPLACE INTO fiscal_documents(id,transaction_type,transaction_id,file_name,mime_type,file_size,sha256,data_url,created_at,notes) VALUES(?,?,?,?,?,?,?,?,?,?)',
-      [String(doc.id), doc.transactionType, String(doc.transactionId), String(doc.fileName || 'documento'), String(doc.mimeType || 'application/octet-stream'), Number(doc.fileSize || 0), String(doc.sha256 || ''), String(doc.dataUrl), String(doc.createdAt || new Date().toISOString()), String(doc.notes || '')]);
-    persistDb();
-    return { ok: true };
+    persistMutation(() => run('INSERT OR REPLACE INTO fiscal_documents(id,transaction_type,transaction_id,file_name,mime_type,file_size,sha256,data_url,created_at,notes) VALUES(?,?,?,?,?,?,?,?,?,?)',
+      [String(doc.id), doc.transactionType, String(doc.transactionId), String(doc.fileName || 'documento'), String(doc.mimeType || 'application/octet-stream'), Number(doc.fileSize || 0), String(doc.sha256 || ''), String(doc.dataUrl), String(doc.createdAt || new Date().toISOString()), String(doc.notes || '')]));
+    return { ok: true, durable: 'sqlite-file' };
   });
   ipcMain.handle('posdb:get-document', async (_e, id) => {
     if (networkConfig.role === 'client') {
@@ -636,9 +651,8 @@ function registerIpc() {
   ipcMain.handle('posdb:delete-document', async (_e, id) => {
     if (networkConfig.role === 'client') return clientApi('/api/documents/' + encodeURIComponent(String(id)), { method: 'DELETE' });
     if (databaseMode !== 'sqlite') throw new Error('SQLite local no está seleccionado.');
-    run('DELETE FROM fiscal_documents WHERE id=?', [String(id)]);
-    persistDb();
-    return { ok: true };
+    persistMutation(() => run('DELETE FROM fiscal_documents WHERE id=?', [String(id)]));
+    return { ok: true, durable: 'sqlite-file' };
   });
 }
 function createWindow() {
