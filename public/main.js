@@ -962,11 +962,12 @@ function clearCart(){
   if(!S.cart.length)return;
   ask('Vaciar venta','Se quitarán todos los renglones de la venta actual.','Vaciar',()=>{S.cart=[];S.sel=-1;renderCart();});
 }
-function suspend(){
+async function suspend(){
   if(!S.cart.length){msg('No hay una venta con renglones para suspender.','bad');return;}
   S.held.push({cart:S.cart,client:S.client,ts:Date.now()});
-  S.cart=[];S.sel=-1;S.client=S.clients[0];save();renderAll();
-  msg('Venta suspendida. Hay '+S.held.length+' en espera.');
+  S.cart=[];S.sel=-1;S.client=S.clients[0];
+  const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la suspensión; la venta permanece en el estado durable anterior.','bad');return;}
+  renderAll();msg('Venta suspendida. Hay '+S.held.length+' en espera.');
 }
 function recoverDlg(){
   if(!S.held.length){msg('No hay ventas en espera.');return;}
@@ -976,8 +977,10 @@ function recoverDlg(){
   S.held.forEach((hd,i)=>{
     const sub=r2(hd.cart.reduce((a,l)=>a+r2(r2(prod(l.code).price*l.qty)*(1-l.disc/100)),0));
     const tr=h('<table><tbody><tr><td>'+esc(hd.client.name)+'</td><td class="r">'+hd.cart.length+'</td><td class="r">'+nf(r2(sub*(1+IVA)))+'</td><td>'+fmtT(new Date(hd.ts))+'</td><td class="c"><button class="btn mini2" '+(busy?'disabled':'')+'>Recuperar</button></td></tr></tbody></table>').querySelector('tr');
-    $('button',tr).addEventListener('click',()=>{
-      S.cart=hd.cart;S.client=hd.client;S.sel=0;S.held.splice(i,1);save();closeWin();renderAll();msg('Venta recuperada.');
+    $('button',tr).addEventListener('click',async()=>{
+      S.cart=hd.cart;S.client=hd.client;S.sel=0;S.held.splice(i,1);
+      const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la recuperación; se conservó el estado durable anterior.','bad');return;}
+      closeWin();renderAll();msg('Venta recuperada.');
     });
     tb.appendChild(tr);
   });
@@ -1009,14 +1012,14 @@ function clientDlg(){
   };
   const use=()=>{S.client=cur;renderHeader();msg('Cliente: '+cur.name+'.');};
   el.addEventListener('input',e=>{if(e.target.id==='clQ')draw();});
-  el.addEventListener('click',e=>{
+  el.addEventListener('click',async e=>{
     const tr=e.target.closest('tr[data-cl]');
     if(tr){cur=S.clients[+tr.dataset.cl];draw();return;}
     if(e.target.id==='ncAdd'){
       const name=$('#ncName',el).value.trim(),rif=$('#ncRif',el).value.trim();
       if(!name||!rif){msg('Indique el RIF / C.I. y el nombre del cliente.','bad');return;}
       const c={name,rif,tel:$('#ncTel',el).value.trim()};
-      S.clients.push(c);cur=c;save();use();closeWin();
+      S.clients.push(c);cur=c;const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el registro del cliente.','bad');return;}use();closeWin();
     }
   });
   el.addEventListener('dblclick',e=>{if(e.target.closest('tr[data-cl]')){use();closeWin();}});
@@ -1154,7 +1157,7 @@ function inventoryExitDlg(){
   };
   $('#ixProduct',el).addEventListener('change',e=>{selected=e.target.value;fill();});
   fill();
-  openWin({title:'Salidas y ajustes de inventario',w:650,body:el,foot:[{label:'Cancelar'},{label:'Registrar salida en Kardex',primary:true,fn:()=>{
+  openWin({title:'Salidas y ajustes de inventario',w:650,body:el,foot:[{label:'Cancelar'},{label:'Registrar salida en Kardex',primary:true,fn:async()=>{
     const p=prod($('#ixProduct',el).value),qty=pn($('#ixQty',el).value),concept=$('#ixConcept',el).value,reason=$('#ixReason',el).value.trim();
     if(!p){msg('Seleccione un producto válido.','bad');return false;}
     if(!(qty>0)){msg('La cantidad debe ser mayor que cero.','bad');return false;}
@@ -1164,7 +1167,8 @@ function inventoryExitDlg(){
     p.stock=r2(before-qty);
     const labels={COLABORACION:'Colaboración',CONSUMO_PROPIO:'Consumo propio',DONACION:'Donación'};
     addKardex({ts,code:p.code,type:concept,dir:'OUT',doc:'SAL-'+String(currentCaja()).replace(/\W/g,'')+'-'+ts,party:labels[concept]+' · '+reason,cashbox:currentCaja(),qty,stockAfter:p.stock,cost,user:user.name||user.username||currentCajero()});
-    save();renderAll();msg('Salida registrada en Kardex: '+fq(qty)+' '+p.unit+' de '+p.desc+'.','ok');closeWin();return true;
+    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la salida; se restauró el inventario durable.','bad');return false;}
+    renderAll();msg('Salida registrada en Kardex: '+fq(qty)+' '+p.unit+' de '+p.desc+'.','ok');closeWin();return true;
   }}],onOpen:()=>$('#ixProduct',el).focus()});
 }
 
