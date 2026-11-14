@@ -2877,7 +2877,7 @@ function cxcDlg(selId){
       if(rawAmt<=0){msg('Indique un monto de abono válido mayor a cero.','bad');return;}
       if(rawAmt-bal>0.01){msg('El monto ingresado ('+usd(rawAmt)+') supera el saldo pendiente ('+usd(bal)+').','bad');return;}
       const rollbackState=JSON.parse(JSON.stringify(S));
-      let movementNo;try{movementNo=await nextCajaSequence('movement',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del cobro: '+error.message,'bad');return;}
+      let movementNo;try{movementNo=await nextCajaSequence('cxc-payment',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del cobro: '+error.message,'bad');return;}
       const movementId='MOV-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(movementNo,6);
       const amt=Math.min(bal,rawAmt);
       const mId=$('#abMethod',el).value;
@@ -2908,7 +2908,7 @@ function cxcDlg(selId){
         return;
       }
       const rollbackState=JSON.parse(JSON.stringify(S));
-      let movementNo;try{movementNo=await nextCajaSequence('movement',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del cobro mixto: '+error.message,'bad');return;}
+      let movementNo;try{movementNo=await nextCajaSequence('cxc-payment',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del cobro mixto: '+error.message,'bad');return;}
       const ts=Date.now(),box=String(currentCaja()),movementId='MOV-'+box.replace(/\W/g,'')+'-'+pad(movementNo,6);
       const baseNote=($('#abNote',el)?$('#abNote',el).value.trim():'')||(active.length>1?'Cobro mixto ('+active.length+' métodos)':'Abono de cliente');
       item.payments=item.payments||[];
@@ -3201,7 +3201,7 @@ function cxpDlg(selId){
       if(rawAmt<=0){msg('Indique un monto de pago válido mayor a cero.','bad');return;}
       if(rawAmt-bal>0.00000001){msg('El monto ingresado ('+usd(rawAmt)+') supera el saldo por pagar ('+usd(bal)+').','bad');return;}
       const rollbackState=JSON.parse(JSON.stringify(S));
-      let movementNo;try{movementNo=await nextCajaSequence('movement',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del pago: '+error.message,'bad');return;}
+      let movementNo;try{movementNo=await nextCajaSequence('cxp-payment',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del pago: '+error.message,'bad');return;}
       const movementId='MOV-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(movementNo,6);
       const amt=r8(Math.min(bal,rawAmt));
       const mId=$('#pgMethod',el).value;
@@ -3236,7 +3236,7 @@ function cxpDlg(selId){
         return;
       }
       const rollbackState=JSON.parse(JSON.stringify(S));
-      let movementNo;try{movementNo=await nextCajaSequence('movement',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del pago mixto: '+error.message,'bad');return;}
+      let movementNo;try{movementNo=await nextCajaSequence('cxp-payment',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del pago mixto: '+error.message,'bad');return;}
       const ts=Date.now(),box=String(currentCaja()),movementId='MOV-'+box.replace(/\W/g,'')+'-'+pad(movementNo,6);
       const baseNote=($('#pgNote',el)?$('#pgNote',el).value.trim():'')||(active.length>1?'Pago mixto ('+active.length+' medios)':'Pago a proveedor');
       item.payments=item.payments||[];
@@ -3539,7 +3539,7 @@ function newOperacionCambiariaDlg(opts, onDone){
         if(!refBs){msg('Indique el número de referencia del pago en Bolívares para la trazabilidad bancaria.','bad');return false;}
         const box=String(currentCaja());
         if(!box||box==='SIN-ASIGNAR'){msg('Asigne una caja antes de registrar una operación cambiaria.','bad');return false;}
-        let movementNo;try{movementNo=await nextCajaSequence('movement',box);}catch(error){msg('No se pudo reservar el consecutivo de la operación cambiaria: '+error.message,'bad');return false;}
+        let movementNo;try{movementNo=await nextCajaSequence('currency-exchange',box);}catch(error){msg('No se pudo reservar el consecutivo de la operación cambiaria: '+error.message,'bad');return false;}
         const boxCode=box.replace(/\W/g,'');
         const movementId='MOV-'+boxCode+'-'+pad(movementNo,6);
 
@@ -6135,11 +6135,11 @@ async function nextCajaSequence(operation,box=currentCaja()){
   else if(operation.startsWith('retention-')){const period=operation.slice('retention-'.length);minimum=Math.max(0,...(S.retencionesIva||[]).filter(x=>String(x.cashbox||'')===String(box)&&String(x.periodo||'')===period).map(x=>Number(x.sequence)||Number(String(x.id||'').slice(-8))||0))+1;}
   else if(operation==='cxp')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
   else if(operation==='cashea')minimum=Math.max(0,...(S.casheaMovimientos||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
-  else if(operation==='movement')minimum=Math.max(0,...(S.movimientosCaja||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0),...(S.cambiosDivisas||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0),...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)),...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)))+1;
+  else if(operation==='cxc-payment')minimum=Math.max(0,...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)))+1;
+  else if(operation==='cxp-payment')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)))+1;
+  else if(operation==='currency-exchange')minimum=Math.max(0,...(S.cambiosDivisas||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0))+1;
+  else if(operation==='movement')minimum=Math.max(0,...(S.movimientosCaja||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0))+1;
   else if(operation==='refund'||operation==='return')minimum=Math.max(0,...(S.returns||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.returnNo||x.sequence)||0))+1;
-  const cached=cajaSeqs()[String(box)]||{};
-  const cacheKey={invoice:'invoice',control:'ctrl',z:'z',void:'void',refund:'refund',return:'refund'}[operation];
-  if(cacheKey)minimum=Math.max(minimum,Number(cached[cacheKey])||1);
   const result=await window.posDesktop.networkNextSequence({cashbox:String(box),operation,minimum});
   const value=Number(result&&result.value);
   if(!result||!result.ok||!Number.isSafeInteger(value)||value<1)throw new Error('El servidor no confirmó el consecutivo de '+operation+'.');
