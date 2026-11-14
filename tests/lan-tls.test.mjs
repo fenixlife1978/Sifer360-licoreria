@@ -101,3 +101,28 @@ test('un certificado de otra PC no supera el pin TLS del servidor esperado', asy
     }).on('error', reject);
   }));
 });
+
+test('la clave privada TLS se cifra y descifra mediante el almacén seguro del sistema operativo', async t => {
+  const directory = fixture(t);
+  const encryptPrivateKey = pem => Buffer.from(pem, 'utf8').toString('base64');
+  const decryptPrivateKey = value => Buffer.from(value, 'base64').toString('utf8');
+  const first = await ensureServerCertificate({ directory, deviceId: 'server-secure', encryptPrivateKey, decryptPrivateKey });
+  const file = path.join(directory, 'sifer360-lan-identity-v1.json');
+  const stored = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(typeof stored.keyEncrypted, 'string');
+  assert.equal(Object.hasOwn(stored, 'key'), false);
+  const restarted = await ensureServerCertificate({ directory, deviceId: 'server-secure', encryptPrivateKey, decryptPrivateKey });
+  assert.equal(restarted.fingerprint, first.fingerprint);
+});
+
+test('una identidad TLS heredada se migra a clave cifrada sin cambiar su huella', async t => {
+  const directory = fixture(t);
+  const legacy = await ensureServerCertificate({ directory, deviceId: 'server-legacy' });
+  const encryptPrivateKey = pem => Buffer.from(pem, 'utf8').toString('base64');
+  const decryptPrivateKey = value => Buffer.from(value, 'base64').toString('utf8');
+  const migrated = await ensureServerCertificate({ directory, deviceId: 'server-legacy', encryptPrivateKey, decryptPrivateKey });
+  const stored = JSON.parse(fs.readFileSync(path.join(directory, 'sifer360-lan-identity-v1.json'), 'utf8'));
+  assert.equal(migrated.fingerprint, legacy.fingerprint);
+  assert.equal(typeof stored.keyEncrypted, 'string');
+  assert.equal(Object.hasOwn(stored, 'key'), false);
+});
