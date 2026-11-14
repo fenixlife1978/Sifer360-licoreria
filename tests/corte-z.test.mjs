@@ -148,6 +148,8 @@ test('Corte Z reutiliza la apertura de inicio de sesión y oculta la segunda ape
   assert.match(fn, /\$\('#zOpenPanel',el\)\.hidden=opened/);
   assert.match(fn, /La apertura de caja ya está registrada\. Se reutiliza el turno iniciado al entrar al POS/);
   assert.match(fn, /No se detectó una apertura válida para esta caja\. Registre el fondo inicial aquí solo si no se hizo al iniciar sesión/);
-  assert.match(access, /sessionStorage\.setItem\('sifer360_active_opening',JSON\.stringify\(op\)\)/);
+  assert.match(pos, /sessionStorage\.setItem\('sifer360_active_opening',JSON\.stringify\(op\)\)/);
+  assert.match(pos, /writeActiveOpening\(op\)/);
+  assert.doesNotMatch(access, /sifer360_openings|function renderOpening\(/);
   assert.match(pos, /const boxOpen=\(\)=>!!\(active&&String\(active\.cashbox\)===box&&active\.status==='abierta'\)/);
 });
