@@ -144,3 +144,15 @@ test('las reservas correlativas y documentos fiscales revierten memoria si falla
   assert.match(sequenceStore, /restore\(databaseBefore\)/);
   assert.match(main, /restoreDatabaseSnapshot\(snapshot\)/);
 });
+
+test('los mínimos de secuencia se derivan del estado central y nunca de localStorage', () => {
+  const start = pos.indexOf('async function nextCajaSequence');
+  const end = pos.indexOf('async function ', start + 20);
+  const allocator = pos.slice(start, end < 0 ? undefined : end);
+  assert.ok(start >= 0);
+  assert.doesNotMatch(allocator, /cajaSeqs\(\)|localStorage/);
+  assert.match(allocator, /window\.posDesktop\.networkNextSequence/);
+  assert.match(allocator, /cxc-payment/);
+  assert.match(allocator, /cxp-payment/);
+  assert.match(allocator, /currency-exchange/);
+});
