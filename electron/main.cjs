@@ -438,7 +438,7 @@ async function flushClientOutbox() {
   const currentStatus = clientOutbox.status();
   if (currentStatus.conflicts > 0) throw new Error('Hay conflictos LAN sin resolver. Se bloqueó el snapshot completo hasta conciliar las operaciones afectadas.');
   const pending = clientOutbox.pending().slice(0, 500);
-  const foreignServerEvents = pending.filter(event => event.serverDeviceId && event.serverDeviceId !== networkConfig.serverDeviceId);
+  const foreignServerEvents = pending.filter(event => !event.serverDeviceId || event.serverDeviceId !== networkConfig.serverDeviceId);
   if (foreignServerEvents.length) {
     clientOutbox.conflict(foreignServerEvents.map(event => event.eventId), 'server-identity-changed');
     throw new Error('La cola LAN contiene operaciones del servidor anterior. No se enviarán a otra base de datos; concilie esas operaciones antes de cambiar de servidor.');
