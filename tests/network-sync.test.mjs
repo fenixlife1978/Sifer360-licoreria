@@ -559,3 +559,14 @@ test('la outbox local del servidor rechaza reutilizar un eventId con contenido d
   assert.match(handler, /const sameEvent = duplicate\.device_id === networkConfig\.deviceId/);
   assert.match(handler, /El identificador de operación ya fue usado con datos diferentes/);
 });
+
+test('ninguna operación del renderer puede invocar save sin esperar la confirmación durable', () => {
+  assert.doesNotMatch(pos, /(?<!await )\bsave\(\)\s*;/);
+  assert.match(pos, /const persisted=await save\(\)/);
+});
+
+test('los botones de diálogo esperan promesas de persistencia y los cuadros de confirmación propagan el resultado', () => {
+  assert.match(pos, /const resolved=result&&typeof result\.then==='function'\?await result:result/);
+  assert.match(pos, /if\(W&&W\.el===bd\)closeWin\(\)/);
+  assert.match(pos, /fn:()=>fn\(\)/);
+});
