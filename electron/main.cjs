@@ -499,13 +499,19 @@ function registerNetworkIpc() {
       const entityId = String(input.entityId || '').trim();
       if (!eventType || !entityType || !entityId || !input.payload || typeof input.payload !== 'object' || Array.isArray(input.payload)) throw new Error('Operación incompleta: tipo, entidad, identificador y payload son obligatorios.');
       const event = clientOutbox.enqueue({ ...input, eventType, entityType, entityId });
+      let deliveryError = '';
       try { await flushClientOutbox(); } catch (error) {
-        throw new Error('La operación quedó guardada en la cola local durable y se reenviará al reconectar. El servidor aún no la ha confirmado. ' + (error.message || String(error)));
+        deliveryError = error.message || String(error);
       }
       const delivery = clientOutbox.get(event.eventId);
-      if (!delivery || delivery.status === 'pending') throw new Error('La operación quedó guardada en la cola local durable, pero el servidor todavía no confirmó su recepción.');
-      if (delivery.status === 'conflict') throw new Error('El servidor rechazó la operación por conflicto: ' + (delivery.conflictReason || 'revise la cola LAN antes de reintentar.'));
-      return { ...event, payload: JSON.stringify(event.payload), status: 'acked' };
+      return {
+        ...event,
+        payload: JSON.stringify(event.payload),
+        status: delivery ? delivery.status : 'pending',
+        durable: 'client-outbox',
+        serverConfirmed: !!delivery && delivery.status === 'acked',
+        deliveryError: deliveryError || (delivery && delivery.conflictReason) || ''
+      };
     }
     const eventType = String(input.eventType || '').trim();
     const entityType = String(input.entityType || '').trim();
