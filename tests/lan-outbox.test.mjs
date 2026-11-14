@@ -99,6 +99,6 @@ test('un fallo de escritura impide entregar el evento como operación encolada',
       unlinkSync: fs.unlinkSync.bind(fs)
     }
   });
-  assert.throws(() => outbox.enqueue(operation('event-disk-failure')), /no se pudo confirmar la cola LAN en disco/);
+  assert.throws(() => outbox.enqueue(operation('event-disk-failure')), /No se pudo confirmar la cola LAN en disco/);
   assert.equal(fs.existsSync(path.join(options.directory, 'sifer360-network-outbox-v1.json')), false);
 });
