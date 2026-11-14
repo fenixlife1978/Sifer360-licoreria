@@ -5521,6 +5521,8 @@ function printerSetupWizardDlg(){
   }}]});
 }
 
+function isFiscalSale(sale){return !!sale&&sale.docType!=='TICKET-INTERNO'&&!['INTERNAL_THERMAL','NO_PRINTER'].includes(sale.documentMode);}
+
 function seniatSudebanDlg(initialTab){
   if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir el módulo Fiscal.','bad');return;}
   let activeTab=initialTab||'resumen';
@@ -5574,7 +5576,7 @@ function seniatSudebanDlg(initialTab){
   const getFilteredSales=()=>{
     const q=norm(qText);
     return (S.sales||[]).filter(s=>{
-      if(!filterPeriod(s.ts))return false;
+      if(!isFiscalSale(s)||!filterPeriod(s.ts))return false;
       if(!q)return true;
       return norm(s.client.name+s.client.rif+pad(s.no)+(s.ctrlNo||'')).indexOf(q)>=0;
     });
@@ -5942,7 +5944,7 @@ function seniatSudebanDlg(initialTab){
     const [anioPeriodo,mesPeriodo]=mesActual.split('-').map(Number);
     const enPeriodoSeniat=ts=>{const d=new Date(ts);return d.getFullYear()===anioPeriodo&&d.getMonth()+1===mesPeriodo;};
     // El IVA se declara por mes calendario. Este cálculo ignora el filtro de búsqueda y las quincenas de otras pestañas.
-    const sales=(S.sales||[]).filter(x=>!x.void&&enPeriodoSeniat(x.ts));
+    const sales=(S.sales||[]).filter(x=>isFiscalSale(x)&&!x.void&&enPeriodoSeniat(x.ts));
     const purchases=(S.purchases||[]).filter(x=>!x.void&&enPeriodoSeniat(x.ts));
     const retenciones=(S.retencionesIva||[]).filter(r=>enPeriodoSeniat(r.ts));
     const debito=r2(sales.reduce((a,x)=>a+(x.iva||0)*(x.rate||S.cfg.rate),0));
@@ -6152,7 +6154,7 @@ function seniatSudebanDlg(initialTab){
           const [anioFiscal,mesFiscal]=mesPeriodo.split('-').map(Number);
           const enPeriodoFiscal=ts=>{const d=new Date(ts);return d.getFullYear()===anioFiscal&&d.getMonth()+1===mesFiscal;};
           // Totales mensuales sin depender del filtro de búsqueda ni de la vista quincenal de otras pestañas.
-          const sales=(S.sales||[]).filter(x=>!x.void&&enPeriodoFiscal(x.ts));
+          const sales=(S.sales||[]).filter(x=>isFiscalSale(x)&&!x.void&&enPeriodoFiscal(x.ts));
           const purchases=(S.purchases||[]).filter(x=>!x.void&&enPeriodoFiscal(x.ts));
           const retenciones=(S.retencionesIva||[]).filter(r=>enPeriodoFiscal(r.ts));
           const debito=r2(sales.reduce((a,x)=>a+(x.iva||0)*(x.rate||S.cfg.rate),0));
