@@ -523,6 +523,8 @@ async function clientApi(route, options = {}) {
 }
 async function flushClientOutbox() {
   if (networkConfig.role !== 'client' || !networkConfig.host || !clientOutbox) return { pending: 0, accepted: [], conflicts: [] };
+  const currentStatus = clientOutbox.status();
+  if (currentStatus.conflicts > 0) throw new Error('Hay conflictos LAN sin resolver. Se bloqueó el snapshot completo hasta conciliar las operaciones afectadas.');
   const pending = clientOutbox.pending().slice(0, 500);
   if (!pending.length) return { pending: 0, accepted: [], conflicts: [] };
   const result = await clientApi('/api/sync/events', { method: 'POST', body: JSON.stringify({ events: pending.map(({ status, conflictReason, ...event }) => event) }) });
