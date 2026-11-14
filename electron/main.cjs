@@ -12,6 +12,7 @@ const { mergeStateRecords } = require('./lan-state-merge.cjs');
 const { openOrRecoverDatabase } = require('./sqlite-recovery.cjs');
 const { isLanAddress, assertLanHost } = require('./lan-address.cjs');
 const { allocateCashboxSequence: allocateCashboxSequenceDurable } = require('./cashbox-sequence.cjs');
+const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
 const initSqlJs = require('sql.js');
 
 let db;
@@ -255,6 +256,7 @@ function initializeSchema() {
       received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(device_id, device_seq)
     );
+    CREATE TABLE IF NOT EXISTS schema_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS cashbox_sequences (
       cashbox_id TEXT NOT NULL,
       operation_type TEXT NOT NULL,
@@ -278,7 +280,9 @@ async function initializeDatabase() {
   db = opened.database;
   if (opened.recovered) console.warn('SIFER360 recuperó la base SQLite desde el respaldo automático:', opened.source, opened.corruptFile || '');
   initializeSchema();
-  if (opened.recovered) persistDb();
+  const stateRowForSequenceMigration = one('SELECT payload FROM app_state WHERE id=1');
+  const sequenceMigrationApplied = migrateCashboxSequenceCategories({ db, state: stateRowForSequenceMigration ? JSON.parse(stateRowForSequenceMigration.payload) : {}, persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
+  if (opened.recovered && !sequenceMigrationApplied) persistDb();
   dbConfigPath = path.join(app.getPath('userData'), 'database-mode.json');
   databaseMode = 'sqlite';
   try {
