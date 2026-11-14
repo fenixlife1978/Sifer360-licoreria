@@ -236,7 +236,7 @@ async function idbGetSqlite() {
   }
 }
 
-async async function idbPutSqlite(bytes) {
+async function idbPutSqlite(bytes) {
   try {
     const idb = await openIndexedDb();
     if (!idb) return false;
