@@ -70,7 +70,7 @@ function createDurableOutbox({ directory, deviceId, fsImpl = fs, pathImpl = path
     const state = readState();
     const payloadText = JSON.stringify(input.payload);
     const existing = state.events.find(event =>
-      event.status === 'pending' &&
+      (event.status === 'pending' || event.status === 'acked') &&
       event.serverDeviceId === String(input.serverDeviceId || '') &&
       event.eventType === String(input.eventType) &&
       event.entityType === String(input.entityType) &&
