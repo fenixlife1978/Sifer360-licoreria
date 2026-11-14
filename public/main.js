@@ -4634,11 +4634,13 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
       issuedAt:new Date(ts).toISOString(),
       company:{name:S.cfg.empresa,rif:S.cfg.rif,address:S.cfg.dir},
       customer:sale.client,
-      lines:sale.lines.map(line=>({code:line.code,description:line.desc,unit:line.unit,quantity:line.qty,unitPrice:line.price,discountPercent:line.disc,taxRate:line.taxRate,taxType:line.taxType,net:line.net,iva:line.iva})),
-      totals:{subtotal:sale.sub,discount:sale.disc,taxableBase:sale.base,iva:sale.iva,igtf:sale.igtf,total:sale.total,amountDue:r2(sale.total+sale.igtf)},
+      exchangeRate:Number(sale.rate)||1,
+      lines:sale.lines.map(line=>({code:line.code,description:line.desc,unit:line.unit,quantity:line.qty,unitPriceUsd:line.price,unitPriceVes:r2(line.price*(Number(sale.rate)||1)),discountPercent:line.disc,taxRate:line.taxRate,taxType:line.taxType,netUsd:line.net,netVes:r2(line.net*(Number(sale.rate)||1)),ivaUsd:line.iva,ivaVes:r2(line.iva*(Number(sale.rate)||1))})),
+      totals:{subtotalUsd:sale.sub,subtotalVes:r2(sale.sub*(Number(sale.rate)||1)),discountUsd:sale.disc,discountVes:r2(sale.disc*(Number(sale.rate)||1)),taxableBaseUsd:sale.base,taxableBaseVes:r2(sale.base*(Number(sale.rate)||1)),ivaUsd:sale.iva,ivaVes:r2(sale.iva*(Number(sale.rate)||1)),igtfUsd:sale.igtf,igtfVes:r2(sale.igtf*(Number(sale.rate)||1)),totalUsd:sale.total,totalVes:r2(sale.total*(Number(sale.rate)||1)),amountDueUsd:r2(sale.total+sale.igtf),amountDueVes:r2((sale.total+sale.igtf)*(Number(sale.rate)||1))},
       payments:sale.pays,
-      change:sale.change,
-      currency:'VES/USD'
+      changeUsd:sale.change,
+      currency:'VES',
+      displayCurrency:'USD'
     };
     try{
       const issued=await window.posDesktop.fiscalPrinterEmitInvoice(fiscalProfile,fiscalInvoice);
@@ -4646,6 +4648,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
       fiscalJob.fiscalDocumentNumber=issued.fiscalDocumentNumber;
       fiscalJob.fiscalSerial=issued.fiscalSerial;
       fiscalJob.issuedAt=Date.now();
+      fiscalProfile.serial=issued.fiscalSerial;
       sale.fiscal={provider:fiscalProfile.provider,model:fiscalProfile.model,documentNumber:issued.fiscalDocumentNumber,serial:issued.fiscalSerial,authorization:issued.authorization||'',status:'issued'};
     }catch(error){
       fiscalJob.status='uncertain';
