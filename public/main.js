@@ -1403,7 +1403,7 @@ function conteoDlg(focusCode){
     });
     S.counts.push({id:docId,cashbox:currentCaja(),sequence:countNo,ts,user:S.cfg.cajero,items:auditItems});
     draftConteo={};
-    const persisted=await save();if(!persisted||!persisted.ok){for(const key of Object.keys(S))delete S[key];Object.assign(S,rollbackState);draftConteo=draftBefore;renderAll();msg('SQLite no confirmó el conteo; se restauraron inventario y borrador anterior.','bad');return false;}
+    const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);draftConteo=draftBefore;renderAll();msg('SQLite no confirmó el conteo; se restauró el último estado durable disponible.','bad');return false;}
     renderAll();
     msg('Conteo masivo '+docId+' guardado con éxito ('+auditItems.length+' productos actualizados en inventario y Kardex).');
     return true;
@@ -2679,7 +2679,7 @@ function comprasDlg(initialTab){
         ts,dueTs,total:payableTotal,invoiceTotal:total,retIva:retUsd,paid:effPaid,payments
       });
     }
-    const persisted=await save();if(!persisted||!persisted.ok){for(const key of Object.keys(S))delete S[key];Object.assign(S,rollbackState);renderAll();msg('SQLite no confirmó la compra; se restauró el estado anterior y no se confirmó el registro.','bad');return false;}
+    const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);renderAll();msg('SQLite no confirmó la compra; se restauró el último estado durable disponible.','bad');return false;}
     renderAll();
     msg('Compra COM-'+pad(no)+' guardada. Factura: '+usd(total)+(retUsd>0?'; IVA retenido: '+usd(retUsd)+'; saldo a proveedor: '+usd(payableTotal):'')+'. Stock, costos y Kardex actualizados.');
     return true;
@@ -2947,7 +2947,7 @@ function cxcDlg(selId){
         note:$('#abNote',el).value.trim()||'Abono de cliente'
       });
       const persisted=await save();
-      if(!persisted||!persisted.ok){Object.assign(S,rollbackState);draw();renderStatus();msg('SQLite/servidor no confirmó el cobro; se restauró el saldo anterior.','bad');return;}
+      if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);draw();renderStatus();msg('SQLite/servidor no confirmó el cobro; se mostró el último estado durable disponible.','bad');return;}
       draw();renderStatus();
       msg('Abono de '+usd(amt)+' registrado en '+item.doc+' ('+item.client.name+').');
       return;
@@ -2983,7 +2983,7 @@ function cxcDlg(selId){
       });
       item.paid=r2(Math.min(item.total,item.paid+totalMix));
       const persisted=await save();
-      if(!persisted||!persisted.ok){Object.assign(S,rollbackState);draw();renderStatus();msg('SQLite/servidor no confirmó el cobro mixto; se restauró el saldo anterior.','bad');return;}
+      if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);draw();renderStatus();msg('SQLite/servidor no confirmó el cobro mixto; se mostró el último estado durable disponible.','bad');return;}
       resetMix();draw();renderStatus();
       msg('Cobro mixto por '+usd(totalMix)+' ('+active.length+' métodos) registrado en '+item.doc+'.');
     }
@@ -3017,7 +3017,7 @@ function newCxcManualDlg(){
         ts:Date.now(),dueTs:parseIsoD($('#mcDue',el).value),cashbox:currentCaja(),cashier:currentCajero(),
         total:amt,paid:0,payments:[]
       });
-      const persisted=await save();if(!persisted||!persisted.ok){for(const key of Object.keys(S))delete S[key];Object.assign(S,rollbackState);msg('SQLite no confirmó la CxC; no se registró definitivamente.','bad');return false;}cxcDlg(id);msg('Cuenta por cobrar registrada.');return false;
+      const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);msg('SQLite no confirmó la CxC; no se registró definitivamente.','bad');return false;}cxcDlg(id);msg('Cuenta por cobrar registrada.');return false;
     }}
   ]});
 }
@@ -3275,7 +3275,7 @@ function cxpDlg(selId){
         if(comp)comp.paid=item.paid;
       }
       const persisted=await save();
-      if(!persisted||!persisted.ok){Object.assign(S,rollbackState);draw();msg('SQLite/servidor no confirmó el pago; se restauró el saldo anterior.','bad');return;}
+      if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);draw();msg('SQLite/servidor no confirmó el pago; se mostró el último estado durable disponible.','bad');return;}
       draw();
       msg('Pago de '+usd(amt)+' registrado para '+item.supplier.name+'.');
       return;
@@ -3315,7 +3315,7 @@ function cxpDlg(selId){
         if(comp)comp.paid=item.paid;
       }
       const persisted=await save();
-      if(!persisted||!persisted.ok){Object.assign(S,rollbackState);draw();msg('SQLite/servidor no confirmó el pago mixto; se restauró el saldo anterior.','bad');return;}
+      if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);draw();msg('SQLite/servidor no confirmó el pago mixto; se mostró el último estado durable disponible.','bad');return;}
       resetMix();draw();
       msg('Pago mixto por '+usd(totalMix)+' ('+active.length+' medios) registrado para '+item.supplier.name+'.');
     }
@@ -3357,7 +3357,7 @@ function newCxpManualDlg(){
         total:amt,paid:0,payments:[]
       });
       const rollbackState=JSON.parse(JSON.stringify(S));
-      const persisted=await save();if(!persisted||!persisted.ok){S.cxp=S.cxp.filter(x=>x.id!==id);msg('SQLite no confirmó la CxP; no se registró definitivamente.','bad');return false;}cxpDlg(id);msg('Cuenta por pagar registrada.');return false;
+      const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);msg('SQLite no confirmó la CxP; no se registró definitivamente.','bad');return false;}cxpDlg(id);msg('Cuenta por pagar registrada.');return false;
     }}
   ]});
 }
@@ -3659,7 +3659,7 @@ function newOperacionCambiariaDlg(opts, onDone){
         if(!S.cambiosDivisas)S.cambiosDivisas=[];
         S.cambiosDivisas.push(op);
         const persisted=await save();
-        if(!persisted||!persisted.ok){Object.assign(S,rollbackState);msg('SQLite/servidor no confirmó la operación cambiaria; se restauró el estado anterior.','bad');return false;}
+        if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);msg('SQLite/servidor no confirmó la operación cambiaria; se mostró el último estado durable disponible.','bad');return false;}
         msg('Operación cambiaria '+id+' registrada con éxito.');
         if(onDone)onDone();
         printComprobanteDivisas(op);
@@ -4644,7 +4644,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
     });
   }
   S.sales.push(sale);S.invoice=Math.max(S.invoice,invNo+1);S.cart=[];S.sel=-1;S.client=S.clients[0];
-  const persisted=await save();if(!persisted||!persisted.ok){for(const key of Object.keys(S))delete S[key];Object.assign(S,rollbackState);renderAll();msg('SQLite no confirmó la venta; se restauró el estado anterior y no se confirmó la factura.','bad');return;}
+  const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);renderAll();msg('SQLite no confirmó la venta; se mostró el último estado durable disponible y no se confirmó la factura.','bad');return;}
   renderAll();
   msg('Factura '+pad(sale.no)+' procesada por '+usd(r2(sale.total+sale.igtf))+(casheaAmt>0?' (Financiado Cashea: '+usd(casheaAmt)+')':'')+(creditAmt>0?' (Saldo a CxC: '+usd(creditAmt)+')':'')+'.');
   showSaleCompletion(sale);
@@ -4811,7 +4811,7 @@ function salesDlg(){
       });
       S.cxc=(S.cxc||[]).filter(x=>!(x.saleNo===s.no&&x.cashbox===currentCaja()));
       const persisted=await save();
-      if(!persisted||!persisted.ok){Object.assign(S,rollbackState);armed=0;renderCatalog();draw();msg('SQLite/servidor no confirmó la anulación; se restauró la venta y el inventario.','bad');return;}
+      if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);armed=0;renderCatalog();draw();msg('SQLite/servidor no confirmó la anulación; se mostró el último estado durable disponible.','bad');return;}
       armed=0;renderCatalog();draw();msg('Factura '+pad(s.no)+' anulada. Se devolvió la mercancía al inventario y Kardex.');
     }
   });
@@ -6458,7 +6458,7 @@ function corteZDlg(){
       if(!Array.isArray(S.movimientosCaja))S.movimientosCaja=[];
       S.movimientosCaja.push({id:'MOV-'+box.replace(/\W/g,'')+'-'+pad(movementNo,6),cashbox:box,sequence:movementNo,ts:Date.now(),direction:$('#zMovDir',el).value,currency:$('#zMovCur',el).value,amount:r2(amount),reason,counterpartAccount,rate:S.cfg.rate,user:currentCajero(),openingId:active.id||''});
       const persisted=await save();
-      if(!persisted||!persisted.ok){Object.assign(S,rollbackState);msg('SQLite/servidor no confirmó el movimiento; se restauró el estado anterior.','bad');draw();return;}
+      if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);msg('SQLite/servidor no confirmó el movimiento; se mostró el último estado durable disponible.','bad');draw();return;}
       $('#zMovAmount',el).value='';$('#zMovReason',el).value='';$('#zMovStatus',el).textContent='Movimiento registrado y guardado en el historial del turno.';draw();return;
     }
     if(e.target.id==='zOpenShift'){
