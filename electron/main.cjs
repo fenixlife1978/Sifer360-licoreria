@@ -423,8 +423,12 @@ function registerIpc() {
     const payload = JSON.stringify(state);
     run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, updated_at=CURRENT_TIMESTAMP', [payload]);
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(persistDb, 80);
-    return { ok: true };
+    saveTimer = null;
+    // Confirmar escritura del archivo SQLite antes de responder al renderer.
+    // La depreciación automática y las operaciones POS no deben interpretar
+    // una escritura solo en memoria como persistencia durable en disco.
+    persistDb();
+    return { ok: true, durable: 'sqlite-file' };
   });
   ipcMain.handle('posdb:list-documents', (_e, filter = {}) => {
     if (databaseMode !== 'sqlite') return [];
