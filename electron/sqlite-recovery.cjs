@@ -30,19 +30,18 @@ function openOrRecoverDatabase({ SQL, file, fsImpl = fs }) {
   if (!SQL || typeof SQL.Database !== 'function' || !file) throw new Error('Falta el motor SQLite o la ruta de base de datos.');
   const backup = file + '.bak';
   if (fsImpl.existsSync(file)) {
-    let database;
+    let database = null;
+    let openError = null;
     try { database = new SQL.Database(new Uint8Array(fsImpl.readFileSync(file))); }
-    catch (error) {
-      throw new Error('No se pudo abrir la base SQLite existente. El archivo original se conserva sin sobrescribir. Si existe, revise el respaldo automático ' + backup + '. Detalle: ' + (error && error.message ? error.message : String(error)));
-    }
-    const integrity = integrityStatus(database);
-    if (integrity === 'ok') return { database, recovered: false, source: 'primary' };
-    if (!fsImpl.existsSync(backup)) throw new Error('La base SQLite no superó integrity_check (' + integrity + ') y no existe respaldo automático. Se conserva el archivo original: ' + file);
+    catch (error) { openError = error; }
+    const integrity = database ? integrityStatus(database) : 'no se pudo abrir: ' + (openError && openError.message ? openError.message : 'error desconocido');
+    if (database && integrity === 'ok') return { database, recovered: false, source: 'primary' };
+    if (!fsImpl.existsSync(backup)) throw new Error('La base SQLite principal está dañada (' + integrity + ') y no existe respaldo automático. Se conserva el archivo original: ' + file);
     let restored;
     try { restored = new SQL.Database(new Uint8Array(fsImpl.readFileSync(backup))); }
-    catch { throw new Error('SQLite está corrupta y el respaldo tampoco se puede abrir. Se conservan ambos archivos para recuperación manual.'); }
+    catch { throw new Error('SQLite principal y respaldo no se pueden abrir. Se conservan ambos archivos para recuperación manual.'); }
     const backupIntegrity = integrityStatus(restored);
-    if (backupIntegrity !== 'ok') throw new Error('SQLite y su respaldo fallaron integrity_check. No se sobrescribió ninguno de los dos archivos.');
+    if (backupIntegrity !== 'ok') throw new Error('SQLite principal y respaldo fallaron integrity_check. No se sobrescribió ninguno de los dos archivos.');
     const corruptFile = file + '.corrupt-' + Date.now();
     fsImpl.renameSync(file, corruptFile);
     writeDurable(file, Buffer.from(fsImpl.readFileSync(backup)), fsImpl);
