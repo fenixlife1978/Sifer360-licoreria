@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import crypto from 'node:crypto';
+import tls from 'node:tls';
 import https from 'node:https';
 import { createRequire } from 'node:module';
 
@@ -136,7 +136,7 @@ test('devuelve la clave privada descifrada al servidor HTTPS aunque esté cifrad
   const identity = await ensureServerCertificate({ directory, deviceId: 'server-encrypted-test', encryptPrivateKey, decryptPrivateKey });
   assert.equal(typeof identity.key, 'string');
   assert.match(identity.key, /BEGIN PRIVATE KEY/);
-  assert.equal(new crypto.X509Certificate(identity.cert).publicKey.asymmetricKeyType, 'ec');
+  assert.doesNotThrow(() => tls.createSecureContext({ key: identity.key, cert: identity.cert }));
   assert.equal(fs.readFileSync(path.join(directory, 'sifer360-lan-identity-v1.json'), 'utf8').includes('"key"'), false);
   assert.equal(fs.readFileSync(path.join(directory, 'sifer360-lan-identity-v1.json'), 'utf8').includes('"keyEncrypted"'), true);
 });
