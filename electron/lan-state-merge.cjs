@@ -39,6 +39,22 @@ function mergeStateRecords(base, incoming) {
     }
     out[key] = [...map.values()];
   }
+  // Una anulación conserva la venta como evidencia comercial, pero cancela la cuenta por cobrar asociada.
+  // La fusión por unión de arrays no debe resucitar esa CxC desde el snapshot anterior de otra PC.
+  if (Array.isArray(out.sales) && Array.isArray(out.cxc)) {
+    const voidedSales = new Set(
+      out.sales
+        .filter(sale => sale && sale.void === true && sale.no !== undefined && sale.no !== null)
+        .map(sale => String(sale.cashbox || 'sin-caja') + ':' + String(sale.no))
+    );
+    if (voidedSales.size) {
+      out.cxc = out.cxc.filter(item => {
+        if (!item || item.saleNo === undefined || item.saleNo === null) return true;
+        const identity = String(item.cashbox || 'sin-caja') + ':' + String(item.saleNo);
+        return !voidedSales.has(identity);
+      });
+    }
+  }
   return out;
 }
 
