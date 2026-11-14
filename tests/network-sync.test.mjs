@@ -198,3 +198,18 @@ test('SQLite valida integridad antes de guardar y mantiene respaldo recuperable'
   assert.match(electron, /file \+ '\.corrupt-'/);
   assert.match(electron, /integrity_check/);
 });
+
+
+test('los guardados SQLite locales revierten el cambio en memoria si falla la persistencia durable', () => {
+  assert.match(electron, /function persistMutation\(mutate\)/);
+  assert.match(electron, /const snapshot = db\.export\(\)/);
+  assert.match(electron, /restoreDatabaseSnapshot\(snapshot\)/);
+  assert.match(electron, /persistMutation\(\(\) => run\('INSERT INTO app_state/);
+  assert.match(electron, /persistMutation\(\(\) => run\('INSERT OR REPLACE INTO fiscal_documents/);
+  assert.match(electron, /persistMutation\(\(\) => run\('DELETE FROM fiscal_documents/);
+});
+
+test('la sincronización iniciada por el servidor también revierte su snapshot si falla la escritura', () => {
+  assert.match(electron, /let merged;\s*\n\s*persistMutation\(\(\) => \{/);
+  assert.match(electron, /merged = mergeStateRecords\(row \? JSON\.parse\(row\.payload\) : null, state\)/);
+});
