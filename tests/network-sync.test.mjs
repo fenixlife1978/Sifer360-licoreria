@@ -501,3 +501,11 @@ test('la identidad de outbox separa consecutivos iguales pertenecientes a cajas 
   assert.match(pos, /operationIdentity\(item,index,key\)/);
   assert.match(pos, /operationIdentity\(item,i,key\)/);
 });
+
+test('la sincronización no sobrescribe cambios del usuario hechos mientras la petición LAN está en curso', () => {
+  assert.match(pos, /const pendingSave=window\.__SIFER_LAST_SAVE;\s*if\(pendingSave\)await pendingSave/);
+  assert.match(pos, /const syncRevision=saveSequence/);
+  assert.match(pos, /persistenceBlocked\|\|saveSequence===syncRevision/);
+  assert.match(pos, /else scheduleNetworkSync\(\)/);
+  assert.doesNotMatch(pos, /else mergeRemoteSnapshot\(local,result\.state\)/);
+});
