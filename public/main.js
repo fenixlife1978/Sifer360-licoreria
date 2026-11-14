@@ -1315,7 +1315,8 @@ function conteoDlg(focusCode){
       msg('No hay diferencias de stock pendientes por guardar.','bad');
       return false;
     }
-    const docId='CNT-'+pad(S.countSeq++,8);
+    let countNo;try{countNo=await nextCajaSequence('count',currentCaja());}catch(error){msg('No se pudo reservar el número del conteo: '+error.message,'bad');return false;}
+    const docId='CNT-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(countNo,6);
     const ts=Date.now();
     const auditItems=[];
     modEntries.forEach(item=>{
@@ -1335,7 +1336,7 @@ function conteoDlg(focusCode){
       });
       auditItems.push({code:p.code,desc:p.desc,prev,next,diff,cost:p.cost,reason});
     });
-    S.counts.push({id:docId,ts,user:S.cfg.cajero,items:auditItems});
+    S.counts.push({id:docId,cashbox:currentCaja(),sequence:countNo,ts,user:S.cfg.cajero,items:auditItems});
     draftConteo={};
     save();renderAll();
     msg('Conteo masivo '+docId+' guardado con éxito ('+auditItems.length+' productos actualizados en inventario y Kardex).');
@@ -2537,7 +2538,7 @@ function comprasDlg(initialTab){
     if(tb){tab=tb.dataset.tab;renderView();}
   });
 
-  const processPurchase=()=>{
+  const processPurchase=async()=>{
     if(tab!=='new')return true;
     if(!pLines.length){msg('Agregue al menos un producto a la compra.','bad');return false;}
     const sup=S.suppliers[supIdx]||S.suppliers[0];
@@ -2552,7 +2553,8 @@ function comprasDlg(initialTab){
     if(!(Number(S.cfg.rate)>0)){msg('Configure una tasa BCV real mayor que cero antes de registrar la compra.','bad');return false;}
     if(pLines.some(l=>!(Number(l.qty)>0)||!(Number(l.cost)>=0))){msg('Cada renglón debe tener cantidad positiva y costo válido.','bad');return false;}
     const ts=Date.now();
-    const no=S.purchaseSeq++;
+    let no;try{no=await nextCajaSequence('purchase',currentCaja());}catch(error){msg('No se pudo reservar el número de compra: '+error.message,'bad');return false;}
+    S.purchaseSeq=Math.max(Number(S.purchaseSeq)||1,no+1);
     const lines=pLines.map(l=>{
       const p=prod(l.code);
       /* Costo Promedio Ponderado */
@@ -2580,7 +2582,7 @@ function comprasDlg(initialTab){
     const retBs=r2(retUsd*S.cfg.rate);
     const payableTotal=r2(Math.max(0,total-retUsd));
     const effPaid=cond==='Contado'?payableTotal:Math.min(payableTotal,paidInit);
-    const comp={accountingSourceId:'PURCHASE-'+pad(no),no,docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
+    const comp={accountingSourceId:'PURCHASE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(no),no,cashbox:currentCaja(),docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
       const periodo=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
@@ -2597,10 +2599,10 @@ function comprasDlg(initialTab){
     }
     S.purchases.push(comp);
     if(payableTotal-effPaid>=0.01){
-      const cxpId='CXP-'+pad((S.cxp.length+1),4);
+      const cxpId='CXP-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(no,6);
       const payments=effPaid>0?[{ts,method:payMethod,cur:'VES',amountBs:r2(effPaid*S.cfg.rate),amountUsd:effPaid,ref:'INI-'+no,note:'Abono inicial en compra'}]:[];
       S.cxp.push({
-        id:cxpId,purchaseNo:no,doc:docProv+' (COM-'+pad(no)+')',
+        id:cxpId,purchaseNo:no,cashbox:currentCaja(),doc:docProv+' (COM-'+pad(no)+')',
         supplier:Object.assign({},sup),
         concept:'Compra mercancía ('+lines.length+' reng.)'+(retUsd>0?' — retención IVA '+usd(retUsd):''),
         ts,dueTs,total:payableTotal,invoiceTotal:total,retIva:retUsd,paid:effPaid,payments
@@ -4516,8 +4518,10 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
   });
   if(creditAmt>0){
     const paidUpfront=r2(Math.max(0,t.total-creditAmt));
+    const cxcNo=await nextCajaSequence('cxc',currentCaja());
     S.cxc.push({
-      id:'CXC-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(S.cxc.filter(x=>x.cashbox===currentCaja()).length+1,6),
+      id:'CXC-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxcNo,6),
+      sequence:cxcNo,
       cashbox:currentCaja(),cashier:currentCajero(),saleNo:invNo,
       doc:'FAC-'+pad(invNo),
       client:Object.assign({},S.client),
