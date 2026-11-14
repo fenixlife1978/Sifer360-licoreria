@@ -22,7 +22,7 @@ async function ensureChart(){
  const persisted=await save();if(!persisted||!persisted.ok)throw new Error('No se pudo guardar el plan de cuentas en SQLite.');return a;
 }
 function accountMap(){return new Map(state().accounts.map(a=>[String(a.code),a]));}
-function nextEntrySequence(a=state()){const max=(a.entries||[]).reduce((n,e)=>Math.max(n,Number(e.sequence)||Number(String(e.id||'').match(/(\\d+)$/)?.[1])||0),0);return Math.max(1,Number(a.nextEntry)||1,max+1);}
+function nextEntrySequence(a=state()){const max=(a.entries||[]).reduce((n,e)=>Math.max(n,Number(e.sequence)||Number(String(e.id||'').match(/(\d+)$/)?.[1])||0),0);return Math.max(1,Number(a.nextEntry)||1,max+1);}
 function fmtAccount(a){return esc(a.code)+' · '+esc(a.name);}
 function movementAccounts(){return state().accounts.filter(a=>a.isMovement);}
 function totalsFor(entries,accountCode){
