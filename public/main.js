@@ -5231,7 +5231,10 @@ function newRetencionIvaDlg(onDone){
 
 
 function fiscalPrinterConfigDlg(){
-  const box=currentCaja();
+  const user=activeUser();
+  if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras fiscales de las cajas.','bad');return;}
+  const boxes=cashboxList().filter(x=>x.active!==false);
+  let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
   const providerCatalog={
     hka:{label:'The Factory HKA',files:['TfhkaNet.dll','tfhkaif.dll','IntTFHKA.exe']},
     bematech:{label:'Bematech',files:['BemaFI32.dll','BemaFI64.dll','BemaFI32.ini']},
@@ -5240,9 +5243,11 @@ function fiscalPrinterConfigDlg(){
     aclas:{label:'Aclas',files:['AclasSDK.dll']},
     pnp:{label:'PNP / Desarrollos PNP',files:['PnpFiscal.dll']}
   };
-  const saved=(S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[box])||{};
-  let draft={provider:saved.provider||'hka',model:saved.model||'',port:saved.port||'',baudRate:saved.baudRate||9600,dataBits:saved.dataBits||8,parity:saved.parity||'none',stopBits:saved.stopBits||1,timeoutMs:saved.timeoutMs||8000,bridgePath:saved.bridgePath||'',sdkPaths:Object.assign({},saved.sdkPaths||{}),enabled:saved.enabled===true};
-  const el=h('<div class="form"><div class="hint"><b>Configuración fiscal de Caja '+esc(box)+'</b>. Los parámetros se guardan en SQLite y quedan asociados a esta caja. La conexión física se prueba en este equipo.</div><div class="newgrid">'+
+  const readSavedDraft=boxId=>{const saved=(S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[boxId])||{};return{provider:saved.provider||'hka',model:saved.model||'',port:saved.port||'',baudRate:saved.baudRate||9600,dataBits:saved.dataBits||8,parity:saved.parity||'none',stopBits:saved.stopBits||1,timeoutMs:saved.timeoutMs||8000,bridgePath:saved.bridgePath||'',sdkPaths:Object.assign({},saved.sdkPaths||{}),enabled:saved.enabled===true};};
+  let draft=readSavedDraft(box);
+  const drafts={[box]:draft};
+  const boxOptions=boxes.map(x=>'<option value="'+esc(x.id)+'" '+(String(x.id)===box?'selected':'')+'>'+esc(x.id)+' — '+esc(x.name||('Caja '+x.id))+'</option>').join('');
+  const el=h('<div class="form"><div class="hint"><b>Configuración de impresoras fiscales</b>. Los parámetros se guardan en SQLite y quedan asociados a cada caja. La conexión física se prueba en este equipo.</div><div class="f"><label for="fpCashbox">Caja a configurar</label><select class="fld" id="fpCashbox">'+boxOptions+'</select></div><div class="newgrid">'+
     '<div class="f"><label for="fpProvider">Fabricante / ecosistema</label><select class="fld" id="fpProvider">'+Object.keys(providerCatalog).map(k=>'<option value="'+k+'" '+(draft.provider===k?'selected':'')+'>'+providerCatalog[k].label+'</option>').join('')+'</select></div>'+
     '<div class="f"><label for="fpModel">Modelo exacto</label><input class="fld" id="fpModel" maxlength="120" value="'+esc(draft.model)+'" placeholder="Ej. HKA80, MP-4000 TH FI"></div>'+
     '<div class="f"><label for="fpPort">Puerto USB-Serial / COM</label><input class="fld mono" id="fpPort" list="fpPortList" value="'+esc(draft.port)+'" placeholder="COM4"><datalist id="fpPortList"></datalist></div>'+
@@ -5276,8 +5281,30 @@ function fiscalPrinterConfigDlg(){
     try{const r=await window.posDesktop.fiscalPrinterListPorts();$('#fpPortList',el).innerHTML=(r.ports||[]).map(p=>'<option value="'+esc(p.port)+'">'+esc(p.name)+'</option>').join('');const driverNames={prolific:'Prolific PL2303',ftdi:'FTDI VCP',silabs:'Silicon Labs CP210x'};node.textContent=r.ports.length?'Puertos detectados: '+r.ports.map(p=>p.port+' — '+p.name+(p.driverId?' ['+(driverNames[p.driverId]||p.driverId)+']':' [chip USB no identificado]')).join(' · '):r.message;}
     catch(e){node.textContent='No se pudieron detectar puertos: '+e.message;}
   };
+  const applyDraft=()=>{
+    $('#fpProvider',el).value=draft.provider;
+    $('#fpModel',el).value=draft.model;
+    $('#fpPort',el).value=draft.port;
+    $('#fpBaud',el).value=String(draft.baudRate);
+    $('#fpBits',el).value=String(draft.dataBits);
+    $('#fpParity',el).value=draft.parity;
+    $('#fpStop',el).value=String(draft.stopBits);
+    $('#fpTimeout',el).value=String(draft.timeoutMs);
+    $('#fpBridge',el).value=draft.bridgePath;
+    $('#fpEnabled',el).checked=draft.enabled;
+    drawSdk();
+  };
   el.addEventListener('change',e=>{
-    if(e.target.id==='fpProvider'){draft.provider=e.target.value;drawSdk();status();}
+    if(e.target.id==='fpCashbox'){
+      drafts[box]=profile();
+      box=String(e.target.value);
+      draft=drafts[box]||readSavedDraft(box);
+      drafts[box]=draft;
+      applyDraft();
+      status();
+      return;
+    }
+    if(e.target.id==='fpProvider'){draft.provider=e.target.value;drafts[box]=draft;drawSdk();status();}
   });
   el.addEventListener('click',async e=>{
     const sdk=e.target.closest('[data-sdk-file]');
@@ -5306,6 +5333,7 @@ function fiscalPrinterConfigDlg(){
     {label:'Cerrar'},
     {label:'Guardar configuración',primary:true,fn:async()=>{
       const p=profile();
+      drafts[box]=p;
       if(!p.model){msg('Indique el modelo exacto de la impresora fiscal.','bad');return false;}
       if(!S.cfg.fiscalPrinters)S.cfg.fiscalPrinters={};
       S.cfg.fiscalPrinters[box]=p;
@@ -5314,7 +5342,7 @@ function fiscalPrinterConfigDlg(){
       msg('Configuración fiscal guardada para Caja '+box+'.');
       return true;
     }}
-  ],onOpen:()=>{drawSdk();status();}});
+  ],onOpen:()=>{applyDraft();status();}});
 }
 
 function seniatSudebanDlg(initialTab){
