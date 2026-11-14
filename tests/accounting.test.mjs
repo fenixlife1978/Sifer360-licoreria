@@ -38,7 +38,7 @@ test('la reversión crea un asiento inverso y conserva el original', () => {
 test('las operaciones POS exponen referencias estables y costo histórico para contabilización', () => {
   assert.match(pos, /accountingSourceId:'SALE-'\+String\(currentCaja\(\)\)/);
   assert.match(pos, /unitCost:i\.p\.cost/);
-  assert.match(pos, /accountingSourceId:'PURCHASE-'\+pad\(no\)/);
+  assert.match(pos, /accountingSourceId:'PURCHASE-'\+String\(currentCaja\(\)\)/);
   assert.match(pos, /cost:l\.cost/);
 });
 
