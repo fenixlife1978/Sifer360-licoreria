@@ -78,6 +78,9 @@ function isLanAddress(address) {
   const [a, b] = parts;
   return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
 }
+function assertLanHost(host) {
+  if (!isLanAddress(host)) throw new Error('La dirección del servidor debe ser una IP privada de la red local. No se enviaron credenciales.');
+}
 function sendJson(res, status, data) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': 'null' }); res.end(JSON.stringify(data)); }
 function readBody(req) { return new Promise((resolve, reject) => { let raw = ''; req.on('data', chunk => { raw += chunk; if (raw.length > MAX_SYNC_BODY) { reject(new Error('La carga de sincronización excede 8 MB.')); req.destroy(); } }); req.on('end', () => { try { resolve(JSON.parse(raw || '{}')); } catch { reject(new Error('JSON inválido.')); } }); req.on('error', reject); }); }
 function statePayloadHash(payload) { return crypto.createHash('sha256').update(String(payload || '')).digest('hex'); }
@@ -460,6 +463,7 @@ function allocateCashboxSequence(cashboxId, operationType, minimumValue = 1) {
 }
 async function clientApi(route, options = {}) {
   if (networkConfig.role !== 'client' || !networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión configurada al servidor LAN.');
+  assertLanHost(networkConfig.host);
   const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + route, {
     ...options,
     headers: { Authorization: 'Bearer ' + networkConfig.token, ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) },
@@ -516,6 +520,7 @@ function registerNetworkIpc() {
   ipcMain.handle('network:next-sequence', async (_e, input = {}) => {
     if (networkConfig.role === 'client') {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión configurada al servidor.');
+      assertLanHost(networkConfig.host);
       const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sequences/next', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + networkConfig.token, 'Content-Type': 'application/json' },
@@ -548,6 +553,7 @@ function registerNetworkIpc() {
     const port = Math.max(1024, Math.min(65535, Number(opts.port || 38760)));
     const token = String(opts.token || '').trim();
     if (!host || !token) throw new Error('Indica IP del servidor y clave de emparejamiento.');
+    assertLanHost(host);
     const response = await fetch('http://' + host + ':' + port + '/api/health', { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error('No se pudo autenticar con el servidor (' + response.status + ').');
     const health = await response.json();
@@ -568,6 +574,7 @@ function registerNetworkIpc() {
       return { ok: true, state: merged, role: 'server', updatedAt: new Date().toISOString() };
     }
     if (networkConfig.role !== 'client' || !networkConfig.host) return { ok: false, state, role: 'standalone', message: 'Esta caja no está conectada a un servidor.' };
+    assertLanHost(networkConfig.host);
     const headers = { Authorization: 'Bearer ' + networkConfig.token, 'Content-Type': 'application/json' };
     const pendingEvents = networkConfig.role === 'client' ? [] : all("SELECT event_id AS eventId,device_id AS deviceId,device_seq AS deviceSeq,event_type AS eventType,entity_type AS entityType,entity_id AS entityId,occurred_at AS occurredAt,payload FROM local_operation_outbox WHERE status='pending' ORDER BY device_seq LIMIT 500").map(ev => ({ ...ev, payload: JSON.parse(ev.payload) }));
     if (pendingEvents.length) {
@@ -602,6 +609,7 @@ function registerIpc() {
   ipcMain.handle('posdb:load-state', async () => {
     if (networkConfig.role === 'client') {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Este cliente no está conectado al servidor LAN.');
+      assertLanHost(networkConfig.host);
       const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/state', { headers: { Authorization: 'Bearer ' + networkConfig.token }, signal: AbortSignal.timeout(8000) });
       if (!response.ok) throw new Error('No se pudo leer la base central (' + response.status + ').');
       const result = await response.json();
@@ -615,6 +623,7 @@ function registerIpc() {
     if (databaseMode !== 'sqlite') throw new Error('SQLite local no está seleccionado.');
     if (networkConfig.role === 'client') {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión al servidor; no se guardó la operación.');
+      assertLanHost(networkConfig.host);
       const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/state', {
         method: 'POST', headers: { Authorization: 'Bearer ' + networkConfig.token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ deviceId: networkConfig.deviceId, state, expectedHash: networkConfig.serverStateHash || '' }), signal: AbortSignal.timeout(10000)
