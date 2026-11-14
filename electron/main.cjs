@@ -636,6 +636,7 @@ function registerIpc() {
     if (networkConfig.role === 'client') {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión al servidor; no se guardó la operación.');
       assertLanHost(networkConfig.host);
+      await flushClientOutbox();
       const result = await clientApi('/api/sync/state', { method: 'POST', body: JSON.stringify({ deviceId: networkConfig.deviceId, state, expectedHash: networkConfig.serverStateHash || '' }), timeoutMs: 10000 });
       networkConfig.serverStateHash = result.stateHash;
       return { ok: true, durable: 'server-sqlite', serverDeviceId: result.serverDeviceId };
