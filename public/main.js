@@ -600,7 +600,7 @@ async function networkSyncAttempt(){
     }else networkLastStatus='local';
   }catch(error){
     networkLastStatus='offline';
-    const status=$('#sbMsg');const reason=String(error&&error.message||'');if(status)status.textContent=reason.includes('Cliente LAN desconectado')?'Cliente LAN desconectado · no se confirman operaciones ni se usa SQLite local. Reconecte con el servidor.':reason.includes('conflicto')?'Conflicto LAN · no se aplicó el snapshot; revise las operaciones pendientes.':'Sin confirmación del servidor · las operaciones nuevas permanecen en la cola LAN local. Reconecte y revise el estado antes de continuar.';
+    const status=$('#sbMsg');const reason=String(error&&error.message||'');if(status)status.textContent=reason.includes('Cliente LAN desconectado')?'Cliente LAN desconectado · no se confirman operaciones ni se usa SQLite local. Reconecte con el servidor.':reason.includes('base central cambió')?'Conflicto de concurrencia · no se guardó el snapshot. Recargue SIFER para traer la base central antes de continuar.':reason.includes('conflictos LAN')?'Conflictos en cola LAN · sincronización bloqueada. Revise los identificadores y concilie los registros afectados.':reason.includes('conflicto')?'Conflicto LAN · no se aplicó el snapshot; revise las operaciones pendientes.':'Sin confirmación del servidor · las operaciones nuevas permanecen en la cola LAN local. Reconecte y revise el estado antes de continuar.';
   }finally{networkSyncBusy=false}
 }
 window.SIFERNetworkSync=()=>networkSyncAttempt();
