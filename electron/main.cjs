@@ -345,7 +345,7 @@ function allocateCashboxSequence(cashboxId, operationType, minimumValue = 1) {
   const operation = String(operationType || '').trim();
   const minimum = Math.max(1, Math.floor(Number(minimumValue) || 1));
   const allowed = new Set(['invoice','control','z','void','refund','return','cxc','cxp','movement','opening','purchase','count']);
-  const periodRetention = /^retention-\\d{6}$/.test(operation);
+  const periodRetention = /^retention-\d{6}$/.test(operation);
   if (!cashbox || cashbox.length > 32 || !/^[A-Za-z0-9_-]+$/.test(cashbox)) throw new Error('Caja inválida para numeración.');
   if (!allowed.has(operation) && !periodRetention) throw new Error('Tipo de operación no permitido para numeración.');
   db.run('BEGIN IMMEDIATE');
