@@ -100,3 +100,9 @@ test('un fallo de persistencia restaura el snapshot y no consume el consecutivo'
   assert.deepEqual(f.persisted(), before);
   assert.deepEqual(f.rows(), []);
 });
+
+test('un mínimo no finito o fuera del rango seguro no puede corromper la secuencia', () => {
+  const f = fixture();
+  assert.equal(f.allocate('01', 'invoice', Infinity).value, 1);
+  assert.equal(f.allocate('01', 'invoice', Number.MAX_SAFE_INTEGER + 1).value, 2);
+});
