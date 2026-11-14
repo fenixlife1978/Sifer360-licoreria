@@ -543,3 +543,12 @@ test('si falla el bind del servidor LAN restaura la configuración anterior y no
   assert.match(startup, /networkConfig = previousConfig/);
   assert.match(startup, /No se pudo iniciar el servidor LAN y tampoco restaurar su configuración anterior/);
 });
+
+test('la outbox local del servidor restaura la base SQLite si falla la persistencia del evento', () => {
+  const handler = electron.slice(electron.indexOf("ipcMain.handle('network:operation-create'"), electron.indexOf("ipcMain.handle('network:operation-pending'"));
+  assert.match(handler, /const databaseBefore = db\.export\(\)/);
+  assert.match(handler, /transactionCommitted = true/);
+  assert.match(handler, /catch \(persistError\) \{\s*restoreDatabaseSnapshot\(databaseBefore\)/);
+  assert.match(handler, /no se confirmó la operación/);
+  assert.match(handler, /if \(!transactionCommitted\) \{ try \{ db\.run\('ROLLBACK'\)/);
+});
