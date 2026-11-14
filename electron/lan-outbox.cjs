@@ -68,7 +68,20 @@ function createDurableOutbox({ directory, deviceId, fsImpl = fs, pathImpl = path
       throw new Error('Operación LAN incompleta.');
     }
     const state = readState();
+    const eventId = String(input.eventId || cryptoImpl.randomUUID());
+    const eventType = String(input.eventType || '').trim();
+    const entityType = String(input.entityType || '').trim();
+    const entityId = String(input.entityId || '').trim();
+    const serverDeviceId = String(input.serverDeviceId || '');
+    const occurredAt = String(input.occurredAt || new Date().toISOString());
     const payloadText = JSON.stringify(input.payload);
+    if (!eventId || eventId.length > 256 || !eventType || eventType.length > 64 ||
+        !entityType || entityType.length > 64 || !entityId || entityId.length > 256 ||
+        serverDeviceId.length > 128 || occurredAt.length > 100 ||
+        !Number.isSafeInteger(state.lastSeq + 1) ||
+        Buffer.byteLength(payloadText, 'utf8') > 4 * 1024 * 1024) {
+      throw new Error('La operación LAN excede los límites o contiene identificadores inválidos.');
+    }
     const existing = state.events.find(event =>
       (event.status === 'pending' || event.status === 'acked') &&
       event.serverDeviceId === String(input.serverDeviceId || '') &&
@@ -80,14 +93,14 @@ function createDurableOutbox({ directory, deviceId, fsImpl = fs, pathImpl = path
     if (existing) return { ...existing, payload: JSON.parse(JSON.stringify(existing.payload)) };
 
     const event = {
-      eventId: String(input.eventId || cryptoImpl.randomUUID()),
+      eventId,
       deviceId: String(deviceId),
-      serverDeviceId: String(input.serverDeviceId || ''),
+      serverDeviceId,
       deviceSeq: state.lastSeq + 1,
-      eventType: String(input.eventType),
-      entityType: String(input.entityType),
-      entityId: String(input.entityId),
-      occurredAt: String(input.occurredAt || new Date().toISOString()),
+      eventType,
+      entityType,
+      entityId,
+      occurredAt,
       payload: JSON.parse(payloadText),
       status: 'pending'
     };
