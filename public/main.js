@@ -7314,7 +7314,6 @@ async function prepareDatabaseBeforeStartup(){
 function restoreWorkspaceAfterReload(){
   const user=activeUser();
   if(!user||!user.username||!user.role)return;
-  if(user.role==='admin'&&S.cfg.printSetupCompleted!==true&&S.cfg.printMode==='NOT_CONFIGURED')setTimeout(()=>printerSetupWizardDlg(),900);
   if(user.role==='cajero'){
     if(window.SIFERCashier&&typeof window.SIFERCashier.start==='function')window.SIFERCashier.start(user);
     return;
@@ -7329,6 +7328,9 @@ function restoreWorkspaceAfterReload(){
   }
   showDashboardScreen();
 }
+window.addEventListener('sifer:authenticated',event=>{
+  if(event.detail&&event.detail.role==='admin'&&S&&S.cfg&&S.cfg.printSetupCompleted!==true&&S.cfg.printMode==='NOT_CONFIGURED')setTimeout(()=>printerSetupWizardDlg(),900);
+});
 prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(async()=>{
   if(window.__POS_BOOT_ERROR){
     document.body.innerHTML='<main style="max-width:720px;margin:10vh auto;padding:32px;font:16px Segoe UI,Arial,sans-serif;color:#18324b"><h1>SIFER360 Licorería requiere la aplicación de escritorio</h1><p>'+String(window.__POS_BOOT_ERROR).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))+'</p><p>Los datos operativos se guardan exclusivamente en SQLite local. Abra el programa instalado; no utilice la versión del navegador.</p></main>';
