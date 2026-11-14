@@ -48,7 +48,7 @@ test('ventas, números de control, anulaciones y cortes Z solicitan correlativos
   assert.match(pos, /nextCajaSequence\('retention-'\+periodoComp,currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('cashea',currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('cxc',currentCaja\(\)\)/);
-  assert.match(pos, /cashbox:currentCaja\(\),sequence:casheaNo/);
+  assert.match(pos, /sequence:casheaNo,cashbox:currentCaja\(\)/);
   assert.match(pos, /const persisted=await save\(\);if\(!persisted\|\|!persisted\.ok\)/);
   assert.match(pos, /const rollbackState=JSON\.parse\(JSON\.stringify\(S\)\)/);
   assert.match(pos, /La caja permanece abierta y el cierre no se considera registrado/);
