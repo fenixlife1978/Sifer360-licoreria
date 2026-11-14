@@ -140,6 +140,16 @@ function restoreDatabaseSnapshot(snapshot) {
   const integrity = databaseIntegrityStatus(db);
   if (integrity !== 'ok') throw new Error('La instantánea restaurada no superó integrity_check: ' + integrity);
 }
+function writeDurableFile(file, data) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'w', 0o600);
+    fs.writeFileSync(fd, data);
+    fs.fsyncSync(fd);
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
 function persistDb() {
   if (!db) return;
   const integrity = databaseIntegrityStatus(db);
@@ -149,9 +159,11 @@ function persistDb() {
   const backup = target + '.bak';
   const backupTemporary = backup + '.tmp';
   const bytes = db.export();
-  fs.writeFileSync(temporary, Buffer.from(bytes));
+  writeDurableFile(temporary, Buffer.from(bytes));
   if (fs.existsSync(target)) {
     fs.copyFileSync(target, backupTemporary);
+    const backupFd = fs.openSync(backupTemporary, 'r');
+    try { fs.fsyncSync(backupFd); } finally { fs.closeSync(backupFd); }
     fs.renameSync(backupTemporary, backup);
   }
   fs.renameSync(temporary, target);
