@@ -13,11 +13,12 @@ test('administrator POS toolbar opens a dedicated cash opening dialog',()=>{
   assert.match(main,/Confirmar apertura e ingresar al POS/);
 });
 
-test('opening records are assigned to the current admin and saved as active opening',()=>{
-  assert.match(access,/username:user\.username,cashbox:box,bs,usd,rate,openedAt,status:'abierta'/);
-  assert.match(access,/sessionStorage\.setItem\('sifer360_active_opening',JSON\.stringify\(op\)\)/);
-  assert.match(access,/localStorage\.setItem\('sifer360_active_opening',JSON\.stringify\(op\)\)/);
-  assert.match(main,/replace\(\/\\s\/g,''\)\.replace\(\/\\\.\/g,''\)/);
+test('cash opening is created by the POS and persisted through the SQLite-backed save path',()=>{
+  assert.doesNotMatch(access,/sifer360_openings|function renderOpening\(/);
+  assert.match(main,/const openedAt=new Date\(\)\.toISOString\(\),op=\{[\s\S]{0,280}username:user\.username,cashbox:box,bs,usd,rate,openedAt,status:'abierta'\}/);
+  assert.match(main,/const persisted=await save\(\)/);
+  assert.match(main,/writeActiveOpening\(op\)/);
+  assert.match(main,/sessionStorage\.setItem\('sifer360_active_opening',JSON\.stringify\(op\)\)/);
 });
 
 test('Corte Z refuses to open without a matching active opening and guides admin',()=>{
