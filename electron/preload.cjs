@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('posDesktop', {
   networkDisconnectClient: () => ipcRenderer.invoke('network:disconnect-client'),
   networkConfigureClient: options => ipcRenderer.invoke('network:configure-client', options),
   networkSyncNow: state => ipcRenderer.invoke('network:sync-now', state),
+  fiscalPrinterOpenDownload: key => ipcRenderer.invoke('fiscal-printer:open-download', key),
   fiscalPrinterListPorts: () => ipcRenderer.invoke('fiscal-printer:list-ports'),
   fiscalPrinterSelectFile: kind => ipcRenderer.invoke('fiscal-printer:select-file', kind),
   fiscalPrinterStatus: profile => ipcRenderer.invoke('fiscal-printer:status', profile),
