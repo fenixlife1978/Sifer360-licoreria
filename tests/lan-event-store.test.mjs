@@ -217,3 +217,15 @@ test('Kardex de dispositivos distintos no colisiona aunque su contador numérico
   assert.equal(db.state().kardex.length, 2);
   assert.deepEqual(db.state().kardex.map(x => x.eventId).sort(), ['kdx-device-a-1', 'kdx-device-b-1']);
 });
+
+test('las colecciones con IDs locales no globales usan eventId para evitar colisiones entre clientes', () => {
+  const db = fixture();
+  const collections = ['kardex', 'lotesSudeban', 'rateAudit', 'casheaLiquidaciones'];
+  const events = collections.flatMap((collection, index) => [
+    { eventId: 'evt-a-' + collection, deviceId: 'device-a', deviceSeq: index + 1, eventType: collection, entityType: collection, entityId: 'unique-a-' + collection, occurredAt: new Date(1000 + index).toISOString(), payload: { record: { id: 'LOCAL-1', eventId: 'unique-a-' + collection, cashbox: '01', ts: 1000 + index } } },
+    { eventId: 'evt-b-' + collection, deviceId: 'device-b', deviceSeq: index + 1, eventType: collection, entityType: collection, entityId: 'unique-b-' + collection, occurredAt: new Date(2000 + index).toISOString(), payload: { record: { id: 'LOCAL-1', eventId: 'unique-b-' + collection, cashbox: '01', ts: 2000 + index } } }
+  ]);
+  const result = db.apply(events);
+  assert.equal(result.accepted.length, 8);
+  for (const collection of collections) assert.equal(db.state()[collection].length, 2, collection);
+});
