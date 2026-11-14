@@ -6520,10 +6520,13 @@ function corteZDlg(){
       if(bs===null||usdOpening===null){msg('Indique el fondo inicial de Bs. y US$, aunque sea cero.','bad');return;}
       const now=Date.now();
       active={id:'OPEN-'+box.replace(/\W/g,'')+'-'+now,cashbox:box,cashier:currentCajero(),openedAt:now,bs:r2(bs),usd:r2(usdOpening),status:'abierta'};
+      upsertOpeningState(active);
+      const persisted=await save();
+      if(!persisted||!persisted.ok){msg('SQLite/servidor no confirmó la apertura del turno. La caja permanece cerrada.','bad');draw();return;}
       writeActiveOpening(active);
-      const ctx=Object.assign(cajaContext(),{cashbox:box,name:currentCajero(),status:'abierta',openedAt:now});
+      const ctx=Object.assign(cajaContext(),{cashbox:box,name:currentCajero(),status:'abierta',openedAt:now,openingId:active.id});
       sessionStorage.setItem('sifer360_active_box',JSON.stringify(ctx));localStorage.setItem('sifer360_active_box',JSON.stringify(ctx));
-      msg('Turno abierto para la caja '+box+'. Registre el arqueo real antes de cerrar.');
+      msg('Turno abierto y confirmado en SQLite para la caja '+box+'. Registre el arqueo real antes de cerrar.');
       draw();return;
     }
     if(e.target.id==='zPreview'){
@@ -6550,9 +6553,10 @@ function corteZDlg(){
       const t=Object.assign({},result.total);
       const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now()),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
       const zStateBefore=JSON.parse(JSON.stringify(S));
+      const closedOpening=Object.assign({},active,{status:'cerrada',closedAt:z.closedAt,cutId:z.id});
+      upsertOpeningState(closedOpening);
       getZHistory().push(z);
       const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,zStateBefore);msg('SQLite no confirmó el Corte Z. La caja permanece abierta y el cierre no se considera registrado.','bad');return;}
-      const closedOpening=Object.assign({},active,{status:'cerrada',closedAt:z.closedAt,cutId:z.id});
       writeActiveOpening(closedOpening);
       const closedBox=Object.assign(cajaContext(),{cashbox:box,status:'cerrada',closedAt:z.closedAt,cutId:z.id});
       sessionStorage.setItem('sifer360_active_box',JSON.stringify(closedBox));localStorage.setItem('sifer360_active_box',JSON.stringify(closedBox));
