@@ -11,6 +11,7 @@ const { applyIncomingEvents } = require('./lan-event-store.cjs');
 const { mergeStateRecords } = require('./lan-state-merge.cjs');
 const { openOrRecoverDatabase } = require('./sqlite-recovery.cjs');
 const { isLanAddress, assertLanHost } = require('./lan-address.cjs');
+const { hasValidBearerToken } = require('./lan-auth.cjs');
 const { allocateCashboxSequence: allocateCashboxSequenceDurable } = require('./cashbox-sequence.cjs');
 const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
 const initSqlJs = require('sql.js');
@@ -306,7 +307,7 @@ async function startLanServer(requestedPort) {
     const url = new URL(req.url, 'http://127.0.0.1');
     if (!isLanAddress(req.socket.remoteAddress)) return sendJson(res, 403, { error: 'Acceso permitido únicamente desde la red local.' });
     if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Headers': 'content-type,authorization', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); return res.end(); }
-    if (req.headers.authorization !== 'Bearer ' + networkConfig.token) return sendJson(res, 401, { error: 'No autorizado' });
+    if (!hasValidBearerToken(req.headers.authorization, networkConfig.token)) return sendJson(res, 401, { error: 'No autorizado' });
     if (url.pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { ok: true, deviceId: networkConfig.deviceId, role: 'server', protocol: 1 });
     if (url.pathname === '/api/documents' && req.method === 'GET') {
       const type = url.searchParams.get('transactionType');
