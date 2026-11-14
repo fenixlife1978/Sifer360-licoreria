@@ -130,4 +130,5 @@ async function testPnpFiscalStatus(profile, options = {}) {
     throw new Error('No se pudo consultar el estado fiscal PNP: ' + (error.message || String(error)));
   }
 }
-\nmodule.exports={PROVIDERS,USB_SERIAL_DRIVERS,normalizeProfile,getSdkStatus,listSerialPorts,testSerialPort,testPnpFiscalStatus,runBridge,emitInvoice};
+
+module.exports={PROVIDERS,USB_SERIAL_DRIVERS,normalizeProfile,getSdkStatus,listSerialPorts,testSerialPort,testPnpFiscalStatus,runBridge,emitInvoice};
