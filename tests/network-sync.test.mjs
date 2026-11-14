@@ -440,3 +440,10 @@ test('el endpoint de consecutivos utiliza el asignador SQLite transaccional prob
   assert.match(electron, /require\('\.\/cashbox-sequence\.cjs'\)/);
   assert.match(electron, /allocateCashboxSequenceDurable\(\{ db, cashboxId, operationType/);
 });
+
+test('el arranque migra una sola vez los consecutivos históricos compartidos', () => {
+  assert.match(electron, /require\('\.\/cashbox-sequence-migration\.cjs'\)/);
+  assert.match(electron, /CREATE TABLE IF NOT EXISTS schema_migrations/);
+  assert.match(electron, /migrateCashboxSequenceCategories\(\{ db, state:/);
+  assert.match(electron, /cashbox-operation-sequences-v1/);
+});
