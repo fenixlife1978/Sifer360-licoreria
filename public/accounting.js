@@ -8,7 +8,7 @@ const emptyState=()=>({version:1,accounts:[],entries:[],fixedAssets:[],nextEntry
 let activeTab='accounts',filterText='',filterType='TODOS',selectedAccount='',dialog=null;
 function bridge(){return window.SIFERAccountingBridge;}
 function state(){const b=bridge();if(!b)throw new Error('El puente de persistencia de SIFER todavía no está disponible.');const s=b.getState();if(!s)throw new Error('No se pudo leer el estado operativo.');if(!s.accounting||typeof s.accounting!=='object')s.accounting=emptyState();return s.accounting;}
-function save(){bridge().save();}
+function save(){return bridge().save();}
 async function ensureChart(){
  const a=state();if(Array.isArray(a.accounts)&&a.accounts.length)return a;
  const res=await fetch('/data/plan-cuentas-predeterminado-ven-nif.json',{cache:'no-cache'});
@@ -199,15 +199,15 @@ function lastCompletedMonth(now=new Date()){
 }
 function depreciateAsset(id,target){
  const a=state(),asset=a.fixedAssets.find(x=>x.id===id);if(!asset||asset.status!=='active')return 0;
- if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(target||''))return 0;
+ if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(target||''))return 0;
  const available=String(asset.availableForUseDate||asset.acquisitionDate||'').slice(0,10);
- if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(available))return 0;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(available))return 0;
  const start=available.slice(0,7);if(target<start)return 0;
  const periodEntries=(a.entries||[]).filter(e=>e.assetId===asset.id&&e.depreciationPeriod);
  const recorded=new Set(periodEntries.map(e=>String(e.depreciationPeriod)));
  const legacyLast=String(asset.lastDepreciationMonth||'').slice(0,7);
  let cursor=start;
- if(!recorded.size&&/^\\d{4}-(0[1-9]|1[0-2])$/.test(legacyLast)&&legacyLast>=start){const y=Number(legacyLast.slice(0,4)),m=Number(legacyLast.slice(5,7));cursor=m===12?String(y+1).padStart(4,'0')+'-01':String(y).padStart(4,'0')+'-'+String(m+1).padStart(2,'0');}
+ if(!recorded.size&&/^\d{4}-(0[1-9]|1[0-2])$/.test(legacyLast)&&legacyLast>=start){const y=Number(legacyLast.slice(0,4)),m=Number(legacyLast.slice(5,7));cursor=m===12?String(y+1).padStart(4,'0')+'-01':String(y).padStart(4,'0')+'-'+String(m+1).padStart(2,'0');}
  const periods=[];
  while(cursor<=target&&periods.length<=asset.lifeMonths+240){
   if(!recorded.has(cursor))periods.push(cursor);
