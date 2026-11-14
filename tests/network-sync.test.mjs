@@ -456,3 +456,8 @@ test('las escrituras del renderer se serializan y un fallo recarga el estado aut
   assert.match(pos, /OPERACIÓN NO CONFIRMADA: se recargó el último estado durable/);
   assert.match(pos, /persistenceBlocked=true/);
 });
+
+test('una operación pendiente sin identidad de servidor también bloquea el emparejamiento a otra base', () => {
+  assert.match(electron, /clientOutbox\.pending\(\)\.some\(event => !event\.serverDeviceId \|\| event\.serverDeviceId !== health\.deviceId\)/);
+  assert.match(electron, /concilíelos antes de cambiar de servidor/);
+});
