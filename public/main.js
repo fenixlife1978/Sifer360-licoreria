@@ -572,7 +572,7 @@ function mergeRemoteSnapshot(local,remote){
     if(key==='sicoven')continue; // Ignora snapshots heredados del módulo contable retirado.
     if(!Array.isArray(value)||!Array.isArray(local[key])){merged[key]=value;continue;}
     const map=new Map();
-    const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','cxc','cortesZ','openings','movements','returns','voids'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
+    const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
     for(const item of local[key])map.set(ident(item),item);
     for(const item of value)map.set(ident(item),item);
     merged[key]=[...map.values()];
@@ -630,6 +630,10 @@ function load(){
     const legacyCaja=String(S.cfg.caja||'01');
     (S.sales||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;if(!x.cashier)x.cashier=x.user||S.cfg.cajero||'Cajero';});
     (S.cxc||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;});
+    (S.purchases||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;});
+    (S.cxp||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;});
+    (S.counts||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;});
+    (S.retencionesIva||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;});
     /* Enriquecer productos guardados con SKU, U.M., motores de venta, presentaciones, impuestos, proveedores y kits */
     S.products=d.products.map((p,idx)=>{
       const sp=seedMap[p.code]||{};
