@@ -149,3 +149,7 @@ Preferir el controlador firmado que corresponda al identificador VID/PID y a la 
 Los SDKs fiscales (por ejemplo, TfhkaNet/tfhkaif, BemaFI, Epson Fiscal, QProg, AclasSDK y pnpdll) no se consideran redistribuibles solo por estar disponibles en Internet. Antes de empaquetarlos se requiere una licencia o autorización del fabricante que permita su redistribución. SIFER puede integrar bibliotecas gratuitas con licencia de redistribución explícita; no incluirá binarios propietarios obtenidos de repositorios no oficiales ni ejecutará instaladores sin consentimiento del administrador.
 
 La compilación actual no descarga controladores ni SDKs desde Internet durante la instalación o ejecución. La instalación sin impresora y la modalidad térmica genérica no requieren DLLs fiscales.
+
+### Separación de documentos internos y fiscales
+
+Los documentos con `docType: TICKET-INTERNO` o `documentMode: INTERNAL_THERMAL/NO_PRINTER` se conservan en el historial de ventas, inventario, caja y reportes comerciales. Se excluyen del Libro de Ventas Fiscal, de los resúmenes de documentos fiscales y del débito mensual de IVA. No reciben número de control fiscal, serial de máquina ni número fiscal simulado. Los documentos heredados sin modalidad explícita conservan el tratamiento anterior para no alterar registros históricos.
