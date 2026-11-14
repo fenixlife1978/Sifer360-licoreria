@@ -5270,7 +5270,7 @@ function fiscalPrinterConfigDlg(){
   };
   const detect=async()=>{
     const node=$('#fpStatus',el);node.textContent='Buscando puertos COM de Windows…';
-    try{const r=await window.posDesktop.fiscalPrinterListPorts();$('#fpPortList',el).innerHTML=(r.ports||[]).map(p=>'<option value="'+esc(p.port)+'">'+esc(p.name)+'</option>').join('');node.textContent=r.ports.length?'Puertos detectados: '+r.ports.map(p=>p.port+' — '+p.name).join(' · '):r.message;}
+    try{const r=await window.posDesktop.fiscalPrinterListPorts();$('#fpPortList',el).innerHTML=(r.ports||[]).map(p=>'<option value="'+esc(p.port)+'">'+esc(p.name)+'</option>').join('');const driverNames={prolific:'Prolific PL2303',ftdi:'FTDI VCP',silabs:'Silicon Labs CP210x'};node.textContent=r.ports.length?'Puertos detectados: '+r.ports.map(p=>p.port+' — '+p.name+(p.driverId?' ['+(driverNames[p.driverId]||p.driverId)+']':' [chip USB no identificado]')).join(' · '):r.message;}
     catch(e){node.textContent='No se pudieron detectar puertos: '+e.message;}
   };
   el.addEventListener('change',e=>{
