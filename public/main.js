@@ -3350,6 +3350,7 @@ function newCxpManualDlg(){
       if(!amt){msg('Indique el monto en US$.','bad');return false;}
       let cxpNo;try{cxpNo=await nextCajaSequence('cxp',currentCaja());}catch(error){msg('No se pudo reservar el número de CxP: '+error.message,'bad');return false;}
       const id='CXP-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxpNo,6);
+      const rollbackState=JSON.parse(JSON.stringify(S));
       S.cxp.push({
         id,sequence:cxpNo,cashbox:currentCaja(),purchaseNo:null,doc:$('#mpDoc',el).value.trim()||id,
         supplier:Object.assign({},sup),
@@ -3357,7 +3358,6 @@ function newCxpManualDlg(){
         ts:Date.now(),dueTs:parseIsoD($('#mpDue',el).value),
         total:amt,paid:0,payments:[]
       });
-      const rollbackState=JSON.parse(JSON.stringify(S));
       const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);msg('SQLite no confirmó la CxP; no se registró definitivamente.','bad');return false;}cxpDlg(id);msg('Cuenta por pagar registrada.');return false;
     }}
   ]});
@@ -5879,8 +5879,8 @@ function tasaBcvDlg(){
     if(!Array.isArray(S.rateAudit))S.rateAudit=[];
     S.rateAudit.push({id:'BCV-'+ts+'-'+String(S.rateAudit.length+1).padStart(4,'0'),ts,previousRate:oldRate,newRate:next,reason,username:user.username,name:user.name||user.username,role:user.role,cashbox:opening.cashbox,openingId:opening.id});
     S.cfg.rate=next;opening.rate=next;writeActiveOpening(opening);
+    const persisted=await save();if(!persisted||!persisted.ok){try{localStorage.setItem('sifer360_bcv_rate',String(oldRate));}catch(e){}msg('El servidor no confirmó el cambio de tasa BCV; se restauró el estado durable anterior.','bad');return false;}
     try{localStorage.setItem('sifer360_bcv_rate',String(next));}catch(e){}
-    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el cambio de tasa BCV; se restauró el estado durable anterior.','bad');return false;}
     renderAll();msg('Tasa BCV actualizada de '+nf(oldRate)+' a '+nf(next)+' Bs./US$. Cambio auditado.','ok');
   }}],onOpen:()=>{const input=$('#cashierNewRate',el);input.focus();input.select();}});
 }
@@ -6542,8 +6542,9 @@ function corteZDlg(){
       const seqs=cajaSeqs(),seq=seqs[box]||{z:1};let zSeq;try{zSeq=await nextCajaSequence('z',box);}catch(error){msg('No se pudo reservar el consecutivo del Corte Z: '+error.message,'bad');return;}seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
       const t=Object.assign({},result.total);
       const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now()),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
+      const zStateBefore=JSON.parse(JSON.stringify(S));
       getZHistory().push(z);
-      const persisted=await save();if(!persisted||!persisted.ok){getZHistory().splice(getZHistory().findIndex(x=>x.id===z.id),1);msg('SQLite no confirmó el Corte Z. La caja permanece abierta y el cierre no se considera registrado.','bad');return;}
+      const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,zStateBefore);msg('SQLite no confirmó el Corte Z. La caja permanece abierta y el cierre no se considera registrado.','bad');return;}
       const closedOpening=Object.assign({},active,{status:'cerrada',closedAt:z.closedAt,cutId:z.id});
       writeActiveOpening(closedOpening);
       const closedBox=Object.assign(cajaContext(),{cashbox:box,status:'cerrada',closedAt:z.closedAt,cutId:z.id});
@@ -6970,7 +6971,7 @@ async function prepareDatabaseBeforeStartup(){
   }
 }
 
-window.SIFERAccountingBridge={getState:()=>S,save:()=>save(),setAccounting:async data=>{if(!S)throw new Error('Estado POS no inicializado');const previous=S.accounting;S.accounting=data;const persisted=await save();if(!persisted||!persisted.ok){S.accounting=previous;throw new Error('SQLite/servidor no confirmó los cambios contables.');}return true;}};
+window.SIFERAccountingBridge={getState:()=>S,save:()=>save(),setAccounting:async data=>{if(!S)throw new Error('Estado POS no inicializado');const snapshot=JSON.parse(JSON.stringify(S));S.accounting=data;const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,snapshot);throw new Error('SQLite/servidor no confirmó los cambios contables.');}return true;}};
 
 /* ---------- arranque ---------- */
 function restoreWorkspaceAfterReload(){
