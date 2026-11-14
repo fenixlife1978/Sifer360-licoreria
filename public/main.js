@@ -533,15 +533,18 @@ const OPERATION_COLLECTIONS = [
   ['casheaMovimientos','cashea-operation'], ['casheaLiquidaciones','cashea-settlement'], ['cambiosDivisas','currency-movement'],
   ['retencionesIva','tax-retention'], ['retentions','tax-retention'], ['returns','return'], ['voids','void']
 ];
-function operationIdentity(item,index){
+const BOX_SCOPED_OPERATION_COLLECTIONS = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','movimientosCaja','rateAudit','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas']);
+function operationIdentity(item,index,collection){
   if(!item||typeof item!=='object')return String(index)+':'+JSON.stringify(item);
   const id=item.id??item.uuid??item.eventId??item.no??item.number??item.ctrlNo??item.code;
-  return id===undefined?String(index)+':'+JSON.stringify(item):String(id);
+  if(id===undefined)return String(index)+':'+JSON.stringify(item);
+  const box=BOX_SCOPED_OPERATION_COLLECTIONS.has(collection)?String(item.cashbox||'sin-caja')+':':'';
+  return box+String(id);
 }
 function primeOperationBaseline(){
   const snap=stateSnapshot();
   operationBaseline={};
-  for(const [key] of OPERATION_COLLECTIONS) operationBaseline[key]=new Set((Array.isArray(snap[key])?snap[key]:[]).map(operationIdentity));
+  for(const [key] of OPERATION_COLLECTIONS) operationBaseline[key]=new Set((Array.isArray(snap[key])?snap[key]:[]).map((item,index)=>operationIdentity(item,index,key)));
 }
 async function captureNewOperations(){
   if(operationCaptureBusy||!window.posDesktop||typeof window.posDesktop.networkCreateOperation!=='function')return;
@@ -556,7 +559,7 @@ async function captureNewOperations(){
       const items=Array.isArray(snap[key])?snap[key]:[];
       const seen=operationBaseline[key]||new Set();
       for(let i=0;i<items.length;i++){
-        const item=items[i],identity=operationIdentity(item,i);
+        const item=items[i],identity=operationIdentity(item,i,key);
         if(seen.has(identity))continue;
         const entityId=String((item ? (item.id??item.uuid??item.eventId??item.no??item.number??item.ctrlNo??item.code) : undefined) ?? identity);
         const delivery=await window.posDesktop.networkCreateOperation({
