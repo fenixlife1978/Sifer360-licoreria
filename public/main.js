@@ -2590,11 +2590,14 @@ function comprasDlg(initialTab){
     const retBs=r2(retUsd*S.cfg.rate);
     const payableTotal=r2(Math.max(0,total-retUsd));
     const effPaid=cond==='Contado'?payableTotal:Math.min(payableTotal,paidInit);
+    const periodoRetencion=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
+    let retSeq=null,cxpNo=null;
+    if(aplicarRetencion){try{retSeq=await nextCajaSequence('retention-'+periodoRetencion,currentCaja());}catch(error){msg('No se pudo reservar el número de la retención: '+error.message,'bad');return false;}}
+    if(payableTotal-effPaid>=0.01){try{cxpNo=await nextCajaSequence('cxp',currentCaja());}catch(error){msg('No se pudo reservar el número de CxP: '+error.message,'bad');return false;}}
     const comp={accountingSourceId:'PURCHASE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(no),no,cashbox:currentCaja(),docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
-      const periodo=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
-      const retSeq=await nextCajaSequence('retention-'+periodo,currentCaja());
+      const periodo=periodoRetencion;
       const retDoc=periodo+pad(retSeq,8);
       comp.retIvaDoc=retDoc;
       if(!S.retencionesIva)S.retencionesIva=[];
@@ -2607,7 +2610,6 @@ function comprasDlg(initialTab){
     }
     S.purchases.push(comp);
     if(payableTotal-effPaid>=0.01){
-      const cxpNo=await nextCajaSequence('cxp',currentCaja());
       const cxpId='CXP-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxpNo,6);
       const payments=effPaid>0?[{ts,method:payMethod,cur:'VES',amountBs:r2(effPaid*S.cfg.rate),amountUsd:effPaid,ref:'INI-'+no,note:'Abono inicial en compra'}]:[];
       S.cxp.push({
