@@ -84,23 +84,23 @@ test('activos fijos usan cuentas de depreciación acumulada existentes', () => {
   for (const code of ['1.2.1.05','1.2.1.06','1.2.1.07','6.1.1.06']) {
     assert.ok(chart.accounts.some(a => a.code === code && a.isMovement), 'falta cuenta imputable '+code);
   }
-  assert.match(accounting, /function depreciateAsset\(id\)/);
+  assert.match(accounting, /function depreciateAsset\\(id,target\\)/);
   assert.match(accounting, /depreciationPeriod:month/);
   assert.match(accounting, /lastDepreciationMonth/);
   assert.match(accounting, /asset\.monthsDepreciated=count/);
 });
 
 test('la depreciación mensual se ejecuta automáticamente y recupera períodos completos pendientes', () => {
-  assert.match(accounting, /function runAutomaticDepreciation\\(\\)/);
-  assert.match(accounting, /function startAutomaticDepreciation\\(\\)/);
-  assert.match(accounting, /setInterval\\(runAutomaticDepreciation,60000\\)/);
-  assert.match(accounting, /window\\.addEventListener\\('sifer:ready',startAutomaticDepreciation/);
-  assert.match(accounting, /function lastCompletedMonth\\(/);
-  assert.match(accounting, /const recorded=new Set\\(periodEntries\\.map\\(e=>String\\(e\\.depreciationPeriod\\)\\)\\)/);
-  assert.match(accounting, /if\\(!recorded\\.has\\(cursor\\)\\)periods\\.push\\(cursor\\)/);
-  assert.match(accounting, /asset\\.monthsDepreciated=count/);
-  assert.match(accounting, /assetId:asset\\.id,depreciationPeriod:month/);
-  assert.match(accounting, /availableForUseDate\\|\\|asset\\.acquisitionDate/);
-  assert.doesNotMatch(accounting, /prompt\\('Indique el período hasta el cual desea depreciar/);
+  assert.match(accounting, /function runAutomaticDepreciation\(\)/);
+  assert.match(accounting, /function startAutomaticDepreciation\(\)/);
+  assert.match(accounting, /setInterval\(runAutomaticDepreciation,60000\)/);
+  assert.match(accounting, /window\.addEventListener\('sifer:ready',startAutomaticDepreciation/);
+  assert.match(accounting, /function lastCompletedMonth\(/);
+  assert.match(accounting, /const recorded=new Set\(periodEntries\.map\(e=>String\(e\.depreciationPeriod\)\)\)/);
+  assert.match(accounting, /if\(!recorded\.has\(cursor\)\)periods\.push\(cursor\)/);
+  assert.match(accounting, /asset\.monthsDepreciated=count/);
+  assert.match(accounting, /assetId:asset\.id,depreciationPeriod:month/);
+  assert.match(accounting, /availableForUseDate\|\|asset\.acquisitionDate/);
+  assert.doesNotMatch(accounting, /prompt\('Indique el período hasta el cual desea depreciar/);
   assert.doesNotMatch(accounting, /data-depreciate=/);
 });
