@@ -83,7 +83,7 @@ test('los documentos fiscales y eventos de cliente se guardan directamente en el
   assert.match(main, /clientApi\('\/api\/documents'/);
   assert.match(main, /clientApi\('\/api\/documents\/' \+ encodeURIComponent/);
   assert.match(main, /clientApi\('\/api\/sync\/events'/);
-  assert.match(main, /status: 'acked'/);
+  assert.match(main, /serverConfirmed: !!delivery && delivery\.status === 'acked'/);
 });
 
 test('la interfaz permite iniciar servidor, descubrir equipos y emparejar clientes por IP y clave', () => {
