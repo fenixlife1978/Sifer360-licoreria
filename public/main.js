@@ -269,39 +269,6 @@ const posSqliteDriver = {
     }
     this.isReady = true;
     return true;
-    /* Compatibilidad web deshabilitada: la única base operativa es el archivo SQLite administrado por Electron.
-    if (window.posDesktop) {
-      this.isReady = true;
-      return true;
-    }
-    try {
-      if (typeof window.initSqlJs !== 'function') {
-        console.warn('sql.js no disponible globalmente; usando almacenamiento estructurado.');
-        this.isReady = true;
-        return true;
-      }
-      sqliteSqlInstance = await window.initSqlJs({
-        locateFile: file => '/' + file
-      });
-      const savedBytes = await idbGetSqlite();
-      if (savedBytes && savedBytes.byteLength > 0) {
-        try {
-          sqliteDb = new sqliteSqlInstance.Database(new Uint8Array(savedBytes));
-        } catch (err) {
-          console.warn('Error al abrir archivo SQLite existente, creando nueva base:', err);
-          sqliteDb = new sqliteSqlInstance.Database();
-        }
-      } else {
-        sqliteDb = new sqliteSqlInstance.Database();
-      }
-      this.initSchema();
-      this.isReady = true;
-      return true;
-    } catch (e) {
-      console.warn('Error inicializando motor SQLite WebAssembly:', e);
-      this.isReady = true;
-      return true;
-    }
   },
   initSchema() {
     if (!sqliteDb) return;
