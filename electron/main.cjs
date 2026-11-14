@@ -1,7 +1,6 @@
 const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const http = require('http');
 const https = require('https');
 const dgram = require('dgram');
 const os = require('os');
@@ -61,13 +60,32 @@ let clientOutbox = null;
 const MAX_SYNC_BODY = 8 * 1024 * 1024;
 function readNetworkConfig() {
   networkConfigPath = path.join(app.getPath('userData'), 'network-mode.json');
-  try { networkConfig = { ...networkConfig, ...JSON.parse(fs.readFileSync(networkConfigPath, 'utf8')) }; } catch {}
+  if (fs.existsSync(networkConfigPath)) {
+    try { networkConfig = { ...networkConfig, ...JSON.parse(fs.readFileSync(networkConfigPath, 'utf8')) }; }
+    catch (error) { throw new Error('La configuración LAN está dañada y no se reemplazará automáticamente. ' + (error.message || String(error))); }
+  }
   if (!networkConfig.deviceId) networkConfig.deviceId = crypto.randomUUID();
   if (!networkConfig.token) networkConfig.token = crypto.randomBytes(24).toString('hex');
   clientOutbox = createDurableOutbox({ directory: app.getPath('userData'), deviceId: networkConfig.deviceId });
   saveNetworkConfig();
 }
-function saveNetworkConfig() { try { fs.writeFileSync(networkConfigPath, JSON.stringify(networkConfig, null, 2), 'utf8'); } catch {} }
+function saveNetworkConfig() {
+  if (!networkConfigPath) throw new Error('No se ha inicializado la ruta de configuración LAN.');
+  const temporary = networkConfigPath + '.tmp';
+  let fd;
+  try {
+    fd = fs.openSync(temporary, 'w', 0o600);
+    fs.writeFileSync(fd, JSON.stringify(networkConfig, null, 2), 'utf8');
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = undefined;
+    fs.renameSync(temporary, networkConfigPath);
+  } catch (error) {
+    if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
+    try { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); } catch {}
+    throw new Error('No se pudo guardar de forma durable la configuración LAN; no se confirma el cambio. ' + (error.message || String(error)));
+  }
+}
 function localAddresses() {
   const out = [];
   for (const list of Object.values(os.networkInterfaces())) for (const item of (list || [])) if (item.family === 'IPv4' && !item.internal) out.push(item.address);
@@ -605,8 +623,9 @@ function registerNetworkIpc() {
     try { health = await clientApi('/api/health', { timeoutMs: 5000 }); }
     catch (error) { networkConfig = previous; throw error; }
     networkConfig.serverDeviceId = health.deviceId;
+    try { saveNetworkConfig(); }
+    catch (error) { networkConfig = previous; throw error; }
     if (db) { try { db.close(); } catch {} db = null; }
-    saveNetworkConfig();
     return { ...networkConfig, running: false, addresses: localAddresses(), connected: true };
   });
   ipcMain.handle('network:sync-now', async (_e, state) => {
