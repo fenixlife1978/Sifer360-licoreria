@@ -17,12 +17,12 @@ function applyIncomingEvents({ db, events, persist, restore, statePayloadHash })
   const duplicates = [];
   const conflicts = [];
   const allowedCollections = new Set([
-    'sales','purchases','cxc','cxp','cortesZ','kardex','counts','held',
+    'sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','movimientosCaja','rateAudit','lotesSudeban',
     'casheaMovimientos','casheaLiquidaciones','cambiosDivisas',
     'retencionesIva','retentions','returns','voids'
   ]);
   const boxScopedCollections = new Set([
-    'sales','purchases','cxc','cxp','cortesZ','counts','openings','movements',
+    'sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','movimientosCaja','rateAudit',
     'returns','voids','retencionesIva','retentions','casheaMovimientos',
     'casheaLiquidaciones','cambiosDivisas'
   ]);
