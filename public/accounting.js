@@ -175,43 +175,48 @@ function saveIntegration(){
 function showAssetForm(){
  const a=state(),el=document.createElement('div');el.className='ac-modal';
  const categories=[['1.2.1.01','1.2.1.05','Mobiliario y equipos'],['1.2.1.02','1.2.1.07','Equipos de computación'],['1.2.1.03','1.2.1.06','Vehículos']];
- el.innerHTML='<div class="ac-modal-card"><div class="ac-modal-head"><b>Registrar activo fijo</b><button class="ac-small" id="acCloseAsset">Cerrar</button></div><div class="ac-form-grid"><label>Descripción<input class="ac-input" id="asName" maxlength="150" placeholder="Identificación del activo"></label><label>Fecha de adquisición<input class="ac-input" id="asDate" type="date" value="'+today()+'"></label><label>Grupo contable<select class="ac-input" id="asCategory">'+categories.map(c=>'<option value="'+c[0]+'|'+c[1]+'">'+c[2]+'</option>').join('')+'</select></label><label>Costo de adquisición US$<input class="ac-input" id="asCostUsd" type="number" min="0.01" step="0.01"></label><label>Costo de adquisición Bs.<input class="ac-input" id="asCostBs" type="number" min="0.01" step="0.01"></label><label>Vida útil (meses)<input class="ac-input" id="asLife" type="number" min="1" max="1200" value="60"></label><label>Valor residual US$<input class="ac-input" id="asResidual" type="number" min="0" step="0.01" value="0"></label><label>Valor residual Bs.<input class="ac-input" id="asResidualBs" type="number" min="0" step="0.01" value="0"></label><label>Tasa de adquisición Bs./US$<input class="ac-input" id="asRate" type="number" min="0.000001" step="0.000001"></label></div><p class="ac-note">El alta del auxiliar no contabiliza nuevamente la compra. Registre primero el asiento de adquisición o apertura correspondiente; este auxiliar permitirá controlar la depreciación.</p><div class="ac-form-foot"><button class="ac-primary" id="acSaveAsset">Guardar activo</button></div></div>';
+ el.innerHTML='<div class="ac-modal-card"><div class="ac-modal-head"><b>Registrar activo fijo</b><button class="ac-small" id="acCloseAsset">Cerrar</button></div><div class="ac-form-grid"><label>Descripción<input class="ac-input" id="asName" maxlength="150" placeholder="Identificación del activo"></label><label>Fecha de adquisición<input class="ac-input" id="asDate" type="date" value="'+today()+'"></label><label>Fecha disponible para uso<input class="ac-input" id="asAvailableDate" type="date" value="'+today()+'" required></label><label>Grupo contable<select class="ac-input" id="asCategory">'+categories.map(c=>'<option value="'+c[0]+'|'+c[1]+'">'+c[2]+'</option>').join('')+'</select></label><label>Costo de adquisición US$<input class="ac-input" id="asCostUsd" type="number" min="0.01" step="0.01"></label><label>Costo de adquisición Bs.<input class="ac-input" id="asCostBs" type="number" min="0.01" step="0.01"></label><label>Vida útil (meses)<input class="ac-input" id="asLife" type="number" min="1" max="1200" value="60"></label><label>Valor residual US$<input class="ac-input" id="asResidual" type="number" min="0" step="0.01" value="0"></label><label>Valor residual Bs.<input class="ac-input" id="asResidualBs" type="number" min="0" step="0.01" value="0"></label><label>Tasa de adquisición Bs./US$<input class="ac-input" id="asRate" type="number" min="0.000001" step="0.000001"></label></div><p class="ac-note">El alta del auxiliar no contabiliza nuevamente la compra. Registre primero el asiento de adquisición o apertura correspondiente; este auxiliar permitirá controlar la depreciación.</p><div class="ac-form-foot"><button class="ac-primary" id="acSaveAsset">Guardar activo</button></div></div>';
  dialog.appendChild(el);
  $('#acCloseAsset',el).onclick=()=>el.remove();
  $('#acSaveAsset',el).onclick=()=>{
-  const name=$('#asName',el).value.trim(),date=$('#asDate',el).value,[assetAccount,accumAccount]=$('#asCategory',el).value.split('|');
+  const name=$('#asName',el).value.trim(),date=$('#asDate',el).value,availableForUseDate=$('#asAvailableDate',el).value,[assetAccount,accumAccount]=$('#asCategory',el).value.split('|');
   const costUsd=Number($('#asCostUsd',el).value),costBs=Number($('#asCostBs',el).value),lifeMonths=Number($('#asLife',el).value),residualUsd=Number($('#asResidual',el).value)||0,residualBs=Number($('#asResidualBs',el).value)||0,rate=Number($('#asRate',el).value);
-  if(!name||!date||!(costUsd>0)||!(costBs>0)||!(lifeMonths>0)||!Number.isInteger(lifeMonths)||residualUsd<0||residualBs<0||residualUsd>costUsd||residualBs>costBs||!(rate>0)){alert('Complete los datos del activo con importes y vida útil válidos.');return;}
+  if(!name||!date||!availableForUseDate||availableForUseDate<date||!(costUsd>0)||!(costBs>0)||!(lifeMonths>0)||!Number.isInteger(lifeMonths)||residualUsd<0||residualBs<0||residualUsd>costUsd||residualBs>costBs||!(rate>0)){alert('Complete los datos del activo con importes y vida útil válidos.');return;}
   const map=accountMap();if(!map.get(assetAccount)?.isMovement||!map.get(accumAccount)?.isMovement){alert('Las cuentas del activo no están disponibles en el plan VEN-NIF.');return;}
   const id='AF-'+String(a.nextAsset||1).padStart(5,'0');
-  a.fixedAssets.push({id,name,acquisitionDate:date,assetAccount,accumulatedDepreciationAccount:accumAccount,costUsd,costBs,residualUsd,residualBs,lifeMonths,rate,monthlyUsd:(costUsd-residualUsd)/lifeMonths,monthlyBs:(costBs-residualBs)/lifeMonths,monthsDepreciated:0,lastDepreciationMonth:null,status:'active',createdAt:new Date().toISOString()});
+  a.fixedAssets.push({id,name,acquisitionDate:date,availableForUseDate,assetAccount,accumulatedDepreciationAccount:accumAccount,costUsd,costBs,residualUsd,residualBs,lifeMonths,rate,monthlyUsd:(costUsd-residualUsd)/lifeMonths,monthlyBs:(costBs-residualBs)/lifeMonths,monthsDepreciated:0,lastDepreciationMonth:null,status:'active',createdAt:new Date().toISOString()});
   a.nextAsset=(Number(a.nextAsset)||1)+1;save();el.remove();render();
  };
 }
 function renderAssets(){
  const assets=state().fixedAssets||[];
- return '<div class="ac-tools"><button class="ac-primary" id="acNewAsset">＋ Registrar activo</button><span class="ac-muted">'+assets.filter(a=>a.status==='active').length+' activos en control · Depreciación lineal mensual</span></div><div class="ac-scroll"><table class="ac-table"><thead><tr><th>Activo</th><th>Adquisición</th><th>Costo US$</th><th>Vida útil</th><th>Depreciado</th><th>Último período</th><th>Acción</th></tr></thead><tbody>'+ (assets.map(a=>'<tr><td><b>'+esc(a.id)+'</b><br>'+esc(a.name)+'</td><td>'+esc(a.acquisitionDate)+'</td><td class="ac-num">'+money(a.costUsd)+'</td><td>'+a.lifeMonths+' meses</td><td>'+a.monthsDepreciated+'/'+a.lifeMonths+'</td><td>'+esc(a.lastDepreciationMonth||'—')+'</td><td>'+(a.status==='active'&&a.monthsDepreciated<a.lifeMonths?'<button class="ac-small" data-depreciate="'+esc(a.id)+'">Depreciar mes</button>':'<span class="ac-muted">Completado</span>')+'</td></tr>').join('')||'<tr><td colspan="7" class="ac-empty">No hay activos fijos registrados.</td></tr>')+'</tbody></table></div><p class="ac-note">La depreciación se contabiliza al ejecutar el período. El sistema evita duplicar meses; el contador conserva el control y puede revisar cada asiento en el diario.</p>';
+ return '<div class="ac-tools"><button class="ac-primary" id="acNewAsset">＋ Registrar activo</button><span class="ac-muted">'+assets.filter(a=>a.status==='active').length+' activos · Depreciación mensual automática</span></div><div class="ac-scroll"><table class="ac-table"><thead><tr><th>Activo</th><th>Disponible para uso</th><th>Costo US$</th><th>Vida útil</th><th>Depreciado</th><th>Último período</th><th>Estado</th></tr></thead><tbody>'+ (assets.map(a=>'<tr><td><b>'+esc(a.id)+'</b><br>'+esc(a.name)+'</td><td>'+esc(a.availableForUseDate||a.acquisitionDate||'—')+'</td><td class="ac-num">'+money(a.costUsd)+'</td><td>'+a.lifeMonths+' meses</td><td>'+a.monthsDepreciated+'/'+a.lifeMonths+'</td><td>'+esc(a.lastDepreciationMonth||'—')+'</td><td>'+(a.status==='active'&&a.monthsDepreciated<a.lifeMonths?'<span class="ac-muted">Automática</span>':'<span class="ac-muted">Completado</span>')+'</td></tr>').join('')||'<tr><td colspan="7" class="ac-empty">No hay activos fijos registrados.</td></tr>')+'</tbody></table></div><p class="ac-note">El sistema contabiliza automáticamente al cierre de cada mes. Si estuvo cerrado, recupera los períodos completos pendientes al iniciar. El contador puede revisar los asientos en el diario.</p>';
 }
-function depreciateAsset(id){
- const a=state(),asset=a.fixedAssets.find(x=>x.id===id);if(!asset||asset.status!=='active')return;
- const target=prompt('Indique el período hasta el cual desea depreciar (AAAA-MM). Se registrarán también los meses anteriores pendientes:',today().slice(0,7));if(!target)return;
- if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(target)){alert('Período inválido. Use AAAA-MM.');return;}
- const acquisition=String(asset.acquisitionDate||'').slice(0,7);
- if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(acquisition)||target<acquisition){alert('El período debe ser igual o posterior al mes de adquisición.');return;}
+function lastCompletedMonth(now=new Date()){
+ const y=now.getFullYear(),m=now.getMonth();
+ const d=new Date(y,m,0);
+ return String(d.getFullYear()).padStart(4,'0')+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
+function depreciateAsset(id,target){
+ const a=state(),asset=a.fixedAssets.find(x=>x.id===id);if(!asset||asset.status!=='active')return 0;
+ if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(target||''))return 0;
+ const available=String(asset.availableForUseDate||asset.acquisitionDate||'').slice(0,10);
+ if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(available))return 0;
+ const start=available.slice(0,7);if(target<start)return 0;
  const periodEntries=(a.entries||[]).filter(e=>e.assetId===asset.id&&e.depreciationPeriod);
  const recorded=new Set(periodEntries.map(e=>String(e.depreciationPeriod)));
- const periods=[];let cursor=acquisition;
+ const periods=[];let cursor=start;
  while(cursor<=target&&periods.length<=asset.lifeMonths+240){
   if(!recorded.has(cursor))periods.push(cursor);
   const y=Number(cursor.slice(0,4)),m=Number(cursor.slice(5,7));
   cursor=m===12?String(y+1).padStart(4,'0')+'-01':String(y).padStart(4,'0')+'-'+String(m+1).padStart(2,'0');
  }
- if(!periods.length){alert('No hay meses pendientes de depreciación hasta el período indicado.');return;}
+ if(!periods.length)return 0;
  const recordedCount=recorded.size,alreadyUsd=periodEntries.reduce((n,e)=>n+(e.lines||[]).reduce((s,l)=>s+(Number(l.creditUsd)||0),0),0),alreadyBs=periodEntries.reduce((n,e)=>n+(e.lines||[]).reduce((s,l)=>s+(Number(l.creditBs)||0),0),0);
  const countBefore=Math.max(Number(asset.monthsDepreciated)||0,recordedCount);
- if(countBefore>=asset.lifeMonths){alert('La vida útil ya fue depreciada.');return;}
+ if(countBefore>=asset.lifeMonths)return 0;
  const map=accountMap(),expense=map.get('6.1.1.06'),accum=map.get(asset.accumulatedDepreciationAccount);
- if(!expense?.isMovement||!accum?.isMovement){alert('No se encuentran las cuentas contables de depreciación.');return;}
+ if(!expense?.isMovement||!accum?.isMovement)return 0;
  let posted=0,usedUsd=alreadyUsd,usedBs=alreadyBs,count=countBefore,sequence=Number(a.nextEntry)||1;
  for(const month of periods){
   if(count>=asset.lifeMonths)break;
@@ -219,16 +224,36 @@ function depreciateAsset(id){
   const debitBs=Math.min(Number(asset.monthlyBs)||0,Math.max(0,asset.costBs-asset.residualBs-usedBs));
   if(!(debitUsd>0)||!(debitBs>0))break;
   const entryId='ACC-'+String(sequence).padStart(6,'0'),y=Number(month.slice(0,4)),m=Number(month.slice(5,7)),date=month+'-'+String(new Date(y,m,0).getDate()).padStart(2,'0');
-  a.entries.push({id:entryId,number:entryId,sequence,date,reference:asset.id+' / '+month,description:'Depreciación mensual · '+asset.name,rate:debitBs/debitUsd,lines:[{accountCode:expense.code,accountName:expense.name,debitUsd,creditUsd:0,debitBs,creditBs:0},{accountCode:accum.code,accountName:accum.name,debitUsd:0,creditUsd:debitUsd,debitBs:0,creditBs:debitBs}],totalDebitUsd:debitUsd,totalCreditUsd:debitUsd,totalDebitBs:debitBs,totalCreditBs:debitBs,status:'posted',createdAt:new Date().toISOString(),createdBy:'Contador',assetId:asset.id,depreciationPeriod:month});
+  a.entries.push({id:entryId,number:entryId,sequence,date,reference:asset.id+' / '+month,description:'Depreciación mensual automática · '+asset.name,rate:debitBs/debitUsd,lines:[{accountCode:expense.code,accountName:expense.name,debitUsd,creditUsd:0,debitBs,creditBs:0},{accountCode:accum.code,accountName:accum.name,debitUsd:0,creditUsd:debitUsd,debitBs:0,creditBs:debitBs}],totalDebitUsd:debitUsd,totalCreditUsd:debitUsd,totalDebitBs:debitBs,totalCreditBs:debitBs,status:'posted',createdAt:new Date().toISOString(),createdBy:'Sistema · depreciación automática',assetId:asset.id,depreciationPeriod:month});
   usedUsd+=debitUsd;usedBs+=debitBs;count++;posted++;sequence++;
  }
- if(!posted){alert('No se generaron depreciaciones. Revise el valor depreciable pendiente y la vida útil.');return;}
+ if(!posted)return 0;
  const allPeriods=[...recorded,...a.entries.filter(e=>e.assetId===asset.id&&e.depreciationPeriod).map(e=>String(e.depreciationPeriod))].sort();
  asset.monthsDepreciated=count;asset.lastDepreciationMonth=allPeriods[allPeriods.length-1]||asset.lastDepreciationMonth;
  if(count>=asset.lifeMonths||usedUsd>=asset.costUsd-asset.residualUsd-0.000001||usedBs>=asset.costBs-asset.residualBs-0.000001)asset.status='depreciated';
- a.nextEntry=sequence;save();render();
- alert('Se contabilizaron '+posted+' período(s) de depreciación, incluyendo los meses que estaban pendientes.');
+ a.nextEntry=sequence;return posted;
 }
+let automaticDepreciationBusy=false,automaticDepreciationTimer=null;
+function runAutomaticDepreciation(){
+ if(automaticDepreciationBusy||!bridge())return;
+ automaticDepreciationBusy=true;
+ try{
+  const a=state(),target=lastCompletedMonth(),assets=a.fixedAssets||[];let total=0;
+  for(const asset of assets)if(asset.status==='active')total+=depreciateAsset(asset.id,target);
+  if(total){save();if(dialog&&activeTab==='assets')render();}
+ }catch(error){console.error('No se pudo completar la depreciación automática:',error);}
+ finally{automaticDepreciationBusy=false;}
+}
+function startAutomaticDepreciation(){
+ if(automaticDepreciationTimer)clearInterval(automaticDepreciationTimer);
+ runAutomaticDepreciation();
+ automaticDepreciationTimer=setInterval(runAutomaticDepreciation,60000);
+ document.removeEventListener('visibilitychange',runAutomaticDepreciation);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)runAutomaticDepreciation();});
+ window.removeEventListener('focus',runAutomaticDepreciation);
+ window.addEventListener('focus',runAutomaticDepreciation);
+}
+
 function exportStatement(){
  const date=$('#acStatementDate',dialog)?.value||today(),entries=validEntries().filter(e=>e.date<=date),rows=movementAccounts().map(a=>({a,t:totalsFor(entries,a.code)}));
  const csv=['Código,Cuenta,Tipo,Saldo USD,Saldo Bs',...rows.map(x=>[x.a.code,'"'+x.a.name.replace(/"/g,'""')+'"',x.a.type,x.t.balUsd,x.t.balBs].join(','))].join('\r\n');
@@ -258,5 +283,6 @@ function open(){
   render();
  }).catch(e=>alert('No se pudo iniciar Contabilidad: '+e.message));
 }
+window.addEventListener('sifer:ready',startAutomaticDepreciation,{once:true});
 window.SIFERAccountingApp={open};
 })();
