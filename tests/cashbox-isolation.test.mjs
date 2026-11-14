@@ -6,12 +6,10 @@ const main = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8')
 const access = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
 
 test('las secuencias operativas se indexan por caja', () => {
-  assert.match(main, /const box=currentCaja\(\),seqs=cajaSeqs\(\)/);
-  assert.match(main, /seqs\[box\]\.invoice=no\+1/);
-  const seq = { '01': { invoice: 1 }, '02': { invoice: 1 } };
-  seq['01'].invoice += 1;
-  assert.equal(seq['01'].invoice, 2);
-  assert.equal(seq['02'].invoice, 1);
+  assert.match(main, /async function nextCajaSequence\(operation,box=currentCaja\(\)\)/);
+  assert.match(main, /if\(!box\|\|String\(box\)==='SIN-ASIGNAR'\)throw new Error\('Asigne una caja antes de generar una operación numerada\.'/);
+  assert.match(main, /networkNextSequence\(\{cashbox:box,operation,minimum\}\)/);
+  assert.match(main, /const sales=\(S\.sales\|\|\[\]\)\.filter\(x=>String\(x\.cashbox\|\|'01'\)===String\(box\)\)/);
 });
 
 test('cada venta nueva queda identificada con caja y cajero', () => {
@@ -26,7 +24,7 @@ test('CxC se consulta por caja y los cargos manuales también guardan caja', () 
 
 test('el corte Z se conserva en el estado persistente y en historial', () => {
   assert.match(main, /cortesZ:S\.cortesZ\|\|\[\]/);
-  assert.match(main, /getZHistory\(\)\.push\(z\);\s*save\(\)/);
+  assert.match(main, /getZHistory\(\)\.push\(z\);\s*const persisted=await save\(\)/);
   assert.match(main, /data-z-print/);
 });
 
