@@ -82,3 +82,10 @@ test('el asistente inicial se abre después del primer inicio de sesión del adm
   assert.match(main, /event\.detail\.role==='admin'/);
   assert.doesNotMatch(main, /function restoreWorkspaceAfterReload\(\)[\s\S]{0,220}printerSetupWizardDlg/);
 });
+
+test('los tickets internos quedan fuera de libros fiscales y del débito mensual de IVA', () => {
+  assert.match(main, /function isFiscalSale\(sale\)\{return !!sale&&sale\.docType!=='TICKET-INTERNO'&&!\['INTERNAL_THERMAL','NO_PRINTER'\]\.includes\(sale\.documentMode\);\}/);
+  assert.match(main, /if\(!isFiscalSale\(s\)\|\|!filterPeriod\(s\.ts\)\)return false;/);
+  assert.match(main, /isFiscalSale\(x\)&&!x\.void&&enPeriodoSeniat\(x\.ts\)/);
+  assert.match(main, /isFiscalSale\(x\)&&!x\.void&&enPeriodoFiscal\(x\.ts\)/);
+});
