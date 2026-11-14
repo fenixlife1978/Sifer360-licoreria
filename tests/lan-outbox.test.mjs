@@ -142,3 +142,12 @@ test('una cola cuyo contador no cubre los eventos guardados falla de forma cerra
   const outbox = createDurableOutbox(options);
   assert.throws(() => outbox.pending(), /cola LAN contiene una operación inválida/);
 });
+
+test('la cola rechaza IDs o secuencias duplicadas dentro del mismo archivo', t => {
+  const options = fixture(t);
+  const file = path.join(options.directory, 'sifer360-network-outbox-v1.json');
+  const base = { ...operation('event-dup-a'), deviceId: options.deviceId, deviceSeq: 1, status: 'pending' };
+  fs.writeFileSync(file, JSON.stringify({ version: 1, deviceId: options.deviceId, lastSeq: 1, events: [base, { ...base, eventId: 'event-dup-b' }] }));
+  const outbox = createDurableOutbox(options);
+  assert.throws(() => outbox.pending(), /operación inválida o duplicada/);
+});
