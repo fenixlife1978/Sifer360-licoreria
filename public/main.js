@@ -594,7 +594,12 @@ async function networkSyncAttempt(){
     const local=stateSnapshot();
     const result=await window.posDesktop.networkSyncNow(local);
     if(result&&result.ok&&result.state){
-      const changed=mergeRemoteSnapshot(local,result.state);
+      if(persistenceBlocked){
+        for(const key of Object.keys(S))delete S[key];
+        Object.assign(S,result.state);
+        persistenceBlocked=false;
+        try{renderAll();}catch(e){}
+      }else mergeRemoteSnapshot(local,result.state);
       networkLastStatus=result.role||'connected';
 
       const status=$('#sbMsg');if(status)status.textContent=networkLastStatus==='server'?'Servidor LAN · sincronizado':networkLastStatus==='client'?'Cliente LAN · sincronizado':'Modo local';
