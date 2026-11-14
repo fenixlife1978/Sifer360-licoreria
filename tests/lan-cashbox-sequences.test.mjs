@@ -16,6 +16,7 @@ test('la reserva correlativa incrementa atómicamente y nunca comparte secuencia
   assert.match(main, /function allocateCashboxSequence\(cashboxId, operationType, minimumValue = 1\)/);
   assert.match(main, /db\.run\('BEGIN IMMEDIATE'\)/);
   assert.match(main, /MAX\(last_value,\?\)\+1/);
+  assert.match(main, /periodRetention = \/\^retention-\\d\{6\}\$\//);
   assert.match(main, /COMMIT/);
   assert.match(main, /persistDb\(\)/);
 });
@@ -43,6 +44,8 @@ test('ventas, números de control, anulaciones y cortes Z solicitan correlativos
   assert.match(pos, /nextCajaSequence\('count',currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('cxc',currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('cxp',currentCaja\(\)\)/);
+  assert.match(pos, /nextCajaSequence\('retention-'\+periodo,currentCaja\(\)\)/);
+  assert.match(pos, /nextCajaSequence\('retention-'\+periodoComp,currentCaja\(\)\)/);
   assert.match(pos, /ANU-'.*pad\(voidNo,6\)/);
   assert.match(pos, /const saveBulk=async\(\)=>/);
   assert.match(pos, /const processPurchase=async\(\)=>/);
