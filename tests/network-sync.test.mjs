@@ -36,7 +36,8 @@ test('Electron expone solo métodos IPC específicos para la red', () => {
 test('la aplicación reintenta sincronización automáticamente en segundo plano', () => {
   assert.match(pos, /setInterval\(\(\)=>\{if\(window\.posDesktop&&typeof window\.posDesktop\.networkSyncNow==='function'\)networkSyncAttempt\(\)\},20000\)/);
   assert.match(pos, /scheduleNetworkSync\(\)/);
-  assert.match(pos, /operaciones guardadas localmente; se reintentará automáticamente/);
+  assert.match(pos, /Sin confirmación del servidor · la última operación puede no estar guardada/);
+  assert.match(pos, /const pending=posSqliteDriver\.saveState\(state\)\.then/);
 });
 
 test('el administrador tiene panel para servidor y clientes LAN', () => {
@@ -103,7 +104,7 @@ test('el servidor aplica una operación nueva una sola vez y reporta entidades e
 });
 
 test('el servidor separa identificadores iguales cuando pertenecen a cajas distintas', () => {
-  assert.match(electron, /const boxScopedCollections = new Set\(\['sales','cxc','cortesZ','openings','movements','returns','voids'\]\)/);
+  assert.match(electron, /const boxScopedCollections = new Set\(\['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos'\]\)/);
   assert.match(electron, /String\(record\.cashbox \|\| 'sin-caja'\) \+ ':' \+ recordId/);
   assert.match(electron, /recordIdentity\(item\) === incomingIdentity/);
 });
