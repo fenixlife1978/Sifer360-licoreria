@@ -81,7 +81,7 @@ test('el servidor recibe operaciones idempotentes y detecta colisiones de secuen
   assert.match(electron, /\/api\/sync\/events/);
   assert.match(electron, /CREATE TABLE IF NOT EXISTS network_received_operations/);
   assert.match(electron, /device-sequence-already-used/);
-  assert.match(electron, /eventResult\.duplicates/);
+  assert.match(electron, /result\.duplicates/);
   assert.match(preload, /networkCreateOperation/);
   assert.match(preload, /networkOperationStatus/);
 });
