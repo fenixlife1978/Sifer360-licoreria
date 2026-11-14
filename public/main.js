@@ -5276,7 +5276,7 @@ function fiscalPrinterConfigDlg(){
     node.innerHTML=jobs.length?'<div class="gtitle">Emisiones que requieren conciliación</div>'+jobs.map(job=>'<div class="group" style="margin:6px 0"><b>'+esc(job.id)+'</b> · Estado: '+esc(job.status)+' · Factura POS '+esc(pad(job.saleNo))+' · '+esc(job.lastError||'Consultar el último documento de la máquina antes de reintentar.')+'<div class="newgrid"><div class="f"><label>Número fiscal confirmado en la máquina</label><input class="fld mono" data-fiscal-doc="'+esc(job.id)+'" placeholder="Número exacto impreso"></div><div class="f"><label>Serial de máquina</label><input class="fld mono" data-fiscal-serial="'+esc(job.id)+'" value="'+esc(job.fiscalSerial||'')+'" placeholder="Serial fiscal"></div></div><div class="row" style="flex-wrap:wrap"><button class="btn mini2 primary" data-fiscal-reconcile="'+esc(job.id)+'">Confirmar emisión verificada</button><button class="btn mini2" data-fiscal-not-issued="'+esc(job.id)+'">Confirmar que no se emitió</button></div></div>').join('')+'<p class="hint">Solo use estas acciones después de consultar físicamente el último documento de la máquina. La primera reconstruye la venta y el inventario en SQLite; la segunda libera la caja para reintentar como una operación nueva.</p>':'';
   };
   const drawSdk=()=>{
-    const p=profile(),files=providerCatalog[p.provider].files;
+    const p=profile(),files=providerCatalog[p.provider].files;\n    $('#fpTestPnp',el).hidden=p.provider!=='pnp';
     $('#fpSdkFields',el).innerHTML=files.map(file=>'<div class="row" style="gap:6px;margin:5px 0;align-items:center"><div style="flex:1;min-width:0"><b>'+esc(file)+'</b><div class="hint" style="overflow-wrap:anywhere">'+esc(draft.sdkPaths[file]||'No seleccionado')+'</div></div><button class="btn mini2" data-sdk-file="'+esc(file)+'">Buscar archivo</button></div>').join('');
   };
   const status=async()=>{
@@ -5374,7 +5374,7 @@ function fiscalPrinterConfigDlg(){
       return;
     }
     if(e.target.id==='fpDetect'){await detect();return;}
-    if(e.target.id==='fpTestPort'){
+    if(e.target.id==='fpTestPnp'){\n      try{const r=await window.posDesktop.fiscalPrinterTestPnp(profile());$('#fpStatus',el).textContent='Respuesta PNP recibida. Estado impresora: '+r.printerStatus+' · Estado fiscal: '+r.fiscalStatus+' · Última factura: '+r.currentInvoice+' · Último Z: '+r.lastZ+'. '+r.message;}\n      catch(err){$('#fpStatus',el).textContent=err.message;}\n      return;\n    }\n    if(e.target.id==='fpTestPort'){
       try{const r=await window.posDesktop.fiscalPrinterTestPort(profile());$('#fpStatus',el).textContent=r.message;}
       catch(err){$('#fpStatus',el).textContent=err.message;}
       return;
