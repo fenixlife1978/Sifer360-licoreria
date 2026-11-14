@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const main = readFileSync(new URL('../electron/main.cjs', import.meta.url), 'utf8');
 const eventStore = readFileSync(new URL('../electron/lan-event-store.cjs', import.meta.url), 'utf8');
 const sequenceStore = readFileSync(new URL('../electron/cashbox-sequence.cjs', import.meta.url), 'utf8');
+const sequenceMinimum = readFileSync(new URL('../electron/cashbox-sequence-minimum.cjs', import.meta.url), 'utf8');
 const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
 const pos = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
 
@@ -15,7 +16,8 @@ test('los consecutivos se almacenan en SQLite con clave compuesta caja + tipo de
 });
 
 test('la reserva correlativa incrementa atómicamente y nunca comparte secuencias entre cajas', () => {
-  assert.match(main, /function allocateCashboxSequence\(cashboxId, operationType, minimumValue = 1\)/);
+  assert.match(main, /function allocateCashboxSequence\(cashboxId, operationType\)/);
+  assert.match(main, /getCashboxSequenceMinimum\(state, cashboxId, operationType\)/);
   assert.match(main, /allocateCashboxSequenceDurable/);
   assert.match(sequenceStore, /db\.run\('BEGIN IMMEDIATE'\)/);
   assert.match(sequenceStore, /MAX\(last_value,\?\)\+1/);
@@ -115,8 +117,8 @@ test('los cobros CxC y pagos CxP usan consecutivo de movimiento por caja y guard
   assert.match(pos, /id:movementId/);
   assert.match(pos, /const persisted=await save\(\)/);
   assert.match(pos, /if\(!persisted\|\|!persisted\.ok\)\{restoreStateSnapshotIfNeeded\(persisted,rollbackState\)/);
-  assert.match(pos, /operation==='movement'/);
-  assert.match(pos, /cashboxSequence\)\|\|0/);
+  assert.match(sequenceMinimum, /operation === 'movement'/);
+  assert.match(sequenceMinimum, /payment\.cashboxSequence/);
 });
 
 test('las operaciones cambiarias y los pagos Zelle vinculados a CxP también quedan numerados y confirmados', () => {
@@ -147,12 +149,13 @@ test('las reservas correlativas y documentos fiscales revierten memoria si falla
 
 test('los mínimos de secuencia se derivan del estado central y nunca de localStorage', () => {
   const start = pos.indexOf('async function nextCajaSequence');
-  const end = pos.indexOf('async function ', start + 20);
-  const allocator = pos.slice(start, end < 0 ? undefined : end);
-  assert.ok(start >= 0);
-  assert.doesNotMatch(allocator, /cajaSeqs\(\)|localStorage/);
+  const end = pos.indexOf('async function nextCajaInvoice', start);
+  const allocator = pos.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotMatch(allocator, /cajaSeqs\(\)|localStorage|S\.sales|minimum/);
   assert.match(allocator, /window\.posDesktop\.networkNextSequence/);
-  assert.match(allocator, /cxc-payment/);
-  assert.match(allocator, /cxp-payment/);
-  assert.match(allocator, /currency-exchange/);
+  assert.match(sequenceMinimum, /operation === 'cxc-payment'/);
+  assert.match(sequenceMinimum, /operation === 'cxp-payment'/);
+  assert.match(sequenceMinimum, /operation === 'currency-exchange'/);
+  assert.match(main, /getCashboxSequenceMinimum\(state, cashboxId, operationType\)/);
 });
