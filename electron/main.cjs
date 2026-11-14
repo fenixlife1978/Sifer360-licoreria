@@ -69,6 +69,7 @@ function localAddresses() {
 }
 function sendJson(res, status, data) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': 'null' }); res.end(JSON.stringify(data)); }
 function readBody(req) { return new Promise((resolve, reject) => { let raw = ''; req.on('data', chunk => { raw += chunk; if (raw.length > MAX_SYNC_BODY) { reject(new Error('La carga de sincronización excede 8 MB.')); req.destroy(); } }); req.on('end', () => { try { resolve(JSON.parse(raw || '{}')); } catch { reject(new Error('JSON inválido.')); } }); req.on('error', reject); }); }
+function statePayloadHash(payload) { return crypto.createHash('sha256').update(String(payload || '')).digest('hex'); }
 function mergeStateRecords(base, incoming) {
   if (!base || typeof base !== 'object') return incoming;
   if (!incoming || typeof incoming !== 'object') return base;
@@ -313,21 +314,24 @@ async function startLanServer(requestedPort) {
     if (url.pathname === '/api/sync/state' && req.method === 'POST') {
       try {
         const body = await readBody(req);
-        if (!body || typeof body.state !== 'object' || !body.deviceId) return sendJson(res, 400, { error: 'Paquete incompleto' });
+        if (!body || typeof body.state !== 'object' || !body.deviceId || typeof body.expectedHash !== 'string') return sendJson(res, 400, { error: 'Paquete incompleto o sin versión de origen' });
         const incoming = body.state;
         const existing = one('SELECT payload FROM app_state WHERE id=1');
+        const currentHash = statePayloadHash(existing ? existing.payload : '');
+        if (body.expectedHash !== currentHash) return sendJson(res, 409, { error: 'La base central cambió desde la última lectura. Recargue los datos del servidor antes de volver a guardar.', conflict: true, stateHash: currentHash });
         const current = existing ? JSON.parse(existing.payload) : null;
         const merged = mergeStateRecords(current, incoming);
         run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(merged)]);
         const eventId = String(body.deviceId) + '-' + crypto.createHash('sha256').update(JSON.stringify(incoming)).digest('hex');
         run('INSERT OR IGNORE INTO network_sync_events(event_id,device_id,created_at,payload) VALUES(?,?,?,?)', [eventId, String(body.deviceId), new Date().toISOString(), JSON.stringify({ state: incoming })]);
         persistDb();
-        return sendJson(res, 200, { ok: true, state: merged, serverDeviceId: networkConfig.deviceId, updatedAt: new Date().toISOString() });
+        const savedRow = one('SELECT payload FROM app_state WHERE id=1');
+        return sendJson(res, 200, { ok: true, state: merged, stateHash: statePayloadHash(savedRow && savedRow.payload), serverDeviceId: networkConfig.deviceId, updatedAt: new Date().toISOString() });
       } catch (error) { return sendJson(res, 400, { error: error.message || 'Error sincronizando' }); }
     }
     if (url.pathname === '/api/sync/state' && req.method === 'GET') {
       const row = one('SELECT payload FROM app_state WHERE id=1');
-      return sendJson(res, 200, { ok: true, state: row ? JSON.parse(row.payload) : null, serverDeviceId: networkConfig.deviceId, updatedAt: new Date().toISOString() });
+      return sendJson(res, 200, { ok: true, state: row ? JSON.parse(row.payload) : null, stateHash: statePayloadHash(row && row.payload), serverDeviceId: networkConfig.deviceId, updatedAt: new Date().toISOString() });
     }
     return sendJson(res, 404, { error: 'Ruta no encontrada' });
   });
@@ -393,7 +397,7 @@ function registerNetworkIpc() {
       const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sequences/next', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + networkConfig.token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cashbox: input.cashbox, operation: input.operation }),
+        body: JSON.stringify({ cashbox: input.cashbox, operation: input.operation, minimum: input.minimum }),
         signal: AbortSignal.timeout(8000)
       });
       const result = await response.json().catch(() => ({}));
@@ -459,9 +463,10 @@ function registerNetworkIpc() {
       persistDb();
     }
     const endpoint = 'http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/state';
-    const pushed = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ deviceId: networkConfig.deviceId, state }), signal: AbortSignal.timeout(8000) });
+    const pushed = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ deviceId: networkConfig.deviceId, state, expectedHash: networkConfig.serverStateHash || '' }), signal: AbortSignal.timeout(8000) });
     if (!pushed.ok) throw new Error('Servidor rechazó la sincronización (' + pushed.status + ').');
     const result = await pushed.json();
+    networkConfig.serverStateHash = result.stateHash;
     return { ok: true, state: result.state, role: 'client', updatedAt: result.updatedAt };
   });
 }
@@ -474,6 +479,7 @@ function registerIpc() {
       const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/state', { headers: { Authorization: 'Bearer ' + networkConfig.token }, signal: AbortSignal.timeout(8000) });
       if (!response.ok) throw new Error('No se pudo leer la base central (' + response.status + ').');
       const result = await response.json();
+      networkConfig.serverStateHash = result.stateHash;
       return { mode: 'sqlite', state: result.state, source: 'lan-server' };
     }
     const row = one('SELECT payload FROM app_state WHERE id=1');
@@ -485,10 +491,11 @@ function registerIpc() {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión al servidor; no se guardó la operación.');
       const response = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/state', {
         method: 'POST', headers: { Authorization: 'Bearer ' + networkConfig.token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId: networkConfig.deviceId, state }), signal: AbortSignal.timeout(10000)
+        body: JSON.stringify({ deviceId: networkConfig.deviceId, state, expectedHash: networkConfig.serverStateHash || '' }), signal: AbortSignal.timeout(10000)
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) throw new Error(result.error || 'El servidor no confirmó el guardado central.');
+      if (!response.ok || !result.ok) throw new Error(result.error || (response.status === 409 ? 'La base central cambió; recargue antes de continuar.' : 'El servidor no confirmó el guardado central.'));
+      networkConfig.serverStateHash = result.stateHash;
       return { ok: true, durable: 'server-sqlite', serverDeviceId: result.serverDeviceId };
     }
     const payload = JSON.stringify(state);
