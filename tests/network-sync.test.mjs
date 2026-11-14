@@ -359,3 +359,11 @@ test('las operaciones pendientes quedan vinculadas a la identidad del servidor y
   assert.match(electron, /No se enviarán a otra base de datos/);
   assert.match(electron, /pendingForAnotherServer/);
 });
+
+test('SQLite y su respaldo se vacían a disco antes del reemplazo atómico', () => {
+  assert.match(electron, /function writeDurableFile\(file, data\)/);
+  assert.match(electron, /fs\.fsyncSync\(fd\)/);
+  assert.match(electron, /writeDurableFile\(temporary, Buffer\.from\(bytes\)\)/);
+  assert.match(electron, /fs\.fsyncSync\(backupFd\)/);
+  assert.match(electron, /fs\.renameSync\(temporary, target\)/);
+});
