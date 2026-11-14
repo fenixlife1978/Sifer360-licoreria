@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const electron = readFileSync(new URL('../electron/main.cjs', import.meta.url), 'utf8');
 const eventStore = readFileSync(new URL('../electron/lan-event-store.cjs', import.meta.url), 'utf8');
+const stateMerge = readFileSync(new URL('../electron/lan-state-merge.cjs', import.meta.url), 'utf8');
 const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
 const pos = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
@@ -49,9 +50,9 @@ test('el administrador tiene panel para servidor y clientes LAN', () => {
 });
 
 test('el panel explica límites de red y recomienda reserva de IP', () => {
-  assert.match(ui, /Reserva esta IP en el router/);
   assert.match(ui, /tráfico LAN usa HTTPS con certificado fijado por huella SHA-256/);
-  assert.match(ui, /diferencias de inventario por ventas simultáneas requieren conciliación/);
+  assert.match(ui, /Compara manualmente la huella/);
+  assert.match(ui, /No publiques el puerto en Internet/);
 });
 
 test('el servidor anuncia descubrimiento LAN sin exigir IP fija', () => {
@@ -66,7 +67,7 @@ test('la interfaz permite encontrar automáticamente la IP actual del servidor',
   assert.ok(preload.includes('networkDiscover'));
   assert.ok(ui.includes('Buscar servidor automáticamente'));
   assert.ok(ui.includes('networkDiscover()'));
-  assert.ok(ui.includes('No hace falta configurar IP fija'));
+  assert.ok(ui.includes('No necesitas configurar una IP fija'));
 });
 
 test('la cola de operaciones tiene UUID, secuencia por dispositivo y estado de acuse', () => {
@@ -289,9 +290,9 @@ test('un conflicto de evento bloquea el envío del snapshot completo para no sob
 });
 
 test('la fusión de snapshots conserva cajas separadas para CASHEA y cambios de divisas', () => {
-  assert.match(electron, /'casheaLiquidaciones','cambiosDivisas'/);
-  assert.match(electron, /timestampValue = value =>/);
-  assert.match(electron, /timestampValue\(item\.updatedAt \|\| item\.ts \|\| item\.createdAt\)/);
+  assert.match(stateMerge, /'casheaLiquidaciones','cambiosDivisas'/);
+  assert.match(stateMerge, /timestampValue = value =>/);
+  assert.match(stateMerge, /timestampValue\(item\.updatedAt \|\| item\.ts \|\| item\.createdAt\)/);
   assert.match(pos, /'casheaLiquidaciones','cambiosDivisas'/);
   assert.match(pos, /Operación en cola LAN local/);
   assert.match(pos, /Conflicto LAN en/);
