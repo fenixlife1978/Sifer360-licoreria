@@ -87,13 +87,13 @@ test('activos fijos usan cuentas de depreciación acumulada existentes', () => {
   assert.match(accounting, /function depreciateAsset\(id\)/);
   assert.match(accounting, /depreciationPeriod:month/);
   assert.match(accounting, /lastDepreciationMonth/);
-  assert.match(accounting, /asset\.monthsDepreciated=months\+1/);
+  assert.match(accounting, /asset\.monthsDepreciated=count/);
 });
 
 test('la depreciación recupera meses omitidos sin duplicar períodos', () => {
-  assert.match(accounting, /const recorded=new Set\\(periodEntries\\.map\\(e=>String\\(e\\.depreciationPeriod\\)\\)\\)/);
-  assert.match(accounting, /if\\(!recorded\\.has\\(cursor\\)\\)periods\\.push\\(cursor\\)/);
+  assert.match(accounting, /const recorded=new Set\(periodEntries\.map\(e=>String\(e\.depreciationPeriod\)\)\)/);
+  assert.match(accounting, /if\(!recorded\.has\(cursor\)\)periods\.push\(cursor\)/);
   assert.match(accounting, /Se registrarán también los meses anteriores pendientes/);
-  assert.match(accounting, /asset\\.monthsDepreciated=count/);
-  assert.match(accounting, /assetId:asset\\.id,depreciationPeriod:month/);
+  assert.match(accounting, /asset\.monthsDepreciated=count/);
+  assert.match(accounting, /assetId:asset\.id,depreciationPeriod:month/);
 });
