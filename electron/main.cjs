@@ -298,10 +298,14 @@ async function startLanServer(requestedPort) {
   if (networkConfig.role === 'client' || networkConfig.serverPromotionBlocked) throw new Error('Este equipo ya fue cliente LAN y su SQLite local no se considera autoridad. No puede convertirse en servidor automáticamente; restaure o migre la base central mediante un procedimiento explícito antes de promoverlo.');
   if (!db) await initializeDatabase();
   const port = normalizeLanPort(requestedPort || networkConfig.port || 38760);
-  if (networkServer) await new Promise(resolve => networkServer.close(resolve));
+  if (networkServer) {
+    const previousServer = networkServer;
+    await new Promise(resolve => previousServer.close(() => resolve()));
+    networkServer = null;
+  }
   if (!safeStorage.isEncryptionAvailable()) throw new Error('El cifrado seguro del sistema operativo no está disponible; no se iniciará el servidor LAN.');
   const identity = await ensureServerCertificate({ directory: app.getPath('userData'), deviceId: networkConfig.deviceId, encryptPrivateKey: pem => safeStorage.encryptString(pem).toString('base64'), decryptPrivateKey: value => safeStorage.decryptString(Buffer.from(value, 'base64')) });
-  const previousConfig = networkConfig;
+  const previousConfig = { ...networkConfig, ...(networkConfig.role === 'server' ? { role: 'standalone' } : {}) };
   networkConfig = { ...networkConfig, role: 'server', host: '', port, token: networkConfig.token || crypto.randomBytes(24).toString('hex'), tlsFingerprint: identity.fingerprint, serverCert: '' };
   try {
     saveNetworkConfig();
