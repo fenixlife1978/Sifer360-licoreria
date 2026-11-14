@@ -405,3 +405,7 @@ test('la validación de direcciones LAN estricta está aislada y se usa antes de
   assert.match(electron, /assertLanHost\(host\)/);
   assert.match(lanAddress, /net\.isIP\(host\)/);
 });
+
+test('al cambiar o volver a emparejar servidor se invalida el hash anterior hasta leer la base central', () => {
+  assert.match(electron, /serverCert: peer\.certificate, tlsFingerprint: peer\.fingerprint, serverStateHash: ''/);
+});
