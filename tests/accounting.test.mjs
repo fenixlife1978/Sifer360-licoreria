@@ -80,6 +80,16 @@ test('estados financieros usan asientos contabilizados y fecha de corte', () => 
   assert.match(accounting, /filter\(e=>String\(e\.date\)<=date\)/);
 });
 
+test('el flujo de efectivo se calcula desde movimientos reales de cuentas de efectivo y contrapartidas', () => {
+  assert.match(accounting, /function cashFlowTotals\(entries\)/);
+  assert.match(accounting, /startsWith\('1\.1\.1\.'\)/);
+  assert.match(accounting, /operating:\{inUsd:0,outUsd:0,inBs:0,outBs:0\}/);
+  assert.match(accounting, /startsWith\('1\.2\.'\)/);
+  assert.match(accounting, /type==='PATRIMONIO'/);
+  assert.match(accounting, /Estado de flujos de efectivo/);
+  assert.match(accounting, /Variación neta de efectivo/);
+});
+
 test('activos fijos usan cuentas de depreciación acumulada existentes', () => {
   for (const code of ['1.2.1.05','1.2.1.06','1.2.1.07','6.1.1.06']) {
     assert.ok(chart.accounts.some(a => a.code === code && a.isMovement), 'falta cuenta imputable '+code);
