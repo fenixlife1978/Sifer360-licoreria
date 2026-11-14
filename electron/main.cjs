@@ -339,13 +339,27 @@ async function startLanServer(requestedPort) {
             if (!ev || !ev.eventId || !ev.deviceId || !Number.isSafeInteger(Number(ev.deviceSeq)) || Number(ev.deviceSeq) < 1 || !ev.eventType || !ev.entityType || !ev.entityId || !ev.payload || typeof ev.payload !== 'object') {
               throw new Error('Operación inválida.');
             }
-            const existing = one('SELECT event_id FROM network_received_operations WHERE event_id=?', [String(ev.eventId)]);
+            const eventPayload = JSON.stringify(ev.payload);
+            const existing = one('SELECT event_id AS eventId,device_id AS deviceId,device_seq AS deviceSeq,event_type AS eventType,entity_type AS entityType,entity_id AS entityId,payload FROM network_received_operations WHERE event_id=?', [String(ev.eventId)]);
             const seqOwner = one('SELECT event_id FROM network_received_operations WHERE device_id=? AND device_seq=?', [String(ev.deviceId), Number(ev.deviceSeq)]);
-            if (existing) { duplicates.push(String(ev.eventId)); continue; }
+            if (existing) {
+              const sameEvent = existing.deviceId === String(ev.deviceId) &&
+                Number(existing.deviceSeq) === Number(ev.deviceSeq) &&
+                existing.eventType === String(ev.eventType) &&
+                existing.entityType === String(ev.entityType) &&
+                existing.entityId === String(ev.entityId) &&
+                existing.payload === eventPayload;
+              if (sameEvent) duplicates.push(String(ev.eventId));
+              else conflicts.push({ eventId: String(ev.eventId), reason: 'event-id-reused-with-different-data', existingEventId: existing.eventId });
+              continue;
+            }
             if (seqOwner) { conflicts.push({ eventId: String(ev.eventId), reason: 'device-sequence-already-used', existingEventId: seqOwner.event_id }); continue; }
             const collection = String(ev.entityType);
             const record = ev.payload && ev.payload.record;
             const allowedCollections = new Set(['sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','casheaMovimientos','casheaLiquidaciones','cambiosDivisas','retencionesIva','retentions','returns','voids']);
+            if (!allowedCollections.has(collection) || !record || typeof record !== 'object' || Array.isArray(record)) {
+              throw new Error('La operación no contiene una entidad permitida y un registro válido.');
+            }
             let state = null, records = [], existingRecord = null;
             const boxScopedCollections = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos']);
             const recordId = String(ev.entityId);
