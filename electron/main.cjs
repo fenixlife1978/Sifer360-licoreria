@@ -550,7 +550,7 @@ function registerNetworkIpc() {
     let health;
     try { health = await clientApi('/api/health', { timeoutMs: 5000 }); }
     catch (error) { networkConfig = previous; throw error; }
-    const pendingForAnotherServer = clientOutbox.pending().some(event => event.serverDeviceId && event.serverDeviceId !== health.deviceId);
+    const pendingForAnotherServer = clientOutbox.pending().some(event => !event.serverDeviceId || event.serverDeviceId !== health.deviceId);
     if (pendingForAnotherServer || clientOutbox.status().conflicts > 0) {
       networkConfig = previous;
       throw new Error('Esta PC conserva operaciones pendientes o conflictos del servidor anterior. No se cambiará de base central hasta conciliarlos.');
