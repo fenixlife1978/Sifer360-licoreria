@@ -253,7 +253,7 @@ async function startLanServer(requestedPort) {
     if (url.pathname === '/api/sequences/next' && req.method === 'POST') {
       try {
         const body = await readBody(req);
-        const result = allocateCashboxSequence(body.cashbox, body.operation);
+        const result = allocateCashboxSequence(body.cashbox, body.operation, body.minimum);
         return sendJson(res, 200, result);
       } catch (error) { return sendJson(res, 400, { error: error.message || 'No se pudo reservar el consecutivo.' }); }
     }
@@ -335,19 +335,20 @@ async function startLanServer(requestedPort) {
   startDiscoveryServer();
   return { ...networkConfig, running: true, addresses: localAddresses() };
 }
-function allocateCashboxSequence(cashboxId, operationType) {
+function allocateCashboxSequence(cashboxId, operationType, minimumValue = 1) {
   const cashbox = String(cashboxId || '').trim();
   const operation = String(operationType || '').trim();
+  const minimum = Math.max(1, Math.floor(Number(minimumValue) || 1));
   const allowed = new Set(['invoice','control','z','void','refund','return','cxc','movement','opening','purchase','count']);
   if (!cashbox || cashbox.length > 32 || !/^[A-Za-z0-9_-]+$/.test(cashbox)) throw new Error('Caja inválida para numeración.');
   if (!allowed.has(operation)) throw new Error('Tipo de operación no permitido para numeración.');
   db.run('BEGIN IMMEDIATE');
   try {
     run('INSERT OR IGNORE INTO cashbox_sequences(cashbox_id,operation_type,last_value) VALUES(?,?,0)', [cashbox, operation]);
-    run('UPDATE cashbox_sequences SET last_value=last_value+1,updated_at=CURRENT_TIMESTAMP WHERE cashbox_id=? AND operation_type=?', [cashbox, operation]);
+    run('UPDATE cashbox_sequences SET last_value=MAX(last_value,?)+1,updated_at=CURRENT_TIMESTAMP WHERE cashbox_id=? AND operation_type=?', [minimum - 1, cashbox, operation]);
     const row = one('SELECT last_value FROM cashbox_sequences WHERE cashbox_id=? AND operation_type=?', [cashbox, operation]);
-    persistDb();
     db.run('COMMIT');
+    persistDb();
     return { ok: true, cashbox, operation, value: Number(row.last_value) };
   } catch (error) {
     try { db.run('ROLLBACK'); } catch {}
@@ -399,7 +400,7 @@ function registerNetworkIpc() {
       if (!response.ok || !result.ok) throw new Error(result.error || 'El servidor no pudo reservar el consecutivo.');
       return result;
     }
-    return allocateCashboxSequence(input.cashbox, input.operation);
+    return allocateCashboxSequence(input.cashbox, input.operation, input.minimum);
   });
   ipcMain.handle('network:discover', () => discoverLanServers());
   ipcMain.handle('network:configure-server', (_e, opts = {}) => startLanServer(opts.port));
