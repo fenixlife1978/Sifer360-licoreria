@@ -233,3 +233,20 @@ test('un cliente no transmite claves ni datos a hosts fuera de la red local', ()
   assert.match(electron, /assertLanHost\(networkConfig\.host\)/);
   assert.match(electron, /assertLanHost\(host\)/);
 });
+
+test('Electron usa la cola durable del cliente y reintenta eventos pendientes antes del snapshot', () => {
+  assert.match(electron, /createDurableOutbox\(\{ directory: app\.getPath\('userData'\), deviceId: networkConfig\.deviceId \}\)/);
+  assert.match(electron, /const event = clientOutbox\.enqueue\(/);
+  assert.match(electron, /async function flushClientOutbox\(\)/);
+  assert.match(electron, /await flushClientOutbox\(\)/);
+  assert.match(electron, /clientOutbox\.acknowledge\(accepted\)/);
+  assert.match(electron, /clientOutbox\.conflict\(/);
+  assert.match(electron, /clientOutbox\.pending\(\)/);
+  assert.match(electron, /clientOutbox\.status\(\)/);
+});
+
+test('el cliente captura el registro nuevo antes de esperar la red y conserva la operación si falla el guardado remoto', () => {
+  const capture = pos.slice(pos.indexOf('async function captureNewOperations'), pos.indexOf('function mergeRemoteSnapshot'));
+  assert.ok(capture.indexOf('const snap=stateSnapshot()') < capture.indexOf('await window.posDesktop.networkStatus()'));
+  assert.doesNotMatch(capture, /__SIFER_LAST_SAVE/);
+});
