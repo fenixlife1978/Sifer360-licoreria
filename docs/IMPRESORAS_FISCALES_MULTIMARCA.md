@@ -14,6 +14,7 @@ Familias contempladas:
 | Quorion | QProg.dll o protocolo del modelo | No asumir que todos los equipos aceptan el mismo protocolo serial. |
 | Aclas | AclasSDK.dll | Confirmar versión del SDK y protocolo con el distribuidor. |
 | PNP | PnpFiscal.dll | Confirmar SDK correspondiente al equipo homologado; PF-SUNMI dispone de documentación del fabricante. |
+| Hasar | SDK/protocolo específico del distribuidor | No se presupone un nombre de DLL; requiere puente específico y manual del modelo. |
 
 La lista de marcas/modelos es un catálogo de integración solicitado, no una certificación de homologación vigente. Las cuotas de mercado indicadas en la solicitud (70/15–20/10 y más de 95% de cobertura) no se consideran cifras verificadas y no se usan para prometer compatibilidad. Antes de activar facturación fiscal, verificar el modelo exacto, serial, representante y autorización aplicable ante SENIAT y el fabricante.
 
