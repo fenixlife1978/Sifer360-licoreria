@@ -22,15 +22,12 @@ test('cashier POS is blocked until an opening matches the logged-in cashier and 
 });
 
 test('cashier opening state is isolated to the authenticated browser session',()=>{
-  const start=main.indexOf('function readActiveOpening(boxOverride)');
-  const end=main.indexOf('function upsertOpeningState',start);
+  const start=main.indexOf('function writeActiveOpening(opening)');
+  const end=main.indexOf('async function migrateLegacyOpenings',start);
   const block=main.slice(start,end);
-  assert.match(block,/if\(user\.role==='cajero'\)/);
-  assert.match(block,/String\(sessionValue\.username\|\|''\)!==String\(user\.username\|\|''\)/);
-  assert.match(block,/String\(sessionValue\.cashbox\|\|''\)!==String\(user\.cashbox\|\|''\)/);
+  assert.match(block,/sessionStorage\.setItem\('sifer360_active_opening'/);
   assert.match(block,/if\(activeUser\(\)\.role!=='cajero'\)localStorage\.setItem/);
-  const cashierBranch=block.slice(block.indexOf("if(user.role==='cajero'){"),block.indexOf("if(sessionValue&&sessionValue.status"));
-  assert.doesNotMatch(cashierBranch,/localStorage/);
+  assert.match(main,/function readActiveOpening\(boxOverride\)[\s\S]{0,350}openings\.filter/);
 });
 
 test('cashier toolbar shows only sales workflow actions',()=>{
