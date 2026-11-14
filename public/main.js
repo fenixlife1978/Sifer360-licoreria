@@ -147,6 +147,7 @@ function addKardex(ev){
   if(!S.kardex)S.kardex=[];
   S.kardex.push({
     id:S.kardex.length+1,
+    eventId:ev.eventId||('KDX-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2))),
     ts:ev.ts||Date.now(),
     code:ev.code,
     type:ev.type,       /* 'INICIAL' | 'COMPRA' | 'VENTA' | 'CONTEO' | 'AJUSTE' | 'ANULACIÓN' */
@@ -538,7 +539,7 @@ const OPERATION_COLLECTIONS = [
 const BOX_SCOPED_OPERATION_COLLECTIONS = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','movimientosCaja','rateAudit','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas']);
 function operationIdentity(item,index,collection){
   if(!item||typeof item!=='object')return String(index)+':'+JSON.stringify(item);
-  const id=item.id??item.uuid??item.eventId??item.no??item.number??item.ctrlNo??item.code;
+  const id=collection==='kardex'?(item.eventId??item.id??item.uuid??item.no??item.number??item.ctrlNo??item.code):(item.id??item.uuid??item.eventId??item.no??item.number??item.ctrlNo??item.code);
   if(id===undefined)return String(index)+':'+JSON.stringify(item);
   const box=BOX_SCOPED_OPERATION_COLLECTIONS.has(collection)?String(item.cashbox||'sin-caja')+':':'';
   return box+String(id);
@@ -990,7 +991,7 @@ function clearCart(){
 }
 async function suspend(){
   if(!S.cart.length){msg('No hay una venta con renglones para suspender.','bad');return;}
-  S.held.push({cart:S.cart,client:S.client,ts:Date.now()});
+  S.held.push({id:'HOLD-'+String(currentCaja()).replace(/\\W/g,'')+'-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2)),cashbox:currentCaja(),cart:S.cart,client:S.client,ts:Date.now()});
   S.cart=[];S.sel=-1;S.client=S.clients[0];
   const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la suspensión; la venta permanece en el estado durable anterior.','bad');return;}
   renderAll();msg('Venta suspendida. Hay '+S.held.length+' en espera.');
