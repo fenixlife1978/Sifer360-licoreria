@@ -15,7 +15,7 @@ function verifyFingerprint(actual, expected) {
   return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(e, 'hex'));
 }
 
-async function ensureServerCertificate({ directory, deviceId }) {
+async function ensureServerCertificate({ directory, deviceId, encryptPrivateKey, decryptPrivateKey }) {
   if (!directory || !deviceId) throw new Error('Falta la ubicación o identidad del servidor LAN.');
   const file = path.join(directory, 'sifer360-lan-identity-v1.json');
   let identity;
@@ -41,7 +41,9 @@ async function ensureServerCertificate({ directory, deviceId }) {
         ]
       }
     );
-    identity = { version: 1, deviceId: String(deviceId), key: generated.private, cert: generated.cert };
+    identity = { version: 1, deviceId: String(deviceId), cert: generated.cert };
+    if (typeof encryptPrivateKey === 'function') identity.keyEncrypted = encryptPrivateKey(generated.private);
+    else identity.key = generated.private;
     const temporary = file + '.tmp';
     let fd;
     try {
@@ -59,11 +61,33 @@ async function ensureServerCertificate({ directory, deviceId }) {
     }
   }
   if (!identity || identity.version !== 1 || identity.deviceId !== String(deviceId) ||
-      typeof identity.key !== 'string' || typeof identity.cert !== 'string') {
+      (!identity.key && !identity.keyEncrypted) || typeof identity.cert !== 'string') {
     throw new Error('La identidad TLS no coincide con este servidor. No se generará otra automáticamente.');
   }
   const certificate = new crypto.X509Certificate(identity.cert);
-  const privateKey = crypto.createPrivateKey(identity.key);
+  let privateKeyPem = identity.key;
+  if (identity.keyEncrypted) {
+    if (typeof decryptPrivateKey !== 'function') throw new Error('No se puede descifrar la clave privada TLS de este servidor.');
+    privateKeyPem = decryptPrivateKey(identity.keyEncrypted);
+  } else if (typeof encryptPrivateKey === 'function') {
+    identity.keyEncrypted = encryptPrivateKey(identity.key);
+    delete identity.key;
+    const temporary = file + '.tmp';
+    let fd;
+    try {
+      fd = fs.openSync(temporary, 'w', 0o600);
+      fs.writeFileSync(fd, JSON.stringify(identity), 'utf8');
+      fs.fsyncSync(fd);
+      fs.closeSync(fd);
+      fd = undefined;
+      fs.renameSync(temporary, file);
+    } catch (error) {
+      if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
+      try { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); } catch {}
+      throw new Error('No se pudo cifrar y guardar la clave privada TLS existente. ' + (error.message || String(error)));
+    }
+  }
+  const privateKey = crypto.createPrivateKey(privateKeyPem);
   const privatePublic = crypto.createPublicKey(privateKey).export({ type: 'spki', format: 'der' });
   const certificatePublic = certificate.publicKey.export({ type: 'spki', format: 'der' });
   if (!crypto.timingSafeEqual(privatePublic, certificatePublic)) throw new Error('La clave privada no corresponde al certificado TLS guardado.');
