@@ -113,6 +113,24 @@ test('el estado PNP marca fuera de línea, falta de papel y errores fiscales com
   assert.ok(nearFull.warnings.some(x=>/próxima a llenarse/.test(x)));
 });
 
+test('la emisión PNP se bloquea antes de llamar al adaptador cuando el estado fiscal no está listo', async () => {
+  const protocol = require('../electron/pnp-protocol.cjs');
+  let bridgeCalled = false;
+  await assert.rejects(() => manager.emitInvoice(
+    {provider:'pnp',model:'PF-220A',port:'COM4',bridgePath:path.join(os.tmpdir(),'bridge-no-ejecutado.exe')},
+    {idempotencyKey:'sale-pnp-01',total:10},
+    {platform:'win32',execFileAsync:async(_command,args)=>{
+      const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
+      const match=script.match(/\\$hex='([0-9a-f]+)'/i);
+      const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));
+      const response=protocol.encodeCommand(0x38,
+        ['0000','0000','34','04','56','260101','120000','7','0','7','0','3'],request.sequence);
+      return {stdout:response.toString('base64')};
+    },spawnImpl:()=>{bridgeCalled=true;}}
+  ),/Emisión fiscal bloqueada.*Reporte Z/);
+  assert.equal(bridgeCalled,false,'el adaptador de emisión no debe ejecutarse si PNP exige Reporte Z');
+});
+
 test('no permite consultar PNP si se seleccionó otra familia o falta el puerto', async () => {
   await assert.rejects(()=>manager.testPnpFiscalStatus({provider:'hka',port:'COM4'},{platform:'win32'}),/solo aplica/);
   await assert.rejects(()=>manager.testPnpFiscalStatus({provider:'pnp'},{platform:'win32'}),/puerto COM/);
