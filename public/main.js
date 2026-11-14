@@ -548,15 +548,14 @@ function primeOperationBaseline(){
   operationBaseline={};
   for(const [key] of OPERATION_COLLECTIONS) operationBaseline[key]=new Set((Array.isArray(snap[key])?snap[key]:[]).map((item,index)=>operationIdentity(item,index,key)));
 }
-async function captureNewOperations(){
-  if(operationCaptureBusy||!window.posDesktop||typeof window.posDesktop.networkCreateOperation!=='function')return;
-  if(!operationBaseline){primeOperationBaseline();return;}
+async function captureNewOperations(snapshotOverride){
+  if(!window.posDesktop||typeof window.posDesktop.networkCreateOperation!=='function')return {ok:true,role:'standalone'};
+  if(!operationBaseline){primeOperationBaseline();return {ok:true,role:'baseline'};}
+  if(operationCaptureBusy)throw new Error('Ya existe una captura de operaciones LAN en curso; no se confirmará otra escritura todavía.');
   operationCaptureBusy=true;
   try{
-    // Capturar primero en la outbox durable del cliente. No esperar al snapshot
-    // completo: un 409 por concurrencia no debe borrar la operación nueva del usuario.
-    const snap=stateSnapshot();
-    const net=await window.posDesktop.networkStatus();if(!net||net.role!=='client')return;
+    const snap=snapshotOverride||stateSnapshot();
+    const net=await window.posDesktop.networkStatus();if(!net||net.role!=='client')return {ok:true,role:net&&net.role||'standalone'};
     for(const [key,eventType] of OPERATION_COLLECTIONS){
       const items=Array.isArray(snap[key])?snap[key]:[];
       const seen=operationBaseline[key]||new Set();
@@ -568,14 +567,23 @@ async function captureNewOperations(){
           eventType,entityType:key,entityId,occurredAt:(Number.isFinite(Number(item.ts))?new Date(Number(item.ts)):new Date(item.createdAt||Date.now())).toISOString(),
           payload:{record:item,sourceCollection:key,deviceCashbox:String(item.cashbox||snap.cfg?.caja||'01')}
         });
-        if(delivery&&delivery.status==='pending'){const status=$('#sbMsg');if(status)status.textContent='Operación en cola LAN local · pendiente de confirmación del servidor ('+key+').';}
-        if(delivery&&delivery.status==='conflict'){const status=$('#sbMsg');if(status)status.textContent='Conflicto LAN en '+key+' · operación preservada para revisión.';}
+        if(!delivery||delivery.serverConfirmed!==true||delivery.status!=='acked'){
+          const status=$('#sbMsg');
+          if(status)status.textContent=delivery&&delivery.status==='conflict'
+            ?'Conflicto LAN en '+key+' · operación preservada para revisión; no se confirmó el cambio.'
+            :'Operación guardada en la cola LAN local, pero aún no confirmada por el servidor ('+key+'). No se cerrará ni imprimirá como operación aceptada.';
+          throw new Error(delivery&&delivery.deliveryError||'El servidor todavía no confirmó de forma durable la operación '+entityId+'.');
+        }
         seen.add(identity);
       }
       operationBaseline[key]=seen;
     }
-  }catch(error){console.warn('No se pudo encolar una operación para sincronización:',error);const status=$('#sbMsg');if(status)status.textContent='El servidor pudo confirmar el estado, pero falló la cola de auditoría LAN local. Revise antes de continuar: '+String(error&&error.message||error);}
-  finally{operationCaptureBusy=false}
+    return {ok:true,role:'client',serverConfirmed:true};
+  }catch(error){
+    console.warn('No se pudo confirmar una operación en el servidor LAN:',error);
+    const status=$('#sbMsg');if(status)status.textContent='Operación no confirmada por el servidor LAN: '+String(error&&error.message||error);
+    throw error;
+  }finally{operationCaptureBusy=false}
 }
 async function networkSyncAttempt(){
   if(networkSyncBusy||!window.posDesktop||typeof window.posDesktop.networkSyncNow!=='function')return;
@@ -620,7 +628,12 @@ function save(){
   }
   const state=stateSnapshot();
   const sequence=++saveSequence;
-  const pending=saveQueue.then(()=>posSqliteDriver.saveState(state)).then(result=>{
+  const previousCapture=operationCapturePromise;
+  const pending=saveQueue.then(async()=>{
+    await previousCapture;
+    await captureNewOperations(state);
+    return posSqliteDriver.saveState(state);
+  }).then(result=>{
     if(!result||!result.ok)throw (result&&result.error)||new Error('SQLite/servidor no confirmó el guardado.');
     try{window.dispatchEvent(new Event('sifer:state-saved'));}catch(e){}
     return result;
@@ -648,7 +661,7 @@ function save(){
   });
   saveQueue=pending.then(()=>undefined,()=>undefined);
   window.__SIFER_LAST_SAVE=pending;
-  operationCapturePromise=operationCapturePromise.then(()=>captureNewOperations());
+  operationCapturePromise=pending.then(()=>undefined,()=>undefined);
   scheduleNetworkSync();
   return pending;
 }
