@@ -4397,7 +4397,7 @@ function payDlg(draft){
         return false;
       }
       const cDays=Math.max(1,Math.round(pn($('#payCreditDays',el).value)||15));
-      finalize(last,enteredAmts,isCred,cDays,enteredRefs,el);return false;
+      await finalize(last,enteredAmts,isCred,cDays,enteredRefs,el);return false;
     }}],
     onOpen:()=>{upd();$('#pm-efUSD',el).focus();}});
 }
@@ -4418,9 +4418,9 @@ function showSaleCompletion(sale){
   ],onOpen:()=>{const node=$('.sale-completion',body);if(node)node.setAttribute('tabindex','-1');}});
 }
 
-function finalize(st,amts,isCred,cDays,refs,payEl){
+async function finalize(st,amts,isCred,cDays,refs,payEl){
   const ctx=cajaContext();if(ctx.role==='cajero'&&ctx.status!=='abierta'){msg('La caja no está abierta. Solicite al administrador una nueva apertura antes de facturar.','bad');return;}
-  const t=totals(), ts=Date.now(), invNo=nextCajaInvoice();
+  const t=totals(), ts=Date.now(), invNo=await nextCajaInvoice();
   const lines=S.cart.map(l=>{
     const i=lineInfo(l);
     return{
@@ -4451,7 +4451,7 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
   }
   const ctrlPrefix=S.cfg.ctrlPrefix||'00-';
   const seqs=cajaSeqs(),boxSeq=seqs[currentCaja()]||(seqs[currentCaja()]={invoice:1,void:1,refund:1,cxc:1,movement:1,z:1});
-  const ctrlNext=Number(boxSeq.ctrl||1);boxSeq.ctrl=ctrlNext+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
+  const ctrlNext=await nextCajaSequence('control',currentCaja());boxSeq.ctrl=ctrlNext+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
   const ctrlNo=ctrlPrefix+String(currentCaja()).replace(/\W/g,'').slice(-4)+'-'+pad(ctrlNext,8);
   const sale={
     accountingSourceId:'SALE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(invNo),
@@ -4668,7 +4668,7 @@ function salesDlg(){
     $('#saView',el).disabled=!selNo;$('#saVoid',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;
     $('#saVoid',el).textContent='Anular venta';
   };
-  el.addEventListener('click',e=>{
+  el.addEventListener('click',async e=>{
     const tr=e.target.closest('tr[data-no]');
     if(tr){selNo=+tr.dataset.no;armed=0;draw();return;}
     const s=S.sales.find(x=>x.no===selNo&&x.cashbox===currentCaja());
@@ -4678,7 +4678,8 @@ function salesDlg(){
       if(!armed||Date.now()-armed>5000){armed=Date.now();e.target.textContent='Confirmar anulación';return;}
       s.void=true;
       s.transType='03-ANUL';
-      s.voidDoc='NC-'+pad(s.no,8);
+      const voidNo=await nextCajaSequence('void',currentCaja());
+      s.voidNo=voidNo;s.voidDoc='ANU-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(voidNo,6);
       s.voidTs=Date.now();
       s.lines.forEach(l=>{
         const p=prod(l.code);
@@ -6054,11 +6055,17 @@ function cajaSeqs(){
   try{return JSON.parse(localStorage.getItem('sifer360_box_sequences')||'{}')||{};}catch(e){return {};}
 }
 function currentCajaInvoice(){const box=currentCaja(),seqs=cajaSeqs();if(!seqs[box])seqs[box]={invoice:1,void:1,refund:1,cxc:1,movement:1,z:1};return Number(seqs[box].invoice)||1;}
-function nextCajaInvoice(){
-  const box=currentCaja(),seqs=cajaSeqs();
-  if(!seqs[box])seqs[box]={invoice:1,void:1,refund:1,cxc:1,movement:1};
-  const no=Number(seqs[box].invoice)||1;
-  seqs[box].invoice=no+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
+async function nextCajaSequence(operation,box=currentCaja()){
+  if(!window.posDesktop||typeof window.posDesktop.networkNextSequence!=='function')throw new Error('La numeración correlativa requiere el motor SQLite de escritorio.');
+  const result=await window.posDesktop.networkNextSequence({cashbox:String(box),operation});
+  const value=Number(result&&result.value);
+  if(!result||!result.ok||!Number.isSafeInteger(value)||value<1)throw new Error('El servidor no confirmó el consecutivo de '+operation+'.');
+  return value;
+}
+async function nextCajaInvoice(){
+  const box=currentCaja(),seqs=cajaSeqs(),no=await nextCajaSequence('invoice',box);
+  if(!seqs[box])seqs[box]={};seqs[box].invoice=Math.max(Number(seqs[box].invoice)||1,no+1);
+  localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
   return no;
 }
 function getZHistory(){
@@ -6292,7 +6299,7 @@ function corteZDlg(){
       $('#zActionStatus',el).textContent=!opened?'El cierre está bloqueado: primero abra el turno de esta caja.':(!result.total.complete?'Arqueo incompleto: ingrese el monto real de los 8 métodos de pago; use 0,00 en los métodos sin movimientos.':'Arqueo completo. Puede revisar la vista previa de 80 mm y confirmar el cierre.');
     }
   });
-  el.addEventListener('click',e=>{
+  el.addEventListener('click',async e=>{
     const view=e.target.closest('[data-z-view]');
     if(view){const z=getZHistory().find(item=>item.id===view.dataset.zView&&String(item.cashbox)===box);if(z)printCorteZ(z,false);return;}
     const reprint=e.target.closest('[data-z-print]');
@@ -6339,7 +6346,7 @@ function corteZDlg(){
       if(!confirm('¿Confirmar el cierre definitivo de la caja '+box+'?\\nResultado: '+status+'\\nFaltante: '+usd(result.total.shortageUsd)+' / '+bsf(result.total.shortageBs)+'\\nSobrante: '+usd(result.total.surplusUsd)+' / '+bsf(result.total.surplusBs)+'\\nEl corte quedará guardado en el historial.'))return;
       const all=getPeriodSales(),sales=all.filter(s=>!s.void),voids=all.filter(s=>s.void);
       const rec=result.rec.map(r=>Object.assign({},r,{real:Number(r.real),diff:Number(r.diff)}));
-      const seqs=cajaSeqs(),seq=seqs[box]||{z:1};const zSeq=Number(seq.z)||1;seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
+      const seqs=cajaSeqs(),seq=seqs[box]||{z:1};const zSeq=await nextCajaSequence('z',box);seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
       const t=Object.assign({},result.total);
       const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now()),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
       getZHistory().push(z);
