@@ -561,7 +561,7 @@ function registerNetworkIpc() {
     if (networkConfig.role === 'client') {
       if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente sin conexión configurada al servidor.');
       assertLanHost(networkConfig.host);
-      return clientApi('/api/sequences/next', { method: 'POST', body: JSON.stringify({ cashbox: input.cashbox, operation: input.operation, minimum: input.minimum }), timeoutMs: 8000 });
+      return clientApi('/api/sequences/next', { method: 'POST', body: JSON.stringify({ cashbox: input.cashbox, operation: input.operation }), timeoutMs: 8000 });
     }
     return allocateCashboxSequence(input.cashbox, input.operation);
   });
