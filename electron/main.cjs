@@ -304,7 +304,8 @@ async function startLanServer(requestedPort) {
           db.run('COMMIT');
         } catch (error) { db.run('ROLLBACK'); throw error; }
         persistDb();
-        return sendJson(res, 200, { ok: true, accepted, duplicates, conflicts, note: 'Las operaciones se almacenan como eventos; todavía no modifican automáticamente los saldos del POS.' });
+        const stateRow = one('SELECT payload FROM app_state WHERE id=1');
+        return sendJson(res, 200, { ok: true, accepted, duplicates, conflicts, stateHash: statePayloadHash(stateRow && stateRow.payload), note: 'Las operaciones aceptadas se aplicaron al estado central y se persistieron en SQLite.' });
       } catch (error) { return sendJson(res, 400, { error: error.message || 'Error recibiendo operaciones' }); }
     }
     if (url.pathname === '/api/sync/events' && req.method === 'GET') {
@@ -451,6 +452,7 @@ function registerNetworkIpc() {
       });
       if (!eventResponse.ok) throw new Error('Servidor rechazó operaciones pendientes (' + eventResponse.status + ').');
       const eventResult = await eventResponse.json();
+      if (typeof eventResult.stateHash === 'string') networkConfig.serverStateHash = eventResult.stateHash;
       db.run('BEGIN IMMEDIATE');
       try {
         const conflictIds = new Set((eventResult.conflicts || []).map(conflict => String(conflict.eventId)));
