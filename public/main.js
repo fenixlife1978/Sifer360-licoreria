@@ -595,7 +595,7 @@ async function networkSyncAttempt(){
     }else networkLastStatus='local';
   }catch(error){
     networkLastStatus='offline';
-    const status=$('#sbMsg');if(status)status.textContent='Sin conexión al servidor · operaciones guardadas localmente; se reintentará automáticamente';
+    const status=$('#sbMsg');if(status)status.textContent='Sin confirmación del servidor · la última operación puede no estar guardada. Reconecte y recargue antes de continuar.';
   }finally{networkSyncBusy=false}
 }
 window.SIFERNetworkSync=()=>networkSyncAttempt();
