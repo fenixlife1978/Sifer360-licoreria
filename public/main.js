@@ -735,6 +735,7 @@ function load(){
     if(Array.isArray(d.suppliers)&&d.suppliers.length)S.suppliers=d.suppliers;
     S.sales=Array.isArray(d.sales)?d.sales:S.sales;
     S.held=Array.isArray(d.held)?d.held:[];
+    S.heldDeletedIds=Array.isArray(d.heldDeletedIds)?d.heldDeletedIds:[];
     if(Array.isArray(d.purchases))S.purchases=d.purchases;
     if(Array.isArray(d.cxc))S.cxc=d.cxc;
     if(Array.isArray(d.cxp))S.cxp=d.cxp;
