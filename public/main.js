@@ -4514,6 +4514,8 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
   const ctx=cajaContext();if(ctx.role==='cajero'&&ctx.status!=='abierta'){msg('La caja no está abierta. Solicite al administrador una nueva apertura antes de facturar.','bad');return;}
   const fiscalMode=S.cfg.fiscalTipo==='MAQUINA_FISCAL';
   const fiscalProfile=fiscalMode&&S.cfg.fiscalPrinters?S.cfg.fiscalPrinters[currentCaja()]:null;
+  const unresolvedFiscalJobs=(S.fiscalPrinterJobs||[]).filter(job=>String(job.cashbox)===String(currentCaja())&&['pending','uncertain'].includes(job.status));
+  if(fiscalMode&&unresolvedFiscalJobs.length){msg('Esta caja tiene una emisión fiscal pendiente o incierta ('+unresolvedFiscalJobs.map(job=>job.id).join(', ')+'). Consulte la impresora y reconcilie esa operación antes de facturar otra venta.','bad');return;}
   if(fiscalMode){
     if(!fiscalProfile||fiscalProfile.enabled!==true){msg('La modalidad está configurada como Máquina Fiscal, pero esta caja no tiene una impresora fiscal habilitada. Configure el dispositivo antes de cobrar.','bad');return;}
     if(!window.posDesktop||typeof window.posDesktop.fiscalPrinterStatus!=='function'||typeof window.posDesktop.fiscalPrinterEmitInvoice!=='function'){msg('La emisión fiscal requiere la aplicación Electron de escritorio. No se registró la venta.','bad');return;}
@@ -4622,7 +4624,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
   if(fiscalMode){
     if(!Array.isArray(S.fiscalPrinterJobs))S.fiscalPrinterJobs=[];
     const idempotencyKey='SIFER360-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+String(invNo)+'-'+String(ts);
-    fiscalJob={id:'FISCAL-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+pad(invNo,8),idempotencyKey,cashbox:currentCaja(),saleNo:invNo,createdAt:ts,status:'pending',fiscalSerial:'',fiscalDocumentNumber:'',lastError:''};
+    fiscalJob={id:'FISCAL-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+pad(invNo,8),idempotencyKey,cashbox:currentCaja(),saleNo:invNo,createdAt:ts,status:'pending',fiscalSerial:'',fiscalDocumentNumber:'',lastError:'',saleSnapshot:JSON.parse(JSON.stringify(sale))};
     S.fiscalPrinterJobs.push(fiscalJob);
     const journal=await save();
     if(!journal||!journal.ok){restoreStateSnapshotIfNeeded(journal,rollbackState);msg('SQLite no confirmó la intención de emisión fiscal. La impresora no recibió comandos y la venta no se registró.','bad');return;}
@@ -5260,11 +5262,17 @@ function fiscalPrinterConfigDlg(){
     '<div class="group"><div class="gtitle">SDK del fabricante</div><div id="fpSdkFields"></div><div class="hint">Selecciona únicamente archivos originales entregados por el fabricante o distribuidor autorizado. Detectar un DLL no significa que el protocolo esté integrado.</div></div>'+
     '<div class="group"><div class="gtitle">Puente de comunicación fiscal</div><div class="f"><label for="fpBridge">Ejecutable adaptador del fabricante</label><input class="fld" id="fpBridge" readonly value="'+esc(draft.bridgePath)+'"></div><div class="row" style="flex-wrap:wrap;margin-top:8px"><button class="btn" id="fpChooseBridge">Seleccionar adaptador .exe</button><button class="btn" id="fpTestBridge">Comprobar adaptador</button></div><p class="hint">El adaptador debe implementar sifer-fiscal-bridge/v1 y usar el SDK oficial. No se envían comandos fiscales desde esta prueba.</p></div>'+
     '<label class="chk"><input type="checkbox" id="fpEnabled" '+(draft.enabled?'checked':'')+'> Habilitar este dispositivo en la configuración de la caja</label>'+
-    '<div id="fpStatus" class="hint" role="status" aria-live="polite">Pendiente de diagnóstico.</div>'+
+    '<div id="fpStatus" class="hint" role="status" aria-live="polite">Pendiente de diagnóstico.</div><div id="fpPendingJobs" class="group" hidden></div>'+
     '<div class="group" style="border-color:#d7a44b;background:#fff9e9"><b>Importante:</b> la prueba COM solo abre y cierra el puerto. No emite facturas ni modifica la memoria fiscal. No se habilitará emisión fiscal real hasta instalar y validar el adaptador específico del modelo con el fabricante.</div></div>');
   const profile=()=>{
     const provider=$('#fpProvider',el).value;
     return {provider,model:$('#fpModel',el).value.trim(),port:$('#fpPort',el).value.trim(),baudRate:Number($('#fpBaud',el).value),dataBits:Number($('#fpBits',el).value),parity:$('#fpParity',el).value,stopBits:Number($('#fpStop',el).value),timeoutMs:Number($('#fpTimeout',el).value),bridgePath:$('#fpBridge',el).value.trim(),sdkPaths:Object.assign({},draft.sdkPaths),enabled:$('#fpEnabled',el).checked};
+  };
+  const drawPendingJobs=()=>{
+    const jobs=(S.fiscalPrinterJobs||[]).filter(job=>String(job.cashbox)===String(box)&&['pending','uncertain'].includes(job.status));
+    const node=$('#fpPendingJobs',el);if(!node)return;
+    node.hidden=!jobs.length;
+    node.innerHTML=jobs.length?'<div class="gtitle">Emisiones que requieren conciliación</div>'+jobs.map(job=>'<div class="hint"><b>'+esc(job.id)+'</b> · Estado: '+esc(job.status)+' · Factura POS '+esc(pad(job.saleNo))+' · '+esc(job.lastError||'Consultar el último documento de la máquina antes de reintentar.')+'</div>').join(''):'';
   };
   const drawSdk=()=>{
     const p=profile(),files=providerCatalog[p.provider].files;
@@ -5275,6 +5283,7 @@ function fiscalPrinterConfigDlg(){
     if(!window.posDesktop||!window.posDesktop.fiscalPrinterStatus){node.textContent='La administración de impresoras fiscales requiere la aplicación Electron de escritorio.';return;}
     try{const r=await window.posDesktop.fiscalPrinterStatus(p);node.textContent=(r.ready?'Adaptador y SDK detectados.':'Configuración incompleta.')+' '+r.note+' Archivos SDK: '+r.files.filter(x=>x.exists).length+'/'+r.files.length+'. Puente: '+(r.bridgeExists?'presente':'no configurado')+'.';}
     catch(e){node.textContent='No se pudo verificar la configuración: '+e.message;}
+    drawPendingJobs();
   };
   const detect=async()=>{
     const node=$('#fpStatus',el);node.textContent='Buscando puertos COM de Windows…';
