@@ -29,7 +29,7 @@ test('los clientes reservan números exclusivamente en el servidor LAN autentica
   assert.match(main, /statePayloadHash/);
   assert.match(main, /sendJson\(res, 409/);
   assert.match(main, /body\.expectedHash !== currentHash/);
-  assert.match(main, /networkConfig\.serverStateHash = eventResult\.stateHash/);
+  assert.match(main, /networkConfig\.serverStateHash = result\.stateHash/);
   assert.match(main, /network:next-sequence/);
   assert.match(preload, /networkNextSequence: input => ipcRenderer\.invoke\('network:next-sequence', input\)/);
 });
@@ -72,7 +72,7 @@ test('las PCs cliente cargan y guardan el estado operativo mediante el servidor,
 
 test('los clientes LAN no inicializan ni consultan SQLite local para el estado operativo', () => {
   assert.match(main, /readNetworkConfig\(\);\s*if \(networkConfig\.role !== 'client'\) await initializeDatabase\(\)/);
-  assert.match(main, /networkConfig\.role === 'client' \? \[\] : all\("SELECT event_id AS eventId/);
+  assert.match(main, /networkConfig\.role === 'client' \? \(clientOutbox \? clientOutbox\.pending\(\) : \[\]\) : all\("SELECT event_id AS eventId/);
   assert.match(main, /networkConfig\.role === 'client' \? \(\{ pending: 0, acknowledged: 0, conflicts: 0 \}\)/);
   assert.match(main, /if \(db\) \{ try \{ db\.close\(\); \} catch \{\} db = null; \}/);
 });
