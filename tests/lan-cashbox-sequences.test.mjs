@@ -73,7 +73,7 @@ test('las PCs cliente cargan y guardan el estado operativo mediante el servidor,
 test('los clientes LAN no inicializan ni consultan SQLite local para el estado operativo', () => {
   assert.match(main, /readNetworkConfig\(\);\s*if \(networkConfig\.role !== 'client'\) await initializeDatabase\(\)/);
   assert.match(main, /networkConfig\.role === 'client' \? \(clientOutbox \? clientOutbox\.pending\(\) : \[\]\) : all\("SELECT event_id AS eventId/);
-  assert.match(main, /networkConfig\.role === 'client' \? \(\{ pending: 0, acknowledged: 0, conflicts: 0 \}\)/);
+  assert.match(main, /networkConfig\.role === 'client' \? \(clientOutbox \? clientOutbox\.status\(\) : \{ pending: 0, acknowledged: 0, conflicts: 0 \}\)/);
   assert.match(main, /if \(db\) \{ try \{ db\.close\(\); \} catch \{\} db = null; \}/);
 });
 
