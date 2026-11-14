@@ -4457,7 +4457,15 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
     ref:(refs&&refs[m.id])||''
   }));
   const creditAmt=(isCred&&st.pending>=0.01)?r2(st.pending):0;
+  const casheaAmt=r2(amts.cashea||0);
+  let cxcNo=null,casheaNo=null;
+  if(casheaAmt>0){
+    const casheaRef=(refs&&refs.cashea)||'';
+    if(!casheaRef){msg('Falta el código real de aprobación Cashea; no se generará una referencia ficticia.','bad');return;}
+    try{casheaNo=await nextCajaSequence('cashea',currentCaja());}catch(error){msg('No se pudo reservar el número de movimiento Cashea: '+error.message,'bad');return;}
+  }
   if(creditAmt>0){
+    try{cxcNo=await nextCajaSequence('cxc',currentCaja());}catch(error){msg('No se pudo reservar el número de CxC: '+error.message,'bad');return;}
     pays.push({id:'credito',name:'Crédito CxC ('+cDays+' días)',cur:'USD',amount:creditAmt});
   }
   const ctrlPrefix=S.cfg.ctrlPrefix||'00-';
@@ -4474,10 +4482,8 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
     change:r2(st.change),credit:creditAmt,void:false
   };
 
-  const casheaAmt=r2(amts.cashea||0);
   if(casheaAmt>0){
     const cRef=(refs&&refs.cashea)||'';
-    if(!cRef){msg('Falta el código real de aprobación Cashea; no se generará una referencia ficticia.','bad');return;}
     const cTx=(payEl&&payEl._casheaTx)||{};
     const inicialUsd=cTx.inicialUsd!==undefined?cTx.inicialUsd:r2(t.total-casheaAmt);
     const nivel=cTx.nivel||'Nivel 3 (40% inicial / 60% financiado)';
@@ -4499,7 +4505,8 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
     };
     if(!Array.isArray(S.casheaMovimientos))S.casheaMovimientos=[];
     S.casheaMovimientos.push({
-      id:'CSH-MOV-'+pad(S.casheaMovimientos.length+1,4),
+      id:'CSH-MOV-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(casheaNo,6),
+      sequence:casheaNo,cashbox:currentCaja(),
       ventaNo:invNo,
       ctrlNo,
       ts,
@@ -4527,7 +4534,6 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
   });
   if(creditAmt>0){
     const paidUpfront=r2(Math.max(0,t.total-creditAmt));
-    const cxcNo=await nextCajaSequence('cxc',currentCaja());
     S.cxc.push({
       id:'CXC-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxcNo,6),
       sequence:cxcNo,
