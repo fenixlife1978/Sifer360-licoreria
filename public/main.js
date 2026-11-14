@@ -167,13 +167,13 @@ function seed(){
       empresa:'',rif:'',dir:'',cajero:'',caja:'01',rate:0,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
       fiscalTipo:'FORMA_LIBRE',contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:75,provEspecial:'',
       ctrlPrefix:'00-',ctrlNext:1,ctrlRangoDesde:'',ctrlRangoHasta:'',
-      imprentaRif:'',imprentaAut:'',serialFiscal:''
+      imprentaRif:'',imprentaAut:'',serialFiscal:'',fiscalPrinters:{}
     },
     products:[],
     clients:[{name:'Consumidor final',rif:'',tel:''}],
     suppliers:[],
     sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],openings:[],movimientosCaja:[],kardex:[],counts:[],
-    lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],rateAudit:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],
+    lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],rateAudit:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],fiscalPrinterJobs:[],
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
   };
@@ -184,7 +184,7 @@ function stateSnapshot(){
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
     sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],openings:S.openings||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,cambiosDivisas:S.cambiosDivisas,rateAudit:S.rateAudit||[],
-    casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],
+    casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],fiscalPrinterJobs:S.fiscalPrinterJobs||[],
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
   };
 }
@@ -716,6 +716,9 @@ function load(){
     if(Array.isArray(d.casheaMovimientos))S.casheaMovimientos=d.casheaMovimientos;
     if(Array.isArray(d.documents))S.documents=d.documents;
     else if(!S.documents)S.documents=[];
+    if(Array.isArray(d.fiscalPrinterJobs))S.fiscalPrinterJobs=d.fiscalPrinterJobs;
+    else if(!Array.isArray(S.fiscalPrinterJobs))S.fiscalPrinterJobs=[];
+    if(!S.cfg.fiscalPrinters||typeof S.cfg.fiscalPrinters!=='object')S.cfg.fiscalPrinters={};
     if(Array.isArray(d.casheaMovimientos)){
       const demoCasheaSignatures=[
         {id:'CSH-MOV-0001',aprobacion:'CSH-782194',ventaNo:1040,clienteCi:'V-12345678',totalVenta:85,financiadoUsd:51},
@@ -4499,7 +4502,7 @@ function showSaleCompletion(sale){
     '<div class="sale-completion-icon '+(hasChange?'change':'success')+'">'+(hasChange?'↩':'✓')+'</div>'+
     '<div class="sale-completion-label">'+(hasChange?'VUELTO A ENTREGAR':'VENTA FINALIZADA')+'</div>'+
     (hasChange?'<div class="sale-completion-amount">'+esc(usd(change))+'</div><div class="sale-completion-equivalent">Equivalente: <b>'+esc(bsf(r2(change*rate)))+'</b></div><p class="sale-completion-note">Entregue el vuelto en efectivo según la moneda acordada con el cliente. Si el excedente provino de un pago electrónico, gestione la devolución por ese mismo medio.</p>':'<p class="sale-completion-note">La factura '+esc(pad(sale.no))+' fue registrada correctamente. No hay vuelto pendiente.</p>')+
-    '<div class="sale-completion-ticket">Factura <b>'+esc(pad(sale.no))+'</b> · Total <b>'+esc(usd(r2(sale.total+sale.igtf)))+'</b></div>'+
+    '<div class="sale-completion-ticket">Factura POS <b>'+esc(pad(sale.no))+'</b>'+(sale.fiscal?' · Documento fiscal <b>'+esc(sale.fiscal.documentNumber)+'</b> · Serial <b>'+esc(sale.fiscal.serial)+'</b>':'')+' · Total <b>'+esc(usd(r2(sale.total+sale.igtf)))+'</b></div>'+
     '</div>');
   openWin({title:hasChange?'Vuelto de la venta':'Venta finalizada',w:390,body,foot:[
     {label:'Ver / imprimir ticket',primary:true,fn:()=>{closeWin();showTicket(sale);return false;}},
@@ -4509,6 +4512,17 @@ function showSaleCompletion(sale){
 
 async function finalize(st,amts,isCred,cDays,refs,payEl){
   const ctx=cajaContext();if(ctx.role==='cajero'&&ctx.status!=='abierta'){msg('La caja no está abierta. Solicite al administrador una nueva apertura antes de facturar.','bad');return;}
+  const fiscalMode=S.cfg.fiscalTipo==='MAQUINA_FISCAL';
+  const fiscalProfile=fiscalMode&&S.cfg.fiscalPrinters?S.cfg.fiscalPrinters[currentCaja()]:null;
+  if(fiscalMode){
+    if(!fiscalProfile||fiscalProfile.enabled!==true){msg('La modalidad está configurada como Máquina Fiscal, pero esta caja no tiene una impresora fiscal habilitada. Configure el dispositivo antes de cobrar.','bad');return;}
+    if(!window.posDesktop||typeof window.posDesktop.fiscalPrinterStatus!=='function'||typeof window.posDesktop.fiscalPrinterEmitInvoice!=='function'){msg('La emisión fiscal requiere la aplicación Electron de escritorio. No se registró la venta.','bad');return;}
+    try{
+      const diagnostic=await window.posDesktop.fiscalPrinterStatus(fiscalProfile);
+      if(!diagnostic.ready){msg('La impresora fiscal no está lista: '+diagnostic.note+' No se registró la venta.','bad');return;}
+      await window.posDesktop.fiscalPrinterTestBridge(fiscalProfile);
+    }catch(error){msg('No se pudo validar el adaptador fiscal: '+error.message+' No se registró la venta.','bad');return;}
+  }
   const t=totals(), ts=Date.now(), invNo=await nextCajaInvoice();
   const rollbackState=JSON.parse(JSON.stringify(S));
   const lines=S.cart.map(l=>{
@@ -4603,7 +4617,47 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
     });
   }
 
-  S.cart.forEach(l=>{
+  
+  let fiscalJob=null;
+  if(fiscalMode){
+    if(!Array.isArray(S.fiscalPrinterJobs))S.fiscalPrinterJobs=[];
+    const idempotencyKey='SIFER360-'+String(currentCaja()).replace(/\\W/g,'')+'-'+String(invNo)+'-'+String(ts);
+    fiscalJob={id:'FISCAL-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(invNo,8),idempotencyKey,cashbox:currentCaja(),saleNo:invNo,createdAt:ts,status:'pending',fiscalSerial:'',fiscalDocumentNumber:'',lastError:''};
+    S.fiscalPrinterJobs.push(fiscalJob);
+    const journal=await save();
+    if(!journal||!journal.ok){restoreStateSnapshotIfNeeded(journal,rollbackState);msg('SQLite no confirmó la intención de emisión fiscal. La impresora no recibió comandos y la venta no se registró.','bad');return;}
+    const fiscalInvoice={
+      idempotencyKey,
+      documentType:'invoice',
+      cashbox:currentCaja(),
+      cashier:currentCajero(),
+      issuedAt:new Date(ts).toISOString(),
+      company:{name:S.cfg.empresa,rif:S.cfg.rif,address:S.cfg.dir},
+      customer:sale.client,
+      lines:sale.lines.map(line=>({code:line.code,description:line.desc,unit:line.unit,quantity:line.qty,unitPrice:line.price,discountPercent:line.disc,taxRate:line.taxRate,taxType:line.taxType,net:line.net,iva:line.iva})),
+      totals:{subtotal:sale.sub,discount:sale.disc,taxableBase:sale.base,iva:sale.iva,igtf:sale.igtf,total:sale.total,amountDue:r2(sale.total+sale.igtf)},
+      payments:sale.pays,
+      change:sale.change,
+      currency:'VES/USD'
+    };
+    try{
+      const issued=await window.posDesktop.fiscalPrinterEmitInvoice(fiscalProfile,fiscalInvoice);
+      fiscalJob.status='issued';
+      fiscalJob.fiscalDocumentNumber=issued.fiscalDocumentNumber;
+      fiscalJob.fiscalSerial=issued.fiscalSerial;
+      fiscalJob.issuedAt=Date.now();
+      sale.fiscal={provider:fiscalProfile.provider,model:fiscalProfile.model,documentNumber:issued.fiscalDocumentNumber,serial:issued.fiscalSerial,authorization:issued.authorization||'',status:'issued'};
+    }catch(error){
+      fiscalJob.status='uncertain';
+      fiscalJob.lastError=String(error.message||error).slice(0,1000);
+      fiscalJob.lastAttemptAt=Date.now();
+      const journalResult=await save();
+      msg('La impresora no confirmó el resultado de la emisión. Consulte el último documento en la máquina antes de reintentar. La venta quedó sin confirmar en el POS.'+(journalResult&&journalResult.ok?' Incidencia guardada en SQLite.':' No se pudo actualizar la incidencia; permanece la intención previa en SQLite.'),'bad');
+      return;
+    }
+  }
+
+S.cart.forEach(l=>{
     const p=prod(l.code);
     p.stock=Math.max(0,r2(p.stock-l.qty));
     addKardex({
@@ -4627,7 +4681,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
     });
   }
   S.sales.push(sale);S.invoice=Math.max(S.invoice,invNo+1);S.cart=[];S.sel=-1;S.client=S.clients[0];
-  const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);renderAll();msg('SQLite no confirmó la venta; se mostró el último estado durable disponible y no se confirmó la factura.','bad');return;}
+  const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);renderAll();msg(fiscalMode?'La impresora fiscal pudo haber emitido el documento, pero SQLite no confirmó la venta. NO reimprima ni repita el cobro; consulte la máquina y reconcilie la intención fiscal pendiente.':'SQLite no confirmó la venta; se mostró el último estado durable disponible y no se confirmó la factura.','bad');return;}
   renderAll();
   msg('Factura '+pad(sale.no)+' procesada por '+usd(r2(sale.total+sale.igtf))+(casheaAmt>0?' (Financiado Cashea: '+usd(casheaAmt)+')':'')+(creditAmt>0?' (Saldo a CxC: '+usd(creditAmt)+')':'')+'.');
   showSaleCompletion(sale);
@@ -4700,6 +4754,7 @@ function ticketText(s){
     L.push(row(' Financiado Cashea:',usd(s.cashea.financiadoUsd)));
     L.push(row(' '+(s.cashea.cuotasCount||3)+' cuota(s) quincenales:',usd(s.cashea.cuotaUsd)+' c/u'));
   }
+  if(s.fiscal){L.push(ln,ctr('COPIA INTERNA · NO ES ORIGINAL FISCAL'),row('Documento fiscal:',s.fiscal.documentNumber),row('Serial máquina:',s.fiscal.serial));}
   L.push(ln,ctr('¡GRACIAS POR SU COMPRA!'),ctr('Impresora Térmica 80mm · Control Interno'));
   return L.join('\n');
 }
