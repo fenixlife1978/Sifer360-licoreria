@@ -376,7 +376,7 @@ test('la inicialización recupera una copia SQLite si falta o está dañada la p
 });
 
 test('una base recuperada persiste también el esquema actualizado antes de aceptar operaciones', () => {
-  assert.match(electron, /if \(opened\.recovered\) persistDb\(\)/);
+  assert.match(electron, /if \(opened\.recovered && !sequenceMigrationApplied\) persistDb\(\)/);
 });
 
 test('un fallo al persistir la cola de auditoría LAN se comunica y no se oculta en consola', () => {
