@@ -15,7 +15,7 @@ Familias contempladas:
 | Aclas | AclasSDK.dll | Confirmar versión del SDK y protocolo con el distribuidor. |
 | PNP | PnpFiscal.dll | Confirmar SDK correspondiente al equipo homologado; PF-SUNMI dispone de documentación del fabricante. |
 
-La lista de marcas/modelos es un catálogo de integración solicitado, no una certificación de homologación vigente. Antes de activar facturación fiscal, verificar el modelo exacto, serial, representante y autorización aplicable ante SENIAT y el fabricante.
+La lista de marcas/modelos es un catálogo de integración solicitado, no una certificación de homologación vigente. Las cuotas de mercado indicadas en la solicitud (70/15–20/10 y más de 95% de cobertura) no se consideran cifras verificadas y no se usan para prometer compatibilidad. Antes de activar facturación fiscal, verificar el modelo exacto, serial, representante y autorización aplicable ante SENIAT y el fabricante.
 
 ## Adaptadores
 
@@ -91,16 +91,18 @@ El usuario/instalador autorizado debe instalar el paquete firmado que correspond
 
 ## Fuentes oficiales y soporte
 
-- The Factory HKA Venezuela: https://thefactoryhka.com/ve/
-- Wiki técnica oficial The Factory HKA: https://wiki.thefactoryhka.com.ve/doku.php
+- The Factory HKA Venezuela — fabricante, impresoras fiscales y soporte/integración: https://thefactoryhka.com/ve/
+- Catálogo oficial de impresoras fiscales The Factory HKA: https://thefactoryhka.com/ve/productos/impresoras
+- Wiki The Factory HKA: https://wiki.thefactoryhka.com.ve/doku.php (la documentación pública consultada corresponde a Imprenta Digital REST API; no se debe confundir con el SDK local de impresora fiscal).
+- Manual HKA de impresora SRP-350 (referencia de conexión USB Prolific y puerto serial; confirmar aplicabilidad al modelo/país): https://www.thefactoryhka.com/extranet-pa/downloads/MANUAL%20DE%20USUARIO%20SRP-350.pdf
 - Bematech: solicitar el SDK fiscal de la referencia exacta al fabricante o representante autorizado.
 - Epson: solicitar Epson Fiscal Driver / Fiscal Interface del modelo y país exactos al soporte Epson.
 - Quorion: https://quorion.com/
 - Aclas: https://www.aclas.com/
 - PNP / PF-SUNMI: https://desarrollospnp.com/archivos/PFSUNMI.pdf
-- Prolific: https://www.prolific.com.tw/
-- FTDI: https://ftdichip.com/drivers/vcp-drivers/
-- Silicon Labs: https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers
+- Prolific PL2303 — soporte y controladores oficiales: https://www.prolific.com.tw/en/portfolio-item/pl2303gt/
+- FTDI — VCP Drivers oficiales: https://ftdichip.com/drivers/vcp-drivers/
+- Silicon Labs — CP210x VCP Drivers oficiales: https://www.silabs.com/software-and-tools/usb-to-uart-bridge-vcp-drivers
 
 ## Pendiente para certificar compatibilidad real
 
