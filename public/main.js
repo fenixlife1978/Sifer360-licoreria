@@ -546,6 +546,8 @@ async function captureNewOperations(){
   if(!operationBaseline){primeOperationBaseline();return;}
   operationCaptureBusy=true;
   try{
+    const lastSave=window.__SIFER_LAST_SAVE;
+    if(lastSave){const persisted=await lastSave;if(!persisted||!persisted.ok)return;}
     const snap=stateSnapshot();
     for(const [key,eventType] of OPERATION_COLLECTIONS){
       const items=Array.isArray(snap[key])?snap[key]:[];
