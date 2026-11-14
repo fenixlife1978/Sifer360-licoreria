@@ -10,6 +10,7 @@ const { ensureServerCertificate, createPinnedAgent, retrievePeerCertificate, ver
 const { applyIncomingEvents } = require('./lan-event-store.cjs');
 const { mergeStateRecords } = require('./lan-state-merge.cjs');
 const { openOrRecoverDatabase } = require('./sqlite-recovery.cjs');
+const { isLanAddress, assertLanHost } = require('./lan-address.cjs');
 const initSqlJs = require('sql.js');
 
 let db;
@@ -108,18 +109,6 @@ function localAddresses() {
   return out;
 }
 
-function isLanAddress(address) {
-  let host = String(address || '').replace(/^::ffff:/i, '').split('%')[0].toLowerCase();
-  if (host === '::1') return true;
-  if (host.includes(':')) return host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80:');
-  const parts = host.split('.').map(Number);
-  if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return false;
-  const [a, b] = parts;
-  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
-}
-function assertLanHost(host) {
-  if (!isLanAddress(host)) throw new Error('La dirección del servidor debe ser una IP privada de la red local. No se enviaron credenciales.');
-}
 function sendJson(res, status, data) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': 'null' }); res.end(JSON.stringify(data)); }
 function readBody(req) { return new Promise((resolve, reject) => { let raw = ''; req.on('data', chunk => { raw += chunk; if (raw.length > MAX_SYNC_BODY) { reject(new Error('La carga de sincronización excede 8 MB.')); req.destroy(); } }); req.on('end', () => { try { resolve(JSON.parse(raw || '{}')); } catch { reject(new Error('JSON inválido.')); } }); req.on('error', reject); }); }
 function statePayloadHash(payload) { return crypto.createHash('sha256').update(String(payload || '')).digest('hex'); }
