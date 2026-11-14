@@ -40,5 +40,6 @@ test('Electron expone las acciones fiscales solo mediante IPC del proceso princi
     assert.ok(preload.includes(method), 'Falta método preload: ' + method);
   }
   assert.match(electronMain, /FiscalPrinterManager\.emitInvoice/);
-  assert.match(electronMain, /FiscalPrinterManager\.testSerialPort/);\n  assert.match(electronMain, /FiscalPrinterManager\.testPnpFiscalStatus/);
+  assert.match(electronMain, /FiscalPrinterManager\.testSerialPort/);
+  assert.match(electronMain, /FiscalPrinterManager\.testPnpFiscalStatus/);
 });
