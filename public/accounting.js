@@ -236,14 +236,20 @@ function depreciateAsset(id,target){
  if(count>=asset.lifeMonths||usedUsd>=asset.costUsd-asset.residualUsd-0.000001||usedBs>=asset.costBs-asset.residualBs-0.000001)asset.status='depreciated';
  a.nextEntry=sequence;return posted;
 }
-let automaticDepreciationBusy=false,automaticDepreciationTimer=null;
+let automaticDepreciationBusy=false,automaticDepreciationTimer=null,automaticDepreciationNeedsSave=false;
 async function runAutomaticDepreciation(){
  if(automaticDepreciationBusy||!bridge())return;
  automaticDepreciationBusy=true;
  try{
   const a=state(),target=lastCompletedMonth(),assets=a.fixedAssets||[];let total=0;
   for(const asset of assets)if(asset.status==='active')total+=depreciateAsset(asset.id,target);
-  if(total){const persisted=await save();if(persisted&&!persisted.ok)throw persisted.error||new Error('No se confirmó la persistencia SQLite de la depreciación.');if(dialog&&activeTab==='assets')render();}
+  if(total)automaticDepreciationNeedsSave=true;
+  if(automaticDepreciationNeedsSave){
+   const persisted=await save();
+   if(!persisted||!persisted.ok||!['sqlite+localStorage','desktop'].includes(persisted.durable))throw (persisted&&persisted.error)||new Error('SQLite local todavía no confirmó la persistencia de la depreciación; se reintentará automáticamente.');
+   automaticDepreciationNeedsSave=false;
+   if(dialog&&activeTab==='assets')render();
+  }
  }catch(error){console.error('No se pudo completar la depreciación automática:',error);}
  finally{automaticDepreciationBusy=false;}
 }
