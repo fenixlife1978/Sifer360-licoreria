@@ -1,0 +1,175 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import initSqlJs from 'sql.js';
+
+const require = createRequire(import.meta.url);
+const { applyIncomingEvents } = require('../electron/lan-event-store.cjs');
+const SQL = await initSqlJs();
+
+function fixture({ failPersist = false } = {}) {
+  let db = new SQL.Database();
+  db.run(`
+    CREATE TABLE app_state(id INTEGER PRIMARY KEY, payload TEXT NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE network_received_operations(
+      event_id TEXT PRIMARY KEY,
+      device_id TEXT NOT NULL,
+      device_seq INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      occurred_at TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      received_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(device_id, device_seq)
+    );
+  `);
+  db.run('INSERT INTO app_state(id,payload) VALUES(1,?)', [JSON.stringify({ sales: [], purchases: [] })]);
+  let persistedSnapshot = Buffer.from(db.export());
+  let persistCalls = 0;
+
+  const run = (sql, params = []) => {
+    const statement = db.prepare(sql);
+    try { statement.run(params); } finally { statement.free(); }
+  };
+  const one = (sql, params = []) => {
+    const statement = db.prepare(sql);
+    try { statement.bind(params); return statement.step() ? statement.getAsObject() : null; }
+    finally { statement.free(); }
+  };
+  const context = () => ({
+    db,
+    persist: () => {
+      persistCalls++;
+      if (failPersist) throw new Error('simulated SQLite disk failure');
+      const integrity = db.exec('PRAGMA integrity_check');
+      if (integrity[0].values[0][0] !== 'ok') throw new Error('integrity_check failed');
+      persistedSnapshot = Buffer.from(db.export());
+    },
+    restore: snapshot => {
+      try { db.close(); } catch {}
+      db = new SQL.Database(snapshot);
+    },
+    statePayloadHash: payload => require('node:crypto').createHash('sha256').update(String(payload || '')).digest('hex')
+  });
+  return {
+    apply: events => applyIncomingEvents({ ...context(), events }),
+    state: () => JSON.parse(one('SELECT payload FROM app_state WHERE id=1').payload),
+    received: () => one('SELECT COUNT(*) AS count FROM network_received_operations').count,
+    event: id => one('SELECT * FROM network_received_operations WHERE event_id=?', [id]),
+    integrity: () => db.exec('PRAGMA integrity_check')[0].values[0][0],
+    persisted: () => Buffer.from(persistedSnapshot),
+    persistCalls: () => persistCalls
+  };
+}
+
+function event({
+  eventId = 'event-1',
+  deviceId = 'device-a',
+  deviceSeq = 1,
+  entityId = 'SALE-0001',
+  cashbox = '01',
+  total = 10,
+  entityType = 'sales'
+} = {}) {
+  return {
+    eventId, deviceId, deviceSeq, eventType: 'sale', entityType, entityId,
+    occurredAt: '2026-11-14T12:00:00.000Z',
+    payload: { record: { id: entityId, cashbox, total } }
+  };
+}
+
+test('acepta una venta, la persiste en SQLite y un reintento idéntico devuelve duplicate sin duplicar el registro', () => {
+  const db = fixture();
+  const first = db.apply([event()]);
+  assert.deepEqual(first.accepted, ['event-1']);
+  assert.deepEqual(first.duplicates, []);
+  assert.equal(db.state().sales.length, 1);
+  assert.equal(db.received(), 1);
+
+  const retry = db.apply([event()]);
+  assert.deepEqual(retry.accepted, []);
+  assert.deepEqual(retry.duplicates, ['event-1']);
+  assert.equal(db.state().sales.length, 1);
+  assert.equal(db.received(), 1);
+  assert.equal(db.integrity(), 'ok');
+});
+
+test('reutilizar eventId con contenido distinto produce conflicto y no modifica SQLite', () => {
+  const db = fixture();
+  db.apply([event()]);
+  const result = db.apply([event({ total: 999 })]);
+  assert.equal(result.conflicts[0].reason, 'event-id-reused-with-different-data');
+  assert.deepEqual(result.accepted, []);
+  assert.equal(db.state().sales[0].total, 10);
+  assert.equal(db.received(), 1);
+});
+
+test('reutilizar una secuencia del mismo dispositivo con otro eventId produce conflicto', () => {
+  const db = fixture();
+  db.apply([event()]);
+  const result = db.apply([event({ eventId: 'event-2', entityId: 'SALE-0002' })]);
+  assert.equal(result.conflicts[0].reason, 'device-sequence-already-used');
+  assert.equal(db.state().sales.length, 1);
+  assert.equal(db.received(), 1);
+});
+
+test('una entidad ya existente con datos diferentes se rechaza antes de registrar el evento recibido', () => {
+  const db = fixture();
+  db.apply([event()]);
+  const result = db.apply([event({ eventId: 'event-2', deviceSeq: 2, total: 99 })]);
+  assert.equal(result.conflicts[0].reason, 'entity-already-exists-with-different-data');
+  assert.equal(db.received(), 1);
+  assert.equal(db.state().sales[0].total, 10);
+});
+
+test('dos cajas pueden tener el mismo identificador de venta sin colisionar', () => {
+  const db = fixture();
+  const result = db.apply([
+    event({ eventId: 'event-box-1', deviceSeq: 1, cashbox: '01' }),
+    event({ eventId: 'event-box-2', deviceSeq: 2, cashbox: '02' })
+  ]);
+  assert.deepEqual(result.accepted, ['event-box-1', 'event-box-2']);
+  assert.equal(db.state().sales.length, 2);
+  assert.deepEqual(db.state().sales.map(item => item.cashbox).sort(), ['01', '02']);
+  assert.equal(db.received(), 2);
+});
+
+test('dos dispositivos distintos pueden usar el mismo consecutivo local', () => {
+  const db = fixture();
+  const result = db.apply([
+    event({ eventId: 'event-device-a', deviceId: 'device-a', deviceSeq: 1 }),
+    event({ eventId: 'event-device-b', deviceId: 'device-b', deviceSeq: 1, entityId: 'SALE-0002' })
+  ]);
+  assert.deepEqual(result.accepted, ['event-device-a', 'event-device-b']);
+  assert.equal(db.received(), 2);
+});
+
+test('una colección no permitida rechaza todo el lote y revierte la transacción', () => {
+  const db = fixture();
+  assert.throws(() => db.apply([
+    event({ eventId: 'event-valid', deviceSeq: 1 }),
+    event({ eventId: 'event-invalid', deviceSeq: 2, entityType: 'auth_users' })
+  ]), /entidad permitida/);
+  assert.equal(db.received(), 0);
+  assert.equal(db.state().sales.length, 0);
+  assert.equal(db.integrity(), 'ok');
+});
+
+test('un fallo al persistir restaura exactamente el snapshot SQLite anterior', () => {
+  const db = fixture({ failPersist: true });
+  const before = db.persisted();
+  assert.throws(() => db.apply([event()]), /restauró el estado anterior y rechazó el lote/);
+  assert.deepEqual(db.persisted(), before);
+  assert.equal(db.state().sales.length, 0);
+  assert.equal(db.received(), 0);
+  assert.equal(db.integrity(), 'ok');
+  assert.equal(db.persistCalls(), 1);
+});
+
+test('el evento debe tener una secuencia entera segura y positiva', () => {
+  const db = fixture();
+  assert.throws(() => db.apply([event({ deviceSeq: Number.MAX_SAFE_INTEGER + 1 })]), /Operación inválida/);
+  assert.throws(() => db.apply([event({ eventId: 'event-zero', deviceSeq: 0 })]), /Operación inválida/);
+  assert.equal(db.received(), 0);
+});
