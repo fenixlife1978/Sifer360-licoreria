@@ -5340,9 +5340,39 @@ function fiscalPrinterConfigDlg(){
     drawPendingJobs();
   };
   const detect=async()=>{
-    const node=$('#fpStatus',el);node.textContent='Buscando puertos COM de Windows…';
-    try{const r=await window.posDesktop.fiscalPrinterListPorts();$('#fpPortList',el).innerHTML=(r.ports||[]).map(p=>'<option value="'+esc(p.port)+'">'+esc(p.name)+'</option>').join('');const driverNames={prolific:'Prolific PL2303',ftdi:'FTDI VCP',silabs:'Silicon Labs CP210x'};node.textContent=r.ports.length?'Puertos detectados: '+r.ports.map(p=>p.port+' — '+p.name+(p.driverId?' ['+(driverNames[p.driverId]||p.driverId)+']':' [chip USB no identificado]')).join(' · '):r.message;}
-    catch(e){node.textContent='No se pudieron detectar puertos: '+e.message;}
+    const node=$('#fpStatus',el);node.textContent='Buscando impresoras en COM1–COM10…';
+    try{
+      const r=await window.posDesktop.fiscalPrinterListPorts();
+      const ports=(r.ports||[]).filter(p=>Number(String(p.port).replace(/^COM/i,''))>=1&&Number(String(p.port).replace(/^COM/i,''))<=10);
+      $('#fpPortList',el).innerHTML=ports.map(p=>'<option value="'+esc(p.port)+'">'+esc(p.name)+'</option>').join('');
+      if(!ports.length){node.textContent=r.message||'No se detectaron puertos COM1–COM10. Puede continuar sin impresora o elegir ticket interno.';return;}
+      const base=profile();
+      if(base.provider==='pnp'){
+        for(const candidate of ports){
+          try{
+            const result=await window.posDesktop.fiscalPrinterTestPnp({...base,port:candidate.port});
+            $('#fpPort',el).value=candidate.port;draft.port=candidate.port;drafts[box]=draft;
+            node.textContent='Impresora PNP identificada y protocolo validado en '+candidate.port+'. '+result.message+' Última factura: '+result.currentInvoice+' · Último Z: '+result.lastZ+'.';
+            return;
+          }catch{}
+        }
+        node.textContent='Se detectaron puertos COM, pero ninguno respondió al protocolo de estado PNP. No se seleccionó ningún puerto automáticamente. Revise el cable, controlador y modelo.';
+        return;
+      }
+      if(base.bridgePath){
+        for(const candidate of ports){
+          try{
+            const result=await window.posDesktop.fiscalPrinterTestBridge({...base,port:candidate.port});
+            $('#fpPort',el).value=candidate.port;draft.port=candidate.port;drafts[box]=draft;
+            node.textContent='El adaptador fiscal respondió correctamente en '+candidate.port+'. '+JSON.stringify(result);
+            return;
+          }catch{}
+        }
+        node.textContent='Hay puertos COM disponibles, pero el adaptador no reconoció una impresora en ninguno. No se asignó un puerto.';
+        return;
+      }
+      node.textContent='Puertos candidatos: '+ports.map(p=>p.port+' — '+p.name).join(' · ')+'. Seleccione uno y configure el SDK/adaptador oficial para validar el protocolo. Un puerto abierto por sí solo no confirma una impresora fiscal.';
+    }catch(e){node.textContent='No se pudieron detectar puertos: '+e.message;}
   };
   const applyDraft=()=>{
     $('#fpProvider',el).value=draft.provider;
