@@ -44,7 +44,7 @@ function mergeStateRecords(base, incoming) {
     String(item && item.cashbox || 'sin-caja') + ':' + String(item && (item.id || ('HOLD-LEGACY-' + item.ts)) || '')
   ));
   out.held = (out.held || []).filter(item =>
-    !deletedHeld.has(String(item && item.cashbox || 'sin-caja') + ':' + String(item && item.id || ''))
+    !deletedHeld.has(String(item && item.cashbox || 'sin-caja') + ':' + String(item && (item.id || ('HOLD-LEGACY-' + item.ts)) || ''))
   );
   return out;
 }
