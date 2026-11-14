@@ -64,7 +64,7 @@ test('las PCs cliente cargan y guardan el estado operativo mediante el servidor,
   assert.match(main, /posdb:load-state', async/);
   assert.match(main, /source: 'lan-server'/);
   assert.match(main, /posdb:save-state', async/);
-  assert.match(main, /El servidor no confirmó el guardado central/);
+  assert.match(main, /return requestPinnedJson\(route, options\)/);
   assert.match(main, /serverStateHash = result\.stateHash/);
   assert.match(main, /server-sqlite/);
 });
