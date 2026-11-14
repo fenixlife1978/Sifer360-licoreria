@@ -67,3 +67,20 @@ test('las eliminaciones de borradores y documentos se respetan en el snapshot au
   assert.deepEqual(merged.held, []);
   assert.deepEqual(merged.documents, []);
 });
+
+test('merge conserva movimientos de Kardex, lotes y ventas suspendidas con IDs locales repetidos', () => {
+  const base = {
+    kardex: [{ id: 1, eventId: 'kdx-a', code: 'A' }],
+    lotesSudeban: [{ id: 'LOT-1', eventId: 'lot-a' }],
+    held: [{ id: 'HOLD-a', cashbox: '01' }]
+  };
+  const incoming = {
+    kardex: [{ id: 1, eventId: 'kdx-b', code: 'B' }],
+    lotesSudeban: [{ id: 'LOT-1', eventId: 'lot-b' }],
+    held: [{ id: 'HOLD-b', cashbox: '02' }]
+  };
+  const merged = mergeStateRecords(base, incoming);
+  assert.equal(merged.kardex.length, 2);
+  assert.equal(merged.lotesSudeban.length, 2);
+  assert.equal(merged.held.length, 2);
+});
