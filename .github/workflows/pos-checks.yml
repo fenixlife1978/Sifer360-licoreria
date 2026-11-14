@@ -2,7 +2,7 @@ name: POS checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, integration/sqlite-lan-stage-1]
   pull_request:
     branches: [main]
 
