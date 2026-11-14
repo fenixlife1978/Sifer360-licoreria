@@ -5,10 +5,10 @@ function mergeStateRecords(base, incoming) {
   if (!incoming || typeof incoming !== 'object') return base;
   const out = { ...base, ...incoming };
   const arrays = new Set([
-    'sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','movimientosCaja','rateAudit','fiscalBankOperations',
+    'sales','purchases','cxc','cxp','cortesZ','kardex','counts','movimientosCaja','rateAudit','fiscalBankOperations',
     'movements','returns','voids','openings','retentions','retencionesIva',
     'divisas','cashea','casheaMovimientos','casheaLiquidaciones','cambiosDivisas',
-    'customers','clients','suppliers','documents','products'
+    'customers','clients','suppliers','products'
   ]);
   const boxScoped = new Set([
     'sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','movimientosCaja','rateAudit',
