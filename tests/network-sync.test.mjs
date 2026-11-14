@@ -391,3 +391,9 @@ test('el cliente impide enviar snapshots mayores que el límite del servidor', (
 test('el estado de cliente desconectado se comunica sin presentarlo como modo independiente', () => {
   assert.match(pos, /Cliente LAN desconectado · no se confirman operaciones ni se usa SQLite local/);
 });
+
+test('solo un proceso Electron puede abrir la base SQLite operativa en cada instalación', () => {
+  assert.match(electron, /app\.requestSingleInstanceLock\(\)/);
+  assert.match(electron, /app\.on\('second-instance'/);
+  assert.match(electron, /if \(!hasSingleInstanceLock\) \{\s*app\.quit\(\)/);
+});
