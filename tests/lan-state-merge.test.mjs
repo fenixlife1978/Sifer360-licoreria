@@ -59,6 +59,25 @@ test('fusiona movimientos de caja y auditorías de tasa por identificador y caja
   assert.deepEqual(merged.fiscalBankOperations.map(x=>x.id).sort(), ['BANK-1','BANK-2']);
 });
 
+test('una venta anulada elimina su CxC asociada al fusionar snapshots LAN sin afectar otra caja', () => {
+  const merged = mergeStateRecords(
+    {
+      sales: [{ no: 41, cashbox: '01', ts: 100, updatedAt: 150, void: false }],
+      cxc: [
+        { id: 'CXC-01-41', saleNo: 41, cashbox: '01', total: 50 },
+        { id: 'CXC-02-41', saleNo: 41, cashbox: '02', total: 60 }
+      ]
+    },
+    {
+      sales: [{ no: 41, cashbox: '01', ts: 100, void: true, voidTs: 200, voidNo: 1 }],
+      cxc: []
+    }
+  );
+  assert.equal(merged.sales.length, 1);
+  assert.equal(merged.sales[0].void, true);
+  assert.deepEqual(merged.cxc.map(item => item.id), ['CXC-02-41']);
+});
+
 test('las eliminaciones de borradores y documentos se respetan en el snapshot autoritativo', () => {
   const merged = mergeStateRecords(
     { held:[{id:'HELD-1'}], documents:[{id:'DOC-1'}] },
