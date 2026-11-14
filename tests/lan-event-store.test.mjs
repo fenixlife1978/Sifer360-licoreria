@@ -189,3 +189,18 @@ test('el receptor limita el tamaño de los identificadores y metadatos de evento
   assert.throws(() => db.apply([event({ entityId: 'x'.repeat(257) })]), /Operación inválida/);
   assert.equal(db.received(), 0);
 });
+
+test('acepta y persiste eventos de movimientos de caja, auditoría de tasa y lotes bancarios', () => {
+  const db = fixture();
+  const events = [
+    { eventId:'cash-movement-1', deviceId:'device-a', deviceSeq:1, eventType:'cashbox-movement', entityType:'movimientosCaja', entityId:'MOV-01-000001', occurredAt:'2026-11-14T12:00:00.000Z', payload:{record:{id:'MOV-01-000001',cashbox:'01',sequence:1,amount:25}} },
+    { eventId:'rate-audit-1', deviceId:'device-a', deviceSeq:2, eventType:'exchange-rate-audit', entityType:'rateAudit', entityId:'BCV-100-0001', occurredAt:'2026-11-14T12:00:01.000Z', payload:{record:{id:'BCV-100-0001',cashbox:'01',newRate:900}} },
+    { eventId:'bank-batch-1', deviceId:'device-a', deviceSeq:3, eventType:'bank-batch', entityType:'lotesSudeban', entityId:'LOT-000144', occurredAt:'2026-11-14T12:00:02.000Z', payload:{record:{id:'LOT-000144',refLote:'ABC',totalBs:500}} }
+  ];
+  const result = db.apply(events);
+  assert.equal(result.accepted.length, 3);
+  assert.equal(db.state().movimientosCaja[0].amount, 25);
+  assert.equal(db.state().rateAudit[0].newRate, 900);
+  assert.equal(db.state().lotesSudeban[0].refLote, 'ABC');
+  assert.equal(db.integrity(), 'ok');
+});
