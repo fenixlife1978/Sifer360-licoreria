@@ -252,8 +252,10 @@ test('Electron usa la cola durable del cliente y reintenta eventos pendientes an
 
 test('el cliente captura el registro nuevo antes de esperar la red y conserva la operación si falla el guardado remoto', () => {
   const capture = pos.slice(pos.indexOf('async function captureNewOperations'), pos.indexOf('function mergeRemoteSnapshot'));
-  assert.ok(capture.indexOf('const snap=stateSnapshot()') < capture.indexOf('await lastSave'));
-  assert.match(capture, /if\(lastSave\)\{const persisted=await lastSave;if\(!persisted\|\|!persisted\.ok\)return;\}/);
+  assert.ok(capture.indexOf('const snap=stateSnapshot()') < capture.indexOf('await window.posDesktop.networkStatus()'));
+  assert.match(capture, /Capturar primero en la outbox durable del cliente/);
+  assert.match(capture, /await window\.posDesktop\.networkCreateOperation\(/);
+  assert.doesNotMatch(capture, /await lastSave/);
 });
 
 test('un evento pendiente en disco no detiene la captura de las siguientes operaciones del cliente', () => {
@@ -459,7 +461,7 @@ test('las escrituras del renderer se serializan y un fallo recarga el estado aut
 
 test('una operación pendiente sin identidad de servidor también bloquea el emparejamiento a otra base', () => {
   assert.match(electron, /clientOutbox\.pending\(\)\.some\(event => !event\.serverDeviceId \|\| event\.serverDeviceId !== health\.deviceId\)/);
-  assert.match(electron, /conciliar esas operaciones antes de cambiar de servidor/);
+  assert.match(electron, /No se cambiará de base central hasta conciliarlos/);
 });
 
 test('la sincronización también bloquea operaciones antiguas sin identidad de servidor', () => {
