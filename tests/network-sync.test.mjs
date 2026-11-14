@@ -416,3 +416,8 @@ test('el servidor limita cuerpos LAN por bytes y no por caracteres Unicode', () 
   assert.match(electron, /if \(receivedBytes > MAX_SYNC_BODY\)/);
   assert.match(electron, /if \(rejected\) return/);
 });
+
+test('el cliente limita las respuestas LAN por bytes UTF-8', () => {
+  assert.match(electron, /let receivedBytes = 0;\s*response\.setEncoding\('utf8'\)/);
+  assert.match(electron, /receivedBytes \+= Buffer\.byteLength\(chunk, 'utf8'\)/);
+});
