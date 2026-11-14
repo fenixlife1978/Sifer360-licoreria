@@ -11,6 +11,7 @@ const { applyIncomingEvents } = require('./lan-event-store.cjs');
 const { mergeStateRecords } = require('./lan-state-merge.cjs');
 const { openOrRecoverDatabase } = require('./sqlite-recovery.cjs');
 const { isLanAddress, assertLanHost } = require('./lan-address.cjs');
+const { allocateCashboxSequence: allocateCashboxSequenceDurable } = require('./cashbox-sequence.cjs');
 const initSqlJs = require('sql.js');
 
 let db;
@@ -390,26 +391,7 @@ async function startLanServer(requestedPort) {
   return { ...networkConfig, running: true, addresses: localAddresses() };
 }
 function allocateCashboxSequence(cashboxId, operationType, minimumValue = 1) {
-  const cashbox = String(cashboxId || '').trim();
-  const operation = String(operationType || '').trim();
-  const minimum = Math.max(1, Math.floor(Number(minimumValue) || 1));
-  const allowed = new Set(['invoice','control','z','void','refund','return','cxc','cxp','cashea','movement','opening','purchase','count']);
-  const periodRetention = /^retention-\d{6}$/.test(operation);
-  if (!cashbox || cashbox.length > 32 || !/^[A-Za-z0-9_-]+$/.test(cashbox)) throw new Error('Caja inválida para numeración.');
-  if (!allowed.has(operation) && !periodRetention) throw new Error('Tipo de operación no permitido para numeración.');
-  const databaseBefore = db.export();
-  db.run('BEGIN IMMEDIATE');
-  try {
-    run('INSERT OR IGNORE INTO cashbox_sequences(cashbox_id,operation_type,last_value) VALUES(?,?,0)', [cashbox, operation]);
-    run('UPDATE cashbox_sequences SET last_value=MAX(last_value,?)+1,updated_at=CURRENT_TIMESTAMP WHERE cashbox_id=? AND operation_type=?', [minimum - 1, cashbox, operation]);
-    const row = one('SELECT last_value FROM cashbox_sequences WHERE cashbox_id=? AND operation_type=?', [cashbox, operation]);
-    db.run('COMMIT');
-    try { persistDb(); } catch (error) { restoreDatabaseSnapshot(databaseBefore); throw new Error('No se confirmó el consecutivo en disco; se restauró el estado anterior. ' + (error.message || String(error))); }
-    return { ok: true, cashbox, operation, value: Number(row.last_value) };
-  } catch (error) {
-    try { db.run('ROLLBACK'); } catch {}
-    throw error;
-  }
+  return allocateCashboxSequenceDurable({ db, cashboxId, operationType, minimumValue, persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
 }
 function requestPinnedJson(route, options = {}) {
   if (options.body && Buffer.byteLength(options.body, 'utf8') > MAX_SYNC_BODY) throw new Error('La operación supera el límite de tamaño permitido para sincronización LAN.');
