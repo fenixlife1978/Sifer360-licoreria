@@ -567,7 +567,7 @@ async function captureNewOperations(){
       }
       operationBaseline[key]=seen;
     }
-  }catch(error){console.warn('No se pudo encolar una operación para sincronización:',error)}
+  }catch(error){console.warn('No se pudo encolar una operación para sincronización:',error);const status=$('#sbMsg');if(status)status.textContent='El servidor pudo confirmar el estado, pero falló la cola de auditoría LAN local. Revise antes de continuar: '+String(error&&error.message||error);}
   finally{operationCaptureBusy=false}
 }
 function mergeRemoteSnapshot(local,remote){
