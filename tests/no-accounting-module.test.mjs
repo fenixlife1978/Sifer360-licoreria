@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
 const access = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
 
 test('general accounting module assets and navigation are completely absent', () => {
   for (const path of [
@@ -17,6 +18,7 @@ test('general accounting module assets and navigation are completely absent', ()
   assert.doesNotMatch(html, /accounting\\.(?:js|css)|accountant-dashboard/);
   assert.doesNotMatch(main, /SIFERAccounting|SIFERAccountantDashboard|openAccountingModule|accountingSourceId|Contabilidad VEN-NIF|accounting:/i);
   assert.doesNotMatch(access, /SIFERAccountantDashboard|accounting|contabilidad/i);
+  assert.doesNotMatch(styles, /accounting|accountant|contabilidad|btnAccountingTop/i);
 });
 
 test('fiscal operations remain available independently of general accounting', () => {
