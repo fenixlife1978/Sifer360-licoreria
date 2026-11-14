@@ -26,7 +26,7 @@ test('los clientes reservan números exclusivamente en el servidor LAN autentica
   assert.match(main, /Authorization: 'Bearer ' \+ networkConfig\.token/);
   assert.match(main, /expectedHash: networkConfig\.serverStateHash/);
   assert.match(main, /statePayloadHash/);
-  assert.match(main, /status, 409/);
+  assert.match(main, /sendJson\(res, 409/);
   assert.match(main, /body\.expectedHash !== currentHash/);
   assert.match(main, /networkConfig\.serverStateHash = eventResult\.stateHash/);
   assert.match(main, /network:next-sequence/);
