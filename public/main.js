@@ -2876,7 +2876,7 @@ function cxcDlg(selId){
       if(rawAmt-bal>0.01){msg('El monto ingresado ('+usd(rawAmt)+') supera el saldo pendiente ('+usd(bal)+').','bad');return;}
       const rollbackState=JSON.parse(JSON.stringify(S));
       let movementNo;try{movementNo=await nextCajaSequence('movement',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del cobro: '+error.message,'bad');return;}
-      const movementId='MOV-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(movementNo,6);
+      const movementId='MOV-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(movementNo,6);
       const amt=Math.min(bal,rawAmt);
       const mId=$('#abMethod',el).value;
       const m=METHODS.find(x=>x.id===mId)||METHODS[0];
@@ -2907,7 +2907,7 @@ function cxcDlg(selId){
       }
       const rollbackState=JSON.parse(JSON.stringify(S));
       let movementNo;try{movementNo=await nextCajaSequence('movement',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del cobro mixto: '+error.message,'bad');return;}
-      const ts=Date.now(),box=String(currentCaja()),movementId='MOV-'+box.replace(/\\W/g,'')+'-'+pad(movementNo,6);
+      const ts=Date.now(),box=String(currentCaja()),movementId='MOV-'+box.replace(/\W/g,'')+'-'+pad(movementNo,6);
       const baseNote=($('#abNote',el)?$('#abNote',el).value.trim():'')||(active.length>1?'Cobro mixto ('+active.length+' métodos)':'Abono de cliente');
       item.payments=item.payments||[];
       active.forEach((m,idx)=>{
@@ -3200,7 +3200,7 @@ function cxpDlg(selId){
       if(rawAmt-bal>0.00000001){msg('El monto ingresado ('+usd(rawAmt)+') supera el saldo por pagar ('+usd(bal)+').','bad');return;}
       const rollbackState=JSON.parse(JSON.stringify(S));
       let movementNo;try{movementNo=await nextCajaSequence('movement',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del pago: '+error.message,'bad');return;}
-      const movementId='MOV-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(movementNo,6);
+      const movementId='MOV-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(movementNo,6);
       const amt=r8(Math.min(bal,rawAmt));
       const mId=$('#pgMethod',el).value;
       const m=METHODS.find(x=>x.id===mId)||METHODS[5];
@@ -3235,7 +3235,7 @@ function cxpDlg(selId){
       }
       const rollbackState=JSON.parse(JSON.stringify(S));
       let movementNo;try{movementNo=await nextCajaSequence('movement',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del pago mixto: '+error.message,'bad');return;}
-      const ts=Date.now(),box=String(currentCaja()),movementId='MOV-'+box.replace(/\\W/g,'')+'-'+pad(movementNo,6);
+      const ts=Date.now(),box=String(currentCaja()),movementId='MOV-'+box.replace(/\W/g,'')+'-'+pad(movementNo,6);
       const baseNote=($('#pgNote',el)?$('#pgNote',el).value.trim():'')||(active.length>1?'Pago mixto ('+active.length+' medios)':'Pago a proveedor');
       item.payments=item.payments||[];
       active.forEach((m,idx)=>{
