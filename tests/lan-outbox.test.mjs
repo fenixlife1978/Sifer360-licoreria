@@ -151,3 +151,15 @@ test('la cola rechaza IDs o secuencias duplicadas dentro del mismo archivo', t =
   const outbox = createDurableOutbox(options);
   assert.throws(() => outbox.pending(), /operación inválida o duplicada/);
 });
+
+test('reintentar una operación ya confirmada devuelve el mismo ACK y no crea un evento duplicado', t => {
+  const options = fixture(t);
+  const outbox = createDurableOutbox(options);
+  const first = outbox.enqueue({ ...operation('event-first'), serverDeviceId: 'server-01' });
+  outbox.acknowledge([first.eventId]);
+  const retry = outbox.enqueue({ ...operation('event-retry'), serverDeviceId: 'server-01' });
+  assert.equal(retry.eventId, first.eventId);
+  assert.equal(retry.deviceSeq, first.deviceSeq);
+  assert.equal(retry.status, 'acked');
+  assert.deepEqual(outbox.status(), { pending: 0, acknowledged: 1, conflicts: 0 });
+});
