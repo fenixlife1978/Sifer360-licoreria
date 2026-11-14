@@ -1,6 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('posDesktop', {
+  authInitializeLegacyUsers: users => ipcRenderer.invoke('auth:initialize-legacy', users),
+  authLogin: credentials => ipcRenderer.invoke('auth:login', credentials),
+  authVerifySession: token => ipcRenderer.invoke('auth:verify-session', token),
+  authLogout: token => ipcRenderer.invoke('auth:logout', token),
+  authListUsers: token => ipcRenderer.invoke('auth:list-users', token),
+  authSaveUser: (token, user) => ipcRenderer.invoke('auth:save-user', token, user),
+  authDeleteUser: (token, username) => ipcRenderer.invoke('auth:delete-user', token, username),
   loadState: () => ipcRenderer.invoke('posdb:load-state'),
   saveState: state => ipcRenderer.invoke('posdb:save-state', state),
   listDocuments: filter => ipcRenderer.invoke('posdb:list-documents', filter),
@@ -12,8 +19,17 @@ contextBridge.exposeInMainWorld('posDesktop', {
   networkCreateOperation: operation => ipcRenderer.invoke('network:operation-create', operation),
   networkPendingOperations: () => ipcRenderer.invoke('network:operation-pending'),
   networkOperationStatus: () => ipcRenderer.invoke('network:operation-status'),
+  networkOperationConflicts: () => ipcRenderer.invoke('network:operation-conflicts'),
+  networkNextSequence: input => ipcRenderer.invoke('network:next-sequence', input),
   networkStartServer: options => ipcRenderer.invoke('network:configure-server', options),
   networkStopServer: () => ipcRenderer.invoke('network:stop-server'),
+  networkDisconnectClient: () => ipcRenderer.invoke('network:disconnect-client'),
   networkConfigureClient: options => ipcRenderer.invoke('network:configure-client', options),
-  networkSyncNow: state => ipcRenderer.invoke('network:sync-now', state)
+  networkSyncNow: state => ipcRenderer.invoke('network:sync-now', state),
+  fiscalPrinterListPorts: () => ipcRenderer.invoke('fiscal-printer:list-ports'),
+  fiscalPrinterSelectFile: kind => ipcRenderer.invoke('fiscal-printer:select-file', kind),
+  fiscalPrinterStatus: profile => ipcRenderer.invoke('fiscal-printer:status', profile),
+  fiscalPrinterTestPort: profile => ipcRenderer.invoke('fiscal-printer:test-port', profile),
+  fiscalPrinterTestBridge: profile => ipcRenderer.invoke('fiscal-printer:test-bridge', profile),
+  fiscalPrinterEmitInvoice: (profile, invoice) => ipcRenderer.invoke('fiscal-printer:emit-invoice', profile, invoice)
 });

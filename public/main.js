@@ -167,13 +167,13 @@ function seed(){
       empresa:'',rif:'',dir:'',cajero:'',caja:'01',rate:0,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
       fiscalTipo:'FORMA_LIBRE',contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:75,provEspecial:'',
       ctrlPrefix:'00-',ctrlNext:1,ctrlRangoDesde:'',ctrlRangoHasta:'',
-      imprentaRif:'',imprentaAut:'',serialFiscal:''
+      imprentaRif:'',imprentaAut:'',serialFiscal:'',fiscalPrinters:{}
     },
     products:[],
     clients:[{name:'Consumidor final',rif:'',tel:''}],
     suppliers:[],
-    sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],movimientosCaja:[],kardex:[],counts:[],
-    lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],rateAudit:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],accounting:{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
+    sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],openings:[],movimientosCaja:[],kardex:[],counts:[],
+    lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],rateAudit:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],fiscalPrinterJobs:[],
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
   };
@@ -182,9 +182,9 @@ function seed(){
 function stateSnapshot(){
   return {
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
-    sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],movimientosCaja:S.movimientosCaja||[],
+    sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],openings:S.openings||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,cambiosDivisas:S.cambiosDivisas,rateAudit:S.rateAudit||[],
-    casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],accounting:S.accounting||{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
+    casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],fiscalPrinterJobs:S.fiscalPrinterJobs||[],
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
   };
 }
@@ -264,38 +264,11 @@ const posSqliteDriver = {
   mode: 'sqlite',
   async init() {
     window.__POS_DB_MODE = 'sqlite';
-    if (window.posDesktop) {
-      this.isReady = true;
-      return true;
+    if (!window.posDesktop || typeof window.posDesktop.loadState !== 'function' || typeof window.posDesktop.saveState !== 'function') {
+      throw new Error('SIFER360 Licorería solo puede operar desde la aplicación de escritorio. La modalidad navegador está deshabilitada para proteger la base de datos SQLite local.');
     }
-    try {
-      if (typeof window.initSqlJs !== 'function') {
-        console.warn('sql.js no disponible globalmente; usando almacenamiento estructurado.');
-        this.isReady = true;
-        return true;
-      }
-      sqliteSqlInstance = await window.initSqlJs({
-        locateFile: file => '/' + file
-      });
-      const savedBytes = await idbGetSqlite();
-      if (savedBytes && savedBytes.byteLength > 0) {
-        try {
-          sqliteDb = new sqliteSqlInstance.Database(new Uint8Array(savedBytes));
-        } catch (err) {
-          console.warn('Error al abrir archivo SQLite existente, creando nueva base:', err);
-          sqliteDb = new sqliteSqlInstance.Database();
-        }
-      } else {
-        sqliteDb = new sqliteSqlInstance.Database();
-      }
-      this.initSchema();
-      this.isReady = true;
-      return true;
-    } catch (e) {
-      console.warn('Error inicializando motor SQLite WebAssembly:', e);
-      this.isReady = true;
-      return true;
-    }
+    this.isReady = true;
+    return true;
   },
   initSchema() {
     if (!sqliteDb) return;
@@ -523,79 +496,97 @@ const posSqliteDriver = {
 };
 
 let networkSyncTimer=null,networkSyncBusy=false,networkLastStatus='local';
+let saveQueue=Promise.resolve(),saveSequence=0,persistenceBlocked=false;
 let operationBaseline = null;
 let operationCaptureBusy = false;
+let openingMigrationBlocked=false;
+let operationCapturePromise=Promise.resolve();
 const OPERATION_COLLECTIONS = [
   ['sales','sale'], ['purchases','purchase'], ['cxc','receivable'], ['cxp','payable'],
   ['cortesZ','cash-close'], ['kardex','inventory-movement'], ['counts','inventory-count'],
-  ['held','held-sale'], ['casheaMovimientos','cashea-operation'], ['casheaLiquidaciones','cashea-settlement'], ['cambiosDivisas','currency-movement'],
+  ['held','held-sale'], ['movimientosCaja','cashbox-movement'], ['rateAudit','exchange-rate-audit'], ['lotesSudeban','bank-batch'],
+  ['casheaMovimientos','cashea-operation'], ['casheaLiquidaciones','cashea-settlement'], ['cambiosDivisas','currency-movement'],
   ['retencionesIva','tax-retention'], ['retentions','tax-retention'], ['returns','return'], ['voids','void']
 ];
-function operationIdentity(item,index){
+const BOX_SCOPED_OPERATION_COLLECTIONS = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','movimientosCaja','rateAudit','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas']);
+function operationIdentity(item,index,collection){
   if(!item||typeof item!=='object')return String(index)+':'+JSON.stringify(item);
   const id=item.id??item.uuid??item.eventId??item.no??item.number??item.ctrlNo??item.code;
-  return id===undefined?String(index)+':'+JSON.stringify(item):String(id);
+  if(id===undefined)return String(index)+':'+JSON.stringify(item);
+  const box=BOX_SCOPED_OPERATION_COLLECTIONS.has(collection)?String(item.cashbox||'sin-caja')+':':'';
+  return box+String(id);
 }
 function primeOperationBaseline(){
   const snap=stateSnapshot();
   operationBaseline={};
-  for(const [key] of OPERATION_COLLECTIONS) operationBaseline[key]=new Set((Array.isArray(snap[key])?snap[key]:[]).map(operationIdentity));
+  for(const [key] of OPERATION_COLLECTIONS) operationBaseline[key]=new Set((Array.isArray(snap[key])?snap[key]:[]).map((item,index)=>operationIdentity(item,index,key)));
 }
-async function captureNewOperations(){
-  if(operationCaptureBusy||!window.posDesktop||typeof window.posDesktop.networkCreateOperation!=='function')return;
-  if(!operationBaseline){primeOperationBaseline();return;}
+async function captureNewOperations(snapshotOverride){
+  if(!window.posDesktop||typeof window.posDesktop.networkCreateOperation!=='function')return {ok:true,role:'standalone'};
+  if(!operationBaseline){primeOperationBaseline();return {ok:true,role:'baseline'};}
+  if(operationCaptureBusy)throw new Error('Ya existe una captura de operaciones LAN en curso; no se confirmará otra escritura todavía.');
   operationCaptureBusy=true;
   try{
-    const snap=stateSnapshot();
+    const snap=snapshotOverride||stateSnapshot();
+    const net=await window.posDesktop.networkStatus();if(!net||net.role!=='client')return {ok:true,role:net&&net.role||'standalone'};
     for(const [key,eventType] of OPERATION_COLLECTIONS){
       const items=Array.isArray(snap[key])?snap[key]:[];
       const seen=operationBaseline[key]||new Set();
       for(let i=0;i<items.length;i++){
-        const item=items[i],identity=operationIdentity(item,i);
+        const item=items[i],identity=operationIdentity(item,i,key);
         if(seen.has(identity))continue;
         const entityId=String((item ? (item.id??item.uuid??item.eventId??item.no??item.number??item.ctrlNo??item.code) : undefined) ?? identity);
-        await window.posDesktop.networkCreateOperation({
+        const delivery=await window.posDesktop.networkCreateOperation({
           eventType,entityType:key,entityId,occurredAt:(Number.isFinite(Number(item.ts))?new Date(Number(item.ts)):new Date(item.createdAt||Date.now())).toISOString(),
           payload:{record:item,sourceCollection:key,deviceCashbox:String(item.cashbox||snap.cfg?.caja||'01')}
         });
+        if(!delivery||delivery.serverConfirmed!==true||delivery.status!=='acked'){
+          const status=$('#sbMsg');
+          if(status)status.textContent=delivery&&delivery.status==='conflict'
+            ?'Conflicto LAN en '+key+' · operación preservada para revisión; no se confirmó el cambio.'
+            :'Operación guardada en la cola LAN local, pero aún no confirmada por el servidor ('+key+'). No se cerrará ni imprimirá como operación aceptada.';
+          throw new Error(delivery&&delivery.deliveryError||'El servidor todavía no confirmó de forma durable la operación '+entityId+'.');
+        }
         seen.add(identity);
       }
       operationBaseline[key]=seen;
     }
-  }catch(error){console.warn('No se pudo encolar una operación para sincronización:',error)}
-  finally{operationCaptureBusy=false}
-}
-function mergeRemoteSnapshot(local,remote){
-  if(!remote||typeof remote!=='object')return false;
-  const merged={...local};
-  for(const [key,value] of Object.entries(remote)){
-    if(key==='sicoven')continue; // Ignora snapshots heredados del módulo contable retirado.
-    if(!Array.isArray(value)||!Array.isArray(local[key])){merged[key]=value;continue;}
-    const map=new Map();
-    const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','cxc','cortesZ','openings','movements','returns','voids'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
-    for(const item of local[key])map.set(ident(item),item);
-    for(const item of value)map.set(ident(item),item);
-    merged[key]=[...map.values()];
-  }
-  let changed=false;
-  for(const [key,value] of Object.entries(merged)){if(JSON.stringify(S[key])!==JSON.stringify(value)){S[key]=value;changed=true}}
-  return changed;
+    return {ok:true,role:'client',serverConfirmed:true};
+  }catch(error){
+    console.warn('No se pudo confirmar una operación en el servidor LAN:',error);
+    const status=$('#sbMsg');if(status)status.textContent='Falló la cola de auditoría LAN local o su confirmación remota: '+String(error&&error.message||error)+'. Revise antes de continuar.';
+    throw error;
+  }finally{operationCaptureBusy=false}
 }
 async function networkSyncAttempt(){
   if(networkSyncBusy||!window.posDesktop||typeof window.posDesktop.networkSyncNow!=='function')return;
   networkSyncBusy=true;
   try{
+    let pendingSave,captureTask;
+    do{
+      pendingSave=window.__SIFER_LAST_SAVE;
+      captureTask=operationCapturePromise;
+      if(pendingSave)await pendingSave;
+      await captureTask;
+    }while(pendingSave!==window.__SIFER_LAST_SAVE||captureTask!==operationCapturePromise);
     const local=stateSnapshot();
+    const syncRevision=saveSequence;
     const result=await window.posDesktop.networkSyncNow(local);
     if(result&&result.ok&&result.state){
-      const changed=mergeRemoteSnapshot(local,result.state);
+      if(persistenceBlocked||saveSequence===syncRevision){
+        for(const key of Object.keys(S))delete S[key];
+        Object.assign(S,result.state);
+        primeOperationBaseline();
+        persistenceBlocked=false;
+        try{renderAll();}catch(e){}
+      }else scheduleNetworkSync();
       networkLastStatus=result.role||'connected';
 
       const status=$('#sbMsg');if(status)status.textContent=networkLastStatus==='server'?'Servidor LAN · sincronizado':networkLastStatus==='client'?'Cliente LAN · sincronizado':'Modo local';
     }else networkLastStatus='local';
   }catch(error){
     networkLastStatus='offline';
-    const status=$('#sbMsg');if(status)status.textContent='Sin conexión al servidor · operaciones guardadas localmente; se reintentará automáticamente';
+    const status=$('#sbMsg');const reason=String(error&&error.message||'');if(status)status.textContent=reason.includes('Cliente LAN desconectado')?'Cliente LAN desconectado · no se confirman operaciones ni se usa SQLite local. Reconecte con el servidor.':reason.includes('base central cambió')?'Conflicto de concurrencia · no se guardó el snapshot. Recargue SIFER para traer la base central antes de continuar.':reason.includes('conflictos LAN')?'Conflictos en cola LAN · sincronización bloqueada. Revise los identificadores y concilie los registros afectados.':reason.includes('conflicto')?'Conflicto LAN · no se aplicó el snapshot; revise las operaciones pendientes.':'Sin confirmación del servidor · las operaciones nuevas permanecen en la cola LAN local. Reconecte y revise el estado antes de continuar.';
   }finally{networkSyncBusy=false}
 }
 window.SIFERNetworkSync=()=>networkSyncAttempt();
@@ -604,16 +595,56 @@ function scheduleNetworkSync(){
   networkSyncTimer=setTimeout(()=>{networkSyncAttempt();},1800);
 }
 function save(){
+  if(persistenceBlocked){
+    const error=new Error('Las escrituras están bloqueadas porque la última operación no pudo confirmarse ni recargarse desde la base autoritativa. Reconecte o reinicie para recuperar el estado.');
+    persistenceError(error);
+    return Promise.resolve({ok:false,durable:'none',error});
+  }
   const state=stateSnapshot();
-  const pending=posSqliteDriver.saveState(state).then(result=>{
-    if(!result||!result.ok)throw (result&&result.error)||new Error('No se confirmó el guardado local.');
+  const sequence=++saveSequence;
+  const previousCapture=operationCapturePromise;
+  const pending=saveQueue.then(async()=>{
+    await previousCapture;
+    await captureNewOperations(state);
+    return posSqliteDriver.saveState(state);
+  }).then(result=>{
+    if(!result||!result.ok)throw (result&&result.error)||new Error('SQLite/servidor no confirmó el guardado.');
     try{window.dispatchEvent(new Event('sifer:state-saved'));}catch(e){}
     return result;
-  }).catch(e=>{persistenceError(e);return {ok:false,durable:'none',error:e};});
+  }).catch(async error=>{
+    persistenceError(error);
+    let recovered=false;
+    const superseded=sequence!==saveSequence;
+    if(!superseded){
+      try{
+        const authoritative=await posSqliteDriver.loadState();
+        if(!authoritative||typeof authoritative!=='object')throw new Error('La base autoritativa no devolvió un estado recuperable.');
+        for(const key of Object.keys(S))delete S[key];
+        Object.assign(S,authoritative);
+        recovered=true;
+        persistenceBlocked=false;
+        try{renderAll();}catch(e){}
+        const node=$('#sbMsg')||$('#sbStatus');
+        if(node){node.textContent='OPERACIÓN NO CONFIRMADA: se recargó el último estado durable. Verifique antes de continuar.';node.classList.add('bad');}
+      }catch(recoveryError){
+        persistenceBlocked=true;
+        persistenceError(new Error('No se confirmó la operación y tampoco se pudo recargar el estado autoritativo. Las nuevas escrituras quedan bloqueadas. '+(recoveryError&&recoveryError.message||recoveryError)));
+      }
+    }
+    return {ok:false,durable:'none',error,recovered,superseded};
+  });
+  saveQueue=pending.then(()=>undefined,()=>undefined);
   window.__SIFER_LAST_SAVE=pending;
-  captureNewOperations();
+  operationCapturePromise=pending.then(()=>undefined,()=>undefined);
   scheduleNetworkSync();
   return pending;
+}
+function restoreStateSnapshotIfNeeded(result,snapshot){
+  if(result&&(result.recovered||result.superseded))return false;
+  if(!snapshot||typeof snapshot!=='object')return false;
+  for(const key of Object.keys(S))delete S[key];
+  Object.assign(S,snapshot);
+  return true;
 }
 setInterval(()=>{if(window.posDesktop&&typeof window.posDesktop.networkSyncNow==='function')networkSyncAttempt()},20000);
 
@@ -626,10 +657,15 @@ function load(){
     S.cfg=Object.assign(S.cfg,d.cfg);
     S.rateAudit=Array.isArray(d.rateAudit)?d.rateAudit:[];
     S.cortesZ=Array.isArray(d.cortesZ)?d.cortesZ:[];
+    S.openings=Array.isArray(d.openings)?d.openings:[];
     S.movimientosCaja=Array.isArray(d.movimientosCaja)?d.movimientosCaja:[];
     const legacyCaja=String(S.cfg.caja||'01');
     (S.sales||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;if(!x.cashier)x.cashier=x.user||S.cfg.cajero||'Cajero';});
     (S.cxc||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;});
+    (S.purchases||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;});
+    (S.cxp||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;});
+    (S.counts||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;});
+    (S.retencionesIva||[]).forEach(x=>{if(!x.cashbox)x.cashbox=legacyCaja;});
     /* Enriquecer productos guardados con SKU, U.M., motores de venta, presentaciones, impuestos, proveedores y kits */
     S.products=d.products.map((p,idx)=>{
       const sp=seedMap[p.code]||{};
@@ -677,13 +713,12 @@ function load(){
     if(Array.isArray(d.counts))S.counts=d.counts;
     if(Array.isArray(d.lotesSudeban))S.lotesSudeban=d.lotesSudeban;
     if(Array.isArray(d.retencionesIva))S.retencionesIva=d.retencionesIva;
+    if(Array.isArray(d.casheaMovimientos))S.casheaMovimientos=d.casheaMovimientos;
     if(Array.isArray(d.documents))S.documents=d.documents;
     else if(!S.documents)S.documents=[];
-    S.accounting=d.accounting&&typeof d.accounting==='object'?d.accounting:(S.accounting||{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false});
-    if(!Array.isArray(S.accounting.accounts))S.accounting.accounts=[];
-    if(!Array.isArray(S.accounting.entries))S.accounting.entries=[];
-    if(!Array.isArray(S.accounting.fixedAssets))S.accounting.fixedAssets=[];
-    if(!Number.isFinite(Number(S.accounting.nextEntry)))S.accounting.nextEntry=1;
+    if(Array.isArray(d.fiscalPrinterJobs))S.fiscalPrinterJobs=d.fiscalPrinterJobs;
+    else if(!Array.isArray(S.fiscalPrinterJobs))S.fiscalPrinterJobs=[];
+    if(!S.cfg.fiscalPrinters||typeof S.cfg.fiscalPrinters!=='object')S.cfg.fiscalPrinters={};
     if(Array.isArray(d.casheaMovimientos)){
       const demoCasheaSignatures=[
         {id:'CSH-MOV-0001',aprobacion:'CSH-782194',ventaNo:1040,clienteCi:'V-12345678',totalVenta:85,financiadoUsd:51},
@@ -847,7 +882,18 @@ function openWin(o){
   (o.foot||[]).forEach(b=>{
     const el=document.createElement('button');
     el.className='btn'+(b.primary?' primary':'');el.textContent=b.label;if(b.id)el.id=b.id;
-    el.addEventListener('click',()=>{if(b.fn&&b.fn()===false)return;closeWin();});
+    el.addEventListener('click',async()=>{
+      if(b.fn){
+        el.disabled=true;
+        try{
+          const result=b.fn();
+          const resolved=result&&typeof result.then==='function'?await result:result;
+          if(resolved===false)return;
+        }catch(error){msg('No se pudo completar la operación: '+String(error&&error.message||error),'bad');return;}
+        finally{el.disabled=false;}
+      }
+      if(W&&W.el===bd)closeWin();
+    });
     (b.left?footL:footR).appendChild(el);
   });
   bd.addEventListener('click',e=>{if(e.target.closest('[data-close]')){if(o.onClose)o.onClose();else closeWin();}});
@@ -871,7 +917,7 @@ function closeWin(silent){
   if(!silent&&prev&&prev.focus&&document.contains(prev))prev.focus();
 }
 function ask(title,text,okLabel,fn){
-  openWin({title,w:420,body:h('<p style="margin:0">'+esc(text)+'</p>'),foot:[{label:'Cancelar'},{label:okLabel,primary:true,fn:()=>{fn();}}]});
+  openWin({title,w:420,body:h('<p style="margin:0">'+esc(text)+'</p>'),foot:[{label:'Cancelar'},{label:okLabel,primary:true,fn:()=>fn()}]});
 }
 
 /* ---------- carrito ---------- */
@@ -913,11 +959,12 @@ function clearCart(){
   if(!S.cart.length)return;
   ask('Vaciar venta','Se quitarán todos los renglones de la venta actual.','Vaciar',()=>{S.cart=[];S.sel=-1;renderCart();});
 }
-function suspend(){
+async function suspend(){
   if(!S.cart.length){msg('No hay una venta con renglones para suspender.','bad');return;}
   S.held.push({cart:S.cart,client:S.client,ts:Date.now()});
-  S.cart=[];S.sel=-1;S.client=S.clients[0];save();renderAll();
-  msg('Venta suspendida. Hay '+S.held.length+' en espera.');
+  S.cart=[];S.sel=-1;S.client=S.clients[0];
+  const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la suspensión; la venta permanece en el estado durable anterior.','bad');return;}
+  renderAll();msg('Venta suspendida. Hay '+S.held.length+' en espera.');
 }
 function recoverDlg(){
   if(!S.held.length){msg('No hay ventas en espera.');return;}
@@ -927,8 +974,10 @@ function recoverDlg(){
   S.held.forEach((hd,i)=>{
     const sub=r2(hd.cart.reduce((a,l)=>a+r2(r2(prod(l.code).price*l.qty)*(1-l.disc/100)),0));
     const tr=h('<table><tbody><tr><td>'+esc(hd.client.name)+'</td><td class="r">'+hd.cart.length+'</td><td class="r">'+nf(r2(sub*(1+IVA)))+'</td><td>'+fmtT(new Date(hd.ts))+'</td><td class="c"><button class="btn mini2" '+(busy?'disabled':'')+'>Recuperar</button></td></tr></tbody></table>').querySelector('tr');
-    $('button',tr).addEventListener('click',()=>{
-      S.cart=hd.cart;S.client=hd.client;S.sel=0;S.held.splice(i,1);save();closeWin();renderAll();msg('Venta recuperada.');
+    $('button',tr).addEventListener('click',async()=>{
+      S.cart=hd.cart;S.client=hd.client;S.sel=0;S.held.splice(i,1);
+      const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la recuperación; se conservó el estado durable anterior.','bad');return;}
+      closeWin();renderAll();msg('Venta recuperada.');
     });
     tb.appendChild(tr);
   });
@@ -960,14 +1009,14 @@ function clientDlg(){
   };
   const use=()=>{S.client=cur;renderHeader();msg('Cliente: '+cur.name+'.');};
   el.addEventListener('input',e=>{if(e.target.id==='clQ')draw();});
-  el.addEventListener('click',e=>{
+  el.addEventListener('click',async e=>{
     const tr=e.target.closest('tr[data-cl]');
     if(tr){cur=S.clients[+tr.dataset.cl];draw();return;}
     if(e.target.id==='ncAdd'){
       const name=$('#ncName',el).value.trim(),rif=$('#ncRif',el).value.trim();
       if(!name||!rif){msg('Indique el RIF / C.I. y el nombre del cliente.','bad');return;}
       const c={name,rif,tel:$('#ncTel',el).value.trim()};
-      S.clients.push(c);cur=c;save();use();closeWin();
+      S.clients.push(c);cur=c;const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el registro del cliente.','bad');return;}use();closeWin();
     }
   });
   el.addEventListener('dblclick',e=>{if(e.target.closest('tr[data-cl]')){use();closeWin();}});
@@ -1105,7 +1154,7 @@ function inventoryExitDlg(){
   };
   $('#ixProduct',el).addEventListener('change',e=>{selected=e.target.value;fill();});
   fill();
-  openWin({title:'Salidas y ajustes de inventario',w:650,body:el,foot:[{label:'Cancelar'},{label:'Registrar salida en Kardex',primary:true,fn:()=>{
+  openWin({title:'Salidas y ajustes de inventario',w:650,body:el,foot:[{label:'Cancelar'},{label:'Registrar salida en Kardex',primary:true,fn:async()=>{
     const p=prod($('#ixProduct',el).value),qty=pn($('#ixQty',el).value),concept=$('#ixConcept',el).value,reason=$('#ixReason',el).value.trim();
     if(!p){msg('Seleccione un producto válido.','bad');return false;}
     if(!(qty>0)){msg('La cantidad debe ser mayor que cero.','bad');return false;}
@@ -1115,7 +1164,8 @@ function inventoryExitDlg(){
     p.stock=r2(before-qty);
     const labels={COLABORACION:'Colaboración',CONSUMO_PROPIO:'Consumo propio',DONACION:'Donación'};
     addKardex({ts,code:p.code,type:concept,dir:'OUT',doc:'SAL-'+String(currentCaja()).replace(/\W/g,'')+'-'+ts,party:labels[concept]+' · '+reason,cashbox:currentCaja(),qty,stockAfter:p.stock,cost,user:user.name||user.username||currentCajero()});
-    save();renderAll();msg('Salida registrada en Kardex: '+fq(qty)+' '+p.unit+' de '+p.desc+'.','ok');closeWin();return true;
+    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la salida; se restauró el inventario durable.','bad');return false;}
+    renderAll();msg('Salida registrada en Kardex: '+fq(qty)+' '+p.unit+' de '+p.desc+'.','ok');closeWin();return true;
   }}],onOpen:()=>$('#ixProduct',el).focus()});
 }
 
@@ -1302,7 +1352,7 @@ function conteoDlg(focusCode){
     }
   });
 
-  const saveBulk=()=>{
+  const saveBulk=async()=>{
     const modEntries=Object.keys(draftConteo).map(c=>{
       const p=prod(c),d=draftConteo[c];
       if(!p||!d||d.newStock===null||d.newStock===undefined)return null;
@@ -1315,7 +1365,9 @@ function conteoDlg(focusCode){
       msg('No hay diferencias de stock pendientes por guardar.','bad');
       return false;
     }
-    const docId='CNT-'+pad(S.countSeq++,8);
+    let countNo;try{countNo=await nextCajaSequence('count',currentCaja());}catch(error){msg('No se pudo reservar el número del conteo: '+error.message,'bad');return false;}
+    const docId='CNT-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(countNo,6);
+    const rollbackState=JSON.parse(JSON.stringify(S)),draftBefore=JSON.parse(JSON.stringify(draftConteo));
     const ts=Date.now();
     const auditItems=[];
     modEntries.forEach(item=>{
@@ -1335,9 +1387,10 @@ function conteoDlg(focusCode){
       });
       auditItems.push({code:p.code,desc:p.desc,prev,next,diff,cost:p.cost,reason});
     });
-    S.counts.push({id:docId,ts,user:S.cfg.cajero,items:auditItems});
+    S.counts.push({id:docId,cashbox:currentCaja(),sequence:countNo,ts,user:S.cfg.cajero,items:auditItems});
     draftConteo={};
-    save();renderAll();
+    const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);draftConteo=draftBefore;renderAll();msg('SQLite no confirmó el conteo; se restauró el último estado durable disponible.','bad');return false;}
+    renderAll();
     msg('Conteo masivo '+docId+' guardado con éxito ('+auditItems.length+' productos actualizados en inventario y Kardex).');
     return true;
   };
@@ -1358,7 +1411,7 @@ function conteoDlg(focusCode){
 }
 
 function countsHistoryDlg(){
-  const list=(S.counts||[]).slice().reverse();
+  const list=(S.counts||[]).filter(x=>String(x.cashbox||currentCaja())===currentCaja()).slice().reverse();
   const el=h('<div class="form"><div class="gridwrap tallwrap"><table class="grid"><thead><tr><th>Documento</th><th>Fecha / Hora</th><th>Operador</th><th>Productos Ajustados</th></tr></thead><tbody>'+
     (list.length?list.map(c=>'<tr><td class="mono"><b>'+esc(c.id)+'</b></td><td>'+fmtDT(c.ts)+'</td><td>'+esc(c.user)+'</td><td>'+c.items.map(i=>'<div><b>'+esc(i.code)+' '+esc(i.desc)+'</b>: '+fq(i.prev)+' &rarr; '+fq(i.next)+' ('+(i.diff>0?'+'+fq(i.diff):fq(i.diff))+') · <span class="dim">'+esc(i.reason)+'</span></div>').join('')+'</td></tr>').join(''):'<tr class="empty"><td colspan="4">Aún no se han guardado lotes de conteo.</td></tr>')+
   '</tbody></table></div></div>');
@@ -2044,7 +2097,7 @@ function productFormDlg(editCode,initialTab){
     };
 
     box.onchange=e=>{if(e.target.id==='asSel')syncSupFields();};
-    box.onclick=e=>{
+    box.onclick=async e=>{
       if(e.target.id==='asAddBtn'){
         const rif=$('#asRif',box).value.trim().toUpperCase(), name=$('#asName',box).value.trim();
         const cost=pn($('#asCost',box).value)||D.cost;
@@ -2063,9 +2116,8 @@ function productFormDlg(editCode,initialTab){
           minOrder:Math.round(pn($('#asMin',box).value)||1),
           notes:$('#asNotes',box).value.trim()
         });
-        save();
-        renderSupTab(box);
-        msg('Proveedor '+sup.name+' asociado al producto.');
+        const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la asociación del proveedor.','bad');return;}
+        renderSupTab(box);msg('Proveedor '+sup.name+' asociado al producto.');
       }
       const uc=e.target.closest('[data-usecost]');
       if(uc){
@@ -2158,7 +2210,7 @@ function productFormDlg(editCode,initialTab){
     if(b){tab=b.dataset.pftab;renderTab();}
   });
 
-  const saveProduct=(closeAfter=true)=>{
+  const saveProduct=async(closeAfter=true)=>{
     if(!D.code||!D.desc.trim()||!D.price){
       msg('Complete el código, la descripción y el precio de venta del producto.','bad');
       return false;
@@ -2186,8 +2238,8 @@ function productFormDlg(editCode,initialTab){
         party:'Alta de producto ('+D.sku+')',qty:D.stock,stockAfter:D.stock,cost:D.cost,user:S.cfg.cajero
       });
     }
-    save();renderCatOptions();renderAll();
-    msg('Producto '+D.desc+' ('+D.sku+') guardado correctamente.');
+    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el producto. Se cargó el último estado durable; revise la ficha antes de reintentar.','bad');if(existing){closeWin();productFormDlg(existing.code,'gen');}return false;}
+    renderCatOptions();renderAll();msg('Producto '+D.desc+' ('+D.sku+') guardado correctamente.');
     if(closeAfter){inventoryDlg();return false;}
     return true;
   };
@@ -2197,7 +2249,7 @@ function productFormDlg(editCode,initialTab){
     w:1020,
     body:el,
     foot:[
-      {label:'Generar Etiqueta / Hablador SKU (US$)',left:true,fn:()=>{if(saveProduct(false))labelGeneratorDlg(D.code);return false;}},
+      {label:'Generar Etiqueta / Hablador SKU (US$)',left:true,fn:async()=>{const saved=await saveProduct(false);if(saved)labelGeneratorDlg(D.code);return false;}},
       {label:'Volver a Inventario',fn:()=>{inventoryDlg();return false;}},
       {label:'Guardar Producto',primary:true,fn:()=>saveProduct(true)}
     ],
@@ -2290,7 +2342,7 @@ function inventoryDlg(){
     sum();
   };
   el.addEventListener('input',e=>{if(e.target.id==='invQ')draw();});
-  el.addEventListener('change',e=>{
+  el.addEventListener('change',async e=>{
     if(e.target.id==='invLow'){draw();return;}
     const f=e.target.dataset.f;if(!f)return;
     const tr=e.target.closest('tr'),p=prod(tr.dataset.code),v=pn(e.target.value);
@@ -2329,7 +2381,8 @@ function inventoryDlg(){
     if(f==='price'||f==='cost')e.target.value=nf(p[f]);
     else if(f==='stock'||f==='min')e.target.value=fq(p[f]);
     tr.className=p.stock<=0?'rowout':(p.stock<=p.min?'rowlow':'');
-    save();sum();renderCatalog();renderCart();
+    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el ajuste de inventario o precio.','bad');return;}
+    sum();renderCatalog();renderCart();
   });
   el.addEventListener('click',e=>{
     if(e.target.id==='btnNewProd'){productFormDlg(null,'gen');return;}
@@ -2456,7 +2509,7 @@ function comprasDlg(initialTab){
   };
 
   const renderPurchaseHist=v=>{
-    const list=(S.purchases||[]).slice().sort((a,b)=>b.no-a.no);
+    const list=(S.purchases||[]).filter(x=>String(x.cashbox||currentCaja())===currentCaja()).slice().sort((a,b)=>b.no-a.no);
     v.innerHTML=
       '<div class="gridwrap tallwrap"><table class="grid" style="min-width:820px">'+
         '<thead><tr><th>Compra Nº</th><th>Fac. Prov.</th><th>Fecha</th><th>Proveedor</th><th>Condición</th><th class="r">Total US$</th><th class="r">Pagado / Retenido US$</th><th class="r">Saldo CxP</th><th>Acción</th></tr></thead>'+
@@ -2477,10 +2530,10 @@ function comprasDlg(initialTab){
           '</tr>';
         }).join(''):'<tr class="empty"><td colspan="9">Sin compras registradas.</td></tr>')+'</tbody>'+
       '</table></div>';
-    v.onclick=e=>{
+    v.onclick=async e=>{
       const b=e.target.closest('[data-void-comp]');
       if(!b)return;
-      const c=S.purchases.find(x=>x.no===+b.dataset.voidComp);
+      const c=S.purchases.find(x=>x.no===+b.dataset.voidComp&&String(x.cashbox||currentCaja())===currentCaja());
       if(!c||c.void)return;
       c.void=true;
       c.lines.forEach(l=>{
@@ -2493,10 +2546,10 @@ function comprasDlg(initialTab){
           });
         }
       });
-      (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
-      (S.retencionesIva||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||''))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
-      save();renderAll();renderPurchaseHist(v);
-      msg('Compra COM-'+pad(c.no)+' anulada. Se revirtió el ingreso en inventario y Kardex.');
+      (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja())).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
+      (S.retencionesIva||[]).filter(x=>(Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||'')&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
+      const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la anulación de la compra; se restauró el estado durable anterior.','bad');return;}
+      renderAll();renderPurchaseHist(v);msg('Compra COM-'+pad(c.no)+' anulada. Se revirtió el ingreso en inventario y Kardex.');
     };
   };
 
@@ -2512,22 +2565,23 @@ function comprasDlg(initialTab){
         '<div class="f"><label for="nsCond">Condición</label><select class="fld" id="nsCond"><option>Contado</option><option selected>15 días</option><option>30 días</option></select></div>'+
         '<div class="f"><label for="nsRetIva">Sujeto a retención de IVA</label><select class="fld" id="nsRetIva"><option value="no" selected>No / por verificar</option><option value="si">Sí, confirmado</option></select></div>'+
       '</div><p class="muted">Active esta opción solo después de verificar la condición fiscal del proveedor y la operación.</p><button class="btn" id="nsSave">Guardar proveedor</button></details>';
-    v.onchange=e=>{
+    v.onchange=async e=>{
       const ctl=e.target.closest('[data-ret-iva]');
       if(!ctl)return;
       const sup=S.suppliers.find(x=>x.id===ctl.dataset.retIva);
       if(!sup)return;
       sup.retieneIva=ctl.value==='si';
-      save();
+      const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el cambio de retención del proveedor.','bad');return;}
       renderSuppliersTab(v);
       msg('Configuración de retención IVA actualizada para '+sup.name+'.');
     };
-    v.onclick=e=>{
+    v.onclick=async e=>{
       if(e.target.id==='nsSave'){
         const rif=$('#nsRif',v).value.trim(), name=$('#nsName',v).value.trim();
         if(!rif||!name){msg('Indique RIF y razón social del proveedor.','bad');return;}
         S.suppliers.push({id:'PRV-'+two(S.suppliers.length+1),name,rif,tel:$('#nsTel',v).value.trim(),cond:$('#nsCond',v).value,retieneIva:$('#nsRetIva',v).value==='si'});
-        save();renderSuppliersTab(v);msg('Proveedor '+name+' registrado.');
+        const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el registro del proveedor.','bad');return;}
+        renderSuppliersTab(v);msg('Proveedor '+name+' registrado.');
       }
     };
   };
@@ -2537,7 +2591,8 @@ function comprasDlg(initialTab){
     if(tb){tab=tb.dataset.tab;renderView();}
   });
 
-  const processPurchase=()=>{
+  const processPurchase=async()=>{
+    const rollbackState=JSON.parse(JSON.stringify(S));
     if(tab!=='new')return true;
     if(!pLines.length){msg('Agregue al menos un producto a la compra.','bad');return false;}
     const sup=S.suppliers[supIdx]||S.suppliers[0];
@@ -2552,7 +2607,8 @@ function comprasDlg(initialTab){
     if(!(Number(S.cfg.rate)>0)){msg('Configure una tasa BCV real mayor que cero antes de registrar la compra.','bad');return false;}
     if(pLines.some(l=>!(Number(l.qty)>0)||!(Number(l.cost)>=0))){msg('Cada renglón debe tener cantidad positiva y costo válido.','bad');return false;}
     const ts=Date.now();
-    const no=S.purchaseSeq++;
+    let no;try{no=await nextCajaSequence('purchase',currentCaja());}catch(error){msg('No se pudo reservar el número de compra: '+error.message,'bad');return false;}
+    S.purchaseSeq=Math.max(Number(S.purchaseSeq)||1,no+1);
     const lines=pLines.map(l=>{
       const p=prod(l.code);
       /* Costo Promedio Ponderado */
@@ -2580,16 +2636,19 @@ function comprasDlg(initialTab){
     const retBs=r2(retUsd*S.cfg.rate);
     const payableTotal=r2(Math.max(0,total-retUsd));
     const effPaid=cond==='Contado'?payableTotal:Math.min(payableTotal,paidInit);
-    const comp={accountingSourceId:'PURCHASE-'+pad(no),no,docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
+    const periodoRetencion=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
+    let retSeq=null,cxpNo=null;
+    if(aplicarRetencion){try{retSeq=await nextCajaSequence('retention-'+periodoRetencion,currentCaja());}catch(error){msg('No se pudo reservar el número de la retención: '+error.message,'bad');return false;}}
+    if(payableTotal-effPaid>=0.01){try{cxpNo=await nextCajaSequence('cxp',currentCaja());}catch(error){msg('No se pudo reservar el número de CxP: '+error.message,'bad');return false;}}
+    const comp={no,cashbox:currentCaja(),docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
-      const periodo=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
-      const retSeq=(S.retencionesIva||[]).filter(r=>String(r.periodo)===periodo).reduce((m,r)=>Math.max(m,Number(String(r.id||'').slice(-8))||0),0)+1;
+      const periodo=periodoRetencion;
       const retDoc=periodo+pad(retSeq,8);
       comp.retIvaDoc=retDoc;
       if(!S.retencionesIva)S.retencionesIva=[];
       S.retencionesIva.push({
-        id:retDoc,ts,periodo,supplier:Object.assign({},sup),purchaseNo:no,docProv,
+        id:retDoc,ts,periodo,cashbox:currentCaja(),sequence:retSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,
         ctrlProv:comp.ctrlProv,base,iva,pct:retPct,rate:S.cfg.rate,
         retainedUsd:retUsd,retainedBs:retBs,
         estado:'Pendiente de revisión del contador',declarada:false,pagada:false,comprobanteEntregado:false,observaciones:''
@@ -2597,16 +2656,17 @@ function comprasDlg(initialTab){
     }
     S.purchases.push(comp);
     if(payableTotal-effPaid>=0.01){
-      const cxpId='CXP-'+pad((S.cxp.length+1),4);
+      const cxpId='CXP-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxpNo,6);
       const payments=effPaid>0?[{ts,method:payMethod,cur:'VES',amountBs:r2(effPaid*S.cfg.rate),amountUsd:effPaid,ref:'INI-'+no,note:'Abono inicial en compra'}]:[];
       S.cxp.push({
-        id:cxpId,purchaseNo:no,doc:docProv+' (COM-'+pad(no)+')',
+        id:cxpId,sequence:cxpNo,purchaseNo:no,cashbox:currentCaja(),doc:docProv+' (COM-'+pad(no)+')',
         supplier:Object.assign({},sup),
         concept:'Compra mercancía ('+lines.length+' reng.)'+(retUsd>0?' — retención IVA '+usd(retUsd):''),
         ts,dueTs,total:payableTotal,invoiceTotal:total,retIva:retUsd,paid:effPaid,payments
       });
     }
-    save();renderAll();
+    const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);renderAll();msg('SQLite no confirmó la compra; se restauró el último estado durable disponible.','bad');return false;}
+    renderAll();
     msg('Compra COM-'+pad(no)+' guardada. Factura: '+usd(total)+(retUsd>0?'; IVA retenido: '+usd(retUsd)+'; saldo a proveedor: '+usd(payableTotal):'')+'. Stock, costos y Kardex actualizados.');
     return true;
   };
@@ -2832,7 +2892,7 @@ function cxcDlg(selId){
       mixState[mid].ref=e.target.value;
     }
   });
-  el.addEventListener('click',e=>{
+  el.addEventListener('click',async e=>{
     const tr=e.target.closest('tr[data-id]');
     if(tr){curId=tr.dataset.id;resetMix();draw();return;}
     if(e.target.id==='cxcNewBtn'){if(activeUser().role==='cajero'){msg('El rol cajero no tiene permiso para crear cargos manuales de CxC.','bad');return;}newCxcManualDlg();return;}
@@ -2857,18 +2917,24 @@ function cxcDlg(selId){
       const rawAmt=pn($('#abUsd',el).value);
       if(rawAmt<=0){msg('Indique un monto de abono válido mayor a cero.','bad');return;}
       if(rawAmt-bal>0.01){msg('El monto ingresado ('+usd(rawAmt)+') supera el saldo pendiente ('+usd(bal)+').','bad');return;}
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      let movementNo;try{movementNo=await nextCajaSequence('cxc-payment',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del cobro: '+error.message,'bad');return;}
+      const movementId='MOV-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(movementNo,6);
       const amt=Math.min(bal,rawAmt);
       const mId=$('#abMethod',el).value;
       const m=METHODS.find(x=>x.id===mId)||METHODS[0];
       item.paid=r2(item.paid+amt);
       item.payments=item.payments||[];
       item.payments.push({
+        id:movementId,cashbox:currentCaja(),cashboxSequence:movementNo,
         ts:Date.now(),method:m.name,cur:m.cur,
         amountUsd:amt,amountBs:r2(amt*S.cfg.rate),
         ref:$('#abRef',el).value.trim(),
         note:$('#abNote',el).value.trim()||'Abono de cliente'
       });
-      save();draw();renderStatus();
+      const persisted=await save();
+      if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);draw();renderStatus();msg('SQLite/servidor no confirmó el cobro; se mostró el último estado durable disponible.','bad');return;}
+      draw();renderStatus();
       msg('Abono de '+usd(amt)+' registrado en '+item.doc+' ('+item.client.name+').');
       return;
     }
@@ -2882,14 +2948,16 @@ function cxcDlg(selId){
         msg('La suma del cobro mixto ('+usd(totalMix)+') excede el saldo pendiente de la factura ('+usd(bal)+'). Ajuste los montos.','bad');
         return;
       }
-      const ts=Date.now();
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      let movementNo;try{movementNo=await nextCajaSequence('cxc-payment',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del cobro mixto: '+error.message,'bad');return;}
+      const ts=Date.now(),box=String(currentCaja()),movementId='MOV-'+box.replace(/\W/g,'')+'-'+pad(movementNo,6);
       const baseNote=($('#abNote',el)?$('#abNote',el).value.trim():'')||(active.length>1?'Cobro mixto ('+active.length+' métodos)':'Abono de cliente');
       item.payments=item.payments||[];
-      const batchNo=item.payments.length+1;
       active.forEach((m,idx)=>{
         const st=mixState[m.id];
         const tag=active.length>1?'[Mixto '+(idx+1)+'/'+active.length+'] ':'';
         item.payments.push({
+          id:movementId+'-'+pad(idx+1,2),movementId,cashbox:box,cashboxSequence:movementNo,paymentPart:idx+1,
           ts,
           method:tag+m.name,
           cur:m.cur,
@@ -2900,8 +2968,9 @@ function cxcDlg(selId){
         });
       });
       item.paid=r2(Math.min(item.total,item.paid+totalMix));
-      resetMix();
-      save();draw();renderStatus();
+      const persisted=await save();
+      if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);draw();renderStatus();msg('SQLite/servidor no confirmó el cobro mixto; se mostró el último estado durable disponible.','bad');return;}
+      resetMix();draw();renderStatus();
       msg('Cobro mixto por '+usd(totalMix)+' ('+active.length+' métodos) registrado en '+item.doc+'.');
     }
   });
@@ -2914,26 +2983,27 @@ function newCxcManualDlg(){
   const clOpts=S.clients.filter(c=>c.rif!=='V-00000000').map((c,i)=>'<option value="'+esc(c.rif)+'">'+esc(c.name)+' ('+esc(c.rif)+')</option>').join('');
   const el=h('<div class="form"><div class="newgrid">'+
     '<div class="f wide"><label for="mcClient">Cliente</label><select class="fld" id="mcClient">'+clOpts+'</select></div>'+
-    '<div class="f"><label for="mcDoc">Documento / Ref.</label><input class="fld mono" id="mcDoc" value="ND-'+pad((S.cxc.length+101),6)+'"></div>'+
+    '<div class="f"><label for="mcDoc">Documento / Ref.</label><input class="fld mono" id="mcDoc" value="ND-'+pad(((S.cxc||[]).filter(x=>String(x.cashbox||'')===currentCaja()).length+101),6)+'"></div>'+
     '<div class="f"><label for="mcAmt">Monto Total US$</label><input class="fld r" id="mcAmt" inputmode="decimal" placeholder="0,00"></div>'+
     '<div class="f"><label for="mcDue">Fecha Vencimiento</label><input class="fld" type="date" id="mcDue" value="'+isoD(Date.now()+15*86400000)+'"></div>'+
     '<div class="f wide"><label for="mcConc">Concepto</label><input class="fld" id="mcConc" placeholder="Factura a crédito / Nota de débito"></div>'+
   '</div></div>');
   openWin({title:'Registrar Cuenta por Cobrar',w:520,body:el,foot:[
     {label:'Cancelar',fn:()=>{cxcDlg();return false;}},
-    {label:'Guardar CxC',primary:true,fn:()=>{
+    {label:'Guardar CxC',primary:true,fn:async()=>{
       const rif=$('#mcClient',el).value, cl=S.clients.find(c=>c.rif===rif)||S.clients[1];
       const amt=pn($('#mcAmt',el).value);
       if(!amt){msg('Indique el monto en US$.','bad');return false;}
-      const id='CXC-'+pad(S.cxc.length+1,4);
+      let cxcNo;try{cxcNo=await nextCajaSequence('cxc',currentCaja());}catch(error){msg('No se pudo reservar el número de CxC: '+error.message,'bad');return false;}
+      const id='CXC-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxcNo,6),rollbackState=JSON.parse(JSON.stringify(S));
       S.cxc.push({
-        id,saleNo:null,doc:$('#mcDoc',el).value.trim()||id,
+        id,sequence:cxcNo,cashbox:currentCaja(),saleNo:null,doc:$('#mcDoc',el).value.trim()||id,
         client:Object.assign({},cl),
         concept:$('#mcConc',el).value.trim()||'Cargo a crédito',
         ts:Date.now(),dueTs:parseIsoD($('#mcDue',el).value),cashbox:currentCaja(),cashier:currentCajero(),
         total:amt,paid:0,payments:[]
       });
-      save();cxcDlg(id);msg('Cuenta por cobrar registrada.');return false;
+      const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);msg('SQLite no confirmó la CxC; no se registró definitivamente.','bad');return false;}cxcDlg(id);msg('Cuenta por cobrar registrada.');return false;
     }}
   ]});
 }
@@ -2965,7 +3035,7 @@ function cxpDlg(selId){
   '</div>');
 
   const draw=()=>{
-    const now=Date.now(), rate=S.cfg.rate, all=(S.cxp||[]).filter(x=>!x.void);
+    const now=Date.now(), rate=S.cfg.rate, all=(S.cxp||[]).filter(x=>!x.void&&String(x.cashbox||currentCaja())===currentCaja());
     const totPend=r8(all.reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
     const totOver=r8(all.filter(x=>r8(Number(x.total||0)-Number(x.paid||0))>=0.00000001&&x.dueTs<now).reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
     const totVig=r8(Math.max(0,totPend-totOver));
@@ -3145,7 +3215,7 @@ function cxpDlg(selId){
       mixState[mid].ref=e.target.value;
     }
   });
-  el.addEventListener('click',e=>{
+  el.addEventListener('click',async e=>{
     const tr=e.target.closest('tr[data-id]');
     if(tr){curId=tr.dataset.id;resetMix();draw();return;}
     if(e.target.id==='cxpNewBtn'){newCxpManualDlg();return;}
@@ -3171,22 +3241,28 @@ function cxpDlg(selId){
       const rawAmt=pn($('#pgUsd',el).value);
       if(rawAmt<=0){msg('Indique un monto de pago válido mayor a cero.','bad');return;}
       if(rawAmt-bal>0.00000001){msg('El monto ingresado ('+usd(rawAmt)+') supera el saldo por pagar ('+usd(bal)+').','bad');return;}
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      let movementNo;try{movementNo=await nextCajaSequence('cxp-payment',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del pago: '+error.message,'bad');return;}
+      const movementId='MOV-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(movementNo,6);
       const amt=r8(Math.min(bal,rawAmt));
       const mId=$('#pgMethod',el).value;
       const m=METHODS.find(x=>x.id===mId)||METHODS[5];
       item.paid=r8(Math.min(Number(item.total)||0,(Number(item.paid)||0)+amt));
       item.payments=item.payments||[];
       item.payments.push({
+        id:movementId,cashbox:currentCaja(),cashboxSequence:movementNo,
         ts:Date.now(),method:m.name,cur:m.cur,
         amountUsd:amt,amountBs:r2(amt*S.cfg.rate),
         ref:$('#pgRef',el).value.trim(),
         note:$('#pgNote',el).value.trim()||'Pago a proveedor'
       });
       if(item.purchaseNo){
-        const comp=(S.purchases||[]).find(x=>x.no===item.purchaseNo);
+        const comp=(S.purchases||[]).find(x=>x.no===item.purchaseNo&&String(x.cashbox||currentCaja())===String(item.cashbox||currentCaja()));
         if(comp)comp.paid=item.paid;
       }
-      save();draw();
+      const persisted=await save();
+      if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);draw();msg('SQLite/servidor no confirmó el pago; se mostró el último estado durable disponible.','bad');return;}
+      draw();
       msg('Pago de '+usd(amt)+' registrado para '+item.supplier.name+'.');
       return;
     }
@@ -3200,14 +3276,16 @@ function cxpDlg(selId){
         msg('La suma del pago mixto ('+usd(totalMix)+') excede el saldo pendiente de la obligación ('+usd(bal)+'). Ajuste los montos.','bad');
         return;
       }
-      const ts=Date.now();
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      let movementNo;try{movementNo=await nextCajaSequence('cxp-payment',currentCaja());}catch(error){msg('No se pudo reservar el consecutivo del pago mixto: '+error.message,'bad');return;}
+      const ts=Date.now(),box=String(currentCaja()),movementId='MOV-'+box.replace(/\W/g,'')+'-'+pad(movementNo,6);
       const baseNote=($('#pgNote',el)?$('#pgNote',el).value.trim():'')||(active.length>1?'Pago mixto ('+active.length+' medios)':'Pago a proveedor');
       item.payments=item.payments||[];
-      const batchNo=item.payments.length+1;
       active.forEach((m,idx)=>{
         const st=mixState[m.id];
         const tag=active.length>1?'[Mixto '+(idx+1)+'/'+active.length+'] ':'';
         item.payments.push({
+          id:movementId+'-'+pad(idx+1,2),movementId,cashbox:box,cashboxSequence:movementNo,paymentPart:idx+1,
           ts,
           method:tag+m.name,
           cur:m.cur,
@@ -3219,11 +3297,12 @@ function cxpDlg(selId){
       });
       item.paid=r8(Math.min(Number(item.total)||0,(Number(item.paid)||0)+totalMix));
       if(item.purchaseNo){
-        const comp=(S.purchases||[]).find(x=>x.no===item.purchaseNo);
+        const comp=(S.purchases||[]).find(x=>x.no===item.purchaseNo&&String(x.cashbox||currentCaja())===String(item.cashbox||currentCaja()));
         if(comp)comp.paid=item.paid;
       }
-      resetMix();
-      save();draw();
+      const persisted=await save();
+      if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);draw();msg('SQLite/servidor no confirmó el pago mixto; se mostró el último estado durable disponible.','bad');return;}
+      resetMix();draw();
       msg('Pago mixto por '+usd(totalMix)+' ('+active.length+' medios) registrado para '+item.supplier.name+'.');
     }
   });
@@ -3243,26 +3322,28 @@ function newCxpManualDlg(){
   const supOpts=S.suppliers.map(s=>'<option value="'+esc(s.rif)+'">'+esc(s.name)+' ('+esc(s.rif)+')</option>').join('');
   const el=h('<div class="form"><div class="newgrid">'+
     '<div class="f wide"><label for="mpSup">Proveedor / Beneficiario</label><select class="fld" id="mpSup">'+supOpts+'</select></div>'+
-    '<div class="f"><label for="mpDoc">Nº Factura / Documento</label><input class="fld mono" id="mpDoc" value="F-'+pad(S.cxp.length+501,5)+'"></div>'+
+    '<div class="f"><label for="mpDoc">Nº Factura / Documento</label><input class="fld mono" id="mpDoc" value="F-'+pad(((S.cxp||[]).filter(x=>String(x.cashbox||'')===currentCaja()).length+501),5)+'"></div>'+
     '<div class="f"><label for="mpAmt">Monto Total US$</label><input class="fld r" id="mpAmt" inputmode="decimal" placeholder="0,00"></div>'+
     '<div class="f"><label for="mpDue">Fecha Vencimiento</label><input class="fld" type="date" id="mpDue" value="'+isoD(Date.now()+15*86400000)+'"></div>'+
     '<div class="f wide"><label for="mpConc">Concepto (Compra, flete, servicio, alquiler...)</label><input class="fld" id="mpConc" placeholder="Ej: Servicio de transporte de mercancía"></div>'+
   '</div></div>');
   openWin({title:'Registrar Obligación en Cuentas por Pagar (CxP)',w:540,body:el,foot:[
     {label:'Cancelar',fn:()=>{cxpDlg();return false;}},
-    {label:'Guardar CxP',primary:true,fn:()=>{
+    {label:'Guardar CxP',primary:true,fn:async()=>{
       const rif=$('#mpSup',el).value, sup=S.suppliers.find(s=>s.rif===rif)||S.suppliers[0];
       const amt=pn($('#mpAmt',el).value);
       if(!amt){msg('Indique el monto en US$.','bad');return false;}
-      const id='CXP-'+pad(S.cxp.length+1,4);
+      let cxpNo;try{cxpNo=await nextCajaSequence('cxp',currentCaja());}catch(error){msg('No se pudo reservar el número de CxP: '+error.message,'bad');return false;}
+      const id='CXP-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxpNo,6);
+      const rollbackState=JSON.parse(JSON.stringify(S));
       S.cxp.push({
-        id,purchaseNo:null,doc:$('#mpDoc',el).value.trim()||id,
+        id,sequence:cxpNo,cashbox:currentCaja(),purchaseNo:null,doc:$('#mpDoc',el).value.trim()||id,
         supplier:Object.assign({},sup),
         concept:$('#mpConc',el).value.trim()||'Obligación con proveedor',
         ts:Date.now(),dueTs:parseIsoD($('#mpDue',el).value),
         total:amt,paid:0,payments:[]
       });
-      save();cxpDlg(id);msg('Cuenta por pagar registrada.');return false;
+      const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);msg('SQLite no confirmó la CxP; no se registró definitivamente.','bad');return false;}cxpDlg(id);msg('Cuenta por pagar registrada.');return false;
     }}
   ]});
 }
@@ -3344,7 +3425,7 @@ function newOperacionCambiariaDlg(opts, onDone){
   const initialCxp=opts.cxpId?((S.cxp||[]).find(x=>x.id===opts.cxpId)):null;
   const initialType='ZELLE_PROV';
 
-  const pendingCxp=(S.cxp||[]).filter(x=>r2(x.total-x.paid)>=0.01);
+  const pendingCxp=(S.cxp||[]).filter(x=>String(x.cashbox||currentCaja())===currentCaja()&&r2(x.total-x.paid)>=0.01);
   const cxpOptions='<option value="">-- No vincular a factura CxP --</option>'+
     pendingCxp.map(c=>'<option value="'+esc(c.id)+'"'+(initialCxp&&initialCxp.id===c.id?' selected':'')+'>'+esc(c.supplier.name)+' &middot; Doc: '+esc(c.doc)+' (Saldo: '+usd(r2(c.total-c.paid))+')</option>').join('');
 
@@ -3479,7 +3560,8 @@ function newOperacionCambiariaDlg(opts, onDone){
     w:680,body:el,
     foot:[
       {label:'Cancelar',fn:()=>{if(onDone)onDone();return false;}},
-      {label:'Guardar y Generar Comprobante',primary:true,fn:()=>{
+      {label:'Guardar y Generar Comprobante',primary:true,fn:async()=>{
+        const rollbackState=JSON.parse(JSON.stringify(S));
         const tipo=$('#opTipo',el).value;
         const nombre=$('#opVendNombre',el).value.trim();
         const ci=$('#opVendCi',el).value.trim();
@@ -3496,6 +3578,11 @@ function newOperacionCambiariaDlg(opts, onDone){
         if(!nombre||!ci){msg('Indique el nombre y la cédula/RIF del vendedor de divisas.','bad');return false;}
         if(!montoUsd||montoUsd<=0){msg('Indique el monto en US$ de la operación.','bad');return false;}
         if(!refBs){msg('Indique el número de referencia del pago en Bolívares para la trazabilidad bancaria.','bad');return false;}
+        const box=String(currentCaja());
+        if(!box||box==='SIN-ASIGNAR'){msg('Asigne una caja antes de registrar una operación cambiaria.','bad');return false;}
+        let movementNo;try{movementNo=await nextCajaSequence('currency-exchange',box);}catch(error){msg('No se pudo reservar el consecutivo de la operación cambiaria: '+error.message,'bad');return false;}
+        const boxCode=box.replace(/\W/g,'');
+        const movementId='MOV-'+boxCode+'-'+pad(movementNo,6);
 
         let destinoTipo='CAJA', destinoNombre='Caja Principal', cxpId=null, cxpDoc=null;
         let destinatarioZelle='', titularZelle='', confZelle='', seriales='';
@@ -3509,11 +3596,14 @@ function newOperacionCambiariaDlg(opts, onDone){
           if(cxpId){
             const it=(S.cxp||[]).find(x=>x.id===cxpId);
             if(it){
+              const remaining=r2(Math.max(0,Number(it.total||0)-Number(it.paid||0)));
+              if(montoUsd-remaining>0.01){msg('El pago Zelle supera el saldo pendiente de la obligación CxP ('+usd(remaining)+').','bad');return false;}
               destinoNombre=it.supplier.name;
               cxpDoc=it.doc;
-              /* Abonar o cancelar automáticamente la obligación en CxP */
+              /* El pago queda numerado en la secuencia de movimientos de esta caja. */
               if(!it.payments)it.payments=[];
               it.payments.push({
+                id:movementId,cashbox:box,cashboxSequence:movementNo,
                 ts:Date.now(),
                 method:'Zelle (USD) - Triangulado',
                 cur:'USD',
@@ -3522,7 +3612,7 @@ function newOperacionCambiariaDlg(opts, onDone){
                 ref:'ZEL:'+(confZelle||'S/R')+' | PM/TRF:'+refBs,
                 note:'Pagado vía compra Zelle a '+nombre+' ('+ci+')'
               });
-              it.paid=r2((it.paid||0)+montoUsd);
+              it.paid=r2(Math.min(Number(it.total||0),(it.paid||0)+montoUsd));
             }
           }else{
             destinoNombre=titularZelle||'Proveedor Externo';
@@ -3541,9 +3631,9 @@ function newOperacionCambiariaDlg(opts, onDone){
           destinoNombre=$('#opDestBs',el)?$('#opDestBs',el).value.trim():'Cuenta Bancaria Empresa';
         }
 
-        const id='CAMB-'+pad((S.cambiosDivisas||[]).length+1,4);
+        const id='CAMB-'+boxCode+'-'+pad(movementNo,6);
         const op={
-          id,tipo,ts:Date.now(),
+          id,tipo,ts:Date.now(),cashbox:box,sequence:movementNo,
           vendedor:{nombre,ci,tel},
           montoUsd,tasa,tasaBcv:S.cfg.rate,montoBs,
           medioBs,bancoOrigen:bancoOrig,bancoDestino:bancoDest,refBs,
@@ -3554,7 +3644,8 @@ function newOperacionCambiariaDlg(opts, onDone){
 
         if(!S.cambiosDivisas)S.cambiosDivisas=[];
         S.cambiosDivisas.push(op);
-        save();
+        const persisted=await save();
+        if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);msg('SQLite/servidor no confirmó la operación cambiaria; se mostró el último estado durable disponible.','bad');return false;}
         msg('Operación cambiaria '+id+' registrada con éxito.');
         if(onDone)onDone();
         printComprobanteDivisas(op);
@@ -3687,9 +3778,10 @@ function divisasDlg(filterType){
       ask('Eliminar Operación Cambiaria',
         '¿Desea eliminar la operación '+cid+' ('+usd(op.montoUsd)+')?'+(op.cxpId?' Nota: esto no revertirá automáticamente el saldo de la factura en CxP salvo que lo modifique en ese módulo.':''),
         'Eliminar',
-        ()=>{
+        async()=>{
           S.cambiosDivisas=S.cambiosDivisas.filter(x=>x.id!==cid);
-          save();draw();msg('Operación cambiaria eliminada.');
+          const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la eliminación de la operación cambiaria.','bad');return false;}
+          draw();msg('Operación cambiaria eliminada.');return true;
         }
       );
       return;
@@ -4078,7 +4170,7 @@ function casheaSettlementDlg(onDone){
       {
         label: 'Confirmar y Liquidar Lote',
         primary: true,
-        fn: () => {
+        fn: async () => {
           const ref = refInp.value.trim();
           const depositRaw = depositInp.value.trim();
           const pct = Number(comPctInp.value);
@@ -4104,7 +4196,7 @@ function casheaSettlementDlg(onDone){
           });
           if(!Array.isArray(S.casheaLiquidaciones))S.casheaLiquidaciones=[];
           S.casheaLiquidaciones.push({id:loteId,fecha:now,operaciones:pendings.map(m=>m.id),cantidad:pendings.length,banco:bancoSel.value,referencia:ref,brutoUsd:r2(totFinanciado),comisionPct:pct,comisionUsd:comUsd,netoEsperadoUsd:netoUsd,depositadoUsd:depositUsd,diferenciaUsd:r2(depositUsd-netoUsd),tasaBcv:rate});
-          save();
+          const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la liquidación CASHEA; se restauró el estado durable anterior.','bad');return false;}
           msg('Lote '+loteId+' conciliado y guardado ('+pendings.length+' facturas).');
           if(onDone) onDone();
           return true;
@@ -4114,7 +4206,7 @@ function casheaSettlementDlg(onDone){
   });
 }
 
-function reverseCasheaSettlement(movementId,onDone){
+async function reverseCasheaSettlement(movementId,onDone){
   const movement=(S.casheaMovimientos||[]).find(m=>String(m.id)===String(movementId));
   if(!movement||movement.estado!=='Liquidado'||!movement.loteLiquidacion){msg('La operación no tiene una liquidación activa que pueda revertirse.','bad');return false;}
   const lot=(S.casheaLiquidaciones||[]).find(item=>item.id===movement.loteLiquidacion&&item.tipo!=='REVERSIÓN');
@@ -4135,7 +4227,7 @@ function reverseCasheaSettlement(movementId,onDone){
     delete m.bancoReceptor;delete m.refBancaria;delete m.comisionPct;delete m.comisionUsd;delete m.netoEsperadoUsd;delete m.tasaBcvLiquidacion;delete m.fechaLiquidacion;
   });
   S.casheaLiquidaciones.push({id:revId,tipo:'REVERSIÓN',fecha:now,loteOriginal:lot.id,operaciones:affected.map(m=>m.id),cantidad:affected.length,operador:currentCajero(),motivo:motivo.trim(),estado:'Registrada'});
-  save();
+  const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la reversión CASHEA; se restauró el estado durable anterior.','bad');return false;}
   msg('Reversión '+revId+' registrada. '+affected.length+' operaciones regresaron a pendientes.');
   if(onDone)onDone();
   return true;
@@ -4272,11 +4364,11 @@ function casheaDlg(defaultTab){
     msg('Archivo CSV de Cashea exportado correctamente.');
   });
 
-  $('#cshRows', el).addEventListener('click', e => {
+  $('#cshRows', el).addEventListener('click', async e => {
     const bReverse = e.target.closest('[data-csh-reverse]');
     if(bReverse){
       const movement=(S.casheaMovimientos||[]).find(x=>x.id===bReverse.dataset.cshReverse);
-      if(movement)reverseCasheaSettlement(movement.id,()=>render());
+      if(movement)await reverseCasheaSettlement(movement.id,()=>render());
       return;
     }
     const bVouch = e.target.closest('[data-csh-vouch]');
@@ -4385,7 +4477,7 @@ function payDlg(draft){
     upd();inp.focus();inp.select();
   });
   openWin({title:'Cobrar factura '+pad(S.invoice),w:760,body:el,
-    foot:[{label:'Cancelar'},{id:'btnConfirm',label:'Confirmar cobro',primary:true,fn:()=>{
+    foot:[{label:'Cancelar'},{id:'btnConfirm',label:'Confirmar cobro',primary:true,fn:async()=>{
       const isCred=$('#payCreditChk',el).checked;
       if(!last||(last.pending>=0.01&&!isCred))return false;
       const enteredAmts=amts(),enteredRefs=refs();
@@ -4397,7 +4489,7 @@ function payDlg(draft){
         return false;
       }
       const cDays=Math.max(1,Math.round(pn($('#payCreditDays',el).value)||15));
-      finalize(last,enteredAmts,isCred,cDays,enteredRefs,el);return false;
+      try{await finalize(last,enteredAmts,isCred,cDays,enteredRefs,el);}catch(error){msg('No se pudo reservar o confirmar la numeración de la venta: '+error.message,'bad');}return false;
     }}],
     onOpen:()=>{upd();$('#pm-efUSD',el).focus();}});
 }
@@ -4410,7 +4502,7 @@ function showSaleCompletion(sale){
     '<div class="sale-completion-icon '+(hasChange?'change':'success')+'">'+(hasChange?'↩':'✓')+'</div>'+
     '<div class="sale-completion-label">'+(hasChange?'VUELTO A ENTREGAR':'VENTA FINALIZADA')+'</div>'+
     (hasChange?'<div class="sale-completion-amount">'+esc(usd(change))+'</div><div class="sale-completion-equivalent">Equivalente: <b>'+esc(bsf(r2(change*rate)))+'</b></div><p class="sale-completion-note">Entregue el vuelto en efectivo según la moneda acordada con el cliente. Si el excedente provino de un pago electrónico, gestione la devolución por ese mismo medio.</p>':'<p class="sale-completion-note">La factura '+esc(pad(sale.no))+' fue registrada correctamente. No hay vuelto pendiente.</p>')+
-    '<div class="sale-completion-ticket">Factura <b>'+esc(pad(sale.no))+'</b> · Total <b>'+esc(usd(r2(sale.total+sale.igtf)))+'</b></div>'+
+    '<div class="sale-completion-ticket">Factura POS <b>'+esc(pad(sale.no))+'</b>'+(sale.fiscal?' · Documento fiscal <b>'+esc(sale.fiscal.documentNumber)+'</b> · Serial <b>'+esc(sale.fiscal.serial)+'</b>':'')+' · Total <b>'+esc(usd(r2(sale.total+sale.igtf)))+'</b></div>'+
     '</div>');
   openWin({title:hasChange?'Vuelto de la venta':'Venta finalizada',w:390,body,foot:[
     {label:'Ver / imprimir ticket',primary:true,fn:()=>{closeWin();showTicket(sale);return false;}},
@@ -4418,9 +4510,23 @@ function showSaleCompletion(sale){
   ],onOpen:()=>{const node=$('.sale-completion',body);if(node)node.setAttribute('tabindex','-1');}});
 }
 
-function finalize(st,amts,isCred,cDays,refs,payEl){
+async function finalize(st,amts,isCred,cDays,refs,payEl){
   const ctx=cajaContext();if(ctx.role==='cajero'&&ctx.status!=='abierta'){msg('La caja no está abierta. Solicite al administrador una nueva apertura antes de facturar.','bad');return;}
-  const t=totals(), ts=Date.now(), invNo=nextCajaInvoice();
+  const fiscalMode=S.cfg.fiscalTipo==='MAQUINA_FISCAL';
+  const fiscalProfile=fiscalMode&&S.cfg.fiscalPrinters?S.cfg.fiscalPrinters[currentCaja()]:null;
+  const unresolvedFiscalJobs=(S.fiscalPrinterJobs||[]).filter(job=>String(job.cashbox)===String(currentCaja())&&['pending','uncertain'].includes(job.status));
+  if(fiscalMode&&unresolvedFiscalJobs.length){msg('Esta caja tiene una emisión fiscal pendiente o incierta ('+unresolvedFiscalJobs.map(job=>job.id).join(', ')+'). Consulte la impresora y reconcilie esa operación antes de facturar otra venta.','bad');return;}
+  if(fiscalMode){
+    if(!fiscalProfile||fiscalProfile.enabled!==true){msg('La modalidad está configurada como Máquina Fiscal, pero esta caja no tiene una impresora fiscal habilitada. Configure el dispositivo antes de cobrar.','bad');return;}
+    if(!window.posDesktop||typeof window.posDesktop.fiscalPrinterStatus!=='function'||typeof window.posDesktop.fiscalPrinterEmitInvoice!=='function'){msg('La emisión fiscal requiere la aplicación Electron de escritorio. No se registró la venta.','bad');return;}
+    try{
+      const diagnostic=await window.posDesktop.fiscalPrinterStatus(fiscalProfile);
+      if(!diagnostic.ready){msg('La impresora fiscal no está lista: '+diagnostic.note+' No se registró la venta.','bad');return;}
+      await window.posDesktop.fiscalPrinterTestBridge(fiscalProfile);
+    }catch(error){msg('No se pudo validar el adaptador fiscal: '+error.message+' No se registró la venta.','bad');return;}
+  }
+  const t=totals(), ts=Date.now(), invNo=await nextCajaInvoice();
+  const rollbackState=JSON.parse(JSON.stringify(S));
   const lines=S.cart.map(l=>{
     const i=lineInfo(l);
     return{
@@ -4446,15 +4552,23 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
     ref:(refs&&refs[m.id])||''
   }));
   const creditAmt=(isCred&&st.pending>=0.01)?r2(st.pending):0;
+  const casheaAmt=r2(amts.cashea||0);
+  let cxcNo=null,casheaNo=null;
+  if(casheaAmt>0){
+    const casheaRef=(refs&&refs.cashea)||'';
+    if(!casheaRef){msg('Falta el código real de aprobación Cashea; no se generará una referencia ficticia.','bad');return;}
+    try{casheaNo=await nextCajaSequence('cashea',currentCaja());}catch(error){msg('No se pudo reservar el número de movimiento Cashea: '+error.message,'bad');return;}
+  }
   if(creditAmt>0){
+    try{cxcNo=await nextCajaSequence('cxc',currentCaja());}catch(error){msg('No se pudo reservar el número de CxC: '+error.message,'bad');return;}
     pays.push({id:'credito',name:'Crédito CxC ('+cDays+' días)',cur:'USD',amount:creditAmt});
   }
   const ctrlPrefix=S.cfg.ctrlPrefix||'00-';
   const seqs=cajaSeqs(),boxSeq=seqs[currentCaja()]||(seqs[currentCaja()]={invoice:1,void:1,refund:1,cxc:1,movement:1,z:1});
-  const ctrlNext=Number(boxSeq.ctrl||1);boxSeq.ctrl=ctrlNext+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
+  const ctrlNext=await nextCajaSequence('control',currentCaja());boxSeq.ctrl=ctrlNext+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
   const ctrlNo=ctrlPrefix+String(currentCaja()).replace(/\W/g,'').slice(-4)+'-'+pad(ctrlNext,8);
   const sale={
-    accountingSourceId:'SALE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(invNo),
+    
     no:invNo,ctrlNo,docType:'01-FACTURA',transType:'01-REG',
     ts,cashbox:currentCaja(),cashier:currentCajero(),client:Object.assign({},S.client),lines,
     sub:t.sub,disc:t.disc,base:t.base,
@@ -4463,10 +4577,8 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
     change:r2(st.change),credit:creditAmt,void:false
   };
 
-  const casheaAmt=r2(amts.cashea||0);
   if(casheaAmt>0){
     const cRef=(refs&&refs.cashea)||'';
-    if(!cRef){msg('Falta el código real de aprobación Cashea; no se generará una referencia ficticia.','bad');return;}
     const cTx=(payEl&&payEl._casheaTx)||{};
     const inicialUsd=cTx.inicialUsd!==undefined?cTx.inicialUsd:r2(t.total-casheaAmt);
     const nivel=cTx.nivel||'Nivel 3 (40% inicial / 60% financiado)';
@@ -4488,7 +4600,8 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
     };
     if(!Array.isArray(S.casheaMovimientos))S.casheaMovimientos=[];
     S.casheaMovimientos.push({
-      id:'CSH-MOV-'+pad(S.casheaMovimientos.length+1,4),
+      id:'CSH-MOV-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(casheaNo,6),
+      sequence:casheaNo,cashbox:currentCaja(),
       ventaNo:invNo,
       ctrlNo,
       ts,
@@ -4506,7 +4619,50 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
     });
   }
 
-  S.cart.forEach(l=>{
+  
+  let fiscalJob=null;
+  if(fiscalMode){
+    if(!Array.isArray(S.fiscalPrinterJobs))S.fiscalPrinterJobs=[];
+    const idempotencyKey='SIFER360-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+String(invNo)+'-'+String(ts);
+    fiscalJob={id:'FISCAL-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+pad(invNo,8),idempotencyKey,cashbox:currentCaja(),saleNo:invNo,createdAt:ts,status:'pending',fiscalSerial:'',fiscalDocumentNumber:'',lastError:'',printerProvider:fiscalProfile.provider,printerModel:fiscalProfile.model,creditSequence:cxcNo,creditDays:cDays,saleSnapshot:JSON.parse(JSON.stringify(sale))};
+    S.fiscalPrinterJobs.push(fiscalJob);
+    const journal=await save();
+    if(!journal||!journal.ok){restoreStateSnapshotIfNeeded(journal,rollbackState);msg('SQLite no confirmó la intención de emisión fiscal. La impresora no recibió comandos y la venta no se registró.','bad');return;}
+    const fiscalInvoice={
+      idempotencyKey,
+      documentType:'invoice',
+      cashbox:currentCaja(),
+      cashier:currentCajero(),
+      issuedAt:new Date(ts).toISOString(),
+      company:{name:S.cfg.empresa,rif:S.cfg.rif,address:S.cfg.dir},
+      customer:sale.client,
+      exchangeRate:Number(sale.rate)||1,
+      lines:sale.lines.map(line=>({code:line.code,description:line.desc,unit:line.unit,quantity:line.qty,unitPriceUsd:line.price,unitPriceVes:r2(line.price*(Number(sale.rate)||1)),discountPercent:line.disc,taxRate:line.taxRate,taxType:line.taxType,netUsd:line.net,netVes:r2(line.net*(Number(sale.rate)||1)),ivaUsd:line.iva,ivaVes:r2(line.iva*(Number(sale.rate)||1))})),
+      totals:{subtotalUsd:sale.sub,subtotalVes:r2(sale.sub*(Number(sale.rate)||1)),discountUsd:sale.disc,discountVes:r2(sale.disc*(Number(sale.rate)||1)),taxableBaseUsd:sale.base,taxableBaseVes:r2(sale.base*(Number(sale.rate)||1)),ivaUsd:sale.iva,ivaVes:r2(sale.iva*(Number(sale.rate)||1)),igtfUsd:sale.igtf,igtfVes:r2(sale.igtf*(Number(sale.rate)||1)),totalUsd:sale.total,totalVes:r2(sale.total*(Number(sale.rate)||1)),amountDueUsd:r2(sale.total+sale.igtf),amountDueVes:r2((sale.total+sale.igtf)*(Number(sale.rate)||1))},
+      payments:sale.pays,
+      changeUsd:sale.change,
+      currency:'VES',
+      displayCurrency:'USD'
+    };
+    try{
+      const issued=await window.posDesktop.fiscalPrinterEmitInvoice(fiscalProfile,fiscalInvoice);
+      fiscalJob.status='issued';
+      fiscalJob.fiscalDocumentNumber=issued.fiscalDocumentNumber;
+      fiscalJob.fiscalSerial=issued.fiscalSerial;
+      fiscalJob.issuedAt=Date.now();
+      fiscalProfile.serial=issued.fiscalSerial;
+      sale.fiscal={provider:fiscalProfile.provider,model:fiscalProfile.model,documentNumber:issued.fiscalDocumentNumber,serial:issued.fiscalSerial,authorization:issued.authorization||'',status:'issued'};
+    }catch(error){
+      fiscalJob.status='uncertain';
+      fiscalJob.lastError=String(error.message||error).slice(0,1000);
+      fiscalJob.lastAttemptAt=Date.now();
+      const journalResult=await save();
+      msg('La impresora no confirmó el resultado de la emisión. Consulte el último documento en la máquina antes de reintentar. La venta quedó sin confirmar en el POS.'+(journalResult&&journalResult.ok?' Incidencia guardada en SQLite.':' No se pudo actualizar la incidencia; permanece la intención previa en SQLite.'),'bad');
+      return;
+    }
+  }
+
+S.cart.forEach(l=>{
     const p=prod(l.code);
     p.stock=Math.max(0,r2(p.stock-l.qty));
     addKardex({
@@ -4517,7 +4673,8 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
   if(creditAmt>0){
     const paidUpfront=r2(Math.max(0,t.total-creditAmt));
     S.cxc.push({
-      id:'CXC-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(S.cxc.filter(x=>x.cashbox===currentCaja()).length+1,6),
+      id:'CXC-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxcNo,6),
+      sequence:cxcNo,
       cashbox:currentCaja(),cashier:currentCajero(),saleNo:invNo,
       doc:'FAC-'+pad(invNo),
       client:Object.assign({},S.client),
@@ -4529,7 +4686,8 @@ function finalize(st,amts,isCred,cDays,refs,payEl){
     });
   }
   S.sales.push(sale);S.invoice=Math.max(S.invoice,invNo+1);S.cart=[];S.sel=-1;S.client=S.clients[0];
-  save();renderAll();
+  const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);renderAll();msg(fiscalMode?'La impresora fiscal pudo haber emitido el documento, pero SQLite no confirmó la venta. NO reimprima ni repita el cobro; consulte la máquina y reconcilie la intención fiscal pendiente.':'SQLite no confirmó la venta; se mostró el último estado durable disponible y no se confirmó la factura.','bad');return;}
+  renderAll();
   msg('Factura '+pad(sale.no)+' procesada por '+usd(r2(sale.total+sale.igtf))+(casheaAmt>0?' (Financiado Cashea: '+usd(casheaAmt)+')':'')+(creditAmt>0?' (Saldo a CxC: '+usd(creditAmt)+')':'')+'.');
   showSaleCompletion(sale);
 }
@@ -4601,6 +4759,7 @@ function ticketText(s){
     L.push(row(' Financiado Cashea:',usd(s.cashea.financiadoUsd)));
     L.push(row(' '+(s.cashea.cuotasCount||3)+' cuota(s) quincenales:',usd(s.cashea.cuotaUsd)+' c/u'));
   }
+  if(s.fiscal){L.push(ln,ctr('COPIA INTERNA · NO ES ORIGINAL FISCAL'),row('Documento fiscal:',s.fiscal.documentNumber),row('Serial máquina:',s.fiscal.serial));}
   L.push(ln,ctr('¡GRACIAS POR SU COMPRA!'),ctr('Impresora Térmica 80mm · Control Interno'));
   return L.join('\n');
 }
@@ -4623,13 +4782,13 @@ function showTicket(s){
   pre.textContent=ticketText(s);
   applyTicketStyle(pre);
 
-  el.addEventListener('change',e=>{
+  el.addEventListener('change',async e=>{
     if(e.target.id==='tkFont'||e.target.id==='tkSize'||e.target.id==='tkBold'){
       S.cfg.ticketFont=$('#tkFont',el).value;
       S.cfg.ticketSize=$('#tkSize',el).value;
       S.cfg.ticketBold=$('#tkBold',el).checked;
       applyTicketStyle(pre);
-      save();
+      const persisted=await save();if(!persisted||!persisted.ok)msg('El servidor no confirmó los parámetros del ticket.','bad');
     }
   });
 
@@ -4668,17 +4827,20 @@ function salesDlg(){
     $('#saView',el).disabled=!selNo;$('#saVoid',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;
     $('#saVoid',el).textContent='Anular venta';
   };
-  el.addEventListener('click',e=>{
+  el.addEventListener('click',async e=>{
     const tr=e.target.closest('tr[data-no]');
     if(tr){selNo=+tr.dataset.no;armed=0;draw();return;}
     const s=S.sales.find(x=>x.no===selNo&&x.cashbox===currentCaja());
     if(e.target.id==='saView'&&s){showTicket(s);}
+    if(e.target.id==='saVoid'&&s&&!s.void&&s.fiscal){msg('Esta factura ya fue emitida por una máquina fiscal. No se permite anularla solo en el POS. Debe integrarse y ejecutarse la anulación/nota de crédito en la propia máquina.','bad');return;}
     if(e.target.id==='saVoid'&&s&&!s.void){
       if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin('Anular factura '+pad(s.no)))return;
       if(!armed||Date.now()-armed>5000){armed=Date.now();e.target.textContent='Confirmar anulación';return;}
+      let voidNo;try{voidNo=await nextCajaSequence('void',currentCaja());}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
+      const rollbackState=JSON.parse(JSON.stringify(S));
       s.void=true;
       s.transType='03-ANUL';
-      s.voidDoc='NC-'+pad(s.no,8);
+      s.voidNo=voidNo;s.voidDoc='ANU-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(voidNo,6);
       s.voidTs=Date.now();
       s.lines.forEach(l=>{
         const p=prod(l.code);
@@ -4692,7 +4854,9 @@ function salesDlg(){
         }
       });
       S.cxc=(S.cxc||[]).filter(x=>!(x.saleNo===s.no&&x.cashbox===currentCaja()));
-      armed=0;save();renderCatalog();draw();msg('Factura '+pad(s.no)+' anulada. Se devolvió la mercancía al inventario y Kardex.');
+      const persisted=await save();
+      if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);armed=0;renderCatalog();draw();msg('SQLite/servidor no confirmó la anulación; se mostró el último estado durable disponible.','bad');return;}
+      armed=0;renderCatalog();draw();msg('Factura '+pad(s.no)+' anulada. Se devolvió la mercancía al inventario y Kardex.');
     }
   });
   openWin({title:'Ventas del día y cierre de caja',w:900,body:el,foot:[
@@ -4931,7 +5095,7 @@ function registerLoteSudebanDlg(onDone){
     w:580,body:el,
     foot:[
       {label:'Cancelar',fn:()=>{if(onDone)onDone();return false;}},
-      {label:'Guardar y Conciliar',primary:true,fn:()=>{
+      {label:'Guardar y Conciliar',primary:true,fn:async()=>{
         const monto=pn($('#ltMonto',el).value);
         if(!monto){msg('Indique el total en Bolívares del voucher.','bad');return false;}
         const comPct=pn($('#ltComPct',el).value)||1.5;
@@ -4951,7 +5115,7 @@ function registerLoteSudebanDlg(onDone){
         };
         if(!S.lotesSudeban)S.lotesSudeban=[];
         S.lotesSudeban.push(lote);
-        save();
+        const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el lote bancario; se restauró el estado durable anterior.','bad');return false;}
         msg('Lote bancario '+lote.refLote+' registrado y conciliado.');
         if(onDone)onDone();
         return false;
@@ -5025,7 +5189,7 @@ function newRetencionIvaDlg(onDone){
     body:el,
     foot:[
       {label:'Cancelar'},
-      {label:'Emitir y Guardar',primary:true,fn:()=>{
+      {label:'Emitir y Guardar',primary:true,fn:async()=>{
         const base=pn($('#retBase',el).value);
         if(!base){msg('Indique una base imponible válida.','bad');return false;}
         const supIdx=parseInt($('#retSup',el).value)||0;
@@ -5036,13 +5200,14 @@ function newRetencionIvaDlg(onDone){
         const iva=r2(base*0.16);
         const retUsd=r2(iva*(pct/100));
         const retBs=r2(retUsd*rate);
-        const seq=(S.retencionesIva||[]).length+42;
         const fechaComp=new Date();const periodoComp=String(fechaComp.getFullYear())+String(fechaComp.getMonth()+1).padStart(2,'0');
+        let seq;try{seq=await nextCajaSequence('retention-'+periodoComp,currentCaja());}catch(error){msg('No se pudo reservar el número de la retención: '+error.message,'bad');return false;}
         const compId=periodoComp+pad(seq,8);
         const retEntry={
           id:compId,
           ts:Date.now(),
           periodo:periodoComp,
+          cashbox:currentCaja(),sequence:seq,
           supplier:Object.assign({},sup),
           docProv,
           ctrlProv,
@@ -5054,9 +5219,9 @@ function newRetencionIvaDlg(onDone){
           retainedBs:retBs
         };
         if(!S.retencionesIva)S.retencionesIva=[];
-        S.retencionesIva.push(retEntry);
-        save();
         retEntry.estado='Borrador para revisión del contador';retEntry.declarada=false;retEntry.pagada=false;retEntry.comprobanteEntregado=false;retEntry.observaciones='Registro interno del POS; validar antes de emitir/declarar ante SENIAT.';
+        S.retencionesIva.push(retEntry);
+        const persisted=await save();if(!persisted||!persisted.ok){S.retencionesIva=S.retencionesIva.filter(x=>x!==retEntry);msg('SQLite no confirmó la retención; no se registró definitivamente.','bad');return false;}
         msg('Registro de retención guardado como borrador para revisión del contador.');
         if(onDone)onDone();
         printComprobanteRetencion(retEntry);
@@ -5064,6 +5229,180 @@ function newRetencionIvaDlg(onDone){
       }}
     ]
   });
+}
+
+
+function fiscalPrinterConfigDlg(){
+  const user=activeUser();
+  if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras fiscales de las cajas.','bad');return;}
+  const boxes=cashboxList().filter(x=>x.active!==false);
+  let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
+  const providerCatalog={
+    hka:{label:'The Factory HKA',files:['TfhkaNet.dll','tfhkaif.dll','IntTFHKA.exe']},
+    bematech:{label:'Bematech',files:['BemaFI32.dll','BemaFI64.dll','BemaFI32.ini']},
+    epson:{label:'Epson Fiscal',files:['EpsonFiscalInterface.dll']},
+    quorion:{label:'Quorion',files:['QProg.dll']},
+    aclas:{label:'Aclas',files:['AclasSDK.dll']},
+    pnp:{label:'PNP / Desarrollos PNP',files:['PnpFiscal.dll']},
+    hasar:{label:'Hasar',files:[]}
+  };
+  const readSavedDraft=boxId=>{const saved=(S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[boxId])||{};return{provider:saved.provider||'hka',model:saved.model||'',port:saved.port||'',baudRate:saved.baudRate||9600,dataBits:saved.dataBits||8,parity:saved.parity||'none',stopBits:saved.stopBits||1,timeoutMs:saved.timeoutMs||8000,bridgePath:saved.bridgePath||'',sdkPaths:Object.assign({},saved.sdkPaths||{}),enabled:saved.enabled===true};};
+  let draft=readSavedDraft(box);
+  const drafts={[box]:draft};
+  const boxOptions=boxes.map(x=>'<option value="'+esc(x.id)+'" '+(String(x.id)===box?'selected':'')+'>'+esc(x.id)+' — '+esc(x.name||('Caja '+x.id))+'</option>').join('');
+  const el=h('<div class="form"><div class="hint"><b>Configuración de impresoras fiscales</b>. Los parámetros se guardan en SQLite y quedan asociados a cada caja. La conexión física se prueba en este equipo.</div><div class="f"><label for="fpCashbox">Caja a configurar</label><select class="fld" id="fpCashbox">'+boxOptions+'</select></div><div class="newgrid">'+
+    '<div class="f"><label for="fpProvider">Fabricante / ecosistema</label><select class="fld" id="fpProvider">'+Object.keys(providerCatalog).map(k=>'<option value="'+k+'" '+(draft.provider===k?'selected':'')+'>'+providerCatalog[k].label+'</option>').join('')+'</select></div>'+
+    '<div class="f"><label for="fpModel">Modelo exacto</label><input class="fld" id="fpModel" maxlength="120" value="'+esc(draft.model)+'" placeholder="Ej. HKA80, MP-4000 TH FI"></div>'+
+    '<div class="f"><label for="fpPort">Puerto USB-Serial / COM</label><input class="fld mono" id="fpPort" list="fpPortList" value="'+esc(draft.port)+'" placeholder="COM4"><datalist id="fpPortList"></datalist></div>'+
+    '<div class="f"><label for="fpBaud">Velocidad (baudios)</label><select class="fld" id="fpBaud">'+[9600,19200,38400,57600,115200,230400].map(v=>'<option value="'+v+'" '+(Number(draft.baudRate)===v?'selected':'')+'>'+v+'</option>').join('')+'</select></div>'+
+    '<div class="f"><label for="fpBits">Bits de datos</label><select class="fld" id="fpBits"><option value="8" '+(Number(draft.dataBits)===8?'selected':'')+'>8</option><option value="7" '+(Number(draft.dataBits)===7?'selected':'')+'>7</option></select></div>'+
+    '<div class="f"><label for="fpParity">Paridad</label><select class="fld" id="fpParity">'+['none','even','odd','mark','space'].map(v=>'<option value="'+v+'" '+(draft.parity===v?'selected':'')+'>'+v.toUpperCase()+'</option>').join('')+'</select></div>'+
+    '<div class="f"><label for="fpStop">Bits de parada</label><select class="fld" id="fpStop"><option value="1" '+(Number(draft.stopBits)===1?'selected':'')+'>1</option><option value="2" '+(Number(draft.stopBits)===2?'selected':'')+'>2</option></select></div>'+
+    '<div class="f"><label for="fpTimeout">Tiempo de espera (ms)</label><input class="fld r" id="fpTimeout" type="number" min="1000" max="60000" value="'+esc(draft.timeoutMs)+'"></div>'+
+    '</div><div class="row" style="flex-wrap:wrap;margin:8px 0"><button class="btn" id="fpDetect">Detectar puertos COM</button><button class="btn" id="fpTestPort">Probar apertura del puerto</button></div>'+
+    '<div class="group"><div class="gtitle">SDK del fabricante</div><div id="fpSdkFields"></div><div class="hint">Selecciona únicamente archivos originales entregados por el fabricante o distribuidor autorizado. Detectar un DLL no significa que el protocolo esté integrado.</div></div>'+
+    '<div class="group"><div class="gtitle">Puente de comunicación fiscal</div><div class="f"><label for="fpBridge">Ejecutable adaptador del fabricante</label><input class="fld" id="fpBridge" readonly value="'+esc(draft.bridgePath)+'"></div><div class="row" style="flex-wrap:wrap;margin-top:8px"><button class="btn" id="fpChooseBridge">Seleccionar adaptador .exe</button><button class="btn" id="fpTestBridge">Comprobar adaptador</button></div><p class="hint">El adaptador debe implementar sifer-fiscal-bridge/v1 y usar el SDK oficial. No se envían comandos fiscales desde esta prueba.</p></div>'+
+    '<label class="chk"><input type="checkbox" id="fpEnabled" '+(draft.enabled?'checked':'')+'> Habilitar este dispositivo en la configuración de la caja</label>'+
+    '<div id="fpStatus" class="hint" role="status" aria-live="polite">Pendiente de diagnóstico.</div><div id="fpPendingJobs" class="group" hidden></div>'+
+    '<div class="group" style="border-color:#d7a44b;background:#fff9e9"><b>Importante:</b> la prueba COM solo abre y cierra el puerto. No emite facturas ni modifica la memoria fiscal. No se habilitará emisión fiscal real hasta instalar y validar el adaptador específico del modelo con el fabricante.</div></div>');
+  const profile=()=>{
+    const provider=$('#fpProvider',el).value;
+    return {provider,model:$('#fpModel',el).value.trim(),port:$('#fpPort',el).value.trim(),baudRate:Number($('#fpBaud',el).value),dataBits:Number($('#fpBits',el).value),parity:$('#fpParity',el).value,stopBits:Number($('#fpStop',el).value),timeoutMs:Number($('#fpTimeout',el).value),bridgePath:$('#fpBridge',el).value.trim(),sdkPaths:Object.assign({},draft.sdkPaths),enabled:$('#fpEnabled',el).checked};
+  };
+  const drawPendingJobs=()=>{
+    const jobs=(S.fiscalPrinterJobs||[]).filter(job=>String(job.cashbox)===String(box)&&['pending','uncertain'].includes(job.status));
+    const node=$('#fpPendingJobs',el);if(!node)return;
+    node.hidden=!jobs.length;
+    node.innerHTML=jobs.length?'<div class="gtitle">Emisiones que requieren conciliación</div>'+jobs.map(job=>'<div class="group" style="margin:6px 0"><b>'+esc(job.id)+'</b> · Estado: '+esc(job.status)+' · Factura POS '+esc(pad(job.saleNo))+' · '+esc(job.lastError||'Consultar el último documento de la máquina antes de reintentar.')+'<div class="newgrid"><div class="f"><label>Número fiscal confirmado en la máquina</label><input class="fld mono" data-fiscal-doc="'+esc(job.id)+'" placeholder="Número exacto impreso"></div><div class="f"><label>Serial de máquina</label><input class="fld mono" data-fiscal-serial="'+esc(job.id)+'" value="'+esc(job.fiscalSerial||'')+'" placeholder="Serial fiscal"></div></div><div class="row" style="flex-wrap:wrap"><button class="btn mini2 primary" data-fiscal-reconcile="'+esc(job.id)+'">Confirmar emisión verificada</button><button class="btn mini2" data-fiscal-not-issued="'+esc(job.id)+'">Confirmar que no se emitió</button></div></div>').join('')+'<p class="hint">Solo use estas acciones después de consultar físicamente el último documento de la máquina. La primera reconstruye la venta y el inventario en SQLite; la segunda libera la caja para reintentar como una operación nueva.</p>':'';
+  };
+  const drawSdk=()=>{
+    const p=profile(),files=providerCatalog[p.provider].files;
+    $('#fpSdkFields',el).innerHTML=files.map(file=>'<div class="row" style="gap:6px;margin:5px 0;align-items:center"><div style="flex:1;min-width:0"><b>'+esc(file)+'</b><div class="hint" style="overflow-wrap:anywhere">'+esc(draft.sdkPaths[file]||'No seleccionado')+'</div></div><button class="btn mini2" data-sdk-file="'+esc(file)+'">Buscar archivo</button></div>').join('');
+  };
+  const status=async()=>{
+    const node=$('#fpStatus',el),p=profile();
+    if(!window.posDesktop||!window.posDesktop.fiscalPrinterStatus){node.textContent='La administración de impresoras fiscales requiere la aplicación Electron de escritorio.';return;}
+    try{const r=await window.posDesktop.fiscalPrinterStatus(p);node.textContent=(r.ready?'Adaptador y SDK detectados.':'Configuración incompleta.')+' '+r.note+' Archivos SDK: '+r.files.filter(x=>x.exists).length+'/'+r.files.length+'. Puente: '+(r.bridgeExists?'presente':'no configurado')+'.';}
+    catch(e){node.textContent='No se pudo verificar la configuración: '+e.message;}
+    drawPendingJobs();
+  };
+  const detect=async()=>{
+    const node=$('#fpStatus',el);node.textContent='Buscando puertos COM de Windows…';
+    try{const r=await window.posDesktop.fiscalPrinterListPorts();$('#fpPortList',el).innerHTML=(r.ports||[]).map(p=>'<option value="'+esc(p.port)+'">'+esc(p.name)+'</option>').join('');const driverNames={prolific:'Prolific PL2303',ftdi:'FTDI VCP',silabs:'Silicon Labs CP210x'};node.textContent=r.ports.length?'Puertos detectados: '+r.ports.map(p=>p.port+' — '+p.name+(p.driverId?' ['+(driverNames[p.driverId]||p.driverId)+']':' [chip USB no identificado]')).join(' · '):r.message;}
+    catch(e){node.textContent='No se pudieron detectar puertos: '+e.message;}
+  };
+  const applyDraft=()=>{
+    $('#fpProvider',el).value=draft.provider;
+    $('#fpModel',el).value=draft.model;
+    $('#fpPort',el).value=draft.port;
+    $('#fpBaud',el).value=String(draft.baudRate);
+    $('#fpBits',el).value=String(draft.dataBits);
+    $('#fpParity',el).value=draft.parity;
+    $('#fpStop',el).value=String(draft.stopBits);
+    $('#fpTimeout',el).value=String(draft.timeoutMs);
+    $('#fpBridge',el).value=draft.bridgePath;
+    $('#fpEnabled',el).checked=draft.enabled;
+    drawSdk();
+  };
+  el.addEventListener('change',e=>{
+    if(e.target.id==='fpCashbox'){
+      drafts[box]=profile();
+      box=String(e.target.value);
+      draft=drafts[box]||readSavedDraft(box);
+      drafts[box]=draft;
+      applyDraft();
+      status();
+      return;
+    }
+    if(e.target.id==='fpProvider'){draft.provider=e.target.value;drafts[box]=draft;drawSdk();status();}
+  });
+  el.addEventListener('click',async e=>{
+    const sdk=e.target.closest('[data-sdk-file]');
+    if(sdk){
+      try{const file=await window.posDesktop.fiscalPrinterSelectFile('sdk');if(file){draft.sdkPaths[sdk.dataset.sdkFile]=file;drawSdk();await status();}}
+      catch(err){$('#fpStatus',el).textContent='No se pudo seleccionar el SDK: '+err.message;}
+      return;
+    }
+    const reconcile=e.target.closest('[data-fiscal-reconcile]');
+    if(reconcile){
+      const job=(S.fiscalPrinterJobs||[]).find(x=>x.id===reconcile.dataset.fiscalReconcile&&String(x.cashbox)===String(box));
+      if(!job)return;
+      const doc=$('[data-fiscal-doc="'+job.id+'"]',el).value.trim();
+      const serial=$('[data-fiscal-serial="'+job.id+'"]',el).value.trim();
+      if(!doc||!serial){msg('Indique el número fiscal y serial exactos que aparecen en la máquina.','bad');return;}
+      if(!confirm('Confirma que consultó la impresora física y verificó que la factura '+pad(job.saleNo)+' fue emitida con el número '+doc+' y serial '+serial+'?'))return;
+      const snapshot=JSON.parse(JSON.stringify(S));
+      try{
+        const sale=JSON.parse(JSON.stringify(job.saleSnapshot||{}));
+        if(!sale.no||!Array.isArray(sale.lines))throw new Error('La intención fiscal no contiene una venta recuperable.');
+        sale.fiscal={provider:job.printerProvider||draft.provider,model:job.printerModel||draft.model,documentNumber:doc,serial,status:'issued',manualReconciliation:true};
+        const existing=S.sales.find(x=>Number(x.no)===Number(sale.no)&&String(x.cashbox)===String(job.cashbox));
+        if(existing)existing.fiscal=sale.fiscal;
+        else{
+          sale.lines.forEach(line=>{
+            const product=prod(line.code);
+            if(!product)throw new Error('No se encuentra en SQLite el producto '+line.code+'; no se reconstruyó la venta.');
+            product.stock=Math.max(0,r2(product.stock-line.qty));
+            addKardex({ts:Date.now(),code:product.code,type:'VENTA',dir:'OUT',doc:'FAC-'+pad(sale.no),cashbox:job.cashbox,party:sale.client&&sale.client.name||'',qty:line.qty,stockAfter:product.stock,cost:product.cost,user:sale.cashier||'Sistema'});
+          });
+          if(Number(sale.credit)>0&&!S.cxc.some(x=>Number(x.saleNo)===Number(sale.no)&&String(x.cashbox)===String(job.cashbox))){
+            if(!job.creditSequence)throw new Error('Falta el consecutivo reservado de CxC; solicite revisión antes de confirmar.');
+            const paidUpfront=r2(Math.max(0,Number(sale.total)-Number(sale.credit)));
+            S.cxc.push({id:'CXC-'+String(job.cashbox).replace(/[^A-Za-z0-9]/g,'')+'-'+pad(job.creditSequence,6),sequence:job.creditSequence,cashbox:job.cashbox,cashier:sale.cashier,saleNo:sale.no,doc:'FAC-'+pad(sale.no),client:sale.client,concept:'Factura de venta ('+sale.lines.length+' reng.)',ts:sale.ts,dueTs:sale.ts+(Number(job.creditDays)||15)*86400000,total:sale.total,paid:paidUpfront,payments:paidUpfront>0?[{ts:sale.ts,method:'Pago inicial en caja',cur:'USD',amountUsd:paidUpfront,amountBs:r2(paidUpfront*sale.rate),ref:'FAC-'+pad(sale.no),note:'Abono en caja al facturar'}]:[]});
+          }
+          S.sales.push(sale);
+        }
+        S.invoice=Math.max(Number(S.invoice)||1,Number(sale.no)+1);
+        S.cart=[];S.sel=-1;S.client=S.clients[0];
+        job.status='issued';job.fiscalDocumentNumber=doc;job.fiscalSerial=serial;job.reconciledAt=Date.now();job.reconciliation='confirmed-by-admin-after-physical-check';
+        const saved=await save();
+        if(!saved||!saved.ok){restoreStateSnapshotIfNeeded(saved,snapshot);throw new Error('SQLite no confirmó la conciliación; la intención anterior permanece pendiente.');}
+        renderAll();msg('Emisión fiscal '+doc+' conciliada y venta reconstruida en SQLite.');drawPendingJobs();
+      }catch(error){restoreStateSnapshotIfNeeded({ok:false},snapshot);msg('No se pudo conciliar la emisión: '+error.message,'bad');}
+      return;
+    }
+    const notIssued=e.target.closest('[data-fiscal-not-issued]');
+    if(notIssued){
+      const job=(S.fiscalPrinterJobs||[]).find(x=>x.id===notIssued.dataset.fiscalNotIssued&&String(x.cashbox)===String(box));
+      if(!job)return;
+      if(!confirm('Confirma que consultó la impresora física y verificó que NO existe documento fiscal emitido para esta operación?'))return;
+      const snapshot=JSON.parse(JSON.stringify(S));
+      job.status='not-issued';job.reconciledAt=Date.now();job.reconciliation='confirmed-not-issued-by-admin';
+      const saved=await save();
+      if(!saved||!saved.ok){restoreStateSnapshotIfNeeded(saved,snapshot);msg('SQLite no confirmó la resolución; la caja seguirá bloqueada.','bad');return;}
+      msg('Incidencia marcada como no emitida. Puede reintentar la venta como una nueva operación.');drawPendingJobs();
+      return;
+    }
+    if(e.target.id==='fpDetect'){await detect();return;}
+    if(e.target.id==='fpTestPort'){
+      try{const r=await window.posDesktop.fiscalPrinterTestPort(profile());$('#fpStatus',el).textContent=r.message;}
+      catch(err){$('#fpStatus',el).textContent=err.message;}
+      return;
+    }
+    if(e.target.id==='fpChooseBridge'){
+      try{const file=await window.posDesktop.fiscalPrinterSelectFile('bridge');if(file){$('#fpBridge',el).value=file;draft.bridgePath=file;await status();}}
+      catch(err){$('#fpStatus',el).textContent='No se pudo seleccionar el adaptador: '+err.message;}
+      return;
+    }
+    if(e.target.id==='fpTestBridge'){
+      try{const r=await window.posDesktop.fiscalPrinterTestBridge(profile());$('#fpStatus',el).textContent='Adaptador respondió correctamente: '+JSON.stringify(r);}
+      catch(err){$('#fpStatus',el).textContent='Adaptador no validado: '+err.message;}
+    }
+  });
+  openWin({title:'Impresora fiscal · Caja '+esc(box),w:760,body:el,foot:[
+    {label:'Cerrar'},
+    {label:'Guardar configuración',primary:true,fn:async()=>{
+      const p=profile();
+      drafts[box]=p;
+      if(!p.model){msg('Indique el modelo exacto de la impresora fiscal.','bad');return false;}
+      if(!S.cfg.fiscalPrinters)S.cfg.fiscalPrinters={};
+      S.cfg.fiscalPrinters[box]=p;
+      const persisted=await save();
+      if(!persisted||!persisted.ok){msg('SQLite no confirmó la configuración de la impresora fiscal.','bad');return false;}
+      msg('Configuración fiscal guardada para Caja '+box+'.');
+      return true;
+    }}
+  ],onOpen:()=>{applyDraft();status();}});
 }
 
 function seniatSudebanDlg(initialTab){
@@ -5529,6 +5868,7 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="fRif">RIF de la Empresa</label><input class="fld" id="fRif" value="'+esc(c.rif)+'"></div>'+
       '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
       '<div class="f"><label for="fTipo">Modalidad de Facturación</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option></select></div>'+
+      '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button></div>'+
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
       '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
       '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
@@ -5590,7 +5930,8 @@ function seniatSudebanDlg(initialTab){
     }
   };
 
-  el.addEventListener('click',e=>{
+  el.addEventListener('click',async e=>{
+    if(e.target.id==='btnFiscalPrinterManager'){fiscalPrinterConfigDlg();return;}
     const tabBtn=e.target.closest('.tab[data-tab]');
     if(tabBtn){
       $('.tab.active',el)?.classList.remove('active');
@@ -5616,9 +5957,10 @@ function seniatSudebanDlg(initialTab){
     const delLoteBtn=e.target.closest('[data-del-lote]');
     if(delLoteBtn){
       const id=delLoteBtn.dataset.delLote;
-      ask('Eliminar lote bancario','¿Confirma eliminar el registro de lote '+id+'?','Eliminar',()=>{
+      ask('Eliminar lote bancario','¿Confirma eliminar el registro de lote '+id+'?','Eliminar',async()=>{
         S.lotesSudeban=(S.lotesSudeban||[]).filter(x=>x.id!==id);
-        save();renderTabContent();msg('Lote bancario eliminado.');
+        const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la eliminación del lote bancario.','bad');return false;}
+        renderTabContent();msg('Lote bancario eliminado.');return true;
       });
       return;
     }
@@ -5631,9 +5973,10 @@ function seniatSudebanDlg(initialTab){
     const delRetBtn=e.target.closest('[data-del-ret]');
     if(delRetBtn){
       const id=delRetBtn.dataset.delRet;
-      ask('Eliminar comprobante de retención','¿Confirma anular/eliminar la retención '+id+'?','Eliminar',()=>{
+      ask('Eliminar comprobante de retención','¿Confirma anular/eliminar la retención '+id+'?','Eliminar',async()=>{
         S.retencionesIva=(S.retencionesIva||[]).filter(x=>x.id!==id);
-        save();renderTabContent();msg('Comprobante de retención eliminado.');
+        const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la eliminación de la retención.','bad');return false;}
+        renderTabContent();msg('Comprobante de retención eliminado.');return true;
       });
       return;
     }
@@ -5667,7 +6010,7 @@ function seniatSudebanDlg(initialTab){
     foot:[{label:'Cerrar',primary:true}],
     onOpen:bd=>{
       renderTabContent();
-      bd.addEventListener('click',ev=>{
+      bd.addEventListener('click',async ev=>{
         if(ev.target.id==='btnExpV')exportLibroVentasCsv(getFilteredSales());
         if(ev.target.id==='btnPrintV')printFiscalReport('Libro de Ventas Fiscal Oficial (SENIAT)',drawVentas());
         if(ev.target.id==='btnExpC')exportLibroComprasCsv(getFilteredPurchases());
@@ -5730,7 +6073,8 @@ function seniatSudebanDlg(initialTab){
           S.cfg.imprentaRif=$('#fImpRif',el).value.trim();
           S.cfg.imprentaAut=$('#fImpAut',el).value.trim();
           S.cfg.serialFiscal=$('#fSerial',el).value.trim();
-          save();renderAll();msg('Parámetros fiscales guardados con éxito.');
+          const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó los parámetros fiscales.','bad');return;}
+          renderAll();msg('Parámetros fiscales guardados con éxito.');
         }
       });
     }
@@ -5745,7 +6089,7 @@ function tasaBcvDlg(){
     msg('No se puede cambiar la tasa: no existe una apertura de caja válida para este cajero.','bad');return;
   }
   const el=h('<div class="form"><div class="newgrid"><div class="f"><label>Tasa BCV actual (Bs./US$)</label><input class="fld r" value="'+nf(oldRate)+'" readonly></div><div class="f"><label for="cashierNewRate">Nueva tasa (Bs./US$)</label><input class="fld r" id="cashierNewRate" inputmode="decimal" value="'+nf(oldRate)+'"></div><div class="f wide"><label for="cashierRateReason">Motivo del cambio (obligatorio)</label><input class="fld" id="cashierRateReason" maxlength="240" placeholder="Indique el motivo del ajuste de tasa"></div></div><p class="hint">El cambio se aplicará a las operaciones nuevas desde este momento. Las ventas y cobros anteriores conservarán la tasa registrada en cada operación. La acción quedará en el historial de auditoría.</p></div>');
-  openWin({title:'Actualizar tasa BCV · Caja '+esc(opening.cashbox),w:520,body:el,foot:[{label:'Cancelar'},{label:'Registrar cambio de tasa',primary:true,fn:()=>{
+  openWin({title:'Actualizar tasa BCV · Caja '+esc(opening.cashbox),w:520,body:el,foot:[{label:'Cancelar'},{label:'Registrar cambio de tasa',primary:true,fn:async()=>{
     const next=pn($('#cashierNewRate',el).value),reason=$('#cashierRateReason',el).value.trim();
     if(!(next>0)){msg('Ingrese una tasa BCV mayor que cero.','bad');return false;}
     if(!reason){msg('Indique el motivo del cambio para dejar constancia de auditoría.','bad');return false;}
@@ -5754,8 +6098,9 @@ function tasaBcvDlg(){
     if(!Array.isArray(S.rateAudit))S.rateAudit=[];
     S.rateAudit.push({id:'BCV-'+ts+'-'+String(S.rateAudit.length+1).padStart(4,'0'),ts,previousRate:oldRate,newRate:next,reason,username:user.username,name:user.name||user.username,role:user.role,cashbox:opening.cashbox,openingId:opening.id});
     S.cfg.rate=next;opening.rate=next;writeActiveOpening(opening);
+    const persisted=await save();if(!persisted||!persisted.ok){const restoredOpening=Object.assign({},opening,{rate:oldRate});writeActiveOpening(restoredOpening);try{localStorage.setItem('sifer360_bcv_rate',String(oldRate));}catch(e){}msg('El servidor no confirmó el cambio de tasa BCV; se restauró la apertura y el último estado durable.','bad');return false;}
     try{localStorage.setItem('sifer360_bcv_rate',String(next));}catch(e){}
-    save();renderAll();msg('Tasa BCV actualizada de '+nf(oldRate)+' a '+nf(next)+' Bs./US$. Cambio auditado.','ok');
+    renderAll();msg('Tasa BCV actualizada de '+nf(oldRate)+' a '+nf(next)+' Bs./US$. Cambio auditado.','ok');
   }}],onOpen:()=>{const input=$('#cashierNewRate',el);input.focus();input.select();}});
 }
 function cfgDlg(focusId){
@@ -5764,13 +6109,14 @@ function cfgDlg(focusId){
   if(!c.ticketSize)c.ticketSize='12';
   const fontOpts=TICKET_FONTS.map(f=>'<option value="'+f.id+'"'+(c.ticketFont===f.id?' selected':'')+'>'+esc(f.name)+'</option>').join('');
   const el=h('<div class="form"><div class="newgrid"><div class="f wide"><label for="cEmp">Nombre del negocio</label><input class="fld" id="cEmp" value="'+esc(c.empresa)+'"></div><div class="f"><label for="cRif">RIF</label><input class="fld" id="cRif" value="'+esc(c.rif)+'"></div><div class="f wide"><label for="cDir">Dirección (ticket)</label><input class="fld" id="cDir" value="'+esc(c.dir)+'"></div><div class="f"><label for="cCaj">Cajero</label><input class="fld" id="cCaj" value="'+esc(c.cajero)+'"></div><div class="f"><label for="cCaja">Caja Nº</label><input class="fld" id="cCaja" value="'+esc(c.caja)+'"></div><div class="f"><label for="cRate">Tasa de cambio (Bs. por US$)</label><input class="fld r" id="cRate" inputmode="decimal" value="'+nf(c.rate)+'"></div><div class="f wide"><label for="cTkFont">Tipo de letra en Ticket Térmico 80mm</label><select class="fld" id="cTkFont">'+fontOpts+'</select></div><div class="f"><label for="cTkSize">Tamaño letra Ticket 80mm</label><select class="fld" id="cTkSize"><option value="11"'+(c.ticketSize==='11'?' selected':'')+'>11 px (Compacta)</option><option value="12"'+(c.ticketSize==='12'?' selected':'')+'>12 px (Estándar 80mm)</option><option value="13"'+(c.ticketSize==='13'?' selected':'')+'>13 px (Grande)</option></select></div></div><p class="hint">Cambiar la tasa recalcula al instante los precios en bolívares de la venta en curso. También puede elegir aquí el tipo de letra predeterminado para los recibos de impresora térmica de 80mm.</p></div>');
-  openWin({title:'Datos del negocio, tasa y ticket 80mm',w:620,body:el,foot:[{label:'Cancelar'},{label:'Guardar',primary:true,fn:()=>{
+  openWin({title:'Datos del negocio, tasa y ticket 80mm',w:620,body:el,foot:[{label:'Cancelar'},{label:'Guardar',primary:true,fn:async()=>{
     const rate=pn($('#cRate',el).value);
     if(!rate){msg('Escriba una tasa de cambio válida.','bad');return false;}
     c.empresa=$('#cEmp',el).value.trim()||c.empresa;c.rif=$('#cRif',el).value.trim();c.dir=$('#cDir',el).value.trim();
     c.cajero=$('#cCaj',el).value.trim()||c.cajero;c.caja=$('#cCaja',el).value.trim()||c.caja;c.rate=rate;
     c.ticketFont=$('#cTkFont',el).value;c.ticketSize=$('#cTkSize',el).value;
-    save();renderAll();msg('Configuración guardada. Tasa: '+nf(rate)+' Bs. por US$.');
+    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la configuración. Se cargó el último estado durable; abra nuevamente esta pantalla para reintentar.','bad');closeWin();cfgDlg(focusId);return false;}
+    renderAll();msg('Configuración guardada. Tasa: '+nf(rate)+' Bs. por US$.');
   }}],onOpen:()=>{const f=$('#'+(focusId||'cEmp'),el);f.focus();if(f.select)f.select();}});
 }
 function helpDlg(){
@@ -5812,7 +6158,6 @@ function cashboxList(){
 function persistCashboxes(boxes){localStorage.setItem(BOXES_STORAGE_KEY,JSON.stringify(boxes));}
 function showPosScreen(){
   const session=activeUser();
-  if(session.role==='contador'){window.SIFERAccountantDashboard.show();return;}
   if(session.role==='cajero'){
     const opening=readActiveOpening();
     if(!opening||opening.status!=='abierta'||String(opening.cashbox)!==currentCaja()||String(opening.username||'')!==String(session.username||'')){
@@ -5831,7 +6176,6 @@ function showPosScreen(){
 function showDashboardScreen(){
   const dashboardUser=activeUser();
   if(dashboardUser.username)try{localStorage.setItem('sifer360_last_module_v1:'+dashboardUser.username,'dashboard');}catch(e){}
-  if(dashboardUser.role==='contador'){window.SIFERAccountantDashboard.show();return;}
   const d=$('#adminDashboard'),main=$('.main'),left=$('.left');
   if(!d||!main)return;
   if(left)left.hidden=true; // Ocultar toda el área de venta; la cabecera y la toolbar están fuera de .main y permanecen visibles.
@@ -5887,7 +6231,7 @@ function showDashboardScreen(){
 function usersManagementDlg(editUsername){
   if(!window.SIFERAccess||!window.SIFERAccess.getUsers){msg('El servicio de usuarios no está disponible.','bad');return;}
   let users=window.SIFERAccess.getUsers(),boxes=cashboxList(),editing=editUsername||'';
-  const roleOptions=[['admin','Administrador'],['cajero','Cajero'],['contador','Contador']];
+  const roleOptions=[['admin','Administrador'],['cajero','Cajero'],['contador','Fiscal']];
   const el=h('<div class="form user-admin-form"><div class="hint">Cada usuario tiene un perfil y una caja asignada. El administrador puede quedarse sin caja asignada para operar solo desde el dashboard; para vender debe tener una caja creada y asignada.</div><input id="uaOriginal" type="hidden"><div class="newgrid"><div class="f"><label for="uaName">Nombre completo</label><input class="fld" id="uaName" required></div><div class="f"><label for="uaUsername">Usuario</label><input class="fld" id="uaUsername" required autocomplete="off"></div><div class="f"><label for="uaCode">Contraseña / código</label><input class="fld" id="uaCode" type="password" autocomplete="new-password" placeholder="Obligatorio para usuario nuevo"></div><div class="f"><label for="uaRole">Rol</label><select class="fld" id="uaRole">'+roleOptions.map(r=>'<option value="'+r[0]+'">'+r[1]+'</option>').join('')+'</select></div><div class="f"><label for="uaBox">Caja asignada</label><select class="fld" id="uaBox"><option value="">Sin caja asignada</option>'+boxes.filter(b=>b.active!==false).map(b=>'<option value="'+esc(b.id)+'">'+esc(b.name)+' ('+esc(b.id)+')</option>').join('')+'</select></div></div><div class="row" style="flex-wrap:wrap"><button class="btn primary" id="uaSave">Guardar usuario</button><button class="btn" id="uaClear" type="button">Limpiar</button><span class="hint" id="uaMsg"></span></div><div class="gridwrap" style="max-height:360px;flex:none"><table class="grid"><thead><tr><th>Nombre / usuario</th><th>Rol</th><th>Caja asignada</th><th>Acciones</th></tr></thead><tbody id="uaRows"></tbody></table></div></div>');
   const clear=()=>{editing='';$('#uaOriginal',el).value='';$('#uaName',el).value='';$('#uaUsername',el).value='';$('#uaUsername',el).disabled=false;$('#uaCode',el).value='';$('#uaCode',el).placeholder='Obligatorio para usuario nuevo';$('#uaRole',el).value='cajero';$('#uaBox',el).value=boxes.find(b=>b.active!==false)?.id||'';$('#uaMsg',el).textContent='';};
   const draw=()=>{users=window.SIFERAccess.getUsers();$('#uaRows',el).innerHTML=users.map(u=>'<tr><td><b>'+esc(u.name)+'</b><div class="sub">'+esc(u.username)+'</div></td><td>'+esc((roleOptions.find(r=>r[0]===u.role)||[u.role,u.role])[1])+'</td><td>'+esc(u.cashbox||'—')+'</td><td><button class="btn mini2" data-ua-edit="'+esc(u.username)+'">Editar</button> <button class="btn mini2" data-ua-delete="'+esc(u.username)+'" '+(u.username===activeUser().username||users.filter(x=>x.role==='admin').length<=1&&u.role==='admin'?'disabled':'')+'>Desactivar/eliminar</button></td></tr>').join('');};
@@ -5902,14 +6246,15 @@ function cashboxesManagementDlg(){
   let boxes=cashboxList();
   const users=()=>window.SIFERAccess&&window.SIFERAccess.getUsers?window.SIFERAccess.getUsers():[];
   const el=h('<div class="form"><div class="hint">Cree cajas independientes y luego asígnelas a los usuarios desde Gestión de Usuarios. No se puede eliminar una caja que tenga usuarios asignados o historial de aperturas; puede deshabilitarla.</div><div class="newgrid"><div class="f"><label for="cbxId">Código de caja</label><input class="fld" id="cbxId" placeholder="02" maxlength="12"></div><div class="f"><label for="cbxName">Nombre visible</label><input class="fld" id="cbxName" placeholder="Caja 02"></div><div class="f"><label>&nbsp;</label><button class="btn primary" id="cbxCreate">Crear caja</button></div></div><div id="cbxMsg" class="hint"></div><div class="gridwrap" style="max-height:420px;flex:none"><table class="grid"><thead><tr><th>Código</th><th>Nombre</th><th>Usuarios asignados</th><th>Estado</th><th>Acción</th></tr></thead><tbody id="cbxRows"></tbody></table></div></div>');
-  const draw=()=>{boxes=cashboxList();const us=users();$('#cbxRows',el).innerHTML=boxes.map(b=>{const assigned=us.filter(u=>String(u.cashbox)===String(b.id));const isOpen=(()=>{const a=readActiveOpening();return !!(a&&String(a.cashbox)===String(b.id)&&a.status==='abierta');})();return '<tr><td><b>'+esc(b.id)+'</b></td><td>'+esc(b.name)+'</td><td>'+assigned.map(u=>esc(u.name)).join(', ')+' ('+assigned.length+')</td><td><span class="'+(b.active===false?'dash-warn':'dash-ok')+'">'+(b.active===false?'Deshabilitada':isOpen?'Turno abierto':'Activa')+'</span></td><td><button class="btn mini2" data-cbx-toggle="'+esc(b.id)+'">'+(b.active===false?'Habilitar':'Deshabilitar')+'</button></td></tr>';}).join('');};
+  const draw=()=>{boxes=cashboxList();const us=users();$('#cbxRows',el).innerHTML=boxes.map(b=>{const assigned=us.filter(u=>String(u.cashbox)===String(b.id));const isOpen=(()=>{const a=readActiveOpening(b.id);return !!(a&&a.status==='abierta');})();return '<tr><td><b>'+esc(b.id)+'</b></td><td>'+esc(b.name)+'</td><td>'+assigned.map(u=>esc(u.name)).join(', ')+' ('+assigned.length+')</td><td><span class="'+(b.active===false?'dash-warn':'dash-ok')+'">'+(b.active===false?'Deshabilitada':isOpen?'Turno abierto':'Activa')+'</span></td><td><button class="btn mini2" data-cbx-toggle="'+esc(b.id)+'">'+(b.active===false?'Habilitar':'Deshabilitar')+'</button></td></tr>';}).join('');};
   $('#cbxCreate',el).addEventListener('click',()=>{const id=$('#cbxId',el).value.trim(),name=$('#cbxName',el).value.trim()||('Caja '+id);if(!id||! /^[A-Za-z0-9_-]{1,12}$/.test(id)){$('#cbxMsg',el).textContent='Use un código de 1 a 12 caracteres: letras, números, guion o guion bajo.';return;}if(cashboxList().some(b=>String(b.id).toLowerCase()===id.toLowerCase())){$('#cbxMsg',el).textContent='Ya existe una caja con ese código.';return;}boxes=cashboxList();boxes.push({id,name,active:true,createdAt:Date.now()});persistCashboxes(boxes);$('#cbxId',el).value='';$('#cbxName',el).value='';$('#cbxMsg',el).textContent='Caja creada. Ahora puede asignarla en Gestión de Usuarios.';draw();});
-  el.addEventListener('click',e=>{const b=e.target.closest('[data-cbx-toggle]');if(!b)return;boxes=cashboxList();const box=boxes.find(x=>String(x.id)===b.dataset.cbxToggle);if(!box)return;const assigned=users().filter(u=>String(u.cashbox)===String(box.id));const active=readActiveOpening();if(box.active!==false&&assigned.length){$('#cbxMsg',el).textContent='No se puede deshabilitar: está asignada a '+assigned.map(u=>u.name).join(', ')+'. Reasigne primero esos usuarios.';return;}if(box.active!==false&&active&&String(active.cashbox)===String(box.id)&&active.status==='abierta'){ $('#cbxMsg',el).textContent='No se puede deshabilitar una caja con turno abierto. Cierre primero el Corte Z.';return;}box.active=box.active===false;persistCashboxes(boxes);draw();});
+  el.addEventListener('click',e=>{const b=e.target.closest('[data-cbx-toggle]');if(!b)return;boxes=cashboxList();const box=boxes.find(x=>String(x.id)===b.dataset.cbxToggle);if(!box)return;const assigned=users().filter(u=>String(u.cashbox)===String(box.id));const active=readActiveOpening(box.id);if(box.active!==false&&assigned.length){$('#cbxMsg',el).textContent='No se puede deshabilitar: está asignada a '+assigned.map(u=>u.name).join(', ')+'. Reasigne primero esos usuarios.';return;}if(box.active!==false&&active&&String(active.cashbox)===String(box.id)&&active.status==='abierta'){ $('#cbxMsg',el).textContent='No se puede deshabilitar una caja con turno abierto. Cierre primero el Corte Z.';return;}box.active=box.active===false;persistCashboxes(boxes);draw();});
   draw();openWin({title:'Gestión de Cajas',w:760,body:el,foot:[{label:'Cerrar',primary:true}]});
 }
 
 function adminCajaRequiredDlg(moduleName){
-  const user=activeUser(),box=currentCaja(),assigned=box!=='SIN-ASIGNAR',active=readActiveOpening();
+  if(openingMigrationBlocked){msg(window.__POS_OPENING_MIGRATION_ERROR||'La apertura histórica no está confirmada en SQLite central.','bad');return;}
+  const user=activeUser(),box=currentCaja(),assigned=box!=='SIN-ASIGNAR',active=readActiveOpening(box);
   const opened=!!(active&&active.status==='abierta'&&String(active.cashbox)===box);
   const body=h('<div class="form"><div style="font-size:34px;margin-bottom:8px">▣</div><h3 style="margin:0 0 8px">Para acceder a '+esc(moduleName)+' debes tener una caja abierta</h3><p class="hint">El flujo obligatorio es: crear una caja si aún no existe, asignártela en Gestión de Usuarios y abrir el turno desde el botón POS de la barra superior. El módulo Corte Z ya no abre turnos.</p><div class="gridwrap"><table class="grid"><tbody><tr><td>Usuario</td><td><b>'+esc(user.name||user.username||'Administrador')+'</b></td></tr><tr><td>Caja asignada</td><td><b>'+esc(assigned?box:'Ninguna')+'</b></td></tr><tr><td>Estado del turno</td><td><b>'+esc(opened?'Abierto':'No abierto')+'</b></td></tr></tbody></table></div><p class="hint">'+(assigned?(opened?'La caja ya está abierta; puedes volver al POS y continuar.':'Pulsa “Abrir caja (POS)” para registrar el fondo inicial.'):'Primero crea una caja en Gestión de Cajas y asígnatela en Gestión de Usuarios. Después abre la caja desde POS.')+'</p></div>');
   const foot=[];
@@ -5919,6 +6264,7 @@ function adminCajaRequiredDlg(moduleName){
   openWin({title:'Apertura obligatoria de caja',w:540,body,foot});
 }
 function openCashboxDlg(){
+  if(openingMigrationBlocked){msg(window.__POS_OPENING_MIGRATION_ERROR||'La apertura histórica no está confirmada en SQLite central.','bad');return;}
   const user=activeUser();
   if(!user||!['admin','cajero'].includes(user.role)){showPosScreen();return;}
   const isCashier=user.role==='cajero';
@@ -5927,7 +6273,7 @@ function openCashboxDlg(){
     if(isCashier){msg('No tienes una caja activa asignada. Solicita al administrador que te asigne una caja.','bad');return;}
     adminCajaRequiredDlg('Punto de venta');return;
   }
-  const existing=readActiveOpening();
+  const existing=readActiveOpening(box);
   if(existing&&existing.status==='abierta'&&String(existing.cashbox)===box){
     if(isCashier&&String(existing.username||'')!==String(user.username||'')){
       msg('Esta caja tiene un turno abierto por otro usuario. Solicita al administrador que revise el cierre anterior.','bad');return;
@@ -5941,17 +6287,22 @@ function openCashboxDlg(){
     openWin({title:'Caja ya abierta · '+box,w:430,body:h('<div class="form"><h3>El turno ya está abierto</h3><p class="hint">Caja '+esc(box)+' · Apertura '+esc(fmtDT(existing.openedAt))+'</p><p>Para hacer el arqueo y cerrar la jornada, entra a Corte Z.</p></div>'),foot:[{label:'Ir al POS',primary:true,fn:()=>{showPosScreen();return true;}},{label:'Cerrar'}]});return;
   }
   const body=h('<div class="form"><div class="hint">Registra y confirma los fondos físicos reales antes de vender. La apertura se asociará exclusivamente al usuario y a la caja asignada.</div><div class="newgrid"><div class="f"><label>'+(isCashier?'Cajero':'Administrador')+'</label><input class="fld" value="'+esc(user.name||user.username)+'" readonly></div><div class="f"><label>Caja asignada</label><input class="fld" value="'+esc(boxMeta.name+' ('+box+')')+'" readonly></div><div class="f"><label for="posOpenBs">Fondo inicial en Bs.</label><input class="fld r" id="posOpenBs" value="0,00" inputmode="decimal"></div><div class="f"><label for="posOpenUsd">Fondo inicial en US$</label><input class="fld r" id="posOpenUsd" value="0,00" inputmode="decimal"></div><div class="f"><label for="posOpenRate">Tasa BCV (Bs./US$)</label><input class="fld r" id="posOpenRate" value="'+esc(nf(Number(S.cfg.rate)||0))+'" inputmode="decimal"></div></div><div class="hint" id="posOpenError" role="status"></div></div>');
-  const confirmOpening=()=>{
+  const confirmOpening=async()=>{
     const parse=v=>{const raw=String(v||'').trim().replace(/\s/g,'').replace(/\./g,'').replace(',','.');const n=Number(raw);return Number.isFinite(n)&&n>=0?n:null;};
     const bs=parse($('#posOpenBs',body).value),usd=parse($('#posOpenUsd',body).value),rate=parse($('#posOpenRate',body).value);
     if(bs===null||usd===null||rate===null||rate<=0){$('#posOpenError',body).textContent='Ingrese fondos válidos y una tasa BCV mayor que cero.';return false;}
-    const all=(()=>{try{return JSON.parse(localStorage.getItem('sifer360_openings')||'[]')||[];}catch(e){return [];}})();
-    const openedAt=new Date().toISOString(),op={id:'OPEN-'+Date.now(),invoiceStart:'FAC-'+String(currentCajaInvoice()).padStart(8,'0'),cashier:user.name||user.username,username:user.username,cashbox:box,bs,usd,rate,openedAt,status:'abierta'};
-    all.push(op);localStorage.setItem('sifer360_openings',JSON.stringify(all));localStorage.setItem('sifer360_bcv_rate',String(rate));
+    const openedAt=new Date().toISOString(),op={id:'OPEN-'+box.replace(/\W/g,'')+'-'+Date.now(),invoiceStart:'FAC-'+String(currentCajaInvoice()).padStart(8,'0'),cashier:user.name||user.username,username:user.username,cashbox:box,bs,usd,rate,openedAt,status:'abierta'};
+    if(!Array.isArray(S.openings))S.openings=[];
+    S.openings.push(op);
+    S.cfg.rate=rate;
+    const persisted=await save();
+    if(!persisted||!persisted.ok){$('#posOpenError',body).textContent='SQLite/servidor no confirmó la apertura. No se habilitó el POS; revise la conexión y vuelva a intentar.';return false;}
+    writeActiveOpening(op);
+    try{localStorage.setItem('sifer360_bcv_rate',String(rate));}catch(e){}
     const context={username:user.username,name:user.name||user.username,role:user.role,cashbox:box,openingId:op.id,openedAt,bs,usd,rate,status:'abierta'};
     sessionStorage.setItem('sifer360_active_box',JSON.stringify(context));sessionStorage.setItem('sifer360_active_opening',JSON.stringify(op));
-    if(!isCashier){localStorage.setItem('sifer360_active_box',JSON.stringify(context));localStorage.setItem('sifer360_active_opening',JSON.stringify(op));}
-    S.cfg.rate=rate;applyCashierWorkspace();showPosScreen();msg('Apertura de caja '+box+' registrada. Ya puedes operar en el POS.','ok');return true;
+    if(!isCashier)localStorage.setItem('sifer360_active_box',JSON.stringify(context));
+    applyCashierWorkspace();showPosScreen();msg('Apertura de caja '+box+' confirmada en SQLite. Ya puedes operar en el POS.','ok');return true;
   };
   openWin({title:(isCashier?'POS · Apertura obligatoria de caja ':'POS · Apertura de caja ')+box,w:560,body,foot:(isCashier?[]:[{label:'Cancelar'}]).concat([{label:'Confirmar apertura e ingresar al POS',primary:true,fn:confirmOpening}]),onClose:isCashier?()=>{}:undefined});
 }
@@ -5971,27 +6322,12 @@ window.SIFERDashboard={show:showDashboardScreen,showPos:showPosScreen,refresh:sh
 
 /* ---------- menús y barra de herramientas ---------- */
 const focusEntry=()=>$('#entry').focus();
-function openAccountingModule(){
-  if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir Contabilidad.','bad');return;}
-  const app=window.SIFERAccountingApp;
-  if(!app||typeof app.open!=='function'){
-    console.error('SIFERAccountingApp no está disponible. Verifique que /accounting.js haya cargado sin errores.');
-    alert('Contabilidad VEN-NIF no está disponible: el componente /accounting.js no se inicializó. Recargue la aplicación; si persiste, informe este mensaje al soporte.');
-    return;
-  }
-  try{app.open();}catch(e){
-    console.error('Error al abrir Contabilidad VEN-NIF:',e);
-    alert('No se pudo abrir Contabilidad VEN-NIF: '+(e&&e.message?e.message:String(e)));
-  }
-}
-
 const MENUS={
  'Archivo':[['Dashboard','',showDashboardScreen],['Abrir caja (POS)','',openCashboxDlg],['Nueva venta','F2',newSale],['Suspender venta','F5',suspend],['Recuperar venta','F6',recoverDlg],'-',['Ventas del día y cierre…','F9',salesDlg],'-',['Gestión de usuarios','',usersManagementDlg],['Gestión de cajas','',cashboxesManagementDlg],['Cerrar sesión','',()=>window.SIFERAccess&&window.SIFERAccess.logout()],'-',['Restablecer datos de ejemplo…','',resetAll]],
  'Ventas':[['Cobrar','F12',payDlg],['Módulo de Pagos CASHEA (BNPL)…','',()=>casheaDlg()],['Descuento…','F7',discountDlg],['Quitar renglón','Supr',removeSel],['Vaciar venta…','',clearCart],'-',['Cuentas por Cobrar (CxC)…','',()=>cxcDlg()]],
  'Compras':[['Registrar compra de mercancía…','F10',()=>comprasDlg('new')],['Historial de compras…','',()=>comprasDlg('hist')],['Directorio de proveedores…','',()=>comprasDlg('sup')],'-',['Cuentas por Pagar (CxP)…','',()=>cxpDlg()]],
   'Inventario':[['Maestro de inventario…','F8',inventoryDlg],['Nuevo producto (Ficha avanzada)…','',()=>productFormDlg(null)],['Generador de etiquetas / Hablador SKU (US$)…','',()=>labelGeneratorDlg()],'-',['Conteo físico de inventario (masivo)…','F11',()=>conteoDlg()],['Ficha / Tarjeta Kardex Profesional…','',()=>kardexDlg()],'-',['Buscar producto','F3',focusEntry]],
  'Finanzas':[['Cuentas por Cobrar (CxC)…','',()=>cxcDlg()],['Cuentas por Pagar (CxP)…','',()=>cxpDlg()],['Operaciones Cambiarias (Compra USD / Zelle)…','',()=>divisasDlg()],['Conciliación CASHEA (BNPL y Cuotas)…','',()=>casheaDlg()],'-',['Ventas del día y cierre de caja…','F9',salesDlg]],
- 'Contabilidad':[['Contabilidad general VEN-NIF…','',openAccountingModule]],
  'Control SENIAT/SUDEBAN':[
    ['Módulo Fiscal Integral…','',()=>seniatSudebanDlg()],
    ['Libro de Ventas Fiscal (SENIAT)…','',()=>seniatSudebanDlg('ventas')],
@@ -6005,7 +6341,7 @@ const MENUS={
    ['Parámetros Fiscales y Talonarios…','',()=>seniatSudebanDlg('config')]
  ],
  'Clientes':[['Seleccionar cliente…','F4',clientDlg],['Estado de cuentas por cobrar…','',()=>cxcDlg()]],
- 'Configuración':[['Datos del negocio y tasa…','',()=>cfgDlg()]],
+ 'Configuración':[['Datos del negocio y tasa…','',()=>cfgDlg()],['Conexión de red local (LAN)…','',()=>networkSettingsDlg()]],
  'Ayuda':[['Atajos de teclado…','',helpDlg],['Acerca del POS…','',aboutDlg]]
 };
 let menuEl=null;
@@ -6054,11 +6390,36 @@ function cajaSeqs(){
   try{return JSON.parse(localStorage.getItem('sifer360_box_sequences')||'{}')||{};}catch(e){return {};}
 }
 function currentCajaInvoice(){const box=currentCaja(),seqs=cajaSeqs();if(!seqs[box])seqs[box]={invoice:1,void:1,refund:1,cxc:1,movement:1,z:1};return Number(seqs[box].invoice)||1;}
-function nextCajaInvoice(){
-  const box=currentCaja(),seqs=cajaSeqs();
-  if(!seqs[box])seqs[box]={invoice:1,void:1,refund:1,cxc:1,movement:1};
-  const no=Number(seqs[box].invoice)||1;
-  seqs[box].invoice=no+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
+async function nextCajaSequence(operation,box=currentCaja()){
+  if(!box||String(box)==='SIN-ASIGNAR')throw new Error('Asigne una caja antes de generar una operación numerada.');
+  if(!window.posDesktop||typeof window.posDesktop.networkNextSequence!=='function')throw new Error('La numeración correlativa requiere el motor SQLite de escritorio.');
+  const sales=(S.sales||[]).filter(x=>String(x.cashbox||'01')===String(box));
+  const zRows=(S.cortesZ||[]).filter(x=>String(x.cashbox||'')===String(box));
+  let minimum=1;
+  if(operation==='invoice')minimum=Math.max(0,...sales.map(x=>Number(x.no)||0))+1;
+  else if(operation==='control')minimum=Math.max(0,...sales.map(x=>Number(String(x.ctrlNo||'').split('-').pop())||0))+1;
+  else if(operation==='z')minimum=Math.max(0,...zRows.map(x=>Number(String(x.id||'').split('-').pop())||0))+1;
+  else if(operation==='void')minimum=Math.max(0,...sales.map(x=>Number(x.voidNo)||0))+1;
+  else if(operation==='purchase')minimum=Math.max(0,...(S.purchases||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.no)||0))+1;
+  else if(operation==='count')minimum=Math.max(0,...(S.counts||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
+  else if(operation==='cxc')minimum=Math.max(0,...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
+  else if(operation.startsWith('retention-')){const period=operation.slice('retention-'.length);minimum=Math.max(0,...(S.retencionesIva||[]).filter(x=>String(x.cashbox||'')===String(box)&&String(x.periodo||'')===period).map(x=>Number(x.sequence)||Number(String(x.id||'').slice(-8))||0))+1;}
+  else if(operation==='cxp')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
+  else if(operation==='cashea')minimum=Math.max(0,...(S.casheaMovimientos||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
+  else if(operation==='cxc-payment')minimum=Math.max(0,...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)))+1;
+  else if(operation==='cxp-payment')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).flatMap(x=>(x.payments||[]).filter(p=>String(p.cashbox||box)===String(box)).map(p=>Number(p.cashboxSequence)||0)))+1;
+  else if(operation==='currency-exchange')minimum=Math.max(0,...(S.cambiosDivisas||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0))+1;
+  else if(operation==='movement')minimum=Math.max(0,...(S.movimientosCaja||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||0))+1;
+  else if(operation==='refund'||operation==='return')minimum=Math.max(0,...(S.returns||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.returnNo||x.sequence)||0))+1;
+  const result=await window.posDesktop.networkNextSequence({cashbox:String(box),operation,minimum});
+  const value=Number(result&&result.value);
+  if(!result||!result.ok||!Number.isSafeInteger(value)||value<1)throw new Error('El servidor no confirmó el consecutivo de '+operation+'.');
+  return value;
+}
+async function nextCajaInvoice(){
+  const box=currentCaja(),seqs=cajaSeqs(),no=await nextCajaSequence('invoice',box);
+  if(!seqs[box])seqs[box]={};seqs[box].invoice=Math.max(Number(seqs[box].invoice)||1,no+1);
+  localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
   return no;
 }
 function getZHistory(){
@@ -6097,25 +6458,75 @@ function zOperationalTotals(sales,start,end,box){
   });
   return out;
 }
-function readActiveOpening(){
-  try{
-    const user=activeUser();
-    const sessionValue=JSON.parse(sessionStorage.getItem('sifer360_active_opening')||'null');
-    if(user.role==='cajero'){
-      if(!sessionValue||sessionValue.status!=='abierta')return null;
-      if(String(sessionValue.username||'')!==String(user.username||''))return null;
-      if(String(sessionValue.cashbox||'')!==String(user.cashbox||''))return null;
-      return sessionValue;
-    }
-    if(sessionValue&&sessionValue.status==='abierta')return sessionValue;
-    const localValue=JSON.parse(localStorage.getItem('sifer360_active_opening')||'null');
-    return localValue||sessionValue||null;
-  }catch(e){return null;}
+function openingTimestamp(value){
+  if(typeof value==='number'&&Number.isFinite(value))return value;
+  const numeric=Number(value);if(Number.isFinite(numeric)&&numeric>1000000000)return numeric;
+  const parsed=Date.parse(String(value||''));return Number.isFinite(parsed)?parsed:0;
+}
+function readActiveOpening(boxOverride){
+  if(openingMigrationBlocked)return null;
+  const box=String(boxOverride||currentCaja());
+  const openings=Array.isArray(S.openings)?S.openings:[];
+  const user=activeUser();
+  const matches=openings.filter(item=>item&&String(item.cashbox||'')===box&&(user.role!=='cajero'||(String(item.username||'')===String(user.username||'')&&String(item.cashbox||'')===String(user.cashbox||''))));
+  if(!matches.length)return null;
+  const stamp=item=>openingTimestamp(item.closedAt||item.openedAt||item.ts);
+  matches.sort((a,b)=>stamp(a)-stamp(b));
+  return matches[matches.length-1]||null;
+}
+function upsertOpeningState(opening){
+  if(!Array.isArray(S.openings))S.openings=[];
+  const index=S.openings.findIndex(item=>item&&String(item.id)===String(opening.id));
+  if(index>=0)S.openings[index]=opening;else S.openings.push(opening);
 }
 function writeActiveOpening(opening){
   const value=JSON.stringify(opening);
-  sessionStorage.setItem('sifer360_active_opening',value);
-  if(activeUser().role!=='cajero')localStorage.setItem('sifer360_active_opening',value);
+  try{
+    sessionStorage.setItem('sifer360_active_opening',value);
+    if(activeUser().role!=='cajero')localStorage.setItem('sifer360_active_opening',value);
+  }catch(error){console.warn('No se pudo actualizar la caché local de apertura:',error);}
+}
+async function migrateLegacyOpenings(){
+  openingMigrationBlocked=false;
+  if(!Array.isArray(S.openings))S.openings=[];
+  const candidates=[];
+  const addCandidate=value=>{if(value&&typeof value==='object'&&value.id&&value.cashbox&&['abierta','cerrada'].includes(value.status))candidates.push(value);};
+  try{
+    const history=JSON.parse(localStorage.getItem('sifer360_openings')||'[]');
+    if(Array.isArray(history))history.forEach(addCandidate);
+  }catch{}
+  try{addCandidate(JSON.parse(localStorage.getItem('sifer360_active_opening')||'null'));}catch{}
+  try{addCandidate(JSON.parse(sessionStorage.getItem('sifer360_active_opening')||'null'));}catch{}
+  const seen=new Set();
+  const unique=candidates.filter(item=>{const id=String(item.id);if(seen.has(id))return false;seen.add(id);return true;});
+  const existingIds=new Set(S.openings.map(item=>String(item.id)));
+  let changed=false;
+  for(const candidate of unique.filter(item=>item.status==='cerrada')){
+    if(existingIds.has(String(candidate.id)))continue;
+    S.openings.push(candidate);existingIds.add(String(candidate.id));changed=true;
+  }
+  const legacyActive=new Map();
+  for(const candidate of unique.filter(item=>item.status==='abierta')){
+    const box=String(candidate.cashbox);
+    const current=legacyActive.get(box);
+    const stamp=item=>openingTimestamp(item.openedAt||item.ts);
+    if(!current||stamp(candidate)>stamp(current))legacyActive.set(box,candidate);
+  }
+  for(const [box,candidate] of legacyActive){
+    const existing=S.openings.filter(item=>String(item.cashbox||'')===box).sort((a,b)=>openingTimestamp(a.closedAt||a.openedAt||a.ts)-openingTimestamp(b.closedAt||b.openedAt||b.ts));
+    const latest=existing[existing.length-1];
+    if(latest&&(latest.status==='abierta'||openingTimestamp(latest.closedAt||latest.openedAt||latest.ts)>=openingTimestamp(candidate.openedAt||candidate.ts)))continue;
+    if(existingIds.has(String(candidate.id)))continue;
+    S.openings.push(candidate);existingIds.add(String(candidate.id));changed=true;
+  }
+  if(!changed)return true;
+  const persisted=await save();
+  if(!persisted||!persisted.ok){
+    openingMigrationBlocked=true;
+    window.__POS_OPENING_MIGRATION_ERROR='No se pudo migrar la apertura histórica a SQLite central. La caja queda bloqueada para evitar operar con un turno local no confirmado. Reconecte con el servidor y vuelva a intentar.';
+    return false;
+  }
+  return true;
 }
 function zExpectedByMethod(sales,opening){
   const out={};
@@ -6292,7 +6703,7 @@ function corteZDlg(){
       $('#zActionStatus',el).textContent=!opened?'El cierre está bloqueado: primero abra el turno de esta caja.':(!result.total.complete?'Arqueo incompleto: ingrese el monto real de los 8 métodos de pago; use 0,00 en los métodos sin movimientos.':'Arqueo completo. Puede revisar la vista previa de 80 mm y confirmar el cierre.');
     }
   });
-  el.addEventListener('click',e=>{
+  el.addEventListener('click',async e=>{
     const view=e.target.closest('[data-z-view]');
     if(view){const z=getZHistory().find(item=>item.id===view.dataset.zView&&String(item.cashbox)===box);if(z)printCorteZ(z,false);return;}
     const reprint=e.target.closest('[data-z-print]');
@@ -6302,9 +6713,13 @@ function corteZDlg(){
       if(!boxOpen()){msg('Debe abrir el turno antes de registrar movimientos.','bad');return;}
       const amount=pn($('#zMovAmount',el).value),reason=$('#zMovReason',el).value.trim(),counterpartAccount=$('#zMovAccount',el).value;
       if(!amount||!reason||!counterpartAccount){msg('Indique monto, motivo y cuenta contrapartida contable del movimiento.','bad');return;}
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      let movementNo;try{movementNo=await nextCajaSequence('movement',box);}catch(error){msg('No se pudo reservar el consecutivo del movimiento: '+error.message,'bad');return;}
       if(!Array.isArray(S.movimientosCaja))S.movimientosCaja=[];
-      S.movimientosCaja.push({id:'MOV-'+box.replace(/\W/g,'')+'-'+Date.now(),cashbox:box,ts:Date.now(),direction:$('#zMovDir',el).value,currency:$('#zMovCur',el).value,amount:r2(amount),reason,counterpartAccount,rate:S.cfg.rate,user:currentCajero(),openingId:active.id||''});
-      save();$('#zMovAmount',el).value='';$('#zMovReason',el).value='';$('#zMovStatus',el).textContent='Movimiento registrado y guardado en el historial del turno.';draw();return;
+      S.movimientosCaja.push({id:'MOV-'+box.replace(/\W/g,'')+'-'+pad(movementNo,6),cashbox:box,sequence:movementNo,ts:Date.now(),direction:$('#zMovDir',el).value,currency:$('#zMovCur',el).value,amount:r2(amount),reason,counterpartAccount,rate:S.cfg.rate,user:currentCajero(),openingId:active.id||''});
+      const persisted=await save();
+      if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);msg('SQLite/servidor no confirmó el movimiento; se mostró el último estado durable disponible.','bad');draw();return;}
+      $('#zMovAmount',el).value='';$('#zMovReason',el).value='';$('#zMovStatus',el).textContent='Movimiento registrado y guardado en el historial del turno.';draw();return;
     }
     if(e.target.id==='zOpenShift'){
       active=readActiveOpening();
@@ -6313,10 +6728,13 @@ function corteZDlg(){
       if(bs===null||usdOpening===null){msg('Indique el fondo inicial de Bs. y US$, aunque sea cero.','bad');return;}
       const now=Date.now();
       active={id:'OPEN-'+box.replace(/\W/g,'')+'-'+now,cashbox:box,cashier:currentCajero(),openedAt:now,bs:r2(bs),usd:r2(usdOpening),status:'abierta'};
+      upsertOpeningState(active);
+      const persisted=await save();
+      if(!persisted||!persisted.ok){msg('SQLite/servidor no confirmó la apertura del turno. La caja permanece cerrada.','bad');draw();return;}
       writeActiveOpening(active);
-      const ctx=Object.assign(cajaContext(),{cashbox:box,name:currentCajero(),status:'abierta',openedAt:now});
+      const ctx=Object.assign(cajaContext(),{cashbox:box,name:currentCajero(),status:'abierta',openedAt:now,openingId:active.id});
       sessionStorage.setItem('sifer360_active_box',JSON.stringify(ctx));localStorage.setItem('sifer360_active_box',JSON.stringify(ctx));
-      msg('Turno abierto para la caja '+box+'. Registre el arqueo real antes de cerrar.');
+      msg('Turno abierto y confirmado en SQLite para la caja '+box+'. Registre el arqueo real antes de cerrar.');
       draw();return;
     }
     if(e.target.id==='zPreview'){
@@ -6339,12 +6757,14 @@ function corteZDlg(){
       if(!confirm('¿Confirmar el cierre definitivo de la caja '+box+'?\\nResultado: '+status+'\\nFaltante: '+usd(result.total.shortageUsd)+' / '+bsf(result.total.shortageBs)+'\\nSobrante: '+usd(result.total.surplusUsd)+' / '+bsf(result.total.surplusBs)+'\\nEl corte quedará guardado en el historial.'))return;
       const all=getPeriodSales(),sales=all.filter(s=>!s.void),voids=all.filter(s=>s.void);
       const rec=result.rec.map(r=>Object.assign({},r,{real:Number(r.real),diff:Number(r.diff)}));
-      const seqs=cajaSeqs(),seq=seqs[box]||{z:1};const zSeq=Number(seq.z)||1;seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
+      const seqs=cajaSeqs(),seq=seqs[box]||{z:1};let zSeq;try{zSeq=await nextCajaSequence('z',box);}catch(error){msg('No se pudo reservar el consecutivo del Corte Z: '+error.message,'bad');return;}seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
       const t=Object.assign({},result.total);
       const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now()),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
-      getZHistory().push(z);
-      save();
+      const zStateBefore=JSON.parse(JSON.stringify(S));
       const closedOpening=Object.assign({},active,{status:'cerrada',closedAt:z.closedAt,cutId:z.id});
+      upsertOpeningState(closedOpening);
+      getZHistory().push(z);
+      const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,zStateBefore);msg('SQLite no confirmó el Corte Z. La caja permanece abierta y el cierre no se considera registrado.','bad');return;}
       writeActiveOpening(closedOpening);
       const closedBox=Object.assign(cajaContext(),{cashbox:box,status:'cerrada',closedAt:z.closedAt,cutId:z.id});
       sessionStorage.setItem('sifer360_active_box',JSON.stringify(closedBox));localStorage.setItem('sifer360_active_box',JSON.stringify(closedBox));
@@ -6360,7 +6780,7 @@ const TB=[
  ['suspender','Suspender','F5',suspend],['recuperar','Recuperar','F6',recoverDlg],['descuento','Descuento','F7',discountDlg],['quitar','Quitar','Supr',removeSel],
  '-',['inventario','Inventario','F8',inventoryDlg],['conteo','Conteo','F11',()=>conteoDlg()],['kardex','Kardex','',()=>kardexDlg()],['salidas','Salidas inventario','',inventoryExitDlg],
  '-',['compras','Compras','F10',()=>comprasDlg('new')],['cxc','CxC','',()=>cxcDlg()],['cxp','CxP','',()=>cxpDlg()],['divisas','USD/Zelle','',()=>divisasDlg()],['cashea','Cashea','',()=>casheaDlg()],
- '-',['ventas','Ventas día','F9',salesDlg],['cortez','Corte Z','',corteZDlg],['seniat','Fiscal','',()=>seniatSudebanDlg()],['contabilidad','Contabilidad','',openAccountingModule],['documentos','Documentos','',()=>fiscalDocumentsDlg()],['basedatos','Base de datos','',()=>databaseSettingsDlg()],['tasa','Tasa BCV','',()=>activeUser().role==='cajero'?tasaBcvDlg():cfgDlg('cRate')]
+ '-',['ventas','Ventas día','F9',salesDlg],['cortez','Corte Z','',corteZDlg],['seniat','Fiscal','',()=>seniatSudebanDlg()],['documentos','Documentos','',()=>fiscalDocumentsDlg()],['basedatos','Base de datos','',()=>databaseSettingsDlg()],['tasa','Tasa BCV','',()=>activeUser().role==='cajero'?tasaBcvDlg():cfgDlg('cRate')]
 ];
 function buildChrome(){
   addAdminToolbarItems();
@@ -6530,7 +6950,7 @@ function wire(){
     const b=e.target.closest('[data-tb]');if(!b)return;
     const user=activeUser();
     if(user.username)try{localStorage.setItem('sifer360_last_module_v1:'+user.username,b.dataset.tb);}catch(err){}
-    const t=TB.find(x=>x[0]===b.dataset.tb);if(t){if(!window.SIFERAccess||!window.SIFERAccess.canAccess||!window.SIFERAccess.canAccess(b.dataset.tb,user)){msg('Tu perfil no tiene autorización para abrir este módulo.','bad');return;}if($('#adminDashboard')&&!$('#adminDashboard').hidden&&user.role!=='contador')showPosScreen();t[3]();}
+    const t=TB.find(x=>x[0]===b.dataset.tb);if(t){if(!window.SIFERAccess||!window.SIFERAccess.canAccess||!window.SIFERAccess.canAccess(b.dataset.tb,user)){msg('Tu perfil no tiene autorización para abrir este módulo.','bad');return;}if($('#adminDashboard')&&!$('#adminDashboard').hidden)showPosScreen();t[3]();}
   });
   document.addEventListener('pointerdown',e=>{
     if(menuEl&&!e.target.closest('.menu')&&!e.target.closest('#btnMenu'))closeMenu();
@@ -6540,7 +6960,7 @@ function wire(){
   document.addEventListener('keydown',e=>{
     if(W){if(e.key==='Escape'){e.preventDefault();closeWin();}return;}
     if(e.key==='Escape'&&menuEl){closeMenu();if($('#btnMenu'))$('#btnMenu').focus();return;}
-    if(fk[e.key]){e.preventDefault();const session=activeUser();if(session.role==='contador'&&e.key!=='F1'){msg('El perfil contador solo tiene acceso a Fiscal y Contabilidad.','bad');return;}closeMenu();fk[e.key]();return;}
+    if(fk[e.key]){e.preventDefault();const session=activeUser();if(session.role==='contador'&&e.key!=='F1'){msg('El perfil contador solo tiene acceso al módulo Fiscal.','bad');return;}closeMenu();fk[e.key]();return;}
     const tag=document.activeElement?document.activeElement.tagName:'';
     if(/INPUT|SELECT|TEXTAREA/.test(tag))return;
     if(e.key==='Delete'){e.preventDefault();removeSel();}
@@ -6590,7 +7010,8 @@ async function fiscalDocumentsDlg(){
       if(!Array.isArray(S.documents))S.documents=[];
       S.documents=S.documents.filter(d=>d.id!==doc.id);
       S.documents.push({id:doc.id,transactionType:doc.transactionType,transactionId:doc.transactionId,fileName:doc.fileName,mimeType:doc.mimeType,fileSize:doc.fileSize,sha256:doc.sha256,createdAt:doc.createdAt,notes:doc.notes});
-      save();status.textContent='Documento guardado localmente en SQLite para '+(sel.transactionType==='sale'?'la venta #':'la compra #')+sel.transactionId+'.';await render();
+      const persisted=await save();if(!persisted||!persisted.ok){status.textContent='El archivo se guardó en la tabla documental, pero el servidor no confirmó sus metadatos en el estado general. Revise y vuelva a cargar antes de continuar.';return;}
+      status.textContent='Documento guardado de forma durable en SQLite para '+(sel.transactionType==='sale'?'la venta #':'la compra #')+sel.transactionId+'.';await render();
     }catch(e){status.textContent='No se guardó el documento: '+(e.message||e);persistenceError(e);}
   };
   $('#fdUpload',el).addEventListener('click',()=>upload.click());
@@ -6605,7 +7026,8 @@ async function fiscalDocumentsDlg(){
       try{
         await posSqliteDriver.deleteDocument(del.dataset.docDelete);
         if(Array.isArray(S.documents)) S.documents=S.documents.filter(d=>d.id!==del.dataset.docDelete);
-        save();await render();
+        const persisted=await save();if(!persisted||!persisted.ok){status.textContent='El archivo se eliminó de la tabla documental, pero el servidor no confirmó la actualización de sus metadatos. Recargue para verificar.';return;}
+        await render();
       }catch(err){status.textContent='No se pudo eliminar: '+err.message;}
       return;
     }
@@ -6626,6 +7048,22 @@ async function fiscalDocumentsDlg(){
   openWin({title:'Documentos fiscales originales (SQLite Local)',w:820,body:el,foot:[{label:'Cerrar',primary:true}],onOpen:()=>{render();}});
 }
 
+async function networkSettingsDlg(){
+  if(!window.posDesktop){msg('La conexión LAN requiere SIFER360 de escritorio.','bad');return;}
+  const el=h('<div class="form" style="gap:12px"><div class="hint">Una PC debe funcionar como servidor y conservar la única base SQLite operativa. Las demás PCs se conectan como clientes mediante la IP local. No se utiliza Internet ni almacenamiento en la nube.</div><div class="gridwrap"><table class="grid"><tbody><tr><td>Modo actual</td><td id="lanRole">Consultando…</td></tr><tr><td>IP del servidor</td><td id="lanAddresses">—</td></tr><tr><td>Puerto</td><td><input class="fld mono" id="lanPort" value="38760" inputmode="numeric"></td></tr><tr><td>Clave de emparejamiento</td><td><input class="fld mono" id="lanToken" readonly></td></tr><tr><td>Huella TLS SHA-256 del servidor</td><td><input class="fld mono" id="lanFingerprint" readonly></td></tr></tbody></table></div><div class="row" style="flex-wrap:wrap"><button class="btn primary" id="lanStartServer">Designar este equipo como SERVIDOR</button><button class="btn" id="lanStopServer">Detener servidor</button><button class="btn" id="lanDisconnect">Desconectar cliente</button></div><hr><b>Conectar esta PC como CLIENTE</b><div class="row" style="flex-wrap:wrap"><button class="btn" id="lanDiscover">Buscar servidores en la red</button><select class="fld" id="lanFound" style="min-width:220px;flex:1"><option value="">Seleccione un servidor detectado…</option></select></div><div class="newgrid"><div class="f"><label for="lanHost">IP del servidor (también puede escribirla)</label><input class="fld mono" id="lanHost" placeholder="192.168.1.100"></div><div class="f"><label for="lanClientPort">Puerto</label><input class="fld mono" id="lanClientPort" value="38760"></div><div class="f wide"><label for="lanClientToken">Clave mostrada en el equipo servidor</label><input class="fld mono" id="lanClientToken" placeholder="Clave de emparejamiento"></div><div class="f wide"><label for="lanFingerprintInput">Huella TLS SHA-256 (cópiala desde la pantalla del servidor)</label><input class="fld mono" id="lanFingerprintInput" placeholder="AA:BB:CC:…"></div></div><div class="hint" id="lanMessage">El tráfico LAN usa HTTPS con certificado fijado por huella SHA-256. Compara la huella de esta pantalla con la mostrada físicamente en el servidor antes de enviar la clave. Las operaciones pendientes se conservan en una cola local hasta recibir ACK del servidor.</div><div class="row"><button class="btn primary" id="lanConnect">Conectar como CLIENTE y reiniciar SIFER</button></div></div>');
+  const status=await window.posDesktop.networkStatus();
+  const role=$('#lanRole',el),addresses=$('#lanAddresses',el),token=$('#lanToken',el),fingerprint=$('#lanFingerprint',el),port=$('#lanPort',el),message=$('#lanMessage',el);
+  const show=s=>{role.textContent=s.role==='server'?'SERVIDOR LAN':s.role==='client'?'CLIENTE LAN':'EQUIPO INDEPENDIENTE';addresses.textContent=(s.addresses||[]).join(' · ')||'No se detectó IP IPv4 local';token.value=s.role==='server'?s.token||'': '';fingerprint.value=s.tlsFingerprint||'';port.value=String(s.port||38760);};
+  show(status);
+  try{const queue=await window.posDesktop.networkOperationStatus();message.textContent+=' Cola LAN: '+queue.pending+' pendientes · '+queue.acknowledged+' confirmadas · '+queue.conflicts+' conflictos.';if(queue.conflicts){const conflicts=await window.posDesktop.networkOperationConflicts();message.textContent+=' Detalle: '+conflicts.map(x=>x.entityType+':'+x.entityId).join(' · ');}}catch{}
+  $('#lanStartServer',el).onclick=async()=>{try{const s=await window.posDesktop.networkStartServer({port:Number(port.value)||38760});show(s);message.textContent='Servidor iniciado. Comparta la IP y la clave de emparejamiento con las demás PCs.';}catch(e){message.textContent='No se pudo iniciar el servidor: '+e.message;}};
+  $('#lanStopServer',el).onclick=async()=>{try{const s=await window.posDesktop.networkStopServer();show(s);message.textContent='Servidor detenido.';}catch(e){message.textContent=e.message;}};
+  $('#lanDisconnect',el).onclick=async()=>{try{const s=await window.posDesktop.networkDisconnectClient();show(s);message.textContent='Cliente desconectado. Este equipo seguirá sin base operativa local; vuelva a emparejarlo con el servidor para continuar.';}catch(e){message.textContent=e.message;}};
+  $('#lanDiscover',el).onclick=async()=>{const select=$('#lanFound',el);select.innerHTML='<option value="">Buscando…</option>';try{const found=await window.posDesktop.networkDiscover();select.innerHTML='<option value="">Seleccione un servidor detectado…</option>'+found.map((x,i)=>'<option value="'+i+'" data-host="'+esc(x.host)+'" data-port="'+esc(x.port)+'">'+esc(x.name)+' · '+esc(x.host)+':'+esc(x.port)+' · TLS '+esc((x.tlsFingerprint||'sin huella').slice(0,17))+'</option>').join('');message.textContent=found.length?'Servidores detectados. Seleccione uno, compare la huella mostrada aquí con la pantalla del servidor y escriba manualmente la huella y la clave.':'No se detectaron servidores. Puede escribir la IP manualmente; compruebe que ambas PCs estén en la misma red.';select._found=found;}catch(e){message.textContent='Error buscando servidores: '+e.message;}};
+  $('#lanFound',el).onchange=e=>{const found=e.target._found||[],item=found[Number(e.target.value)];if(item){$('#lanHost',el).value=item.host;$('#lanClientPort',el).value=String(item.port);}};
+  $('#lanConnect',el).onclick=async()=>{try{const s=await window.posDesktop.networkConfigureClient({host:$('#lanHost',el).value.trim(),port:Number($('#lanClientPort',el).value)||38760,token:$('#lanClientToken',el).value.trim(),fingerprint:$('#lanFingerprintInput',el).value.trim()});message.textContent='Conexión HTTPS autenticada y huella verificada con '+s.host+'. Reiniciando para cargar la base central…';setTimeout(()=>location.reload(),500);}catch(e){message.textContent='No se pudo conectar: '+e.message;}};
+  openWin({title:'Conexión entre PCs · Servidor y clientes LAN',w:760,body:el,foot:[{label:'Cerrar',primary:true}]});
+}
 async function databaseSettingsDlg(){
   const isDesktop = !!window.posDesktop;
   const salesCount = S.sales ? S.sales.length : 0;
@@ -6746,11 +7184,11 @@ async function prepareDatabaseBeforeStartup(){
     const st = await posSqliteDriver.loadState();
     window.__POS_BOOT_STATE = st;
   } catch (e) {
-    console.warn('Advertencia al iniciar SQLite local:', e);
+    console.warn('No se pudo cargar la base SQLite central/local:', e);
+    window.__POS_BOOT_STATE = null;
+    window.__POS_BOOT_ERROR = e && e.message ? e.message : String(e);
   }
 }
-
-window.SIFERAccountingBridge={getState:()=>S,save:()=>save(),setAccounting:data=>{if(!S)throw new Error('Estado POS no inicializado');S.accounting=data;save();return true;}};
 
 /* ---------- arranque ---------- */
 function restoreWorkspaceAfterReload(){
@@ -6763,23 +7201,30 @@ function restoreWorkspaceAfterReload(){
   const key='sifer360_last_module_v1:'+user.username;
   let last='';try{last=localStorage.getItem(key)||'';}catch(e){}
   if(last==='dashboard'&&user.role==='admin'){showDashboardScreen();return;}
-  const allowed={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','contabilidad','documentos','basedatos','tasa','usuarios','cajas'],contador:['seniat','contabilidad']};
+  const allowed={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','documentos','basedatos','tasa','usuarios','cajas'],contador:['seniat']};
   if(last&&(allowed[user.role]||[]).includes(last)){
     const button=$('#toolbar [data-tb="'+last+'"]');
     if(button&&!button.hidden){button.click();return;}
   }
-  if(user.role==='admin')showDashboardScreen();else if(user.role==='contador'&&window.SIFERAccountantDashboard)window.SIFERAccountantDashboard.show();
+  showDashboardScreen();
 }
-prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(()=>{
+prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(async()=>{
+  if(window.__POS_BOOT_ERROR){
+    document.body.innerHTML='<main style="max-width:720px;margin:10vh auto;padding:32px;font:16px Segoe UI,Arial,sans-serif;color:#18324b"><h1>SIFER360 Licorería requiere la aplicación de escritorio</h1><p>'+String(window.__POS_BOOT_ERROR).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))+'</p><p>Los datos operativos se guardan exclusivamente en SQLite local. Abra el programa instalado; no utilice la versión del navegador.</p></main>';
+    return;
+  }
   init();
+  await migrateLegacyOpenings();
   buildChrome();
   renderCatOptions();
   renderAll();
   wire();
+  if(window.__POS_OPENING_MIGRATION_ERROR)msg(window.__POS_OPENING_MIGRATION_ERROR,'bad');
   primeOperationBaseline();
   window.__SIFER_READY = true;
   try{window.dispatchEvent(new Event('sifer:ready'));}catch(e){}
   restoreWorkspaceAfterReload();
-  msg(saved?'Base de datos local SQLite de SIFER 360 Licorería cargada con éxito. Sistema listo para operar.':'Base de datos local SQLite de SIFER 360 Licorería inicializada. Listo para operar.');
+  if(window.__POS_BOOT_ERROR)msg('No se pudo cargar la base de datos. No se utilizará una copia local alternativa ni se confirmarán operaciones: '+window.__POS_BOOT_ERROR,'bad');
+  else msg(saved?'Base de datos SQLite de SIFER 360 Licorería cargada con éxito. Sistema listo para operar.':'Base de datos SQLite de SIFER 360 Licorería inicializada. Listo para operar.');
 });
 })();

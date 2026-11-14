@@ -22,20 +22,18 @@ test('cashier POS is blocked until an opening matches the logged-in cashier and 
 });
 
 test('cashier opening state is isolated to the authenticated browser session',()=>{
-  const start=main.indexOf('function readActiveOpening()');
-  const end=main.indexOf('function zExpectedByMethod',start);
+  const start=main.indexOf('function readActiveOpening(boxOverride)');
+  const end=main.indexOf('function upsertOpeningState',start);
   const block=main.slice(start,end);
-  assert.match(block,/if\(user\.role==='cajero'\)/);
-  assert.match(block,/String\(sessionValue\.username\|\|''\)!==String\(user\.username\|\|''\)/);
-  assert.match(block,/String\(sessionValue\.cashbox\|\|''\)!==String\(user\.cashbox\|\|''\)/);
-  assert.match(block,/if\(activeUser\(\)\.role!=='cajero'\)localStorage\.setItem/);
-  const cashierBranch=block.slice(block.indexOf("if(user.role==='cajero'){"),block.indexOf("if(sessionValue&&sessionValue.status"));
-  assert.doesNotMatch(cashierBranch,/localStorage/);
+  assert.match(block,/const user=activeUser\(\)/);
+  assert.match(block,/user\.role!=='cajero'\|\|\(String\(item\.username\|\|''\)===String\(user\.username\|\|''\)&&String\(item\.cashbox\|\|''\)===String\(user\.cashbox\|\|''\)\)/);
+  assert.match(block,/matches\.sort/);
+  assert.doesNotMatch(block,/localStorage/);
 });
 
 test('cashier toolbar shows only sales workflow actions',()=>{
   assert.match(access,/cajero:\['nueva','buscar','cliente','suspender','recuperar','descuento','quitar','ventas','cortez','tasa','salidas'\]/);
-  assert.match(access,/btnAccountingTop/);
+  assert.doesNotMatch(access,/btnAccountingTop|accounting|contabilidad/i);
   assert.match(access,/btnSeniatTop/);
 });
 
