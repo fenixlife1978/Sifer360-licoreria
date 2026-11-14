@@ -608,3 +608,9 @@ test('el handler de guardado de snapshots cliente vacía y confirma la outbox an
   const handler = electron.slice(electron.indexOf("ipcMain.handle('posdb:save-state'"), electron.indexOf("ipcMain.handle('posdb:list-documents'"));
   assert.match(handler, /if \(networkConfig\.role === 'client'\)[\s\S]{0,350}await flushClientOutbox\(\);[\s\S]{0,300}clientApi\('\/api\/sync\/state'/);
 });
+
+test('los tombstones de ventas suspendidas se cargan desde el snapshot y sobreviven al reinicio del renderer', () => {
+  assert.match(pos, /S\.heldDeletedIds=Array\.isArray\(d\.heldDeletedIds\)\?d\.heldDeletedIds:\[\]/);
+  assert.match(pos, /if\(!Array\.isArray\(S\.heldDeletedIds\)\)S\.heldDeletedIds=\[\]/);
+  assert.match(pos, /S\.heldDeletedIds\.push\(\{id:String\(hd\.id/);
+});
