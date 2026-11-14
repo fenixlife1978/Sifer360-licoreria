@@ -4499,14 +4499,16 @@ function showSaleCompletion(sale){
   const change=r2(Math.max(0,Number(sale.change)||0));
   const rate=Number(sale.rate||S.cfg.rate)||1;
   const hasChange=change>=0.01;
+  const internalTicket=sale.documentMode==='INTERNAL_THERMAL'||sale.documentMode==='NO_PRINTER'||sale.docType==='TICKET-INTERNO';
+  const noPrinter=sale.documentMode==='NO_PRINTER';
   const body=h('<div class="sale-completion">'+
     '<div class="sale-completion-icon '+(hasChange?'change':'success')+'">'+(hasChange?'↩':'✓')+'</div>'+
     '<div class="sale-completion-label">'+(hasChange?'VUELTO A ENTREGAR':'VENTA FINALIZADA')+'</div>'+
-    (hasChange?'<div class="sale-completion-amount">'+esc(usd(change))+'</div><div class="sale-completion-equivalent">Equivalente: <b>'+esc(bsf(r2(change*rate)))+'</b></div><p class="sale-completion-note">Entregue el vuelto en efectivo según la moneda acordada con el cliente. Si el excedente provino de un pago electrónico, gestione la devolución por ese mismo medio.</p>':'<p class="sale-completion-note">La factura '+esc(pad(sale.no))+' fue registrada correctamente. No hay vuelto pendiente.</p>')+
-    '<div class="sale-completion-ticket">Factura POS <b>'+esc(pad(sale.no))+'</b>'+(sale.fiscal?' · Documento fiscal <b>'+esc(sale.fiscal.documentNumber)+'</b> · Serial <b>'+esc(sale.fiscal.serial)+'</b>':'')+' · Total <b>'+esc(usd(r2(sale.total+sale.igtf)))+'</b></div>'+
+    (hasChange?'<div class="sale-completion-amount">'+esc(usd(change))+'</div><div class="sale-completion-equivalent">Equivalente: <b>'+esc(bsf(r2(change*rate)))+'</b></div><p class="sale-completion-note">Entregue el vuelto en efectivo según la moneda acordada con el cliente. Si el excedente provino de un pago electrónico, gestione la devolución por ese mismo medio.</p>':'<p class="sale-completion-note">'+(internalTicket?'El Ticket de Venta '+esc(pad(sale.no))+' quedó registrado en SQLite. No es válido como factura fiscal.':'La factura '+esc(pad(sale.no))+' fue registrada correctamente.')+' No hay vuelto pendiente.</p>')+
+    (internalTicket?'<div class="sale-completion-ticket">TICKET DE VENTA · NO VÁLIDO COMO FACTURA FISCAL <b>'+esc(pad(sale.no))+'</b>':'<div class="sale-completion-ticket">Factura POS <b>'+esc(pad(sale.no))+'</b>')+(sale.fiscal?' · Documento fiscal <b>'+esc(sale.fiscal.documentNumber)+'</b> · Serial <b>'+esc(sale.fiscal.serial)+'</b>':'')+' · Total <b>'+esc(usd(r2(sale.total+sale.igtf)))+'</b></div>'+
     '</div>');
   openWin({title:hasChange?'Vuelto de la venta':'Venta finalizada',w:390,body,foot:[
-    {label:'Ver / imprimir ticket',primary:true,fn:()=>{closeWin();showTicket(sale);return false;}},
+    {label:noPrinter?'Ver comprobante interno':(internalTicket?'Ver / imprimir ticket interno':'Ver / imprimir ticket'),primary:true,fn:()=>{closeWin();showTicket(sale);return false;}},
     {label:'Cerrar'}
   ],onOpen:()=>{const node=$('.sale-completion',body);if(node)node.setAttribute('tabindex','-1');}});
 }
@@ -4726,8 +4728,51 @@ function ticketText(s){
   const cut=(t,n)=>t.length>n?t.slice(0,n-1)+'…':t;
   const L=[];
   if(s.void)L.push(dln,ctr('*** VENTA ANULADA ***'),dln);
+  const internalTicket=s.documentMode==='INTERNAL_THERMAL'||s.documentMode==='NO_PRINTER'||s.docType==='TICKET-INTERNO';
   L.push(ctr(cut(S.cfg.empresa.toUpperCase(),Wd)),ctr('RIF: '+S.cfg.rif));
-  L.push(dln,row('RECIBO / TICKET: '+pad(s.no),fmtDT(s.ts)),row('Nº Control: '+(s.ctrlNo||('00-'+pad(s.no,8))),'Tasa BCV: '+nf(s.rate||S.cfg.rate)+' Bs.'),row('Cajero: '+S.cfg.cajero,'Caja '+S.cfg.caja),'Cliente: '+cut(s.client.name,Wd-9),'RIF/C.I.: '+s.client.rif,ln,row('CANT·U.M. x PRECIO (IVA)','SUBTOTAL US$'),ln);
+  if(internalTicket)L.push(dln,ctr('TICKET DE VENTA'),ctr('NO VÁLIDO COMO FACTURA FISCAL'),dln);
+  L.push(dln,row((internalTicket?'VENTA Nº ':'RECIBO / TICKET: ')+pad(s.no),fmtDT(s.ts)),...(internalTicket?[]:[row('Nº Control: '+(s.ctrlNo||('00-'+pad(s.no,8))),'Tasa BCV: '+nf(s.rate||S.cfg.rate)+' Bs.')]),...(internalTicket?[row('Tasa BCV: '+nf(s.rate||S.cfg.rate)+' Bs.','Caja '+s.cashbox)]:[]),row('Cajero: '+S.cfg.cajero,'Caja '+S.cfg.caja),'Cliente: '+cut(s.client.name,Wd-9),'RIF/C.I.: '+s.client.rif,ln,row('CANT·U.M. x PRECIO (IVA)','SUBTOTAL US
+  s.lines.forEach(l=>{
+    const uLabel=(l.unit||'und').toUpperCase();
+    const tTag=l.taxRate===0?'(E 0%)':(l.taxRate===8?'(R 8%)':(l.taxRate===31?'(A 31%)':'(G 16%)'));
+    L.push(cut(l.desc,Wd));
+    L.push(row('  '+fq(l.qty)+' '+uLabel+' x '+nf(l.price)+' '+tTag+(l.disc?' (-'+fq(l.disc)+'%)':''),nf(l.net)));
+  });
+  L.push(ln,row('Subtotal US$',nf(s.sub)));
+  if(s.disc)L.push(row('Descuento US$','-'+nf(s.disc)));
+  if(s.baseEx>0&&s.baseG16>0){
+    L.push(row('Base Gravada 16 % US$',nf(s.baseG16)));
+    if(s.baseR8>0)L.push(row('Base Reducida 8 % US$',nf(s.baseR8)));
+    if(s.baseA31>0)L.push(row('Base Suntuaria 31 % US$',nf(s.baseA31)));
+    L.push(row('Ventas Exentas (0 %) US$',nf(s.baseEx)));
+  }else if(s.baseEx>0){
+    L.push(row('Ventas Exentas (0 %) US$',nf(s.baseEx)));
+  }else{
+    L.push(row('Base imponible US$',nf(s.base)));
+  }
+  L.push(row('Total I.V.A. US$',nf(s.iva)));
+  if(s.igtf)L.push(row('IGTF (3 % Divisas) US$',nf(s.igtf)));
+  const due=r2(s.total+s.igtf);
+  s.pays.forEach(p=>{
+    const refTxt=p.ref?(' Ref:'+p.ref):'';
+    L.push(row(' '+cut(p.name+refTxt,26),(p.cur==='USD'?'US$ ':'Bs. ')+nf(p.amount)));
+  });
+  if(s.change>=0.01)L.push(row(' Vuelto (equiv. US$)',nf(s.change)));
+  if(s.cashea){
+    L.push(ln,ctr('PAGADO CON CASHEA (3 CUOTAS BNPL)'));
+    L.push(row(' Aprobación / Token:',s.cashea.aprobacion));
+    L.push(row(' C.I. Cliente:',s.cashea.ci||s.client.rif));
+    if(s.cashea.inicialUsd>0){
+      L.push(row(' Inicial en caja:',usd(s.cashea.inicialUsd)));
+    }
+    L.push(row(' Financiado Cashea:',usd(s.cashea.financiadoUsd)));
+    L.push(row(' '+(s.cashea.cuotasCount||3)+' cuota(s) quincenales:',usd(s.cashea.cuotaUsd)+' c/u'));
+  }
+  if(s.fiscal){L.push(ln,ctr('COPIA INTERNA · NO ES ORIGINAL FISCAL'),row('Documento fiscal:',s.fiscal.documentNumber),row('Serial máquina:',s.fiscal.serial));}
+  L.push(ln,ctr('¡GRACIAS POR SU COMPRA!'),ctr('Impresora Térmica 80mm · Control Interno'));
+  return L.join('\n');
+}
+),ln);
   s.lines.forEach(l=>{
     const uLabel=(l.unit||'und').toUpperCase();
     const tTag=l.taxRate===0?'(E 0%)':(l.taxRate===8?'(R 8%)':(l.taxRate===31?'(A 31%)':'(G 16%)'));
@@ -4797,7 +4842,8 @@ function showTicket(s){
     }
   });
 
-  openWin({title:'Recibo / Ticket de Caja Térmica 80mm — Nº '+pad(s.no),w:500,body:el,foot:[
+  const noPrinter=s.documentMode==='NO_PRINTER';
+  openWin({title:(noPrinter?'Comprobante interno — Nº ':'Ticket de Venta — Nº ')+pad(s.no),w:500,body:el,foot:[
     {label:'Imprimir 80mm',left:true,fn:()=>{
       document.body.classList.add('printing-ticket-80mm');
       window.print();
