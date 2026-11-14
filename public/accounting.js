@@ -194,19 +194,40 @@ function renderAssets(){
 }
 function depreciateAsset(id){
  const a=state(),asset=a.fixedAssets.find(x=>x.id===id);if(!asset||asset.status!=='active')return;
- const month=prompt('Indique el período a depreciar (AAAA-MM):',today().slice(0,7));if(!month)return;
- if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)){alert('Período inválido. Use AAAA-MM.');return;}
- if(month<asset.acquisitionDate.slice(0,7)){alert('No se puede depreciar antes de la fecha de adquisición.');return;}
- if(asset.lastDepreciationMonth&&month<=asset.lastDepreciationMonth){alert('Ese período ya fue depreciado o es anterior al último período contabilizado.');return;}
- const months=asset.monthsDepreciated||0;if(months>=asset.lifeMonths){alert('La vida útil ya fue depreciada.');return;}
- const debitUsd=Math.min(asset.monthlyUsd,asset.costUsd-asset.residualUsd-months*asset.monthlyUsd),debitBs=Math.min(asset.monthlyBs,asset.costBs-asset.residualBs-months*asset.monthlyBs);
- if(!(debitUsd>0)||!(debitBs>0)){alert('El valor depreciable se agotó.');return;}
- const sequence=Number(a.nextEntry)||1,entryId='ACC-'+String(sequence).padStart(6,'0'),expense=accountMap().get('6.1.1.06'),accum=accountMap().get(asset.accumulatedDepreciationAccount);
+ const target=prompt('Indique el período hasta el cual desea depreciar (AAAA-MM). Se registrarán también los meses anteriores pendientes:',today().slice(0,7));if(!target)return;
+ if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(target)){alert('Período inválido. Use AAAA-MM.');return;}
+ const acquisition=String(asset.acquisitionDate||'').slice(0,7);
+ if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(acquisition)||target<acquisition){alert('El período debe ser igual o posterior al mes de adquisición.');return;}
+ const periodEntries=(a.entries||[]).filter(e=>e.assetId===asset.id&&e.depreciationPeriod);
+ const recorded=new Set(periodEntries.map(e=>String(e.depreciationPeriod)));
+ const periods=[];let cursor=acquisition;
+ while(cursor<=target&&periods.length<=asset.lifeMonths+240){
+  if(!recorded.has(cursor))periods.push(cursor);
+  const y=Number(cursor.slice(0,4)),m=Number(cursor.slice(5,7));
+  cursor=m===12?String(y+1).padStart(4,'0')+'-01':String(y).padStart(4,'0')+'-'+String(m+1).padStart(2,'0');
+ }
+ if(!periods.length){alert('No hay meses pendientes de depreciación hasta el período indicado.');return;}
+ const recordedCount=recorded.size,alreadyUsd=periodEntries.reduce((n,e)=>n+(e.lines||[]).reduce((s,l)=>s+(Number(l.creditUsd)||0),0),0),alreadyBs=periodEntries.reduce((n,e)=>n+(e.lines||[]).reduce((s,l)=>s+(Number(l.creditBs)||0),0),0);
+ const countBefore=Math.max(Number(asset.monthsDepreciated)||0,recordedCount);
+ if(countBefore>=asset.lifeMonths){alert('La vida útil ya fue depreciada.');return;}
+ const map=accountMap(),expense=map.get('6.1.1.06'),accum=map.get(asset.accumulatedDepreciationAccount);
  if(!expense?.isMovement||!accum?.isMovement){alert('No se encuentran las cuentas contables de depreciación.');return;}
- const date=month+'-'+new Date(Number(month.slice(0,4)),Number(month.slice(5,7)),0).getDate();
- a.entries.push({id:entryId,number:entryId,sequence,date,reference:asset.id+' / '+month,description:'Depreciación mensual · '+asset.name,rate:debitBs/debitUsd,lines:[{accountCode:expense.code,accountName:expense.name,debitUsd,creditUsd:0,debitBs,creditBs:0},{accountCode:accum.code,accountName:accum.name,debitUsd:0,creditUsd:debitUsd,debitBs:0,creditBs:debitBs}],totalDebitUsd:debitUsd,totalCreditUsd:debitUsd,totalDebitBs:debitBs,totalCreditBs:debitBs,status:'posted',createdAt:new Date().toISOString(),createdBy:'Contador',assetId:asset.id,depreciationPeriod:month});
- asset.monthsDepreciated=months+1;asset.lastDepreciationMonth=month;if(asset.monthsDepreciated>=asset.lifeMonths)asset.status='depreciated';
- a.nextEntry=sequence+1;save();render();
+ let posted=0,usedUsd=alreadyUsd,usedBs=alreadyBs,count=countBefore,sequence=Number(a.nextEntry)||1;
+ for(const month of periods){
+  if(count>=asset.lifeMonths)break;
+  const debitUsd=Math.min(Number(asset.monthlyUsd)||0,Math.max(0,asset.costUsd-asset.residualUsd-usedUsd));
+  const debitBs=Math.min(Number(asset.monthlyBs)||0,Math.max(0,asset.costBs-asset.residualBs-usedBs));
+  if(!(debitUsd>0)||!(debitBs>0))break;
+  const entryId='ACC-'+String(sequence).padStart(6,'0'),y=Number(month.slice(0,4)),m=Number(month.slice(5,7)),date=month+'-'+String(new Date(y,m,0).getDate()).padStart(2,'0');
+  a.entries.push({id:entryId,number:entryId,sequence,date,reference:asset.id+' / '+month,description:'Depreciación mensual · '+asset.name,rate:debitBs/debitUsd,lines:[{accountCode:expense.code,accountName:expense.name,debitUsd,creditUsd:0,debitBs,creditBs:0},{accountCode:accum.code,accountName:accum.name,debitUsd:0,creditUsd:debitUsd,debitBs:0,creditBs:debitBs}],totalDebitUsd:debitUsd,totalCreditUsd:debitUsd,totalDebitBs:debitBs,totalCreditBs:debitBs,status:'posted',createdAt:new Date().toISOString(),createdBy:'Contador',assetId:asset.id,depreciationPeriod:month});
+  usedUsd+=debitUsd;usedBs+=debitBs;count++;posted++;sequence++;
+ }
+ if(!posted){alert('No se generaron depreciaciones. Revise el valor depreciable pendiente y la vida útil.');return;}
+ const allPeriods=[...recorded,...a.entries.filter(e=>e.assetId===asset.id&&e.depreciationPeriod).map(e=>String(e.depreciationPeriod))].sort();
+ asset.monthsDepreciated=count;asset.lastDepreciationMonth=allPeriods[allPeriods.length-1]||asset.lastDepreciationMonth;
+ if(count>=asset.lifeMonths||usedUsd>=asset.costUsd-asset.residualUsd-0.000001||usedBs>=asset.costBs-asset.residualBs-0.000001)asset.status='depreciated';
+ a.nextEntry=sequence;save();render();
+ alert('Se contabilizaron '+posted+' período(s) de depreciación, incluyendo los meses que estaban pendientes.');
 }
 function exportStatement(){
  const date=$('#acStatementDate',dialog)?.value||today(),entries=validEntries().filter(e=>e.date<=date),rows=movementAccounts().map(a=>({a,t:totalsFor(entries,a.code)}));
