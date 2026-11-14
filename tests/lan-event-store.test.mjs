@@ -204,3 +204,16 @@ test('acepta y persiste eventos de movimientos de caja, auditoría de tasa y lot
   assert.equal(db.state().lotesSudeban[0].refLote, 'ABC');
   assert.equal(db.integrity(), 'ok');
 });
+
+test('Kardex de dispositivos distintos no colisiona aunque su contador numérico local sea igual', () => {
+  const db = fixture();
+  const first = { id: 1, eventId: 'kdx-device-a-1', code: 'ART-01', cashbox: '01', ts: 100, qty: 1 };
+  const second = { id: 1, eventId: 'kdx-device-b-1', code: 'ART-02', cashbox: '01', ts: 101, qty: 2 };
+  const result = db.apply([
+    { eventId: 'evt-kdx-a', deviceId: 'device-a', deviceSeq: 1, eventType: 'inventory-movement', entityType: 'kardex', entityId: first.eventId, occurredAt: new Date(100).toISOString(), payload: { record: first } },
+    { eventId: 'evt-kdx-b', deviceId: 'device-b', deviceSeq: 1, eventType: 'inventory-movement', entityType: 'kardex', entityId: second.eventId, occurredAt: new Date(101).toISOString(), payload: { record: second } }
+  ]);
+  assert.deepEqual(result.accepted, ['evt-kdx-a', 'evt-kdx-b']);
+  assert.equal(db.state().kardex.length, 2);
+  assert.deepEqual(db.state().kardex.map(x => x.eventId).sort(), ['kdx-device-a-1', 'kdx-device-b-1']);
+});
