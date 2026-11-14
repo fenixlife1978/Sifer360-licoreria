@@ -595,8 +595,8 @@ async function networkSyncAttempt(){
   if(networkSyncBusy||!window.posDesktop||typeof window.posDesktop.networkSyncNow!=='function')return;
   networkSyncBusy=true;
   try{
-    const pendingSave=window.__SIFER_LAST_SAVE;
-    if(pendingSave)await pendingSave;
+    let pendingSave;
+    do{pendingSave=window.__SIFER_LAST_SAVE;if(pendingSave)await pendingSave;}while(pendingSave!==window.__SIFER_LAST_SAVE);
     const local=stateSnapshot();
     const syncRevision=saveSequence;
     const result=await window.posDesktop.networkSyncNow(local);
