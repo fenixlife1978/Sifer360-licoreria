@@ -17,12 +17,12 @@ function applyIncomingEvents({ db, events, persist, restore, statePayloadHash })
   const duplicates = [];
   const conflicts = [];
   const allowedCollections = new Set([
-    'sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','movimientosCaja','rateAudit','lotesSudeban',
+    'sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','heldDeletedIds','movimientosCaja','rateAudit','lotesSudeban',
     'casheaMovimientos','casheaLiquidaciones','cambiosDivisas',
     'retencionesIva','retentions','returns','voids'
   ]);
   const boxScopedCollections = new Set([
-    'sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','held','movimientosCaja','rateAudit',
+    'sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','held','heldDeletedIds','movimientosCaja','rateAudit',
     'returns','voids','retencionesIva','retentions','casheaMovimientos',
     'casheaLiquidaciones','cambiosDivisas'
   ]);
@@ -103,6 +103,13 @@ function applyIncomingEvents({ db, events, persist, restore, statePayloadHash })
       );
       if (!existingRecord) {
         state[collection] = [...records, record];
+        if (collection === 'heldDeletedIds') {
+          const deletedId = String(record.id);
+          const deletedBox = String(record.cashbox || 'sin-caja');
+          state.held = (Array.isArray(state.held) ? state.held : []).filter(item =>
+            !(String(item && item.id || '') === deletedId && String(item && item.cashbox || 'sin-caja') === deletedBox)
+          );
+        }
         run(
           'INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP',
           [JSON.stringify(state)]
