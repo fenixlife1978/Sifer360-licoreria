@@ -89,3 +89,9 @@ test('los tickets internos quedan fuera de libros fiscales y del débito mensual
   assert.match(main, /isFiscalSale\(x\)&&!x\.void&&enPeriodoSeniat\(x\.ts\)/);
   assert.match(main, /isFiscalSale\(x\)&&!x\.void&&enPeriodoFiscal\(x\.ts\)/);
 });
+
+test('el modo interno deja explícita la modalidad sin emisión fiscal', () => {
+  assert.match(main, /value="NO_FISCAL_INTERNAL"/);
+  assert.match(main, /S\.cfg\.fiscalTipo=choice==='FISCAL_PRINTER'\?'MAQUINA_FISCAL':'NO_FISCAL_INTERNAL'/);
+  assert.match(main, /if\(S\.cfg\.printMode==='INTERNAL_THERMAL'\|\|S\.cfg\.printMode==='NO_PRINTER'\)S\.cfg\.fiscalTipo='NO_FISCAL_INTERNAL'/);
+});
