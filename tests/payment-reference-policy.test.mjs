@@ -20,7 +20,7 @@ test('los medios de pago ordinarios no bloquean el cobro por falta de referencia
 
 test('CASHEA conserva la exigencia de token real y no admite referencias inventadas', () => {
   assert.match(activeCasheaAssistant, /if\(!token\).*Ingrese el código de aprobación o token de Cashea/);
-  assert.match(activePayDlg, /if\(!cRef\).*no se generará una referencia ficticia/);
+  assert.match(activePayDlg, /if\(!casheaRef\)\{msg\('Falta el código real de aprobación Cashea; no se generará una referencia ficticia\.'/);
   assert.match(activePayDlg, /if\(enteredAmts\.cashea>0&&el\._casheaTx/);
 });
 

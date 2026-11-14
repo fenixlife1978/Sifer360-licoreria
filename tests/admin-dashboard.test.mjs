@@ -10,13 +10,13 @@ const css = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8
 const dashboard = main.slice(main.indexOf('function showDashboardScreen(){'), main.indexOf('function usersManagementDlg', main.indexOf('function showDashboardScreen(){')));
 
 test('admin login goes straight to the business dashboard and can return from the header', () => {
-  assert.match(access, /function renderDashboard\(u\)\{if\(u\.role==='admin'\)[\s\S]{0,350}window\.SIFERDashboard\.show\(\);return;/);
+  assert.match(access, /function renderDashboard\(u\)\{if\(u\.role==='admin'\)[\s\S]{0,350}window\.SIFERDashboard\.show\(\);/);
+  assert.match(access, /dispatchEvent\(new CustomEvent\('sifer:authenticated',\{detail:\{role:u\.role\}\}\)\);/);
   assert.match(html, /id="adminDashboard"/);
   assert.match(html, /id="btnDashboard"/);
   assert.match(main, /window\.SIFERDashboard=\{show:showDashboardScreen/);
   assert.match(main, /dashboardButton\.addEventListener\('click',\(\)=>showDashboardScreen\(\)\)/);
 });
-
 test('dashboard contains requested commercial and financial KPIs', () => {
   assert.match(dashboard, /Ventas del día/);
   assert.match(dashboard, /Ventas del mes/);
@@ -112,7 +112,7 @@ test('finalizar venta muestra un modal centrado con vuelto o VENTA FINALIZADA y 
   assert.match(fn, /bsf\(r2\(change\*rate\)\)/);
   assert.match(fn, /w:390/);
   assert.match(fn, /Ver \/ imprimir ticket/);
-  assert.match(main, /save\(\);renderAll\(\);[\s\S]{0,400}showSaleCompletion\(sale\);/);
+  assert.match(main, /const persisted=await save\(\);if\(!persisted\|\|!persisted\.ok\)[\s\S]{0,500}renderAll\(\);[\s\S]{0,250}showSaleCompletion\(sale\);/);
   assert.match(css, /\.sale-completion\{display:flex;flex-direction:column;align-items:center;text-align:center/);
 });
 
