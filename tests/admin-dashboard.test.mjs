@@ -112,7 +112,7 @@ test('finalizar venta muestra un modal centrado con vuelto o VENTA FINALIZADA y 
   assert.match(fn, /bsf\(r2\(change\*rate\)\)/);
   assert.match(fn, /w:390/);
   assert.match(fn, /Ver \/ imprimir ticket/);
-  assert.match(main, /save\(\);renderAll\(\);[\s\S]{0,400}showSaleCompletion\(sale\);/);
+  assert.match(main, /const persisted=await save\(\);if\(!persisted\|\|!persisted\.ok\)[\s\S]{0,500}renderAll\(\);[\s\S]{0,250}showSaleCompletion\(sale\);/);
   assert.match(css, /\.sale-completion\{display:flex;flex-direction:column;align-items:center;text-align:center/);
 });
 
