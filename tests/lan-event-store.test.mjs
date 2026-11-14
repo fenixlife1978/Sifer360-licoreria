@@ -240,3 +240,13 @@ test('el evento de eliminación de venta suspendida conserva el tombstone y elim
   assert.deepEqual(db.state().held, []);
   assert.deepEqual(db.state().heldDeletedIds, [tombstone]);
 });
+
+test('un tombstone elimina también una venta suspendida heredada sin id usando caja y timestamp', () => {
+  const db = fixture();
+  const legacy = { cashbox: '01', ts: 100, cart: [{ code: 'OLD', qty: 1 }] };
+  db.apply([{ eventId: 'legacy-held-add', deviceId: 'device-a', deviceSeq: 1, eventType: 'held-sale', entityType: 'held', entityId: 'legacy-held-1', occurredAt: new Date(100).toISOString(), payload: { record: { ...legacy, id: 'legacy-held-1' } } }]);
+  const tombstone = { id: 'legacy-held-1', cashbox: '01', ts: 200 };
+  const result = db.apply([{ eventId: 'legacy-held-delete', deviceId: 'device-a', deviceSeq: 2, eventType: 'held-sale-delete', entityType: 'heldDeletedIds', entityId: tombstone.id, occurredAt: new Date(200).toISOString(), payload: { record: tombstone } }]);
+  assert.deepEqual(result.accepted, ['legacy-held-delete']);
+  assert.deepEqual(db.state().held, []);
+});
