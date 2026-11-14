@@ -5467,6 +5467,7 @@ function fiscalPrinterConfigDlg(){
 }
 
 
+/* Primer arranque: fiscal homologada, térmica genérica o POS sin impresora. */
 function printerSetupWizardDlg(){
   const user=activeUser();
   if(!user||user.role!=='admin'){msg('El asistente de impresoras debe ejecutarlo el administrador.','bad');return;}
