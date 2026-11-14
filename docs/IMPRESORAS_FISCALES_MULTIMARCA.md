@@ -2,7 +2,7 @@
 
 ## Objetivo y alcance
 
-El módulo separa la lógica comercial del POS de los protocolos de cada fabricante. La configuración se guarda en el estado operativo SQLite (por caja), mientras que la comunicación con el dispositivo se ejecuta en el equipo Electron al que está conectado físicamente.
+El módulo separa la lógica comercial del POS de los protocolos de cada fabricante. La configuración se guarda en el estado operativo SQLite (por caja), mientras que la comunicación con el dispositivo se ejecuta en el equipo Electron al que está conectado físicamente. El flujo de venta en modalidad Máquina Fiscal consulta el adaptador, persiste una intención idempotente antes de enviar la factura y solo confirma la venta después de recibir el número fiscal y serial de la máquina.
 
 Familias contempladas:
 
@@ -27,6 +27,8 @@ El módulo electron/fiscal-printer-manager.cjs proporciona:
 - verificación de presencia de SDK;
 - invocación de un puente externo del fabricante, sin cargar DLL arbitrarias dentro del proceso principal Electron;
 - validación de la respuesta de emisión (número fiscal y serial de máquina).
+
+La pantalla de configuración se abre desde Fiscal → Parámetros Fiscales → Configurar impresora fiscal de esta caja. La configuración incluye modelo exacto, COM, baudios, bits, paridad, timeout, SDK, ejecutable puente y prueba de conexión. Los perfiles se guardan por caja en SQLite.
 
 ### Contrato del puente externo
 
@@ -70,6 +72,8 @@ Los SDK de cada familia tienen APIs distintas. No se debe fabricar un puente gen
 
 - La prueba COM solo abre y cierra el puerto; no ejecuta comandos fiscales ni modifica memoria fiscal.
 - Un timeout durante emisión deja el resultado potencialmente incierto. El operador debe consultar la máquina antes de reintentar; no se debe duplicar una factura.
+- Una factura emitida por máquina fiscal no puede anularse únicamente en el POS. La anulación/nota de crédito en la máquina debe integrarse con un comando específico del fabricante; hasta entonces, el POS bloquea la anulación local de esa factura.
+- La emisión se encuentra conectada al contrato del puente, pero no se incluye un puente binario de ningún fabricante en este repositorio. Sin un puente específico y probado, la modalidad Máquina Fiscal falla de forma segura y no registra la venta.
 - La emisión fiscal requiere número de documento y serial confirmados por el adaptador.
 - No se degrada automáticamente a impresión térmica común si la máquina fiscal falla.
 - No se instalan controladores ni se modifican dispositivos de Windows silenciosamente.
@@ -104,6 +108,7 @@ El usuario/instalador autorizado debe instalar el paquete firmado que correspond
 2. Construir los puentes específicos de fabricante; no basta con que exista el archivo DLL.
 3. Probar lectura de estado, papel/tapa, emisión, consulta del último documento, anulaciones/notas de crédito cuando el equipo lo permita y Reporte Z.
 4. Ejecutar pruebas físicas por cada modelo, firmware, interfaz (USB/COM/Ethernet) y arquitectura Windows.
-5. Verificar que la caja asignada utiliza el dispositivo configurado y que el número fiscal de la máquina queda vinculado a la venta SQLite.
+5. Integrar y probar anulaciones/notas de crédito, Reporte Z, consulta del último documento y conciliación de trabajos fiscales inciertos.
+6. Verificar que la caja asignada utiliza el dispositivo configurado y que el número fiscal de la máquina queda vinculado a la venta SQLite.
 
 Hasta completar estas pruebas, una familia se considera «configurable/preparada para adaptador», no «compatibilidad fiscal certificada».
