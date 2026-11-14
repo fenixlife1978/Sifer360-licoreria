@@ -4844,7 +4844,8 @@ function showTicket(s){
 
   const noPrinter=s.documentMode==='NO_PRINTER';
   openWin({title:(noPrinter?'Comprobante interno — Nº ':'Ticket de Venta — Nº ')+pad(s.no),w:500,body:el,foot:[
-    {label:'Imprimir 80mm',left:true,fn:()=>{
+    {label:noPrinter?'Sin impresora configurada':'Imprimir 80mm',left:true,fn:()=>{
+      if(noPrinter){msg('Esta instalación está configurada sin impresora. El comprobante queda guardado en SQLite y puede imprimirse después de configurar un dispositivo.');return false;}
       document.body.classList.add('printing-ticket-80mm');
       window.print();
       setTimeout(()=>document.body.classList.remove('printing-ticket-80mm'),500);
