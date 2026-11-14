@@ -118,3 +118,34 @@ El usuario/instalador autorizado debe instalar el paquete firmado que correspond
 6. Verificar que la caja asignada utiliza el dispositivo configurado y que el número fiscal de la máquina queda vinculado a la venta SQLite.
 
 Hasta completar estas pruebas, una familia se considera «configurable/preparada para adaptador», no «compatibilidad fiscal certificada».
+
+
+## Instalación inicial: fiscal, térmica genérica o sin impresora
+
+SIFER360-LICORERIA ofrece tres modos de trabajo configurables y persistidos en SQLite:
+
+- `FISCAL_PRINTER`: máquina fiscal homologada. La emisión permanece bloqueada hasta que el SDK, el adaptador y la respuesta del modelo estén validados.
+- `INTERNAL_THERMAL`: impresora térmica genérica seleccionada desde el diálogo de impresión de Windows. Los documentos son tickets internos con la leyenda **“TICKET DE VENTA — NO VÁLIDO COMO FACTURA FISCAL”**. No se generan números fiscales, seriales fiscales ni cierres fiscales.
+- `NO_PRINTER`: el POS registra ventas normalmente en SQLite, no intenta imprimir ni enviar comandos fiscales. El ticket puede consultarse y copiarse, pero la acción de impresión informa que no hay impresora configurada.
+
+En instalaciones nuevas, el asistente aparece para el administrador en el primer inicio de su espacio de trabajo. La selección puede modificarse posteriormente desde Parámetros Fiscales. Las bases existentes sin esta preferencia conservan su comportamiento anterior.
+
+### Búsqueda automática COM1–COM10
+
+La configuración fiscal enumera los puertos de Windows y filtra COM1 a COM10. Para PNP, prueba la consulta de estado de solo lectura y solo selecciona un puerto si la trama, secuencia, comando y respuesta son válidos. Para otros fabricantes, la detección automática exige que el adaptador específico esté instalado y que su acción de estado responda correctamente. Sin adaptador, los puertos se muestran como candidatos, nunca como impresoras fiscales confirmadas.
+
+### Controladores USB-Serial gratuitos: fuentes oficiales
+
+Los controladores pueden descargarse sin costo desde sus fabricantes. Que sean gratuitos para descarga no implica permiso automático para redistribuirlos dentro de un instalador comercial. SIFER no debe copiar, modificar ni ejecutar instaladores de terceros hasta comprobar los términos de redistribución, firma digital, arquitectura y compatibilidad del dispositivo:
+
+- Prolific PL2303: https://prolificusa.com/product/pl2303gd-usb-cdc-serial-bridge-controller/ y https://prolificusa.com/product/pl2303ge-usb-full-uart-ic-integrated-system-level-esd-protection/
+- FTDI Virtual COM Port (VCP) / D2XX: https://ftdichip.com/drivers/
+- Silicon Labs CP210x VCP: https://www.silabs.com/software-and-tools/usb-to-uart-bridge-vcp-drivers
+
+Preferir el controlador firmado que corresponda al identificador VID/PID y a la versión de Windows del cable. No instalar PL2303, FTDI o CP210x si el dispositivo no contiene ese chipset. Algunos dispositivos USB CDC usan controladores incluidos en Windows.
+
+### Política de SDK y DLL fiscales
+
+Los SDKs fiscales (por ejemplo, TfhkaNet/tfhkaif, BemaFI, Epson Fiscal, QProg, AclasSDK y pnpdll) no se consideran redistribuibles solo por estar disponibles en Internet. Antes de empaquetarlos se requiere una licencia o autorización del fabricante que permita su redistribución. SIFER puede integrar bibliotecas gratuitas con licencia de redistribución explícita; no incluirá binarios propietarios obtenidos de repositorios no oficiales ni ejecutará instaladores sin consentimiento del administrador.
+
+La compilación actual no descarga controladores ni SDKs desde Internet durante la instalación o ejecución. La instalación sin impresora y la modalidad térmica genérica no requieren DLLs fiscales.
