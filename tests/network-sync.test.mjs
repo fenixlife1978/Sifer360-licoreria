@@ -511,3 +511,11 @@ test('la sincronización no sobrescribe cambios del usuario hechos mientras la p
   assert.match(pos, /else scheduleNetworkSync\(\)/);
   assert.doesNotMatch(pos, /else mergeRemoteSnapshot\(local,result\.state\)/);
 });
+
+test('la sincronización espera tanto la persistencia del snapshot como la captura durable de operaciones', () => {
+  assert.match(pos, /let operationCapturePromise=Promise\.resolve\(\)/);
+  assert.match(pos, /operationCapturePromise=operationCapturePromise\.then\(\(\)=>captureNewOperations\(\)\)/);
+  assert.match(pos, /captureTask=operationCapturePromise/);
+  assert.match(pos, /await captureTask/);
+  assert.match(pos, /captureTask!==operationCapturePromise/);
+});
