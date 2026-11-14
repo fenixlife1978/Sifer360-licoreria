@@ -502,13 +502,9 @@ function registerNetworkIpc() {
       try { await flushClientOutbox(); } catch (error) {
         throw new Error('La operación quedó guardada en la cola local durable y se reenviará al reconectar. El servidor aún no la ha confirmado. ' + (error.message || String(error)));
       }
-      const status = clientOutbox.status();
-      const current = clientOutbox.pending().find(item => item.eventId === event.eventId);
-      if (current) throw new Error('La operación quedó guardada en la cola local durable, pero el servidor todavía no confirmó su recepción.');
-      if (status.conflicts && !clientOutbox.pending().some(item => item.eventId === event.eventId)) {
-        const allStatus = clientOutbox.status();
-        if (allStatus.conflicts > 0) throw new Error('El servidor rechazó la operación por conflicto. Revise la cola LAN antes de reintentar.');
-      }
+      const delivery = clientOutbox.get(event.eventId);
+      if (!delivery || delivery.status === 'pending') throw new Error('La operación quedó guardada en la cola local durable, pero el servidor todavía no confirmó su recepción.');
+      if (delivery.status === 'conflict') throw new Error('El servidor rechazó la operación por conflicto: ' + (delivery.conflictReason || 'revise la cola LAN antes de reintentar.'));
       return { ...event, payload: JSON.stringify(event.payload), status: 'acked' };
     }
     const eventType = String(input.eventType || '').trim();
@@ -598,27 +594,7 @@ function registerNetworkIpc() {
     }
     if (networkConfig.role !== 'client' || !networkConfig.host) return { ok: false, state, role: 'standalone', message: 'Esta caja no está conectada a un servidor.' };
     assertLanHost(networkConfig.host);
-    const headers = { Authorization: 'Bearer ' + networkConfig.token, 'Content-Type': 'application/json' };
     await flushClientOutbox();
-    const pendingEvents = []; 
-    if (pendingEvents.length) {
-      const eventResponse = await fetch('http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/events', {
-        method: 'POST', headers, body: JSON.stringify({ events: pendingEvents }), signal: AbortSignal.timeout(8000)
-      });
-      if (!eventResponse.ok) throw new Error('Servidor rechazó operaciones pendientes (' + eventResponse.status + ').');
-      const eventResult = await eventResponse.json();
-      if (typeof eventResult.stateHash === 'string') networkConfig.serverStateHash = eventResult.stateHash;
-      db.run('BEGIN IMMEDIATE');
-      try {
-        const conflictIds = new Set((eventResult.conflicts || []).map(conflict => String(conflict.eventId)));
-        for (const id of [...(eventResult.accepted || []), ...(eventResult.duplicates || [])]) {
-          if (!conflictIds.has(String(id))) run("UPDATE local_operation_outbox SET status='acked',acked_at=? WHERE event_id=?", [new Date().toISOString(), String(id)]);
-        }
-        for (const conflict of (eventResult.conflicts || [])) run("UPDATE local_operation_outbox SET status='conflict' WHERE event_id=?", [String(conflict.eventId)]);
-        db.run('COMMIT');
-      } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
-      persistDb();
-    }
     const endpoint = 'http://' + networkConfig.host + ':' + networkConfig.port + '/api/sync/state';
     const pushed = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ deviceId: networkConfig.deviceId, state, expectedHash: networkConfig.serverStateHash || '' }), signal: AbortSignal.timeout(8000) });
     if (!pushed.ok) throw new Error('Servidor rechazó la sincronización (' + pushed.status + ').');
