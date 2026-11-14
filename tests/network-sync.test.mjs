@@ -351,3 +351,11 @@ test('desconectar una PC cliente no la convierte en independiente ni abre una SQ
   assert.match(electron, /Cliente LAN desconectado\. No se usará SQLite local como autoridad/);
   assert.match(pos, /seguirá sin base operativa local/);
 });
+
+test('las operaciones pendientes quedan vinculadas a la identidad del servidor y no migran a otra base', () => {
+  assert.match(electron, /serverDeviceId: networkConfig\.serverDeviceId/);
+  assert.match(electron, /foreignServerEvents/);
+  assert.match(electron, /server-identity-changed/);
+  assert.match(electron, /No se enviarán a otra base de datos/);
+  assert.match(electron, /pendingForAnotherServer/);
+});
