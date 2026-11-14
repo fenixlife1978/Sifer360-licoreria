@@ -10,8 +10,7 @@ const css = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8
 const dashboard = main.slice(main.indexOf('function showDashboardScreen(){'), main.indexOf('function usersManagementDlg', main.indexOf('function showDashboardScreen(){')));
 
 test('admin login goes straight to the business dashboard and can return from the header', () => {
-  assert.match(access, /function renderDashboard\(u\)\{if\(u\.role==='admin'\)[\s\S]{0,350}window\.SIFERDashboard\.show\(\);return;/);
-  assert.match(html, /id="adminDashboard"/);
+  assert.match(access, /function renderDashboard\\(u\\)\\{if\\(u\\.role==='admin'\\)[\\s\\S]{0,350}window\\.SIFERDashboard\\.show\\(\\);/);\n  assert.match(access, /dispatchEvent\\(new CustomEvent\\('sifer:authenticated',\\{detail:\\{role:u\\.role\\}\\}\\)\\);/);\n  assert.match(html, /id="adminDashboard"/);
   assert.match(html, /id="btnDashboard"/);
   assert.match(main, /window\.SIFERDashboard=\{show:showDashboardScreen/);
   assert.match(main, /dashboardButton\.addEventListener\('click',\(\)=>showDashboardScreen\(\)\)/);
