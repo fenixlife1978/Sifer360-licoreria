@@ -18,9 +18,9 @@ test('la reserva correlativa incrementa atómicamente y nunca comparte secuencia
   assert.match(main, /function allocateCashboxSequence\(cashboxId, operationType, minimumValue = 1\)/);
   assert.match(main, /allocateCashboxSequenceDurable/);
   assert.match(sequenceStore, /db\.run\('BEGIN IMMEDIATE'\)/);
-  assert.match(main, /MAX\(last_value,\?\)\+1/);
-  assert.match(main, /periodRetention = \/\^retention-\\d\{6\}\$\//);
-  assert.match(main, /COMMIT/);
+  assert.match(sequenceStore, /MAX\(last_value,\?\)\+1/);
+  assert.match(sequenceStore, /periodRetention = \/\^retention-\\d\{6\}\$\//);
+  assert.match(sequenceStore, /COMMIT/);
   assert.match(main, /persistDb\(\)/);
 });
 
@@ -109,7 +109,8 @@ test('un conflicto de entidad no se persiste como evento recibido ni se confirma
 });
 
 test('los cobros CxC y pagos CxP usan consecutivo de movimiento por caja y guardado durable', () => {
-  assert.match(pos, /nextCajaSequence\('movement',currentCaja\(\)\)/);
+  assert.match(pos, /nextCajaSequence\('cxc-payment',currentCaja\(\)\)/);
+  assert.match(pos, /nextCajaSequence\('cxp-payment',currentCaja\(\)\)/);
   assert.match(pos, /cashboxSequence:movementNo/);
   assert.match(pos, /id:movementId/);
   assert.match(pos, /const persisted=await save\(\)/);
@@ -120,6 +121,7 @@ test('los cobros CxC y pagos CxP usan consecutivo de movimiento por caja y guard
 
 test('las operaciones cambiarias y los pagos Zelle vinculados a CxP también quedan numerados y confirmados', () => {
   assert.match(pos, /fn:async\(\)=>\{/);
+  assert.match(pos, /nextCajaSequence\('currency-exchange',box\)/);
   assert.match(pos, /nextCajaSequence\('movement',box\)/);
   assert.match(pos, /id:movementId,cashbox:box,cashboxSequence:movementNo/);
   assert.match(pos, /id='CAMB-'\+boxCode\+'-'\+pad\(movementNo,6\)/);
@@ -137,8 +139,8 @@ test('el servidor restaura la instantánea SQLite si falla la persistencia de un
 });
 
 test('las reservas correlativas y documentos fiscales revierten memoria si falla el guardado SQLite', () => {
-  assert.match(main, /const databaseBefore = db\.export\(\)/);
-  assert.match(main, /No se confirmó el consecutivo en disco; se restauró el estado anterior/);
-  assert.match(main, /catch \(error\) \{ restoreDatabaseSnapshot\(databaseBefore\); throw error; \}/);
+  assert.match(sequenceStore, /const databaseBefore = db\.export\(\)/);
+  assert.match(sequenceStore, /No se confirmó el consecutivo en disco; se restauró el estado anterior/);
+  assert.match(sequenceStore, /restore\(databaseBefore\)/);
   assert.match(main, /restoreDatabaseSnapshot\(snapshot\)/);
 });
