@@ -14,9 +14,9 @@ test('administrator POS toolbar opens a dedicated cash opening dialog',()=>{
 });
 
 test('opening records are assigned to the current admin and saved as active opening',()=>{
-  assert.match(main,/username:user\.username,cashbox:box,bs,usd,rate,openedAt,status:'abierta'/);
-  assert.match(main,/sessionStorage\.setItem\('sifer360_active_opening',JSON\.stringify\(op\)\)/);
-  assert.match(main,/localStorage\.setItem\('sifer360_active_opening',JSON\.stringify\(op\)\)/);
+  assert.match(access,/username:user\.username,cashbox:box,bs,usd,rate,openedAt,status:'abierta'/);
+  assert.match(access,/sessionStorage\.setItem\('sifer360_active_opening',JSON\.stringify\(op\)\)/);
+  assert.match(access,/localStorage\.setItem\('sifer360_active_opening',JSON\.stringify\(op\)\)/);
   assert.match(main,/replace\(\/\\s\/g,''\)\.replace\(\/\\\.\/g,''\)/);
 });
 
