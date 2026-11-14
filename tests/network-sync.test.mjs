@@ -588,3 +588,18 @@ test('un fallo al guardar el Corte Z no puede borrar el último corte histórico
   assert.match(pos, /restoreStateSnapshotIfNeeded\(persisted,zStateBefore\)/);
   assert.doesNotMatch(pos, /getZHistory\(\)\.splice\(getZHistory\(\)\.findIndex/);
 });
+
+test('el cliente no confirma una escritura hasta que cada evento nuevo recibe ACK durable del servidor', () => {
+  assert.match(pos, /async function captureNewOperations\(snapshotOverride\)/);
+  assert.match(pos, /delivery\.serverConfirmed!==true\|\|delivery\.status!=='acked'/);
+  assert.match(pos, /await captureNewOperations\(state\);\s*return posSqliteDriver\.saveState\(state\)/);
+  assert.match(pos, /operationCapturePromise=pending\.then\(\(\)=>undefined,\(\)=>undefined\)/);
+  assert.match(electron, /serverConfirmed: !!delivery && delivery\.status === 'acked'/);
+});
+
+test('una operación pendiente o conflictiva no se marca como capturada en la línea base del renderer', () => {
+  const capture = pos.slice(pos.indexOf('async function captureNewOperations'), pos.indexOf('async function networkSyncAttempt'));
+  assert.match(capture, /if\(!delivery\|\|delivery\.serverConfirmed!==true\|\|delivery\.status!=='acked'\)/);
+  assert.match(capture, /throw new Error\(delivery&&delivery\.deliveryError/);
+  assert.ok(capture.indexOf('seen.add(identity)') > capture.indexOf('delivery.serverConfirmed!==true'));
+});
