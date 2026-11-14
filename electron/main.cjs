@@ -554,7 +554,7 @@ function registerNetworkIpc() {
     const peer = await retrievePeerCertificate(host, port, 5000);
     if (!verifyFingerprint(peer.fingerprint, expectedFingerprint)) throw new Error('La huella TLS recibida no coincide con la mostrada físicamente en el servidor. No se enviaron credenciales.');
     const previous = networkConfig;
-    networkConfig = { ...networkConfig, role: 'client', host, port, token, serverCert: peer.certificate, tlsFingerprint: peer.fingerprint, serverPromotionBlocked: true };
+    networkConfig = { ...networkConfig, role: 'client', host, port, token, serverCert: peer.certificate, tlsFingerprint: peer.fingerprint, serverStateHash: '', serverPromotionBlocked: true };
     let health;
     try { health = await clientApi('/api/health', { timeoutMs: 5000 }); }
     catch (error) { networkConfig = previous; throw error; }
