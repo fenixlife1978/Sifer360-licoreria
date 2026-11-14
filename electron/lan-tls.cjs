@@ -91,7 +91,7 @@ async function ensureServerCertificate({ directory, deviceId, encryptPrivateKey,
   const privatePublic = crypto.createPublicKey(privateKey).export({ type: 'spki', format: 'der' });
   const certificatePublic = certificate.publicKey.export({ type: 'spki', format: 'der' });
   if (!crypto.timingSafeEqual(privatePublic, certificatePublic)) throw new Error('La clave privada no corresponde al certificado TLS guardado.');
-  return { key: identity.key, cert: identity.cert, fingerprint: certificate.fingerprint256 };
+  return { key: privateKeyPem, cert: identity.cert, fingerprint: certificate.fingerprint256 };
 }
 
 function createPinnedAgent(certificatePem, expectedFingerprint) {
