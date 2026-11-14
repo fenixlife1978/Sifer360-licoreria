@@ -4728,13 +4728,13 @@ function showTicket(s){
   pre.textContent=ticketText(s);
   applyTicketStyle(pre);
 
-  el.addEventListener('change',e=>{
+  el.addEventListener('change',async e=>{
     if(e.target.id==='tkFont'||e.target.id==='tkSize'||e.target.id==='tkBold'){
       S.cfg.ticketFont=$('#tkFont',el).value;
       S.cfg.ticketSize=$('#tkSize',el).value;
       S.cfg.ticketBold=$('#tkBold',el).checked;
       applyTicketStyle(pre);
-      save();
+      const persisted=await save();if(!persisted||!persisted.ok)msg('El servidor no confirmó los parámetros del ticket.','bad');
     }
   });
 
@@ -5040,7 +5040,7 @@ function registerLoteSudebanDlg(onDone){
     w:580,body:el,
     foot:[
       {label:'Cancelar',fn:()=>{if(onDone)onDone();return false;}},
-      {label:'Guardar y Conciliar',primary:true,fn:()=>{
+      {label:'Guardar y Conciliar',primary:true,fn:async()=>{
         const monto=pn($('#ltMonto',el).value);
         if(!monto){msg('Indique el total en Bolívares del voucher.','bad');return false;}
         const comPct=pn($('#ltComPct',el).value)||1.5;
@@ -5060,7 +5060,7 @@ function registerLoteSudebanDlg(onDone){
         };
         if(!S.lotesSudeban)S.lotesSudeban=[];
         S.lotesSudeban.push(lote);
-        save();
+        const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el lote bancario; se restauró el estado durable anterior.','bad');return false;}
         msg('Lote bancario '+lote.refLote+' registrado y conciliado.');
         if(onDone)onDone();
         return false;
@@ -5726,9 +5726,10 @@ function seniatSudebanDlg(initialTab){
     const delLoteBtn=e.target.closest('[data-del-lote]');
     if(delLoteBtn){
       const id=delLoteBtn.dataset.delLote;
-      ask('Eliminar lote bancario','¿Confirma eliminar el registro de lote '+id+'?','Eliminar',()=>{
+      ask('Eliminar lote bancario','¿Confirma eliminar el registro de lote '+id+'?','Eliminar',async()=>{
         S.lotesSudeban=(S.lotesSudeban||[]).filter(x=>x.id!==id);
-        save();renderTabContent();msg('Lote bancario eliminado.');
+        const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la eliminación del lote bancario.','bad');return false;}
+        renderTabContent();msg('Lote bancario eliminado.');return true;
       });
       return;
     }
@@ -5741,9 +5742,10 @@ function seniatSudebanDlg(initialTab){
     const delRetBtn=e.target.closest('[data-del-ret]');
     if(delRetBtn){
       const id=delRetBtn.dataset.delRet;
-      ask('Eliminar comprobante de retención','¿Confirma anular/eliminar la retención '+id+'?','Eliminar',()=>{
+      ask('Eliminar comprobante de retención','¿Confirma anular/eliminar la retención '+id+'?','Eliminar',async()=>{
         S.retencionesIva=(S.retencionesIva||[]).filter(x=>x.id!==id);
-        save();renderTabContent();msg('Comprobante de retención eliminado.');
+        const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la eliminación de la retención.','bad');return false;}
+        renderTabContent();msg('Comprobante de retención eliminado.');return true;
       });
       return;
     }
@@ -5840,7 +5842,8 @@ function seniatSudebanDlg(initialTab){
           S.cfg.imprentaRif=$('#fImpRif',el).value.trim();
           S.cfg.imprentaAut=$('#fImpAut',el).value.trim();
           S.cfg.serialFiscal=$('#fSerial',el).value.trim();
-          save();renderAll();msg('Parámetros fiscales guardados con éxito.');
+          const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó los parámetros fiscales.','bad');return;}
+          renderAll();msg('Parámetros fiscales guardados con éxito.');
         }
       });
     }
@@ -5855,7 +5858,7 @@ function tasaBcvDlg(){
     msg('No se puede cambiar la tasa: no existe una apertura de caja válida para este cajero.','bad');return;
   }
   const el=h('<div class="form"><div class="newgrid"><div class="f"><label>Tasa BCV actual (Bs./US$)</label><input class="fld r" value="'+nf(oldRate)+'" readonly></div><div class="f"><label for="cashierNewRate">Nueva tasa (Bs./US$)</label><input class="fld r" id="cashierNewRate" inputmode="decimal" value="'+nf(oldRate)+'"></div><div class="f wide"><label for="cashierRateReason">Motivo del cambio (obligatorio)</label><input class="fld" id="cashierRateReason" maxlength="240" placeholder="Indique el motivo del ajuste de tasa"></div></div><p class="hint">El cambio se aplicará a las operaciones nuevas desde este momento. Las ventas y cobros anteriores conservarán la tasa registrada en cada operación. La acción quedará en el historial de auditoría.</p></div>');
-  openWin({title:'Actualizar tasa BCV · Caja '+esc(opening.cashbox),w:520,body:el,foot:[{label:'Cancelar'},{label:'Registrar cambio de tasa',primary:true,fn:()=>{
+  openWin({title:'Actualizar tasa BCV · Caja '+esc(opening.cashbox),w:520,body:el,foot:[{label:'Cancelar'},{label:'Registrar cambio de tasa',primary:true,fn:async()=>{
     const next=pn($('#cashierNewRate',el).value),reason=$('#cashierRateReason',el).value.trim();
     if(!(next>0)){msg('Ingrese una tasa BCV mayor que cero.','bad');return false;}
     if(!reason){msg('Indique el motivo del cambio para dejar constancia de auditoría.','bad');return false;}
@@ -5865,7 +5868,8 @@ function tasaBcvDlg(){
     S.rateAudit.push({id:'BCV-'+ts+'-'+String(S.rateAudit.length+1).padStart(4,'0'),ts,previousRate:oldRate,newRate:next,reason,username:user.username,name:user.name||user.username,role:user.role,cashbox:opening.cashbox,openingId:opening.id});
     S.cfg.rate=next;opening.rate=next;writeActiveOpening(opening);
     try{localStorage.setItem('sifer360_bcv_rate',String(next));}catch(e){}
-    save();renderAll();msg('Tasa BCV actualizada de '+nf(oldRate)+' a '+nf(next)+' Bs./US$. Cambio auditado.','ok');
+    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el cambio de tasa BCV; se restauró el estado durable anterior.','bad');return false;}
+    renderAll();msg('Tasa BCV actualizada de '+nf(oldRate)+' a '+nf(next)+' Bs./US$. Cambio auditado.','ok');
   }}],onOpen:()=>{const input=$('#cashierNewRate',el);input.focus();input.select();}});
 }
 function cfgDlg(focusId){
@@ -5874,13 +5878,14 @@ function cfgDlg(focusId){
   if(!c.ticketSize)c.ticketSize='12';
   const fontOpts=TICKET_FONTS.map(f=>'<option value="'+f.id+'"'+(c.ticketFont===f.id?' selected':'')+'>'+esc(f.name)+'</option>').join('');
   const el=h('<div class="form"><div class="newgrid"><div class="f wide"><label for="cEmp">Nombre del negocio</label><input class="fld" id="cEmp" value="'+esc(c.empresa)+'"></div><div class="f"><label for="cRif">RIF</label><input class="fld" id="cRif" value="'+esc(c.rif)+'"></div><div class="f wide"><label for="cDir">Dirección (ticket)</label><input class="fld" id="cDir" value="'+esc(c.dir)+'"></div><div class="f"><label for="cCaj">Cajero</label><input class="fld" id="cCaj" value="'+esc(c.cajero)+'"></div><div class="f"><label for="cCaja">Caja Nº</label><input class="fld" id="cCaja" value="'+esc(c.caja)+'"></div><div class="f"><label for="cRate">Tasa de cambio (Bs. por US$)</label><input class="fld r" id="cRate" inputmode="decimal" value="'+nf(c.rate)+'"></div><div class="f wide"><label for="cTkFont">Tipo de letra en Ticket Térmico 80mm</label><select class="fld" id="cTkFont">'+fontOpts+'</select></div><div class="f"><label for="cTkSize">Tamaño letra Ticket 80mm</label><select class="fld" id="cTkSize"><option value="11"'+(c.ticketSize==='11'?' selected':'')+'>11 px (Compacta)</option><option value="12"'+(c.ticketSize==='12'?' selected':'')+'>12 px (Estándar 80mm)</option><option value="13"'+(c.ticketSize==='13'?' selected':'')+'>13 px (Grande)</option></select></div></div><p class="hint">Cambiar la tasa recalcula al instante los precios en bolívares de la venta en curso. También puede elegir aquí el tipo de letra predeterminado para los recibos de impresora térmica de 80mm.</p></div>');
-  openWin({title:'Datos del negocio, tasa y ticket 80mm',w:620,body:el,foot:[{label:'Cancelar'},{label:'Guardar',primary:true,fn:()=>{
+  openWin({title:'Datos del negocio, tasa y ticket 80mm',w:620,body:el,foot:[{label:'Cancelar'},{label:'Guardar',primary:true,fn:async()=>{
     const rate=pn($('#cRate',el).value);
     if(!rate){msg('Escriba una tasa de cambio válida.','bad');return false;}
     c.empresa=$('#cEmp',el).value.trim()||c.empresa;c.rif=$('#cRif',el).value.trim();c.dir=$('#cDir',el).value.trim();
     c.cajero=$('#cCaj',el).value.trim()||c.cajero;c.caja=$('#cCaja',el).value.trim()||c.caja;c.rate=rate;
     c.ticketFont=$('#cTkFont',el).value;c.ticketSize=$('#cTkSize',el).value;
-    save();renderAll();msg('Configuración guardada. Tasa: '+nf(rate)+' Bs. por US$.');
+    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la configuración.','bad');return false;}
+    renderAll();msg('Configuración guardada. Tasa: '+nf(rate)+' Bs. por US$.');
   }}],onOpen:()=>{const f=$('#'+(focusId||'cEmp'),el);f.focus();if(f.select)f.select();}});
 }
 function helpDlg(){
