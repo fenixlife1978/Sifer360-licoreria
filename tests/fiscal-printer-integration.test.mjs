@@ -24,7 +24,7 @@ test('la intención de emisión se persiste antes de llamar al dispositivo', () 
   const emitAt = main.indexOf('fiscalPrinterEmitInvoice(fiscalProfile,fiscalInvoice)', journalAt);
   assert.ok(journalAt >= 0 && emitAt > journalAt);
   assert.match(main, /idempotencyKey/);
-  assert.match(main, /status='pending'/);
+  assert.match(main, /status:'pending'/);
 });
 
 test('no permite anular localmente una factura que ya emitió una máquina fiscal', () => {
