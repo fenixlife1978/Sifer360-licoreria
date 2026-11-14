@@ -6066,6 +6066,7 @@ function cajaSeqs(){
 }
 function currentCajaInvoice(){const box=currentCaja(),seqs=cajaSeqs();if(!seqs[box])seqs[box]={invoice:1,void:1,refund:1,cxc:1,movement:1,z:1};return Number(seqs[box].invoice)||1;}
 async function nextCajaSequence(operation,box=currentCaja()){
+  if(!box||String(box)==='SIN-ASIGNAR')throw new Error('Asigne una caja antes de generar una operación numerada.');
   if(!window.posDesktop||typeof window.posDesktop.networkNextSequence!=='function')throw new Error('La numeración correlativa requiere el motor SQLite de escritorio.');
   const sales=(S.sales||[]).filter(x=>String(x.cashbox||'01')===String(box));
   const zRows=(S.cortesZ||[]).filter(x=>String(x.cashbox||'')===String(box));
