@@ -23,12 +23,22 @@ function createDurableOutbox({ directory, deviceId, fsImpl = fs, pathImpl = path
         !Number.isSafeInteger(state.lastSeq) || state.lastSeq < 0 || !Array.isArray(state.events)) {
       throw new Error('La cola LAN local no coincide con la identidad o versión de este equipo. Se conserva sin modificar.');
     }
+    const eventIds = new Set();
+    const deviceSequences = new Set();
     for (const event of state.events) {
-      if (!event || typeof event.eventId !== 'string' || !event.eventId ||
+      if (!event || typeof event.eventId !== 'string' || !event.eventId || event.eventId.length > 256 ||
           event.deviceId !== String(deviceId) || !Number.isSafeInteger(event.deviceSeq) ||
-          event.deviceSeq < 1 || event.deviceSeq > state.lastSeq || !['pending', 'acked', 'conflict'].includes(event.status)) {
-        throw new Error('La cola LAN contiene una operación inválida. Se conserva sin modificar.');
+          event.deviceSeq < 1 || event.deviceSeq > state.lastSeq ||
+          typeof event.eventType !== 'string' || !event.eventType ||
+          typeof event.entityType !== 'string' || !event.entityType ||
+          typeof event.entityId !== 'string' || !event.entityId || event.entityId.length > 256 ||
+          !event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload) ||
+          !['pending', 'acked', 'conflict'].includes(event.status) ||
+          eventIds.has(event.eventId) || deviceSequences.has(event.deviceSeq)) {
+        throw new Error('La cola LAN contiene una operación inválida o duplicada. Se conserva sin modificar.');
       }
+      eventIds.add(event.eventId);
+      deviceSequences.add(event.deviceSeq);
     }
     return state;
   }
