@@ -6779,7 +6779,9 @@ async function prepareDatabaseBeforeStartup(){
     const st = await posSqliteDriver.loadState();
     window.__POS_BOOT_STATE = st;
   } catch (e) {
-    console.warn('Advertencia al iniciar SQLite local:', e);
+    console.warn('No se pudo cargar la base SQLite central/local:', e);
+    window.__POS_BOOT_STATE = null;
+    window.__POS_BOOT_ERROR = e && e.message ? e.message : String(e);
   }
 }
 
@@ -6813,6 +6815,7 @@ prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la
   window.__SIFER_READY = true;
   try{window.dispatchEvent(new Event('sifer:ready'));}catch(e){}
   restoreWorkspaceAfterReload();
-  msg(saved?'Base de datos local SQLite de SIFER 360 Licorería cargada con éxito. Sistema listo para operar.':'Base de datos local SQLite de SIFER 360 Licorería inicializada. Listo para operar.');
+  if(window.__POS_BOOT_ERROR)msg('No se pudo cargar la base de datos. No se utilizará una copia local alternativa ni se confirmarán operaciones: '+window.__POS_BOOT_ERROR,'bad');
+  else msg(saved?'Base de datos SQLite de SIFER 360 Licorería cargada con éxito. Sistema listo para operar.':'Base de datos SQLite de SIFER 360 Licorería inicializada. Listo para operar.');
 });
 })();
