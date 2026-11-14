@@ -45,7 +45,9 @@ test('la huella SHA-256 se compara de forma estricta e independiente del formato
 test('el cliente obtiene el certificado público sin enviar la clave de emparejamiento', async t => {
   const directory = fixture(t);
   const identity = await ensureServerCertificate({ directory, deviceId: 'server-01' });
-  const server = https.createServer({ key: identity.key, cert: identity.cert }, (_req, res) => {
+  let authorizationHeader;
+  const server = https.createServer({ key: identity.key, cert: identity.cert }, (req, res) => {
+    authorizationHeader = req.headers.authorization;
     res.writeHead(401);
     res.end('Unauthorized');
   });
@@ -54,7 +56,9 @@ test('el cliente obtiene el certificado público sin enviar la clave de empareja
   const port = server.address().port;
   const peer = await retrievePeerCertificate('127.0.0.1', port);
   assert.equal(peer.fingerprint, identity.fingerprint);
-  assert.equal(peer.certificate, identity.cert);
+  const peerCert = new (require('node:crypto').X509Certificate)(peer.certificate);
+  assert.equal(peerCert.fingerprint256, identity.fingerprint);
+  assert.equal(authorizationHeader, undefined);
 });
 
 test('el agente HTTPS exige la huella del certificado fijado', async t => {
@@ -78,4 +82,22 @@ test('el agente HTTPS exige la huella del certificado fijado', async t => {
   assert.equal(result.status, 200);
   assert.deepEqual(JSON.parse(result.body), { ok: true });
   assert.throws(() => createPinnedAgent(identity.cert, '00'.repeat(32)), /huella configurada no coincide/);
+});
+
+test('un certificado de otra PC no supera el pin TLS del servidor esperado', async t => {
+  const directoryA = fs.mkdtempSync(path.join(os.tmpdir(), 'sifer-lan-tls-a-'));
+  const directoryB = fs.mkdtempSync(path.join(os.tmpdir(), 'sifer-lan-tls-b-'));
+  t.after(() => { fs.rmSync(directoryA, { recursive: true, force: true }); fs.rmSync(directoryB, { recursive: true, force: true }); });
+  const expected = await ensureServerCertificate({ directory: directoryA, deviceId: 'server-a' });
+  const impostor = await ensureServerCertificate({ directory: directoryB, deviceId: 'server-b' });
+  const agent = createPinnedAgent(expected.cert, expected.fingerprint);
+  const server = https.createServer({ key: impostor.key, cert: impostor.cert }, (_req, res) => res.end('unexpected'));
+  await new Promise((resolve, reject) => server.listen(0, '127.0.0.1', error => error ? reject(error) : resolve()));
+  t.after(() => { agent.destroy(); return new Promise(resolve => server.close(resolve)); });
+  await assert.rejects(new Promise((resolve, reject) => {
+    https.get({ hostname: '127.0.0.1', port: server.address().port, path: '/', agent }, response => {
+      response.resume();
+      response.on('end', () => resolve());
+    }).on('error', reject);
+  }));
 });
