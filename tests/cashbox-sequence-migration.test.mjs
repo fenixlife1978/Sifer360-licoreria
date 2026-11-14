@@ -108,3 +108,14 @@ test('un consecutivo histórico inválido detiene la migración sin alterar la b
   assert.equal(f.get('01', 'movement'), 7);
   assert.equal(f.marker(), null);
 });
+
+test('incluye pagos de otra caja aunque el documento padre pertenezca a una caja distinta', () => {
+  const state = {
+    cxc: [{ cashbox: '01', payments: [{ cashbox: '02', cashboxSequence: 2 }] }],
+    cxp: [{ cashbox: '01', payments: [{ cashbox: '03', cashboxSequence: 6 }] }]
+  };
+  const f = fixture({ state });
+  assert.equal(f.migrate(), true);
+  assert.equal(f.get('02', 'cxc-payment'), 2);
+  assert.equal(f.get('03', 'cxp-payment'), 6);
+});
