@@ -76,7 +76,7 @@ test('estados financieros usan asientos contabilizados y fecha de corte', () => 
   assert.match(accounting, /function renderStatements\(\)/);
   assert.match(accounting, /Estado de situación financiera/);
   assert.match(accounting, /Estado de resultados acumulado/);
-  assert.match(accounting, /Flujo de efectivo registrado/);
+  assert.match(accounting, /Estado de flujos de efectivo/);
   assert.match(accounting, /filter\(e=>String\(e\.date\)<=date\)/);
 });
 
