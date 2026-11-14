@@ -126,7 +126,7 @@ SIFER360-LICORERIA ofrece tres modos de trabajo configurables y persistidos en S
 
 - `FISCAL_PRINTER`: máquina fiscal homologada. La emisión permanece bloqueada hasta que el SDK, el adaptador y la respuesta del modelo estén validados.
 - `INTERNAL_THERMAL`: impresora térmica genérica seleccionada desde el diálogo de impresión de Windows. Los documentos son tickets internos con la leyenda **“TICKET DE VENTA — NO VÁLIDO COMO FACTURA FISCAL”**. No se generan números fiscales, seriales fiscales ni cierres fiscales.
-- `NO_PRINTER`: el POS registra ventas normalmente en SQLite, no intenta imprimir ni enviar comandos fiscales. El ticket puede consultarse y copiarse, pero la acción de impresión informa que no hay impresora configurada.
+- `NO_PRINTER`: el POS registra ventas normalmente en SQLite, no intenta imprimir ni enviar comandos fiscales. El ticket puede consultarse y copiarse, pero la acción de impresión informa que no hay impresora configurada. En ambas modalidades internas, la configuración tributaria se identifica como `NO_FISCAL_INTERNAL` para que no se confunda con Formas Libres o máquina fiscal.
 
 En instalaciones nuevas, el asistente aparece para el administrador en el primer inicio de su espacio de trabajo. La selección puede modificarse posteriormente desde Parámetros Fiscales. Las bases existentes sin esta preferencia conservan su comportamiento anterior.
 
