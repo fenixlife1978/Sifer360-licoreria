@@ -4735,6 +4735,7 @@ function salesDlg(){
       if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin('Anular factura '+pad(s.no)))return;
       if(!armed||Date.now()-armed>5000){armed=Date.now();e.target.textContent='Confirmar anulación';return;}
       let voidNo;try{voidNo=await nextCajaSequence('void',currentCaja());}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
+      const rollbackState=JSON.parse(JSON.stringify(S));
       s.void=true;
       s.transType='03-ANUL';
       s.voidNo=voidNo;s.voidDoc='ANU-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(voidNo,6);
@@ -4751,7 +4752,9 @@ function salesDlg(){
         }
       });
       S.cxc=(S.cxc||[]).filter(x=>!(x.saleNo===s.no&&x.cashbox===currentCaja()));
-      armed=0;save();renderCatalog();draw();msg('Factura '+pad(s.no)+' anulada. Se devolvió la mercancía al inventario y Kardex.');
+      const persisted=await save();
+      if(!persisted||!persisted.ok){Object.assign(S,rollbackState);armed=0;renderCatalog();draw();msg('SQLite/servidor no confirmó la anulación; se restauró la venta y el inventario.','bad');return;}
+      armed=0;renderCatalog();draw();msg('Factura '+pad(s.no)+' anulada. Se devolvió la mercancía al inventario y Kardex.');
     }
   });
   openWin({title:'Ventas del día y cierre de caja',w:900,body:el,foot:[
