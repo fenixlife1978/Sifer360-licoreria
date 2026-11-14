@@ -547,6 +547,8 @@ async function captureNewOperations(){
   operationCaptureBusy=true;
   try{
     const snap=stateSnapshot();
+    const lastSave=window.__SIFER_LAST_SAVE;
+    if(lastSave){const persisted=await lastSave;if(!persisted||!persisted.ok)return;}
     const net=await window.posDesktop.networkStatus();if(!net||net.role!=='client')return;
     for(const [key,eventType] of OPERATION_COLLECTIONS){
       const items=Array.isArray(snap[key])?snap[key]:[];
