@@ -315,17 +315,16 @@ async function startLanServer(requestedPort) {
             const seqOwner = one('SELECT event_id FROM network_received_operations WHERE device_id=? AND device_seq=?', [String(ev.deviceId), Number(ev.deviceSeq)]);
             if (existing) { duplicates.push(String(ev.eventId)); continue; }
             if (seqOwner) { conflicts.push({ eventId: String(ev.eventId), reason: 'device-sequence-already-used', existingEventId: seqOwner.event_id }); continue; }
-            run('INSERT INTO network_received_operations(event_id,device_id,device_seq,event_type,entity_type,entity_id,occurred_at,payload) VALUES(?,?,?,?,?,?,?,?)',
-              [String(ev.eventId), String(ev.deviceId), Number(ev.deviceSeq), String(ev.eventType), String(ev.entityType), String(ev.entityId), String(ev.occurredAt || new Date().toISOString()), JSON.stringify(ev.payload)]);
             const collection = String(ev.entityType);
             const record = ev.payload && ev.payload.record;
             const allowedCollections = new Set(['sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','casheaMovimientos','casheaLiquidaciones','cambiosDivisas','retencionesIva','retentions','returns','voids']);
+            let state = null, records = [], existingRecord = null;
+            const boxScopedCollections = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos']);
+            const recordId = String(ev.entityId);
             if (allowedCollections.has(collection) && record && typeof record === 'object' && !Array.isArray(record)) {
               const stateRow = one('SELECT payload FROM app_state WHERE id=1');
-              const state = stateRow ? JSON.parse(stateRow.payload) : {};
-              const records = Array.isArray(state[collection]) ? state[collection] : [];
-              const recordId = String(ev.entityId);
-              const boxScopedCollections = new Set(['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos']);
+              state = stateRow ? JSON.parse(stateRow.payload) : {};
+              records = Array.isArray(state[collection]) ? state[collection] : [];
               const recordIdentity = item => {
                 const id = String(item.id ?? item.uuid ?? item.eventId ?? item.no ?? item.number ?? item.ctrlNo ?? item.code ?? '');
                 return boxScopedCollections.has(collection) ? String(item.cashbox || 'sin-caja') + ':' + id : id;
@@ -333,13 +332,20 @@ async function startLanServer(requestedPort) {
               const incomingIdentity = boxScopedCollections.has(collection)
                 ? String(record.cashbox || 'sin-caja') + ':' + recordId
                 : recordId;
-              const existingRecord = records.find(item => item && recordIdentity(item) === incomingIdentity);
-              if (!existingRecord) {
-                state[collection] = [...records, record];
-                run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(state)]);
-              } else if (JSON.stringify(existingRecord) !== JSON.stringify(record)) {
+              existingRecord = records.find(item => item && recordIdentity(item) === incomingIdentity);
+              if (existingRecord && JSON.stringify(existingRecord) !== JSON.stringify(record)) {
                 conflicts.push({ eventId: String(ev.eventId), reason: 'entity-already-exists-with-different-data', entityType: collection, entityId: recordId });
+                continue;
               }
+            }
+            // Solo se registra como recibido después de superar la validación
+            // de identidad. Un conflicto no debe quedar marcado como duplicado
+            // en el siguiente intento ni poder convertirse en un ACK falso.
+            run('INSERT INTO network_received_operations(event_id,device_id,device_seq,event_type,entity_type,entity_id,occurred_at,payload) VALUES(?,?,?,?,?,?,?,?)',
+              [String(ev.eventId), String(ev.deviceId), Number(ev.deviceSeq), String(ev.eventType), String(ev.entityType), String(ev.entityId), String(ev.occurredAt || new Date().toISOString()), JSON.stringify(ev.payload)]);
+            if (state && !existingRecord) {
+              state[collection] = [...records, record];
+              run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(state)]);
             }
             accepted.push(String(ev.eventId));
           }
