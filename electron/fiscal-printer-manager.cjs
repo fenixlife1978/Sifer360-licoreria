@@ -49,7 +49,12 @@ async function listSerialPorts(options={}){
 async function testSerialPort(profile,options={}){
   const p=normalizeProfile(profile);if(!p.port)throw new Error('Seleccione un puerto COM antes de probar la conexión.');if((options.platform||process.platform)!=='win32')throw new Error('La prueba directa de puertos COM requiere Windows.');
   const exec=options.execFileAsync||execFileAsync;
-  const script="$ErrorActionPreference='Stop'; $p=[System.IO.Ports.SerialPort]::new('"+p.port+"',"+p.baudRate+',[System.IO.Ports.Parity]::'+p.parity[0].toUpperCase()+p.parity.slice(1)+','+p.dataBits+',[System.IO.Ports.StopBits]::'+(p.stopBits===1?'One':'Two')+'); try { $p.ReadTimeout='+p.timeoutMs+'; $p.WriteTimeout='+p.timeoutMs+'; $p.Open(); if(-not $p.IsOpen){ throw ''El puerto no abrió.'' }; $p.Close(); ''OK'' } finally { if($p -and $p.IsOpen){$p.Close();$p.Dispose()} }';
+  const parityName=p.parity[0].toUpperCase()+p.parity.slice(1);
+  const stopName=p.stopBits===1?'One':'Two';
+  const script="$ErrorActionPreference='Stop'; " +
+    "$p=[System.IO.Ports.SerialPort]::new('"+p.port+"',"+p.baudRate+",[System.IO.Ports.Parity]::"+parityName+","+p.dataBits+",[System.IO.Ports.StopBits]::"+stopName+"); " +
+    "try { $p.ReadTimeout="+p.timeoutMs+"; $p.WriteTimeout="+p.timeoutMs+"; $p.Open(); if(-not $p.IsOpen){ throw 'El puerto no abrió.' }; $p.Close(); 'OK' } " +
+    "finally { if($p -and $p.IsOpen){$p.Close();$p.Dispose()} }"
   try{const{stdout}=await exec('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],{windowsHide:true,timeout:p.timeoutMs+3000,maxBuffer:65536});if(!String(stdout).includes('OK'))throw new Error('Windows no confirmó la apertura del puerto.');return{ok:true,port:p.port,baudRate:p.baudRate,message:'Puerto abierto y cerrado correctamente. No se enviaron comandos fiscales.'};}catch(error){throw new Error('No se pudo abrir '+p.port+': '+(error.message||String(error)));}
 }
 function runBridge(profile,action,payload={},options={}){
