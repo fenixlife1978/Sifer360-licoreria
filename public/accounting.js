@@ -266,6 +266,13 @@ async function runAutomaticDepreciation(){
  if(automaticDepreciationBusy||!bridge())return;
  automaticDepreciationBusy=true;
  try{
+  // En una instalación LAN, solo el equipo servidor posee autoridad para
+  // generar y contabilizar la depreciación mensual. Los clientes consultan
+  // el asiento central; nunca crean una copia local ni compiten por el mismo período.
+  if(window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
+   const network=await window.posDesktop.networkStatus();
+   if(network&&network.role==='client')return;
+  }
   const a=state(),target=lastCompletedMonth(),assets=a.fixedAssets||[];let total=0;
   for(const asset of assets)if(asset.status==='active')total+=depreciateAsset(asset.id,target);
   if(total)automaticDepreciationNeedsSave=true;
