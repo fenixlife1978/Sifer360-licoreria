@@ -301,3 +301,9 @@ test('los conflictos LAN anteriores mantienen bloqueado el snapshot hasta su con
   assert.match(electron, /currentStatus\.conflicts > 0/);
   assert.match(electron, /snapshot completo hasta conciliar/);
 });
+
+test('el endpoint LAN delega la aplicación transaccional a un módulo probado con SQLite real', () => {
+  assert.match(electron, /require\('\.\/lan-event-store\.cjs'\)/);
+  assert.match(electron, /applyIncomingEvents\(\{[\s\S]*?persist: \(\) => persistDb\(\)/);
+  assert.match(electron, /restore: snapshot => restoreDatabaseSnapshot\(snapshot\)/);
+});
