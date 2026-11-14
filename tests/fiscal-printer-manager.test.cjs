@@ -121,7 +121,7 @@ test('la emisión PNP se bloquea antes de llamar al adaptador cuando el estado f
     {idempotencyKey:'sale-pnp-01',total:10},
     {platform:'win32',execFileAsync:async(_command,args)=>{
       const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
-      const match=script.match(/\\$hex='([0-9a-f]+)'/i);
+      const match=script.match(/\$hex='([0-9a-f]+)'/i);
       const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));
       const response=protocol.encodeCommand(0x38,
         ['0000','0000','34','04','56','260101','120000','7','0','7','0','3'],request.sequence);
