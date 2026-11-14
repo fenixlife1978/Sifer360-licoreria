@@ -2590,7 +2590,7 @@ function comprasDlg(initialTab){
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
       const periodo=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
-      const retSeq=(S.retencionesIva||[]).filter(r=>String(r.periodo)===periodo).reduce((m,r)=>Math.max(m,Number(String(r.id||'').slice(-8))||0),0)+1;
+      const retSeq=await nextCajaSequence('retention-'+periodo,currentCaja());
       const retDoc=periodo+pad(retSeq,8);
       comp.retIvaDoc=retDoc;
       if(!S.retencionesIva)S.retencionesIva=[];
@@ -5036,7 +5036,7 @@ function newRetencionIvaDlg(onDone){
     body:el,
     foot:[
       {label:'Cancelar'},
-      {label:'Emitir y Guardar',primary:true,fn:()=>{
+      {label:'Emitir y Guardar',primary:true,fn:async()=>{
         const base=pn($('#retBase',el).value);
         if(!base){msg('Indique una base imponible válida.','bad');return false;}
         const supIdx=parseInt($('#retSup',el).value)||0;
@@ -5047,13 +5047,14 @@ function newRetencionIvaDlg(onDone){
         const iva=r2(base*0.16);
         const retUsd=r2(iva*(pct/100));
         const retBs=r2(retUsd*rate);
-        const seq=(S.retencionesIva||[]).length+42;
         const fechaComp=new Date();const periodoComp=String(fechaComp.getFullYear())+String(fechaComp.getMonth()+1).padStart(2,'0');
+        let seq;try{seq=await nextCajaSequence('retention-'+periodoComp,currentCaja());}catch(error){msg('No se pudo reservar el número de la retención: '+error.message,'bad');return false;}
         const compId=periodoComp+pad(seq,8);
         const retEntry={
           id:compId,
           ts:Date.now(),
           periodo:periodoComp,
+          cashbox:currentCaja(),sequence:seq,
           supplier:Object.assign({},sup),
           docProv,
           ctrlProv,
@@ -5065,9 +5066,9 @@ function newRetencionIvaDlg(onDone){
           retainedBs:retBs
         };
         if(!S.retencionesIva)S.retencionesIva=[];
-        S.retencionesIva.push(retEntry);
-        save();
         retEntry.estado='Borrador para revisión del contador';retEntry.declarada=false;retEntry.pagada=false;retEntry.comprobanteEntregado=false;retEntry.observaciones='Registro interno del POS; validar antes de emitir/declarar ante SENIAT.';
+        S.retencionesIva.push(retEntry);
+        const persisted=await save();if(!persisted||!persisted.ok){S.retencionesIva=S.retencionesIva.filter(x=>x!==retEntry);msg('SQLite no confirmó la retención; no se registró definitivamente.','bad');return false;}
         msg('Registro de retención guardado como borrador para revisión del contador.');
         if(onDone)onDone();
         printComprobanteRetencion(retEntry);
@@ -6078,6 +6079,7 @@ async function nextCajaSequence(operation,box=currentCaja()){
   else if(operation==='purchase')minimum=Math.max(0,...(S.purchases||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.no)||0))+1;
   else if(operation==='count')minimum=Math.max(0,...(S.counts||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
   else if(operation==='cxc')minimum=Math.max(0,...(S.cxc||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
+  else if(operation.startsWith('retention-')){const period=operation.slice('retention-'.length);minimum=Math.max(0,...(S.retencionesIva||[]).filter(x=>String(x.cashbox||'')===String(box)&&String(x.periodo||'')===period).map(x=>Number(x.sequence)||Number(String(x.id||'').slice(-8))||0))+1;}
   else if(operation==='cxp')minimum=Math.max(0,...(S.cxp||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.sequence)||Number(String(x.id||'').split('-').pop())||0))+1;
   else if(operation==='refund'||operation==='return')minimum=Math.max(0,...(S.returns||[]).filter(x=>String(x.cashbox||'')===String(box)).map(x=>Number(x.returnNo||x.sequence)||0))+1;
   const cached=cajaSeqs()[String(box)]||{};
