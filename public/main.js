@@ -6477,7 +6477,6 @@ function wire(){
   $('#btnAdd').addEventListener('click',()=>{submitEntry();if(!W)entry.focus();});
   $('#btnPay').addEventListener('click',payDlg);
   $('#btnClient').addEventListener('click',clientDlg);
-  $('#sbRate').addEventListener('click',()=>cfgDlg('cRate'));
 
   $('#cartBody').addEventListener('click',e=>{
     const tr=e.target.closest('tr[data-i]');if(!tr)return;
