@@ -265,7 +265,11 @@ test('todo el transporte de operaciones LAN usa HTTPS con certificado y huella f
   assert.match(electron, /createPinnedAgent\(networkConfig\.serverCert, networkConfig\.tlsFingerprint\)/);
   assert.match(electron, /retrievePeerCertificate\(host, port, 5000\)/);
   assert.match(electron, /verifyFingerprint\(peer\.fingerprint, expectedFingerprint\)/);
+  assert.match(electron, /safeStorage\.encryptString/);
+  assert.match(electron, /safeStorage\.decryptString/);
+  assert.match(electron, /tokenEncrypted/);
   assert.doesNotMatch(electron, /fetch\('http:\/\//);
+  assert.doesNotMatch(ui, /http:\/\/'\+ip/);
   assert.match(pos, /lanFingerprintInput/);
   assert.match(pos, /Huella TLS SHA-256/);
 });
