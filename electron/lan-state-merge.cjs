@@ -33,7 +33,7 @@ function mergeStateRecords(base, incoming) {
       const box = boxScoped.has(key) ? String(item.cashbox || 'sin-caja') + ':' : '';
       const identity = box + String(id);
       const old = map.get(identity);
-      if (!old || timestampValue(item.updatedAt || item.ts || item.createdAt) >= timestampValue(old.updatedAt || old.ts || old.createdAt)) {
+      if (!old || timestampValue(item.updatedAt || item.voidTs || item.ts || item.createdAt) >= timestampValue(old.updatedAt || old.ts || old.createdAt)) {
         map.set(identity, item);
       }
     }
