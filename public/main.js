@@ -555,10 +555,12 @@ async function captureNewOperations(){
         const item=items[i],identity=operationIdentity(item,i);
         if(seen.has(identity))continue;
         const entityId=String((item ? (item.id??item.uuid??item.eventId??item.no??item.number??item.ctrlNo??item.code) : undefined) ?? identity);
-        await window.posDesktop.networkCreateOperation({
+        const delivery=await window.posDesktop.networkCreateOperation({
           eventType,entityType:key,entityId,occurredAt:(Number.isFinite(Number(item.ts))?new Date(Number(item.ts)):new Date(item.createdAt||Date.now())).toISOString(),
           payload:{record:item,sourceCollection:key,deviceCashbox:String(item.cashbox||snap.cfg?.caja||'01')}
         });
+        if(delivery&&delivery.status==='pending'){const status=$('#sbMsg');if(status)status.textContent='Operación en cola LAN local · pendiente de confirmación del servidor ('+key+').';}
+        if(delivery&&delivery.status==='conflict'){const status=$('#sbMsg');if(status)status.textContent='Conflicto LAN en '+key+' · operación preservada para revisión.';}
         seen.add(identity);
       }
       operationBaseline[key]=seen;
@@ -573,7 +575,7 @@ function mergeRemoteSnapshot(local,remote){
     if(key==='sicoven')continue; // Ignora snapshots heredados del módulo contable retirado.
     if(!Array.isArray(value)||!Array.isArray(local[key])){merged[key]=value;continue;}
     const map=new Map();
-    const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
+    const ident=(item)=>{if(!item||typeof item!=='object')return JSON.stringify(item);const id=item.id??item.uuid??item.eventId??item.no??item.number??item.code??item.sku;if(id===undefined)return JSON.stringify(item);return (['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas'].includes(key)?String(item.cashbox||'sin-caja')+':':'')+String(id)};
     for(const item of local[key])map.set(ident(item),item);
     for(const item of value)map.set(ident(item),item);
     merged[key]=[...map.values()];
@@ -596,7 +598,7 @@ async function networkSyncAttempt(){
     }else networkLastStatus='local';
   }catch(error){
     networkLastStatus='offline';
-    const status=$('#sbMsg');if(status)status.textContent='Sin confirmación del servidor · la última operación puede no estar guardada. Reconecte y recargue antes de continuar.';
+    const status=$('#sbMsg');if(status)status.textContent=String(error&&error.message||'').includes('conflictos')?'Conflicto LAN · no se aplicó el snapshot; revise las operaciones pendientes.':'Sin confirmación del servidor · las operaciones nuevas permanecen en la cola LAN local. Reconecte y revise el estado antes de continuar.';
   }finally{networkSyncBusy=false}
 }
 window.SIFERNetworkSync=()=>networkSyncAttempt();
