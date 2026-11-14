@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const { createDurableOutbox } = require('./lan-outbox.cjs');
 const { ensureServerCertificate, createPinnedAgent, retrievePeerCertificate, verifyFingerprint } = require('./lan-tls.cjs');
 const { applyIncomingEvents } = require('./lan-event-store.cjs');
+const { mergeStateRecords } = require('./lan-state-merge.cjs');
 const initSqlJs = require('sql.js');
 
 let db;
@@ -108,28 +109,6 @@ function assertLanHost(host) {
 function sendJson(res, status, data) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': 'null' }); res.end(JSON.stringify(data)); }
 function readBody(req) { return new Promise((resolve, reject) => { let raw = ''; req.on('data', chunk => { raw += chunk; if (raw.length > MAX_SYNC_BODY) { reject(new Error('La carga de sincronización excede 8 MB.')); req.destroy(); } }); req.on('end', () => { try { resolve(JSON.parse(raw || '{}')); } catch { reject(new Error('JSON inválido.')); } }); req.on('error', reject); }); }
 function statePayloadHash(payload) { return crypto.createHash('sha256').update(String(payload || '')).digest('hex'); }
-function mergeStateRecords(base, incoming) {
-  if (!base || typeof base !== 'object') return incoming;
-  if (!incoming || typeof incoming !== 'object') return base;
-  const out = { ...base, ...incoming };
-  const arrays = new Set(['sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','movements','returns','voids','openings','retentions','retencionesIva','divisas','cashea','casheaMovimientos','casheaLiquidaciones','cambiosDivisas','customers','clients','suppliers','documents','products']);
-  const timestampValue = value => { const numeric = Number(value); if (Number.isFinite(numeric) && value !== null && value !== '') return numeric; const parsed = Date.parse(String(value || '')); return Number.isFinite(parsed) ? parsed : 0; };
-  for (const key of arrays) {
-    if (!Array.isArray(base[key]) && !Array.isArray(incoming[key])) continue;
-    const map = new Map();
-    for (const item of [...(base[key] || []), ...(incoming[key] || [])]) {
-      const id = item && (item.id ?? item.uuid ?? item.eventId ?? item.no ?? item.number ?? item.code ?? item.sku);
-      if (id === undefined || id === null) { map.set(crypto.createHash('sha256').update(JSON.stringify(item)).digest('hex'), item); continue; }
-      const boxScoped = ['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos','casheaLiquidaciones','cambiosDivisas'].includes(key) ? String(item.cashbox || 'sin-caja') + ':' : '';
-      const k = boxScoped + String(id);
-      const old = map.get(k);
-      if (!old || timestampValue(item.updatedAt || item.ts || item.createdAt) >= timestampValue(old.updatedAt || old.ts || old.createdAt)) map.set(k, item);
-    }
-    out[key] = [...map.values()];
-  }
-  return out;
-}
-
 function userDbPath() {
   return path.join(app.getPath('userData'), 'sifer360-licoreria.sqlite');
 }
