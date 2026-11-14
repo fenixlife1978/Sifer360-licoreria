@@ -493,3 +493,11 @@ test('la sincronización LAN preserva y captura movimientos de caja, auditoría 
   assert.match(eventStore, /movimientosCaja/);
   assert.match(eventStore, /lotesSudeban/);
 });
+
+test('la identidad de outbox separa consecutivos iguales pertenecientes a cajas diferentes', () => {
+  assert.match(pos, /const BOX_SCOPED_OPERATION_COLLECTIONS = new Set\(\[[^\]]*'movimientosCaja'[^\]]*\]\)/);
+  assert.match(pos, /function operationIdentity\(item,index,collection\)/);
+  assert.match(pos, /const box=BOX_SCOPED_OPERATION_COLLECTIONS\.has\(collection\)\?String\(item\.cashbox\|\|'sin-caja'\)\+':':''/);
+  assert.match(pos, /operationIdentity\(item,index,key\)/);
+  assert.match(pos, /operationIdentity\(item,i,key\)/);
+});
