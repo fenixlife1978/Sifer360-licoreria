@@ -281,3 +281,17 @@ test('una PC cliente no puede convertirse en servidor usando silenciosamente una
   assert.match(electron, /serverPromotionBlocked: true/);
   assert.match(electron, /No puede convertirse en servidor automáticamente/);
 });
+
+test('un conflicto de evento bloquea el envío del snapshot completo para no sobreescribir la entidad', () => {
+  assert.match(electron, /if \(conflicts\.length\) throw new Error\('El servidor detectó conflictos en operaciones LAN/);
+  assert.match(electron, /await flushClientOutbox\(\);\s*const result = await clientApi\('\/api\/sync\/state'/);
+});
+
+test('la fusión de snapshots conserva cajas separadas para CASHEA y cambios de divisas', () => {
+  assert.match(electron, /'casheaLiquidaciones','cambiosDivisas'/);
+  assert.match(electron, /timestampValue = value =>/);
+  assert.match(electron, /timestampValue\(item\.updatedAt \|\| item\.ts \|\| item\.createdAt\)/);
+  assert.match(pos, /'casheaLiquidaciones','cambiosDivisas'/);
+  assert.match(pos, /Operación en cola LAN local/);
+  assert.match(pos, /Conflicto LAN en/);
+});
