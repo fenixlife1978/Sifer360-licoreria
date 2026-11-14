@@ -4397,7 +4397,7 @@ function payDlg(draft){
         return false;
       }
       const cDays=Math.max(1,Math.round(pn($('#payCreditDays',el).value)||15));
-      await finalize(last,enteredAmts,isCred,cDays,enteredRefs,el);return false;
+      try{await finalize(last,enteredAmts,isCred,cDays,enteredRefs,el);}catch(error){msg('No se pudo reservar o confirmar la numeración de la venta: '+error.message,'bad');}return false;
     }}],
     onOpen:()=>{upd();$('#pm-efUSD',el).focus();}});
 }
@@ -4676,9 +4676,9 @@ function salesDlg(){
     if(e.target.id==='saVoid'&&s&&!s.void){
       if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin('Anular factura '+pad(s.no)))return;
       if(!armed||Date.now()-armed>5000){armed=Date.now();e.target.textContent='Confirmar anulación';return;}
+      let voidNo;try{voidNo=await nextCajaSequence('void',currentCaja());}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
       s.void=true;
       s.transType='03-ANUL';
-      const voidNo=await nextCajaSequence('void',currentCaja());
       s.voidNo=voidNo;s.voidDoc='ANU-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(voidNo,6);
       s.voidTs=Date.now();
       s.lines.forEach(l=>{
@@ -6357,7 +6357,7 @@ function corteZDlg(){
       if(!confirm('¿Confirmar el cierre definitivo de la caja '+box+'?\\nResultado: '+status+'\\nFaltante: '+usd(result.total.shortageUsd)+' / '+bsf(result.total.shortageBs)+'\\nSobrante: '+usd(result.total.surplusUsd)+' / '+bsf(result.total.surplusBs)+'\\nEl corte quedará guardado en el historial.'))return;
       const all=getPeriodSales(),sales=all.filter(s=>!s.void),voids=all.filter(s=>s.void);
       const rec=result.rec.map(r=>Object.assign({},r,{real:Number(r.real),diff:Number(r.diff)}));
-      const seqs=cajaSeqs(),seq=seqs[box]||{z:1};const zSeq=await nextCajaSequence('z',box);seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
+      const seqs=cajaSeqs(),seq=seqs[box]||{z:1};let zSeq;try{zSeq=await nextCajaSequence('z',box);}catch(error){msg('No se pudo reservar el consecutivo del Corte Z: '+error.message,'bad');return;}seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
       const t=Object.assign({},result.total);
       const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now()),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
       getZHistory().push(z);
