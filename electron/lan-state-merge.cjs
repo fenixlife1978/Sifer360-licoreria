@@ -5,13 +5,13 @@ function mergeStateRecords(base, incoming) {
   if (!incoming || typeof incoming !== 'object') return base;
   const out = { ...base, ...incoming };
   const arrays = new Set([
-    'sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','lotesSudeban','movimientosCaja','rateAudit','fiscalBankOperations',
+    'sales','purchases','cxc','cxp','cortesZ','kardex','counts','held','heldDeletedIds','lotesSudeban','movimientosCaja','rateAudit','fiscalBankOperations',
     'movements','returns','voids','openings','retentions','retencionesIva',
     'divisas','cashea','casheaMovimientos','casheaLiquidaciones','cambiosDivisas',
     'customers','clients','suppliers','products'
   ]);
   const boxScoped = new Set([
-    'sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','held','movimientosCaja','rateAudit',
+    'sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','held','heldDeletedIds','movimientosCaja','rateAudit',
     'returns','voids','retencionesIva','retentions','casheaMovimientos',
     'casheaLiquidaciones','cambiosDivisas'
   ]);
@@ -40,6 +40,12 @@ function mergeStateRecords(base, incoming) {
     }
     out[key] = [...map.values()];
   }
+  const deletedHeld = new Set((out.heldDeletedIds || []).map(item =>
+    String(item && item.cashbox || 'sin-caja') + ':' + String(item && item.id || '')
+  ));
+  out.held = (out.held || []).filter(item =>
+    !deletedHeld.has(String(item && item.cashbox || 'sin-caja') + ':' + String(item && item.id || ''))
+  );
   return out;
 }
 
