@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const electron = readFileSync(new URL('../electron/main.cjs', import.meta.url), 'utf8');
+const eventStore = readFileSync(new URL('../electron/lan-event-store.cjs', import.meta.url), 'utf8');
 const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
 const pos = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
 
 test('el ejecutable implementa un servidor LAN con puerto configurable', () => {
-  assert.match(electron, /http\.createServer/);
+  assert.match(electron, /https\.createServer/);
   assert.match(electron, /network:configure-server/);
   assert.match(electron, /listen\(port, '0\.0\.0\.0'/);
   assert.match(electron, /network:stop-server/);
@@ -36,7 +37,7 @@ test('Electron expone solo métodos IPC específicos para la red', () => {
 test('la aplicación reintenta sincronización automáticamente en segundo plano', () => {
   assert.match(pos, /setInterval\(\(\)=>\{if\(window\.posDesktop&&typeof window\.posDesktop\.networkSyncNow==='function'\)networkSyncAttempt\(\)\},20000\)/);
   assert.match(pos, /scheduleNetworkSync\(\)/);
-  assert.match(pos, /Sin confirmación del servidor · la última operación puede no estar guardada/);
+  assert.match(pos, /Sin confirmación del servidor · las operaciones nuevas permanecen en la cola LAN local/);
   assert.match(pos, /const pending=posSqliteDriver\.saveState\(state\)\.then/);
 });
 
@@ -49,7 +50,7 @@ test('el administrador tiene panel para servidor y clientes LAN', () => {
 
 test('el panel explica límites de red y recomienda reserva de IP', () => {
   assert.match(ui, /Reserva esta IP en el router/);
-  assert.match(ui, /HTTPS con certificado fijado por huella SHA-256/);
+  assert.match(ui, /tráfico LAN usa HTTPS con certificado fijado por huella SHA-256/);
   assert.match(ui, /diferencias de inventario por ventas simultáneas requieren conciliación/);
 });
 
@@ -80,7 +81,7 @@ test('la cola de operaciones tiene UUID, secuencia por dispositivo y estado de a
 test('el servidor recibe operaciones idempotentes y detecta colisiones de secuencia', () => {
   assert.match(electron, /\/api\/sync\/events/);
   assert.match(electron, /CREATE TABLE IF NOT EXISTS network_received_operations/);
-  assert.match(electron, /device-sequence-already-used/);
+  assert.match(eventStore, /device-sequence-already-used/);
   assert.match(electron, /result\.duplicates/);
   assert.match(preload, /networkCreateOperation/);
   assert.match(preload, /networkOperationStatus/);
@@ -96,17 +97,17 @@ test('el POS convierte nuevos registros operativos en eventos de la cola local',
 });
 
 test('el servidor aplica una operación nueva una sola vez y reporta entidades en conflicto', () => {
-  assert.match(electron, /allowedCollections/);
-  assert.match(electron, /existingRecord/);
-  assert.match(electron, /entity-already-exists-with-different-data/);
+  assert.match(eventStore, /allowedCollections/);
+  assert.match(eventStore, /existingRecord/);
+  assert.match(eventStore, /entity-already-exists-with-different-data/);
   assert.match(electron, /network_received_operations/);
-  assert.match(electron, /conflictIds/);
+  assert.match(eventStore, /conflicts\.push/);
 });
 
 test('el servidor separa identificadores iguales cuando pertenecen a cajas distintas', () => {
-  assert.match(electron, /const boxScopedCollections = new Set\(\['sales','purchases','cxc','cxp','cortesZ','counts','openings','movements','returns','voids','retencionesIva','retentions','casheaMovimientos'\]\)/);
-  assert.match(electron, /String\(record\.cashbox \|\| 'sin-caja'\) \+ ':' \+ recordId/);
-  assert.match(electron, /recordIdentity\(item\) === incomingIdentity/);
+  assert.match(eventStore, /const boxScopedCollections = new Set\(/);
+  assert.match(eventStore, /String\(record\.cashbox \|\| 'sin-caja'\) \+ ':' \+ entityId/);
+  assert.match(eventStore, /recordIdentity\(item\) === incomingIdentity/);
 });
 
 test('CASHEA no precarga operaciones ficticias y elimina únicamente firmas semilla conocidas', () => {
@@ -149,8 +150,8 @@ test('Cashea no inventa una aprobación ni afirma conexión oficial inexistente'
 
 test('las liquidaciones CASHEA se encolan y se aceptan al sincronizar cajas', () => {
   assert.match(pos, /\['casheaLiquidaciones','cashea-settlement'\]/);
-  assert.match(electron, /'casheaLiquidaciones'/);
-  assert.match(electron, /allowedCollections\.has\(collection\)/);
+  assert.match(eventStore, /'casheaLiquidaciones'/);
+  assert.match(eventStore, /allowedCollections\.has\(collection\)/);
 });
 
 test('cobros expone efectivo, Zelle, pago móvil, transferencia, tarjeta, Biopago y Cashea', () => {
@@ -216,14 +217,14 @@ test('la sincronización iniciada por el servidor también revierte su snapshot 
 
 
 test('el servidor no confirma eventos desconocidos o sin un registro aplicable', () => {
-  assert.match(electron, /!allowedCollections\.has\(collection\) \|\| !record/);
-  assert.match(electron, /La operación no contiene una entidad permitida y un registro válido/);
+  assert.match(eventStore, /!allowedCollections\.has\(collection\) \|\| !record/);
+  assert.match(eventStore, /La operación no contiene una entidad permitida y un registro válido/);
 });
 
 test('reutilizar un eventId con contenido distinto se marca como conflicto y no como duplicado', () => {
-  assert.match(electron, /event-id-reused-with-different-data/);
-  assert.match(electron, /existing\.payload === eventPayload/);
-  assert.match(electron, /if \(sameEvent\) duplicates\.push/);
+  assert.match(eventStore, /event-id-reused-with-different-data/);
+  assert.match(eventStore, /existing\.payload === eventPayload/);
+  assert.match(eventStore, /if \(sameEvent\) duplicates\.push/);
 });
 
 
@@ -264,16 +265,16 @@ test('todo el transporte de operaciones LAN usa HTTPS con certificado y huella f
   assert.match(electron, /retrievePeerCertificate\(host, port, 5000\)/);
   assert.match(electron, /verifyFingerprint\(peer\.fingerprint, expectedFingerprint\)/);
   assert.doesNotMatch(electron, /fetch\('http:\/\//);
-  assert.match(ui, /lanFingerprintInput/);
-  assert.match(ui, /Huella TLS SHA-256/);
+  assert.match(pos, /lanFingerprintInput/);
+  assert.match(pos, /Huella TLS SHA-256/);
 });
 
 test('el descubrimiento anuncia la huella TLS, pero la conexión exige compararla manualmente', () => {
   assert.match(electron, /tlsFingerprint: networkConfig\.tlsFingerprint/);
   assert.match(electron, /tlsFingerprint: data\.tlsFingerprint/);
   assert.match(electron, /No se enviaron credenciales/);
-  assert.match(ui, /cópiala desde la pantalla del servidor/);
-  assert.match(ui, /compare la huella mostrada aquí con la pantalla del servidor/);
+  assert.match(pos, /cópiala desde la pantalla del servidor/);
+  assert.match(pos, /Compara la huella de esta pantalla con la mostrada físicamente en el servidor/);
 });
 
 test('una PC cliente no puede convertirse en servidor usando silenciosamente una SQLite local antigua', () => {
@@ -306,4 +307,12 @@ test('el endpoint LAN delega la aplicación transaccional a un módulo probado c
   assert.match(electron, /require\('\.\/lan-event-store\.cjs'\)/);
   assert.match(electron, /applyIncomingEvents\(\{[\s\S]*?persist: \(\) => persistDb\(\)/);
   assert.match(electron, /restore: snapshot => restoreDatabaseSnapshot\(snapshot\)/);
+});
+
+test('la pantalla alternativa de acceso tampoco muestra instrucciones LAN inseguras', () => {
+  assert.doesNotMatch(ui, /no cifra el tráfico/);
+  assert.match(ui, /HUELLA TLS SHA-256/);
+  assert.match(ui, /Compara manualmente la huella/);
+  assert.match(ui, /https:\/\//);
+  assert.match(ui, /fingerprint:\$\('#sa-net-fingerprint'\)\.value/);
 });
