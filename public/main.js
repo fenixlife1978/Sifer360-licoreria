@@ -6256,13 +6256,18 @@ function zOperationalTotals(sales,start,end,box){
   });
   return out;
 }
+function openingTimestamp(value){
+  if(typeof value==='number'&&Number.isFinite(value))return value;
+  const numeric=Number(value);if(Number.isFinite(numeric)&&numeric>1000000000)return numeric;
+  const parsed=Date.parse(String(value||''));return Number.isFinite(parsed)?parsed:0;
+}
 function readActiveOpening(boxOverride){
   if(openingMigrationBlocked)return null;
   const box=String(boxOverride||currentCaja());
   const openings=Array.isArray(S.openings)?S.openings:[];
   const matches=openings.filter(item=>item&&String(item.cashbox||'')===box);
   if(!matches.length)return null;
-  const stamp=item=>Date.parse(String(item.closedAt||item.openedAt||''))||Number(item.ts)||0;
+  const stamp=item=>openingTimestamp(item.closedAt||item.openedAt||item.ts);
   matches.sort((a,b)=>stamp(a)-stamp(b));
   return matches[matches.length-1]||null;
 }
@@ -6301,13 +6306,13 @@ async function migrateLegacyOpenings(){
   for(const candidate of unique.filter(item=>item.status==='abierta')){
     const box=String(candidate.cashbox);
     const current=legacyActive.get(box);
-    const stamp=item=>Date.parse(String(item.openedAt||''))||Number(item.ts)||0;
+    const stamp=item=>openingTimestamp(item.openedAt||item.ts);
     if(!current||stamp(candidate)>stamp(current))legacyActive.set(box,candidate);
   }
   for(const [box,candidate] of legacyActive){
-    const existing=S.openings.filter(item=>String(item.cashbox||'')===box).sort((a,b)=>(Date.parse(String(a.closedAt||a.openedAt||''))||0)-(Date.parse(String(b.closedAt||b.openedAt||''))||0));
+    const existing=S.openings.filter(item=>String(item.cashbox||'')===box).sort((a,b)=>openingTimestamp(a.closedAt||a.openedAt||a.ts)-openingTimestamp(b.closedAt||b.openedAt||b.ts));
     const latest=existing[existing.length-1];
-    if(latest&&(latest.status==='abierta'||(Date.parse(String(latest.closedAt||latest.openedAt||''))||0)>=(Date.parse(String(candidate.openedAt||''))||0)))continue;
+    if(latest&&(latest.status==='abierta'||openingTimestamp(latest.closedAt||latest.openedAt||latest.ts)>=openingTimestamp(candidate.openedAt||candidate.ts)))continue;
     if(existingIds.has(String(candidate.id)))continue;
     S.openings.push(candidate);existingIds.add(String(candidate.id));changed=true;
   }
