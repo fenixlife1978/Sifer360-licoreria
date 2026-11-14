@@ -704,6 +704,9 @@ function registerIpc() {
       'INSERT INTO app_users(username,name,role,cashbox,password_hash,active) VALUES(?,?,?,?,?,1) ON CONFLICT(username) DO UPDATE SET name=excluded.name,role=excluded.role,cashbox=excluded.cashbox,password_hash=excluded.password_hash,active=1,updated_at=CURRENT_TIMESTAMP',
       [username,name,role,cashbox,passwordHash]
     ));
+    for (const [sessionToken, session] of authSessions) {
+      if (session.user.username.toLowerCase() === username.toLowerCase()) authSessions.delete(sessionToken);
+    }
     return { ok: true, user: { username,name,role,cashbox } };
   });
   ipcMain.handle('auth:delete-user', (_event, token, usernameInput) => {
@@ -714,6 +717,9 @@ function registerIpc() {
     if (!target) return { ok: true, deleted: false };
     if (target.role === 'admin' && Number(one("SELECT COUNT(*) AS total FROM app_users WHERE role='admin' AND active=1").total) <= 1) throw new Error('Debe conservarse al menos un administrador activo.');
     persistMutation(() => run('UPDATE app_users SET active=0,updated_at=CURRENT_TIMESTAMP WHERE username=? COLLATE NOCASE', [username]));
+    for (const [sessionToken, session] of authSessions) {
+      if (session.user.username.toLowerCase() === username.toLowerCase()) authSessions.delete(sessionToken);
+    }
     return { ok: true, deleted: true };
   });
   ipcMain.handle('posdb:get-mode', () => ({ mode: 'sqlite', databasePath: networkConfig.role === 'client' ? null : userDbPath(), source: networkConfig.role === 'client' ? 'lan-server' : 'local' }));
