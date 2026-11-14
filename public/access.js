@@ -223,15 +223,16 @@ function renderLogin(error=''){
 
 function canAccess(module,u){const user=u||(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION)||'null')}catch{return null}})();const allow={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','documentos','basedatos','tasa','usuarios','cajas'],cajero:['nueva','buscar','cliente','suspender','recuperar','descuento','quitar','ventas','cortez','tasa','salidas'],contador:['seniat']};return !!user&&(allow[user.role]||[]).includes(module)}
 function applyPermissions(u){
- const allow={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','contabilidad','documentos','basedatos','tasa','usuarios','cajas'],cajero:['nueva','buscar','cliente','suspender','recuperar','descuento','quitar','ventas','cortez','tasa','salidas'],contador:['seniat','contabilidad']};
+ const allow={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','documentos','basedatos','tasa','usuarios','cajas'],cajero:['nueva','buscar','cliente','suspender','recuperar','descuento','quitar','ventas','cortez','tasa','salidas'],contador:['seniat']};
  const cashier=u&&u.role==='cajero';
+ const fiscal=u&&u.role==='contador';
  document.body.classList.toggle('cashier-mode',cashier);
  
  const toolbar=$('#toolbar');if(toolbar){toolbar.classList.toggle('cashier-toolbar',cashier);}
  document.querySelectorAll('#toolbar [data-tb]').forEach(b=>{b.hidden=!(allow[u.role]||[]).includes(b.dataset.tb)});
- ['btnDashboard','btnCasheaTop','btnDivisasTop','btnAccountingTop','btnSeniatTop','btnMenu'].forEach(id=>{const b=$('#'+id);if(b)b.hidden=cashier;});
- ['sbRate','sbDivisas','sbSeniat'].forEach(id=>{const b=$('#'+id);if(b)b.hidden=accountant;});
- document.querySelectorAll('#toolbar .tsep').forEach(separator=>{separator.hidden=accountant;});
+ ['btnDashboard','btnCasheaTop','btnDivisasTop','btnSeniatTop','btnMenu'].forEach(id=>{const b=$('#'+id);if(b)b.hidden=cashier;});
+ ['sbRate','sbDivisas','sbSeniat'].forEach(id=>{const b=$('#'+id);if(b)b.hidden=fiscal;});
+ document.querySelectorAll('#toolbar .tsep').forEach(separator=>{separator.hidden=fiscal;});
  const logout=$('#btnLogout');if(logout)logout.hidden=false;
 }
 async function renderNetwork(u){
