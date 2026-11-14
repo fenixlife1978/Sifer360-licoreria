@@ -43,3 +43,22 @@ test('Electron expone las acciones fiscales solo mediante IPC del proceso princi
   assert.match(electronMain, /FiscalPrinterManager\.testSerialPort/);
   assert.match(electronMain, /FiscalPrinterManager\.testPnpFiscalStatus/);
 });
+
+test('el asistente ofrece modo fiscal, ticket interno no fiscal y operación sin impresora', () => {
+  assert.match(main, /function printerSetupWizardDlg\(\)/);
+  assert.match(main, /value="FISCAL_PRINTER"/);
+  assert.match(main, /value="INTERNAL_THERMAL"/);
+  assert.match(main, /value="NO_PRINTER"/);
+  assert.match(main, /fPrintMode/);
+  assert.match(main, /NO VÁLIDO COMO FACTURA FISCAL/);
+  assert.match(main, /TICKET DE VENTA/);
+  assert.match(main, /Sin impresora configurada/);
+  assert.match(main, /printSetupCompleted/);
+});
+
+test('los tickets internos no reservan número de control fiscal ni generan emisión fiscal', () => {
+  assert.match(main, /const internalTicketMode=printMode==='INTERNAL_THERMAL'\|\|printMode==='NO_PRINTER'/);
+  assert.match(main, /const ctrlNext=internalTicketMode\?null:await nextCajaSequence\('control',currentCaja\(\)\)/);
+  assert.match(main, /docType:internalTicketMode\?'TICKET-INTERNO':'01-FACTURA'/);
+  assert.match(main, /concept:\(internalTicketMode\?'Ticket de venta':'Factura de venta'\)/);
+});
