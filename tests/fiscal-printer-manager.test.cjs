@@ -57,7 +57,26 @@ test('la emisión exige clave idempotente y puente autorizado', async () => {
   ), /puente fiscal/);
 });
 
-test('la detección de puertos no Windows no inventa dispositivos', async () => {
+
+test('consulta estado PNP mediante comando de solo lectura y valida la respuesta completa', async () => {
+  const response = require('../electron/pnp-protocol.cjs').encodeCommand(0x38,
+    ['0000','0000','34','0','56','260101','120000','7','0','7','0','3'], 0x21);
+  const result = await manager.testPnpFiscalStatus(
+    {provider:'pnp',model:'PF-220A',port:'COM4',baudRate:9600,dataBits:8,parity:'none',stopBits:1},
+    {platform:'win32',execFileAsync:async()=>({stdout:response.toString('base64')})}
+  );
+  assert.equal(result.ok,true);
+  assert.equal(result.printerStatus,'0000');
+  assert.equal(result.fiscalStatus,'0000');
+  assert.equal(result.currentInvoice,'7');
+  assert.match(result.message,/solo lectura/);
+});
+
+test('no permite consultar PNP si se seleccionó otra familia o falta el puerto', async () => {
+  await assert.rejects(()=>manager.testPnpFiscalStatus({provider:'hka',port:'COM4'},{platform:'win32'}),/solo aplica/);
+  await assert.rejects(()=>manager.testPnpFiscalStatus({provider:'pnp'},{platform:'win32'}),/puerto COM/);
+});
+\ntest('la detección de puertos no Windows no inventa dispositivos', async () => {
   const result = await manager.listSerialPorts({platform:'linux'});
   assert.equal(result.supported, false);
   assert.deepEqual(result.ports, []);
