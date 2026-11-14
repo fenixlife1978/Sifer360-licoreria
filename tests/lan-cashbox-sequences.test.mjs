@@ -124,3 +124,11 @@ test('las operaciones cambiarias y los pagos Zelle vinculados a CxP también que
   assert.match(pos, /El pago Zelle supera el saldo pendiente de la obligación CxP/);
   assert.match(pos, /const persisted=await save\(\)/);
 });
+
+test('el servidor restaura la instantánea SQLite si falla la persistencia de un lote LAN', () => {
+  assert.match(main, /let SqlDatabase;/);
+  assert.match(main, /function restoreDatabaseSnapshot\(snapshot\)/);
+  assert.match(main, /const databaseBefore = db\.export\(\)/);
+  assert.match(main, /catch \(persistError\) \{\s*restoreDatabaseSnapshot\(databaseBefore\)/);
+  assert.match(main, /restauró el estado anterior y rechazó el lote/);
+});
