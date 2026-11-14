@@ -78,7 +78,16 @@ function runBridge(profile,action,payload={},options={}){
 async function emitInvoice(profile,invoice,options={}){
   if(!invoice||typeof invoice!=='object'||Array.isArray(invoice))throw new Error('Datos de factura inválidos.');
   const requestId=cleanText(invoice.idempotencyKey,120);if(!requestId)throw new Error('La emisión fiscal exige una clave de idempotencia persistida antes del envío.');
-  const response=await runBridge(profile,'emitInvoice',{...invoice,requestId},options);
+  const normalized = normalizeProfile(profile);
+  if (normalized.provider === 'pnp') {
+    const status = await testPnpFiscalStatus(normalized, options);
+    if (!status.ready) {
+      throw new Error('Emisión fiscal bloqueada por el estado de la impresora PNP: ' + status.statusDescription +
+        (status.warnings.length ? ' ' + status.warnings.join(' ') : '') +
+        ' No se envió la factura al adaptador.');
+    }
+  }
+  const response=await runBridge(normalized,'emitInvoice',{...invoice,requestId},options);
   const fiscalDocumentNumber=cleanText(response.fiscalDocumentNumber||response.documentNumber,80),fiscalSerial=cleanText(response.fiscalSerial||response.serialNumber,100);
   if(!fiscalDocumentNumber||!fiscalSerial)throw new Error('El adaptador no confirmó número de documento fiscal y serial de máquina. No se considera emitida.');
   return{ok:true,fiscalDocumentNumber,fiscalSerial,authorization:cleanText(response.authorization,200),raw:response};
