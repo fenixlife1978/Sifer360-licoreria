@@ -485,6 +485,12 @@ async function flushClientOutbox() {
 }
 function registerNetworkIpc() {
   ipcMain.handle('network:status', () => ({ ...networkConfig, running: !!networkServer, addresses: localAddresses() }));
+  ipcMain.handle('network:flush-outbox', async () => {
+    if (networkConfig.role !== 'client') return { pending: 0, accepted: [], conflicts: [] };
+    if (!networkConfig.host || !networkConfig.token) throw new Error('Cliente LAN desconectado. No se confirma ninguna operación pendiente.');
+    assertLanHost(networkConfig.host);
+    return flushClientOutbox();
+  });
   ipcMain.handle('network:operation-create', async (_e, input = {}) => {
     if (networkConfig.role === 'client') {
       const eventType = String(input.eventType || '').trim();
