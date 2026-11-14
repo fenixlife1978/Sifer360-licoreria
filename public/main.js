@@ -6006,7 +6006,7 @@ const MENUS={
    ['Parámetros Fiscales y Talonarios…','',()=>seniatSudebanDlg('config')]
  ],
  'Clientes':[['Seleccionar cliente…','F4',clientDlg],['Estado de cuentas por cobrar…','',()=>cxcDlg()]],
- 'Configuración':[['Datos del negocio y tasa…','',()=>cfgDlg()]],
+ 'Configuración':[['Datos del negocio y tasa…','',()=>cfgDlg()],['Conexión de red local (LAN)…','',()=>networkSettingsDlg()]],
  'Ayuda':[['Atajos de teclado…','',helpDlg],['Acerca del POS…','',aboutDlg]]
 };
 let menuEl=null;
@@ -6644,6 +6644,21 @@ async function fiscalDocumentsDlg(){
   openWin({title:'Documentos fiscales originales (SQLite Local)',w:820,body:el,foot:[{label:'Cerrar',primary:true}],onOpen:()=>{render();}});
 }
 
+async function networkSettingsDlg(){
+  if(!window.posDesktop){msg('La conexión LAN requiere SIFER360 de escritorio.','bad');return;}
+  const el=h('<div class="form" style="gap:12px"><div class="hint">Una PC debe funcionar como servidor y conservar la única base SQLite operativa. Las demás PCs se conectan como clientes mediante la IP local. No se utiliza Internet ni almacenamiento en la nube.</div><div class="gridwrap"><table class="grid"><tbody><tr><td>Modo actual</td><td id="lanRole">Consultando…</td></tr><tr><td>IP del servidor</td><td id="lanAddresses">—</td></tr><tr><td>Puerto</td><td><input class="fld mono" id="lanPort" value="38760" inputmode="numeric"></td></tr><tr><td>Clave de emparejamiento</td><td><input class="fld mono" id="lanToken" readonly></td></tr></tbody></table></div><div class="row" style="flex-wrap:wrap"><button class="btn primary" id="lanStartServer">Designar este equipo como SERVIDOR</button><button class="btn" id="lanStopServer">Detener servidor</button><button class="btn" id="lanDisconnect">Desconectar cliente</button></div><hr><b>Conectar esta PC como CLIENTE</b><div class="row" style="flex-wrap:wrap"><button class="btn" id="lanDiscover">Buscar servidores en la red</button><select class="fld" id="lanFound" style="min-width:220px;flex:1"><option value="">Seleccione un servidor detectado…</option></select></div><div class="newgrid"><div class="f"><label for="lanHost">IP del servidor (también puede escribirla)</label><input class="fld mono" id="lanHost" placeholder="192.168.1.100"></div><div class="f"><label for="lanClientPort">Puerto</label><input class="fld mono" id="lanClientPort" value="38760"></div><div class="f wide"><label for="lanClientToken">Clave mostrada en el equipo servidor</label><input class="fld mono" id="lanClientToken" placeholder="Clave de emparejamiento"></div></div><div class="hint" id="lanMessage">Las operaciones del cliente solo se considerarán guardadas cuando el servidor confirme la escritura en su SQLite.</div><div class="row"><button class="btn primary" id="lanConnect">Conectar como CLIENTE y reiniciar SIFER</button></div></div>');
+  const status=await window.posDesktop.networkStatus();
+  const role=$('#lanRole',el),addresses=$('#lanAddresses',el),token=$('#lanToken',el),port=$('#lanPort',el),message=$('#lanMessage',el);
+  const show=s=>{role.textContent=s.role==='server'?'SERVIDOR LAN':s.role==='client'?'CLIENTE LAN':'EQUIPO INDEPENDIENTE';addresses.textContent=(s.addresses||[]).join(' · ')||'No se detectó IP IPv4 local';token.value=s.role==='server'?s.token||'': '';port.value=String(s.port||38760);};
+  show(status);
+  $('#lanStartServer',el).onclick=async()=>{try{const s=await window.posDesktop.networkStartServer({port:Number(port.value)||38760});show(s);message.textContent='Servidor iniciado. Comparta la IP y la clave de emparejamiento con las demás PCs.';}catch(e){message.textContent='No se pudo iniciar el servidor: '+e.message;}};
+  $('#lanStopServer',el).onclick=async()=>{try{const s=await window.posDesktop.networkStopServer();show(s);message.textContent='Servidor detenido.';}catch(e){message.textContent=e.message;}};
+  $('#lanDisconnect',el).onclick=async()=>{try{const s=await window.posDesktop.networkDisconnectClient();show(s);message.textContent='Cliente desconectado. Reinicie SIFER para volver a modo independiente.';}catch(e){message.textContent=e.message;}};
+  $('#lanDiscover',el).onclick=async()=>{const select=$('#lanFound',el);select.innerHTML='<option value="">Buscando…</option>';try{const found=await window.posDesktop.networkDiscover();select.innerHTML='<option value="">Seleccione un servidor detectado…</option>'+found.map((x,i)=>'<option value="'+i+'" data-host="'+esc(x.host)+'" data-port="'+esc(x.port)+'">'+esc(x.name)+' · '+esc(x.host)+':'+esc(x.port)+'</option>').join('');message.textContent=found.length?'Servidores detectados. Seleccione uno y escriba la clave mostrada en el servidor.':'No se detectaron servidores. Puede escribir la IP manualmente; compruebe que ambas PCs estén en la misma red.';select._found=found;}catch(e){message.textContent='Error buscando servidores: '+e.message;}};
+  $('#lanFound',el).onchange=e=>{const found=e.target._found||[],item=found[Number(e.target.value)];if(item){$('#lanHost',el).value=item.host;$('#lanClientPort',el).value=String(item.port);}};
+  $('#lanConnect',el).onclick=async()=>{try{const s=await window.posDesktop.networkConfigureClient({host:$('#lanHost',el).value.trim(),port:Number($('#lanClientPort',el).value)||38760,token:$('#lanClientToken',el).value.trim()});message.textContent='Conexión autenticada con '+s.host+'. Reiniciando para cargar la base central…';setTimeout(()=>location.reload(),500);}catch(e){message.textContent='No se pudo conectar: '+e.message;}};
+  openWin({title:'Conexión entre PCs · Servidor y clientes LAN',w:760,body:el,foot:[{label:'Cerrar',primary:true}]});
+}
 async function databaseSettingsDlg(){
   const isDesktop = !!window.posDesktop;
   const salesCount = S.sales ? S.sales.length : 0;
