@@ -531,7 +531,7 @@ function registerNetworkIpc() {
   ipcMain.handle('network:disconnect-client', async () => {
     if (networkConfig.role === 'client') {
       if (db) { try { db.close(); } catch {} db = null; }
-      networkConfig = { ...networkConfig, role: 'client', host: '', token: '', serverDeviceId: '', serverCert: '', tlsFingerprint: '', serverStateHash: '', serverPromotionBlocked: true };
+      networkConfig = { ...networkConfig, role: 'client', host: '', token: '', serverCert: '', tlsFingerprint: '', serverStateHash: '', serverPromotionBlocked: true };
     }
     saveNetworkConfig();
     return { ...networkConfig, running: false, disconnected: true, addresses: localAddresses() };
