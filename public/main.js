@@ -5805,7 +5805,7 @@ function seniatSudebanDlg(initialTab){
     foot:[{label:'Cerrar',primary:true}],
     onOpen:bd=>{
       renderTabContent();
-      bd.addEventListener('click',ev=>{
+      bd.addEventListener('click',async ev=>{
         if(ev.target.id==='btnExpV')exportLibroVentasCsv(getFilteredSales());
         if(ev.target.id==='btnPrintV')printFiscalReport('Libro de Ventas Fiscal Oficial (SENIAT)',drawVentas());
         if(ev.target.id==='btnExpC')exportLibroComprasCsv(getFilteredPurchases());
