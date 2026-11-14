@@ -5,6 +5,7 @@ on:
     branches:
       - auto-depreciacion-mensual
       - integration/sqlite-lan-stage-1
+      - integration/sqlite-lan-stage-2-hardening
   workflow_dispatch:
 
 permissions:
