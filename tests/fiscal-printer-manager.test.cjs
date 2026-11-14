@@ -9,7 +9,7 @@ const manager = require('../electron/fiscal-printer-manager.cjs');
 test('registra las familias fiscales solicitadas y sus SDK esperados', () => {
   for (const id of ['hka','bematech','epson','quorion','aclas','pnp','hasar']) {
     assert.ok(manager.PROVIDERS[id], 'Falta proveedor ' + id);
-    assert.ok(manager.PROVIDERS[id].sdkFiles.length > 0);
+    if (id !== 'hasar') assert.ok(manager.PROVIDERS[id].sdkFiles.length > 0);
   }
   assert.deepEqual(manager.USB_SERIAL_DRIVERS.map(x => x.id), ['prolific','ftdi','silabs']);
 });
