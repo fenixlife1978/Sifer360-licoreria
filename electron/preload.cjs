@@ -25,5 +25,11 @@ contextBridge.exposeInMainWorld('posDesktop', {
   networkStopServer: () => ipcRenderer.invoke('network:stop-server'),
   networkDisconnectClient: () => ipcRenderer.invoke('network:disconnect-client'),
   networkConfigureClient: options => ipcRenderer.invoke('network:configure-client', options),
-  networkSyncNow: state => ipcRenderer.invoke('network:sync-now', state)
+  networkSyncNow: state => ipcRenderer.invoke('network:sync-now', state),
+  fiscalPrinterListPorts: () => ipcRenderer.invoke('fiscal-printer:list-ports'),
+  fiscalPrinterSelectFile: kind => ipcRenderer.invoke('fiscal-printer:select-file', kind),
+  fiscalPrinterStatus: profile => ipcRenderer.invoke('fiscal-printer:status', profile),
+  fiscalPrinterTestPort: profile => ipcRenderer.invoke('fiscal-printer:test-port', profile),
+  fiscalPrinterTestBridge: profile => ipcRenderer.invoke('fiscal-printer:test-bridge', profile),
+  fiscalPrinterEmitInvoice: (profile, invoice) => ipcRenderer.invoke('fiscal-printer:emit-invoice', profile, invoice)
 });
