@@ -5478,7 +5478,7 @@ function printerSetupWizardDlg(){
     const choice=$('input[name="printerSetupMode"]:checked',el)?.value;
     if(!['FISCAL_PRINTER','INTERNAL_THERMAL','NO_PRINTER'].includes(choice)){msg('Seleccione una modalidad para continuar.','bad');return false;}
     S.cfg.printMode=choice;S.cfg.printSetupCompleted=true;
-    if(choice==='FISCAL_PRINTER')S.cfg.fiscalTipo='MAQUINA_FISCAL';
+    S.cfg.fiscalTipo=choice==='FISCAL_PRINTER'?'MAQUINA_FISCAL':'NO_FISCAL_INTERNAL';
     const persisted=await save();if(!persisted||!persisted.ok){msg('SQLite no confirmó la modalidad de impresión. No se aplicaron los cambios.','bad');return false;}
     closeWin();
     if(choice==='FISCAL_PRINTER')setTimeout(()=>fiscalPrinterConfigDlg(),150);
@@ -5951,7 +5951,7 @@ function seniatSudebanDlg(initialTab){
       '<div class="f wide"><label for="fEmp">Razón Social</label><input class="fld" id="fEmp" value="'+esc(c.empresa)+'"></div>'+
       '<div class="f"><label for="fRif">RIF de la Empresa</label><input class="fld" id="fRif" value="'+esc(c.rif)+'"></div>'+
       '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
-      '<div class="f"><label for="fTipo">Modalidad de Facturación Fiscal</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option></select></div>'+
+      '<div class="f"><label for="fTipo">Modalidad de Facturación Fiscal</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option><option value="NO_FISCAL_INTERNAL" '+(c.fiscalTipo==='NO_FISCAL_INTERNAL'?'selected':'')+'>Sin emisión fiscal · Ticket interno no fiscal</option></select></div>'+
       '<div class="f wide"><label for="fPrintMode">Modo de impresión del POS</label><select class="fld" id="fPrintMode"><option value="FISCAL_PRINTER" '+((c.printMode||'LEGACY')==='FISCAL_PRINTER'?'selected':'')+'>Impresora fiscal homologada</option><option value="INTERNAL_THERMAL" '+(c.printMode==='INTERNAL_THERMAL'?'selected':'')+'>Impresora térmica genérica · Ticket interno</option><option value="NO_PRINTER" '+(c.printMode==='NO_PRINTER'?'selected':'')+'>Sin impresora · Solo registro en SQLite</option><option value="LEGACY" '+((c.printMode||'LEGACY')==='LEGACY'?'selected':'')+'>Conservar configuración anterior</option></select><p class="hint">Los modos de ticket interno no emiten documentos fiscales. Cada comprobante llevará la leyenda “Ticket de Venta - No válido como factura fiscal”.</p><button class="btn" type="button" id="btnPrinterSetupWizard">Abrir asistente de instalación de impresoras</button></div>'+
       '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button></div>'+
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
@@ -6148,6 +6148,8 @@ function seniatSudebanDlg(initialTab){
           S.cfg.dir=$('#fDir',el).value.trim();
           S.cfg.fiscalTipo=$('#fTipo',el).value;
           S.cfg.printMode=$('#fPrintMode',el).value;
+          if(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER')S.cfg.fiscalTipo='NO_FISCAL_INTERNAL';
+          else if(S.cfg.printMode==='FISCAL_PRINTER')S.cfg.fiscalTipo='MAQUINA_FISCAL';
           S.cfg.printSetupCompleted=true;
           S.cfg.contribEspecial=$('#fEsp',el).value==='1';
           S.cfg.retIvaPct=75;
