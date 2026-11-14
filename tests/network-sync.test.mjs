@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const electron = readFileSync(new URL('../electron/main.cjs', import.meta.url), 'utf8');
 const eventStore = readFileSync(new URL('../electron/lan-event-store.cjs', import.meta.url), 'utf8');
 const stateMerge = readFileSync(new URL('../electron/lan-state-merge.cjs', import.meta.url), 'utf8');
+const sqliteRecovery = readFileSync(new URL('../electron/sqlite-recovery.cjs', import.meta.url), 'utf8');
 const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
 const pos = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
@@ -196,9 +197,9 @@ test('SQLite valida integridad antes de guardar y mantiene respaldo recuperable'
   assert.match(electron, /Se impidió guardar SQLite/);
   assert.match(electron, /const backup = target \+ '\.bak'/);
   assert.match(electron, /fs\.copyFileSync\(target, backupTemporary\)/);
-  assert.match(electron, /const backup = file \+ '\.bak'/);
-  assert.match(electron, /file \+ '\.corrupt-'/);
-  assert.match(electron, /integrity_check/);
+  assert.match(sqliteRecovery, /const backup = file \+ '\.bak'/);
+  assert.match(sqliteRecovery, /file \+ '\.corrupt-'/);
+  assert.match(sqliteRecovery, /integrity_check/);
 });
 
 
