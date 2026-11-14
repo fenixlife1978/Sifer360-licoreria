@@ -435,3 +435,8 @@ test('el servidor y los clientes rechazan puertos LAN inválidos en lugar de usa
   assert.match(electron, /const port = normalizeLanPort\(requestedPort/);
   assert.match(electron, /const port = normalizeLanPort\(opts\.port/);
 });
+
+test('el endpoint de consecutivos utiliza el asignador SQLite transaccional probado', () => {
+  assert.match(electron, /require\('\.\/cashbox-sequence\.cjs'\)/);
+  assert.match(electron, /allocateCashboxSequenceDurable\(\{ db, cashboxId, operationType/);
+});
