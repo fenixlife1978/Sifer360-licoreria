@@ -43,7 +43,7 @@ test('la aplicación reintenta sincronización automáticamente en segundo plano
   assert.match(pos, /setInterval\(\(\)=>\{if\(window\.posDesktop&&typeof window\.posDesktop\.networkSyncNow==='function'\)networkSyncAttempt\(\)\},20000\)/);
   assert.match(pos, /scheduleNetworkSync\(\)/);
   assert.match(pos, /Sin confirmación del servidor · las operaciones nuevas permanecen en la cola LAN local/);
-  assert.match(pos, /const pending=saveQueue\.then\(\(\)=>posSqliteDriver\.saveState\(state\)\)\.then/);
+  assert.match(pos, /const pending=saveQueue\.then\(async\(\)=>\{\s*await previousCapture;\s*await captureNewOperations\(state\);\s*return posSqliteDriver\.saveState\(state\);\s*\}\)\.then/);
 });
 
 test('el administrador tiene panel para servidor y clientes LAN', () => {
@@ -96,7 +96,7 @@ test('el POS convierte nuevos registros operativos en eventos de la cola local',
   assert.match(pos, /OPERATION_COLLECTIONS/);
   assert.match(pos, /\['sales','sale'\]/);
   assert.match(pos, /\['purchases','purchase'\]/);
-  assert.match(pos, /captureNewOperations\(\)/);
+  assert.match(pos, /captureNewOperations\(state\)/);
   assert.match(pos, /networkCreateOperation\(/);
   assert.match(pos, /primeOperationBaseline\(\)/);
 });
@@ -254,7 +254,7 @@ test('Electron usa la cola durable del cliente y reintenta eventos pendientes an
 test('el cliente captura el registro nuevo antes de esperar la red y conserva la operación si falla el guardado remoto', () => {
   const capture = pos.slice(pos.indexOf('async function captureNewOperations'), pos.indexOf('function mergeRemoteSnapshot'));
   assert.ok(capture.indexOf('const snap=stateSnapshot()') < capture.indexOf('await window.posDesktop.networkStatus()'));
-  assert.match(capture, /Capturar primero en la outbox durable del cliente/);
+  assert.match(capture, /await window\.posDesktop\.networkCreateOperation\(/);
   assert.match(capture, /await window\.posDesktop\.networkCreateOperation\(/);
   assert.doesNotMatch(capture, /await lastSave/);
 });
@@ -304,7 +304,7 @@ test('la fusión de snapshots conserva cajas separadas para CASHEA y cambios de 
   assert.match(stateMerge, /timestampValue = value =>/);
   assert.match(stateMerge, /timestampValue\(item\.updatedAt \|\| item\.ts \|\| item\.createdAt\)/);
   assert.match(pos, /'casheaLiquidaciones','cambiosDivisas'/);
-  assert.match(pos, /Operación en cola LAN local/);
+  assert.match(pos, /Operación guardada en la cola LAN local/);
   assert.match(pos, /Conflicto LAN en/);
 });
 
@@ -384,7 +384,7 @@ test('una base recuperada persiste también el esquema actualizado antes de acep
 });
 
 test('un fallo al persistir la cola de auditoría LAN se comunica y no se oculta en consola', () => {
-  assert.match(pos, /falló la cola de auditoría LAN local/);
+  assert.match(pos, /Falló la cola de auditoría LAN local/);
   assert.match(pos, /Revise antes de continuar/);
 });
 
@@ -454,7 +454,7 @@ test('el arranque migra una sola vez los consecutivos históricos compartidos', 
 
 test('las escrituras del renderer se serializan y un fallo recarga el estado autoritativo o bloquea nuevas escrituras', () => {
   assert.match(pos, /let saveQueue=Promise\.resolve\(\),saveSequence=0,persistenceBlocked=false/);
-  assert.match(pos, /saveQueue\.then\(\(\)=>posSqliteDriver\.saveState\(state\)\)/);
+  assert.match(pos, /saveQueue\.then\(async\(\)=>\{\s*await previousCapture;\s*await captureNewOperations\(state\);\s*return posSqliteDriver\.saveState\(state\);\s*\}\)/);
   assert.match(pos, /const authoritative=await posSqliteDriver\.loadState\(\)/);
   assert.match(pos, /OPERACIÓN NO CONFIRMADA: se recargó el último estado durable/);
   assert.match(pos, /persistenceBlocked=true/);
@@ -471,13 +471,13 @@ test('la sincronización también bloquea operaciones antiguas sin identidad de 
 });
 
 test('la outbox captura operaciones nuevas sin depender del éxito del snapshot completo', () => {
-  assert.match(pos, /Capturar primero en la outbox durable del cliente/);
+  assert.match(pos, /await window\.posDesktop\.networkCreateOperation\(/);
   assert.doesNotMatch(pos, /const lastSave=window\.__SIFER_LAST_SAVE;\s*if\(lastSave\)\{const persisted=await lastSave/);
   assert.match(pos, /window\.posDesktop\.networkCreateOperation\(/);
 });
 
 test('la reconexión recupera el estado del servidor y desbloquea escrituras previamente bloqueadas', () => {
-  assert.match(pos, /if\(persistenceBlocked\|\|saveSequence===syncRevision\)\{\s*for\(const key of Object\.keys\(S\)\)delete S\[key\];\s*Object\.assign\(S,result\.state\);\s*persistenceBlocked=false/);
+  assert.match(pos, /if\(persistenceBlocked\|\|saveSequence===syncRevision\)\{\s*for\(const key of Object\.keys\(S\)\)delete S\[key\];\s*Object\.assign\(S,result\.state\);\s*primeOperationBaseline\(\);\s*persistenceBlocked=false/);
 });
 
 test('desconectar conserva la identidad del servidor anterior para etiquetar nuevas operaciones pendientes', () => {
@@ -515,7 +515,7 @@ test('la sincronización no sobrescribe cambios del usuario hechos mientras la p
 
 test('la sincronización espera tanto la persistencia del snapshot como la captura durable de operaciones', () => {
   assert.match(pos, /let operationCapturePromise=Promise\.resolve\(\)/);
-  assert.match(pos, /operationCapturePromise=operationCapturePromise\.then\(\(\)=>captureNewOperations\(\)\)/);
+  assert.match(pos, /operationCapturePromise=pending\.then\(\(\)=>undefined,\(\)=>undefined\)/);
   assert.match(pos, /captureTask=operationCapturePromise/);
   assert.match(pos, /await captureTask/);
   assert.match(pos, /captureTask!==operationCapturePromise/);
