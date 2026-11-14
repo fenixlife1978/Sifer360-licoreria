@@ -2253,7 +2253,7 @@ function productFormDlg(editCode,initialTab){
         party:'Alta de producto ('+D.sku+')',qty:D.stock,stockAfter:D.stock,cost:D.cost,user:S.cfg.cajero
       });
     }
-    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el producto; se restauró el estado durable anterior.','bad');return false;}
+    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó el producto. Se cargó el último estado durable; revise la ficha antes de reintentar.','bad');if(existing){closeWin();productFormDlg(existing.code,'gen');}return false;}
     renderCatOptions();renderAll();msg('Producto '+D.desc+' ('+D.sku+') guardado correctamente.');
     if(closeAfter){inventoryDlg();return false;}
     return true;
@@ -5879,7 +5879,7 @@ function tasaBcvDlg(){
     if(!Array.isArray(S.rateAudit))S.rateAudit=[];
     S.rateAudit.push({id:'BCV-'+ts+'-'+String(S.rateAudit.length+1).padStart(4,'0'),ts,previousRate:oldRate,newRate:next,reason,username:user.username,name:user.name||user.username,role:user.role,cashbox:opening.cashbox,openingId:opening.id});
     S.cfg.rate=next;opening.rate=next;writeActiveOpening(opening);
-    const persisted=await save();if(!persisted||!persisted.ok){try{localStorage.setItem('sifer360_bcv_rate',String(oldRate));}catch(e){}msg('El servidor no confirmó el cambio de tasa BCV; se restauró el estado durable anterior.','bad');return false;}
+    const persisted=await save();if(!persisted||!persisted.ok){const restoredOpening=Object.assign({},opening,{rate:oldRate});writeActiveOpening(restoredOpening);try{localStorage.setItem('sifer360_bcv_rate',String(oldRate));}catch(e){}msg('El servidor no confirmó el cambio de tasa BCV; se restauró la apertura y el último estado durable.','bad');return false;}
     try{localStorage.setItem('sifer360_bcv_rate',String(next));}catch(e){}
     renderAll();msg('Tasa BCV actualizada de '+nf(oldRate)+' a '+nf(next)+' Bs./US$. Cambio auditado.','ok');
   }}],onOpen:()=>{const input=$('#cashierNewRate',el);input.focus();input.select();}});
@@ -5896,7 +5896,7 @@ function cfgDlg(focusId){
     c.empresa=$('#cEmp',el).value.trim()||c.empresa;c.rif=$('#cRif',el).value.trim();c.dir=$('#cDir',el).value.trim();
     c.cajero=$('#cCaj',el).value.trim()||c.cajero;c.caja=$('#cCaja',el).value.trim()||c.caja;c.rate=rate;
     c.ticketFont=$('#cTkFont',el).value;c.ticketSize=$('#cTkSize',el).value;
-    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la configuración.','bad');return false;}
+    const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la configuración. Se cargó el último estado durable; abra nuevamente esta pantalla para reintentar.','bad');closeWin();cfgDlg(focusId);return false;}
     renderAll();msg('Configuración guardada. Tasa: '+nf(rate)+' Bs. por US$.');
   }}],onOpen:()=>{const f=$('#'+(focusId||'cEmp'),el);f.focus();if(f.select)f.select();}});
 }
