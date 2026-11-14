@@ -568,7 +568,7 @@ test('ninguna operación del renderer puede invocar save sin esperar la confirma
 test('los botones de diálogo esperan promesas de persistencia y los cuadros de confirmación propagan el resultado', () => {
   assert.match(pos, /const resolved=result&&typeof result\.then==='function'\?await result:result/);
   assert.match(pos, /if\(W&&W\.el===bd\)closeWin\(\)/);
-  assert.match(pos, /fn:()=>fn\(\)/);
+  assert.match(pos, /const result=b\.fn\(\);[\s\S]{0,200}await result/);
 });
 
 test('un fallo de persistencia nunca restaura una instantánea local antigua sobre un estado autoritativo recuperado', () => {
@@ -584,7 +584,7 @@ test('la reserva de consecutivo CxP captura el estado anterior antes de agregar 
 });
 
 test('un fallo al guardar el Corte Z no puede borrar el último corte histórico por un índice -1', () => {
-  assert.match(pos, /const zStateBefore=JSON\.parse\(JSON\.stringify\(S\)\);\s*getZHistory\(\)\.push\(z\)/);
+  assert.match(pos, /const zStateBefore=JSON\.parse\(JSON\.stringify\(S\)\);[\s\S]{0,300}getZHistory\(\)\.push\(z\)/);
   assert.match(pos, /restoreStateSnapshotIfNeeded\(persisted,zStateBefore\)/);
   assert.doesNotMatch(pos, /getZHistory\(\)\.splice\(getZHistory\(\)\.findIndex/);
 });
