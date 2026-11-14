@@ -2637,7 +2637,7 @@ function comprasDlg(initialTab){
     let retSeq=null,cxpNo=null;
     if(aplicarRetencion){try{retSeq=await nextCajaSequence('retention-'+periodoRetencion,currentCaja());}catch(error){msg('No se pudo reservar el número de la retención: '+error.message,'bad');return false;}}
     if(payableTotal-effPaid>=0.01){try{cxpNo=await nextCajaSequence('cxp',currentCaja());}catch(error){msg('No se pudo reservar el número de CxP: '+error.message,'bad');return false;}}
-    const comp={accountingSourceId:'PURCHASE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(no),no,cashbox:currentCaja(),docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
+    const comp={no,cashbox:currentCaja(),docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
       const periodo=periodoRetencion;
@@ -4552,7 +4552,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
   const ctrlNext=await nextCajaSequence('control',currentCaja());boxSeq.ctrl=ctrlNext+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
   const ctrlNo=ctrlPrefix+String(currentCaja()).replace(/\W/g,'').slice(-4)+'-'+pad(ctrlNext,8);
   const sale={
-    accountingSourceId:'SALE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(invNo),
+    
     no:invNo,ctrlNo,docType:'01-FACTURA',transType:'01-REG',
     ts,cashbox:currentCaja(),cashier:currentCajero(),client:Object.assign({},S.client),lines,
     sub:t.sub,disc:t.disc,base:t.base,
@@ -5994,7 +5994,7 @@ function showDashboardScreen(){
 function usersManagementDlg(editUsername){
   if(!window.SIFERAccess||!window.SIFERAccess.getUsers){msg('El servicio de usuarios no está disponible.','bad');return;}
   let users=window.SIFERAccess.getUsers(),boxes=cashboxList(),editing=editUsername||'';
-  const roleOptions=[['admin','Administrador'],['cajero','Cajero']];
+  const roleOptions=[['admin','Administrador'],['cajero','Cajero'],['contador','Fiscal']];
   const el=h('<div class="form user-admin-form"><div class="hint">Cada usuario tiene un perfil y una caja asignada. El administrador puede quedarse sin caja asignada para operar solo desde el dashboard; para vender debe tener una caja creada y asignada.</div><input id="uaOriginal" type="hidden"><div class="newgrid"><div class="f"><label for="uaName">Nombre completo</label><input class="fld" id="uaName" required></div><div class="f"><label for="uaUsername">Usuario</label><input class="fld" id="uaUsername" required autocomplete="off"></div><div class="f"><label for="uaCode">Contraseña / código</label><input class="fld" id="uaCode" type="password" autocomplete="new-password" placeholder="Obligatorio para usuario nuevo"></div><div class="f"><label for="uaRole">Rol</label><select class="fld" id="uaRole">'+roleOptions.map(r=>'<option value="'+r[0]+'">'+r[1]+'</option>').join('')+'</select></div><div class="f"><label for="uaBox">Caja asignada</label><select class="fld" id="uaBox"><option value="">Sin caja asignada</option>'+boxes.filter(b=>b.active!==false).map(b=>'<option value="'+esc(b.id)+'">'+esc(b.name)+' ('+esc(b.id)+')</option>').join('')+'</select></div></div><div class="row" style="flex-wrap:wrap"><button class="btn primary" id="uaSave">Guardar usuario</button><button class="btn" id="uaClear" type="button">Limpiar</button><span class="hint" id="uaMsg"></span></div><div class="gridwrap" style="max-height:360px;flex:none"><table class="grid"><thead><tr><th>Nombre / usuario</th><th>Rol</th><th>Caja asignada</th><th>Acciones</th></tr></thead><tbody id="uaRows"></tbody></table></div></div>');
   const clear=()=>{editing='';$('#uaOriginal',el).value='';$('#uaName',el).value='';$('#uaUsername',el).value='';$('#uaUsername',el).disabled=false;$('#uaCode',el).value='';$('#uaCode',el).placeholder='Obligatorio para usuario nuevo';$('#uaRole',el).value='cajero';$('#uaBox',el).value=boxes.find(b=>b.active!==false)?.id||'';$('#uaMsg',el).textContent='';};
   const draw=()=>{users=window.SIFERAccess.getUsers();$('#uaRows',el).innerHTML=users.map(u=>'<tr><td><b>'+esc(u.name)+'</b><div class="sub">'+esc(u.username)+'</div></td><td>'+esc((roleOptions.find(r=>r[0]===u.role)||[u.role,u.role])[1])+'</td><td>'+esc(u.cashbox||'—')+'</td><td><button class="btn mini2" data-ua-edit="'+esc(u.username)+'">Editar</button> <button class="btn mini2" data-ua-delete="'+esc(u.username)+'" '+(u.username===activeUser().username||users.filter(x=>x.role==='admin').length<=1&&u.role==='admin'?'disabled':'')+'>Desactivar/eliminar</button></td></tr>').join('');};
