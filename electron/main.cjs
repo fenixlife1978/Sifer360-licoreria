@@ -544,9 +544,12 @@ function registerNetworkIpc() {
     return { ...networkConfig, running: false, addresses: localAddresses() };
   });
   ipcMain.handle('network:disconnect-client', async () => {
-    if (networkConfig.role === 'client') { networkConfig = { ...networkConfig, role: 'standalone', host: '', token: crypto.randomBytes(24).toString('hex'), serverDeviceId: '', serverCert: '', tlsFingerprint: '' }; await initializeDatabase(); }
+    if (networkConfig.role === 'client') {
+      if (db) { try { db.close(); } catch {} db = null; }
+      networkConfig = { ...networkConfig, role: 'client', host: '', token: '', serverDeviceId: '', serverCert: '', tlsFingerprint: '', serverStateHash: '', serverPromotionBlocked: true };
+    }
     saveNetworkConfig();
-    return { ...networkConfig, running: false, addresses: localAddresses() };
+    return { ...networkConfig, running: false, disconnected: true, addresses: localAddresses() };
   });
   ipcMain.handle('network:configure-client', async (_e, opts = {}) => {
     const host = String(opts.host || '').trim();
@@ -579,7 +582,8 @@ function registerNetworkIpc() {
       });
       return { ok: true, state: merged, role: 'server', updatedAt: new Date().toISOString() };
     }
-    if (networkConfig.role !== 'client' || !networkConfig.host) return { ok: false, state, role: 'standalone', message: 'Esta caja no está conectada a un servidor.' };
+    if (networkConfig.role !== 'client') return { ok: false, state, role: 'standalone', message: 'Esta caja no está conectada a un servidor.' };
+    if (!networkConfig.host || !networkConfig.token || !networkConfig.serverCert) throw new Error('Cliente LAN desconectado. No se usará SQLite local como autoridad; vuelva a emparejar con el servidor.');
     assertLanHost(networkConfig.host);
     await flushClientOutbox();
     const result = await clientApi('/api/sync/state', { method: 'POST', body: JSON.stringify({ deviceId: networkConfig.deviceId, state, expectedHash: networkConfig.serverStateHash || '' }), timeoutMs: 8000 });
