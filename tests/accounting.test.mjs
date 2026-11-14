@@ -84,7 +84,7 @@ test('activos fijos usan cuentas de depreciación acumulada existentes', () => {
   for (const code of ['1.2.1.05','1.2.1.06','1.2.1.07','6.1.1.06']) {
     assert.ok(chart.accounts.some(a => a.code === code && a.isMovement), 'falta cuenta imputable '+code);
   }
-  assert.match(accounting, /function depreciateAsset\\(id,target\\)/);
+  assert.match(accounting, /function depreciateAsset\(id,target\)/);
   assert.match(accounting, /depreciationPeriod:month/);
   assert.match(accounting, /lastDepreciationMonth/);
   assert.match(accounting, /asset\.monthsDepreciated=count/);
