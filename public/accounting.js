@@ -19,7 +19,7 @@ async function ensureChart(){
  if(codes.size!==data.accounts.length||data.accounts.some(x=>x.parentCode&&!codes.has(String(x.parentCode))))throw new Error('El catálogo contiene códigos duplicados o padres inexistentes.');
  a.accounts=data.accounts.map(x=>({...x}));
  a.catalogSource=data.source||null;a.initialized=true;a.version=1;
- save();return a;
+ const persisted=await save();if(!persisted||!persisted.ok)throw new Error('No se pudo guardar el plan de cuentas en SQLite.');return a;
 }
 function accountMap(){return new Map(state().accounts.map(a=>[String(a.code),a]));}
 function fmtAccount(a){return esc(a.code)+' · '+esc(a.name);}
@@ -91,7 +91,7 @@ function showEntryForm(prefill=null){
  body.addEventListener('click',e=>{if(e.target.closest('[data-remove-line]')){e.target.closest('tr').remove();updateTotals();}});
  $('#acAddLine',el)?.addEventListener('click',()=>{addLine(body);updateTotals();});
  $('#acCloseForm',el).addEventListener('click',()=>el.remove());
- $('#acPostEntry',el)?.addEventListener('click',()=>{
+ $('#acPostEntry',el)?.addEventListener('click',async()=>{
   const date=$('#acDate',el).value,reference=$('#acReference',el).value.trim(),description=$('#acDescription',el).value.trim(),rate=Number($('#acRate',el).value);
   if(!date||!description||!Number.isFinite(rate)||rate<=0){alert('Indique fecha, concepto y tasa válida.');return;}
   const map=accountMap(),entryLines=[];
@@ -111,19 +111,19 @@ function showEntryForm(prefill=null){
   if(Math.abs(dU-cU)>=0.01||Math.abs(dB-cB)>=0.01){alert('El asiento no cuadra. Debe y Haber deben coincidir en USD y Bs.');return;}
   const sequence=Number(a.nextEntry)||1,id='ACC-'+String(sequence).padStart(6,'0');
   a.entries.push({id,number:id,sequence,date,reference,description,rate,lines:entryLines,totalDebitUsd:dU,totalCreditUsd:cU,totalDebitBs:dB,totalCreditBs:cB,status:'posted',createdAt:new Date().toISOString(),createdBy:window.SIFERAccountingBridge.getState().cfg?.cajero||'Contador'});
-  a.nextEntry=sequence+1;save();el.remove();render();
+  a.nextEntry=sequence+1;const persisted=await save();if(!persisted||!persisted.ok){a.entries=a.entries.filter(x=>x.id!==id);a.nextEntry=sequence;alert('SQLite no confirmó el asiento. No se registró definitivamente; verifique la conexión antes de reintentar.');return;}el.remove();render();
  });
  if(prefill){const map=accountMap();body.querySelectorAll('tr').forEach((r,i)=>{const l=prefill.lines[i];if(!l)return;const sel=$('[data-field="account"]',r);sel.value=l.accountCode;sel.disabled=true;for(const f of ['debitUsd','creditUsd','debitBs','creditBs'])$('[data-field="'+f+'"]',r).disabled=true;});}
  updateTotals();
 }
-function reverseEntry(id){
+async function reverseEntry(id){
  const a=state(),original=a.entries.find(e=>e.id===id);if(!original)return;
  if(a.entries.some(e=>e.reversalOf===id)){alert('Este asiento ya tiene una reversión registrada.');return;}
  if(!confirm('Se creará un asiento inverso y se conservará el original. ¿Continuar?'))return;
  const sequence=Number(a.nextEntry)||1,newId='ACC-'+String(sequence).padStart(6,'0');
  const lines=original.lines.map(l=>({...l,debitUsd:l.creditUsd,creditUsd:l.debitUsd,debitBs:l.creditBs,creditBs:l.debitBs}));
  a.entries.push({id:newId,number:newId,sequence,date:today(),reference:'REVERSIÓN '+original.number,description:'Reversión de '+original.number+' · '+original.description,rate:original.rate,lines,totalDebitUsd:original.totalCreditUsd,totalCreditUsd:original.totalDebitUsd,totalDebitBs:original.totalCreditBs,totalCreditBs:original.totalDebitBs,status:'posted',reversalOf:id,createdAt:new Date().toISOString(),createdBy:window.SIFERAccountingBridge.getState().cfg?.cajero||'Contador'});
- a.nextEntry=sequence+1;save();render();
+ a.nextEntry=sequence+1;const persisted=await save();if(!persisted||!persisted.ok){a.entries=a.entries.filter(x=>x.id!==newId);a.nextEntry=sequence;alert('SQLite no confirmó la reversión. El asiento original permanece intacto.');return;}render();
 }
 function exportTrial(){
  const rows=movementAccounts().map(a=>({a,t:totalsFor(validEntries(),a.code)})).filter(x=>Math.abs(x.t.dUsd)+Math.abs(x.t.cUsd)+Math.abs(x.t.dBs)+Math.abs(x.t.cBs)>0.000001);
@@ -165,11 +165,11 @@ function renderIntegration(){
  const accountOptions=(value)=>'<option value="">— Sin configurar —</option>'+movement.map(a=>'<option value="'+esc(a.code)+'" '+(String(value||'')===String(a.code)?'selected':'')+'>'+esc(a.code+' · '+a.name)+'</option>').join('');
  return '<div class="ac-tools"><b>Reglas contables del POS</b><span class="ac-muted">Configure cuentas imputables reales. No se asignan bancos agrupadores automáticamente.</span></div><section class="ac-report"><h3>Contrapartida por método de cobro y pago</h3><p class="ac-note">Cada medio debe apuntar a una cuenta imputable. Para Zelle, punto de venta, Biopago, pago móvil y transferencias, seleccione la cuenta auxiliar o de liquidación que corresponda a la empresa. No use una cuenta de caja si el dinero ingresa a un banco.</p><div class="ac-form-grid">'+POS_PAYMENT_METHODS.map(([id,label])=>'<label>'+esc(label)+'<select class="ac-input" data-pay-account="'+id+'">'+accountOptions(cfg.paymentAccounts[id])+'</select></label>').join('')+'</div></section><section class="ac-report"><h3>Cuentas de operación</h3><div class="ac-form-grid">'+INTEGRATION_FIELDS.map(([key,label,defaultCode])=>'<label>'+esc(label)+'<select class="ac-input" data-integration-account="'+key+'">'+accountOptions(cfg.accounts[key]||defaultCode)+'</select></label>').join('')+'</div><p class="ac-note">Los códigos sugeridos son referencias del catálogo, no se activan hasta que el contador guarde y revise las asignaciones. Las compras con retención, tasas no contempladas o medios sin cuenta configurada permanecerán pendientes de contabilización.</p></section><div class="ac-form-foot"><button class="ac-primary" id="acSaveIntegration">Guardar configuración</button><span class="ac-muted">La configuración no modifica operaciones anteriores.</span></div>';
 }
-function saveIntegration(){
+async function saveIntegration(){
  const cfg=integrationConfig();
  dialog.querySelectorAll('[data-pay-account]').forEach(el=>{if(el.value)cfg.paymentAccounts[el.dataset.payAccount]=el.value;else delete cfg.paymentAccounts[el.dataset.payAccount];});
  dialog.querySelectorAll('[data-integration-account]').forEach(el=>{if(el.value)cfg.accounts[el.dataset.integrationAccount]=el.value;else delete cfg.accounts[el.dataset.integrationAccount];});
- save();alert('Configuración contable guardada. Revise que cada cuenta corresponda al medio y operación real antes de activar la contabilización automática.');render();
+ const persisted=await save();if(!persisted||!persisted.ok){alert('No se pudo guardar la configuración contable en SQLite.');return;}alert('Configuración contable guardada. Revise que cada cuenta corresponda al medio y operación real antes de activar la contabilización automática.');render();
 }
 
 function showAssetForm(){
@@ -178,14 +178,14 @@ function showAssetForm(){
  el.innerHTML='<div class="ac-modal-card"><div class="ac-modal-head"><b>Registrar activo fijo</b><button class="ac-small" id="acCloseAsset">Cerrar</button></div><div class="ac-form-grid"><label>Descripción<input class="ac-input" id="asName" maxlength="150" placeholder="Identificación del activo"></label><label>Fecha de adquisición<input class="ac-input" id="asDate" type="date" value="'+today()+'"></label><label>Fecha disponible para uso<input class="ac-input" id="asAvailableDate" type="date" value="'+today()+'" required></label><label>Grupo contable<select class="ac-input" id="asCategory">'+categories.map(c=>'<option value="'+c[0]+'|'+c[1]+'">'+c[2]+'</option>').join('')+'</select></label><label>Costo de adquisición US$<input class="ac-input" id="asCostUsd" type="number" min="0.01" step="0.01"></label><label>Costo de adquisición Bs.<input class="ac-input" id="asCostBs" type="number" min="0.01" step="0.01"></label><label>Vida útil (meses)<input class="ac-input" id="asLife" type="number" min="1" max="1200" value="60"></label><label>Valor residual US$<input class="ac-input" id="asResidual" type="number" min="0" step="0.01" value="0"></label><label>Valor residual Bs.<input class="ac-input" id="asResidualBs" type="number" min="0" step="0.01" value="0"></label><label>Tasa de adquisición Bs./US$<input class="ac-input" id="asRate" type="number" min="0.000001" step="0.000001"></label></div><p class="ac-note">El alta del auxiliar no contabiliza nuevamente la compra. Registre primero el asiento de adquisición o apertura correspondiente; este auxiliar permitirá controlar la depreciación.</p><div class="ac-form-foot"><button class="ac-primary" id="acSaveAsset">Guardar activo</button></div></div>';
  dialog.appendChild(el);
  $('#acCloseAsset',el).onclick=()=>el.remove();
- $('#acSaveAsset',el).onclick=()=>{
+ $('#acSaveAsset',el).onclick=async()=>{
   const name=$('#asName',el).value.trim(),date=$('#asDate',el).value,availableForUseDate=$('#asAvailableDate',el).value,[assetAccount,accumAccount]=$('#asCategory',el).value.split('|');
   const costUsd=Number($('#asCostUsd',el).value),costBs=Number($('#asCostBs',el).value),lifeMonths=Number($('#asLife',el).value),residualUsd=Number($('#asResidual',el).value)||0,residualBs=Number($('#asResidualBs',el).value)||0,rate=Number($('#asRate',el).value);
   if(!name||!date||!availableForUseDate||availableForUseDate<date||!(costUsd>0)||!(costBs>0)||!(lifeMonths>0)||!Number.isInteger(lifeMonths)||residualUsd<0||residualBs<0||residualUsd>costUsd||residualBs>costBs||!(rate>0)){alert('Complete los datos del activo con importes y vida útil válidos.');return;}
   const map=accountMap();if(!map.get(assetAccount)?.isMovement||!map.get(accumAccount)?.isMovement){alert('Las cuentas del activo no están disponibles en el plan VEN-NIF.');return;}
   const id='AF-'+String(a.nextAsset||1).padStart(5,'0');
   a.fixedAssets.push({id,name,acquisitionDate:date,availableForUseDate,assetAccount,accumulatedDepreciationAccount:accumAccount,costUsd,costBs,residualUsd,residualBs,lifeMonths,rate,monthlyUsd:(costUsd-residualUsd)/lifeMonths,monthlyBs:(costBs-residualBs)/lifeMonths,monthsDepreciated:0,lastDepreciationMonth:null,status:'active',createdAt:new Date().toISOString()});
-  a.nextAsset=(Number(a.nextAsset)||1)+1;save();el.remove();render();
+  a.nextAsset=(Number(a.nextAsset)||1)+1;const persisted=await save();if(!persisted||!persisted.ok){a.fixedAssets=a.fixedAssets.filter(x=>x.id!==id);a.nextAsset=Math.max(1,Number(a.nextAsset)-1);alert('No se pudo guardar el activo fijo en SQLite. No se confirmó el registro.');return;}el.remove();render();
  };
 }
 function renderAssets(){
@@ -246,7 +246,7 @@ async function runAutomaticDepreciation(){
   if(total)automaticDepreciationNeedsSave=true;
   if(automaticDepreciationNeedsSave){
    const persisted=await save();
-   if(!persisted||!persisted.ok||!['sqlite+localStorage','desktop'].includes(persisted.durable))throw (persisted&&persisted.error)||new Error('SQLite local todavía no confirmó la persistencia de la depreciación; se reintentará automáticamente.');
+   if(!persisted||!persisted.ok||!['sqlite+localStorage','desktop','sqlite-file','server-sqlite'].includes(persisted.durable))throw (persisted&&persisted.error)||new Error('SQLite local todavía no confirmó la persistencia de la depreciación; se reintentará automáticamente.');
    automaticDepreciationNeedsSave=false;
    if(dialog&&activeTab==='assets')render();
   }
