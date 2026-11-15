@@ -5387,23 +5387,26 @@ function fiscalPrinterConfigDlg(){
     drawPendingJobs();
   };
   const detect=async()=>{
-    const node=$('#fpStatus',el);node.textContent='Buscando dispositivos seriales conectados…';
+    const node=$('#fpStatus',el);node.textContent='Analizando dispositivos USB-Serial y puertos COM de Windows…';
     try{
       const r=await window.posDesktop.fiscalPrinterListPorts();
-      const ports=(r.ports||[]).filter(p=>Number(String(p.port).replace(/^COM/i,''))>=1&&Number(String(p.port).replace(/^COM/i,''))<=10);
+      const ports=r.ports||[];
       $('#fpPortList',el).innerHTML=ports.map(p=>'<option value="'+esc(p.port)+'">'+esc(p.name)+'</option>').join('');
-      if(!ports.length){node.textContent=r.message||'No se detectaron puertos COM1–COM10. Puede continuar sin impresora o elegir ticket interno.';return;}
+      if(!ports.length){node.textContent=r.message||'Windows no detectó puertos COM. Conecte la impresora y revise cable y controlador.';return;}
+      const driverNames={prolific:'Prolific PL2303',ftdi:'FTDI VCP',silabs:'Silicon Labs CP210x'};
+      const summaries=ports.map(p=>p.port+' — '+p.name+(p.driverId?' · chipset probable: '+(driverNames[p.driverId]||p.driverId):p.vendorId?' · VID '+p.vendorId:' · chipset no identificado'));
+      const likely=ports.filter(p=>p.driverId);
       const base=profile();
       if(base.provider==='pnp'){
         for(const candidate of ports){
           try{
             const result=await window.posDesktop.fiscalPrinterTestPnp({...base,port:candidate.port});
             $('#fpPort',el).value=candidate.port;draft.port=candidate.port;drafts[box]=draft;
-            node.textContent='Impresora PNP identificada y protocolo validado en '+candidate.port+'. '+result.message+' Última factura: '+result.currentInvoice+' · Último Z: '+result.lastZ+'.';
+            node.textContent='PROTOCOLO PNP VALIDADO en '+candidate.port+'. '+result.message+' Última factura: '+result.currentInvoice+' · Último Z: '+result.lastZ+'. Confirme el modelo exacto en la placa del equipo.';
             return;
           }catch{}
         }
-        node.textContent='Se detectaron puertos COM, pero ninguno respondió al protocolo de estado PNP. No se seleccionó ningún puerto automáticamente. Revise el cable, controlador y modelo.';
+        node.textContent='Se detectaron puertos, pero ninguno respondió al protocolo PNP. No se asignó ninguno. Dispositivos: '+summaries.join(' | ');
         return;
       }
       if(base.bridgePath){
@@ -5411,15 +5414,13 @@ function fiscalPrinterConfigDlg(){
           try{
             const result=await window.posDesktop.fiscalPrinterTestBridge({...base,port:candidate.port});
             $('#fpPort',el).value=candidate.port;draft.port=candidate.port;drafts[box]=draft;
-            node.textContent='El adaptador fiscal respondió correctamente en '+candidate.port+'. '+JSON.stringify(result);
+            node.textContent='El adaptador respondió en '+candidate.port+'. '+JSON.stringify(result)+' Confirme modelo y versión del SDK con el fabricante.';
             return;
           }catch{}
         }
-        node.textContent='Hay puertos COM disponibles, pero el adaptador no reconoció una impresora en ninguno. No se asignó un puerto.';
-        return;
       }
-      const usbSummary=ports.map(p=>p.port+' — '+p.name+' ['+(p.vendorId?'VID '+p.vendorId+(p.productId?':PID '+p.productId:''):'VID/PID no disponible')+'; '+(p.driverLabel||'controlador no identificado')+']').join(' · ');const knownDriver=ports.find(p=>p.driverId);const guidance=knownDriver?('Controlador USB probable: '+knownDriver.driverLabel+'. Esto identifica el puente USB-serial, no el fabricante fiscal.'): 'No se pudo identificar el chipset USB-serial; verifique Administrador de dispositivos de Windows y el identificador de hardware.';const compat=$('#fpCompatibility',el);if(compat)compat.innerHTML='<div class="gtitle">Resultado de detección</div><p><b>'+esc(guidance)+'</b></p><p class="hint">'+esc(usbSummary)+'</p><p class="hint">Siguiente paso: confirme la marca y el modelo en la etiqueta de la impresora; seleccione el fabricante fiscal y su SDK oficial. La arquitectura del SDK (32/64 bits), firmware y protocolo deben coincidir. SIFER no instalará ni habilitará DLL por coincidencia de nombre.</p>';node.textContent='Se detectaron '+ports.length+' puerto(s) COM. Revise el asistente de compatibilidad. No se seleccionó un puerto fiscal sin validar el protocolo.';
-    }catch(e){node.textContent='No se pudieron detectar puertos: '+e.message;}
+      node.textContent='DIAGNÓSTICO USB COMPLETADO. Puertos: '+summaries.join(' | ')+'. '+(likely.length?'Controlador/chipset probable: '+likely.map(p=>driverNames[p.driverId]).filter((v,i,a)=>a.indexOf(v)===i).join(', ')+'.':'No se identificó el chipset USB-Serial.')+' Esta detección NO identifica fabricante/modelo fiscal ni valida un SDK. Seleccione el puerto y confirme marca/modelo en la etiqueta; después valide el protocolo.';
+    }catch(e){node.textContent='No se pudieron detectar dispositivos: '+e.message;}
   };
   const applyDraft=()=>{
     $('#fpProvider',el).value=draft.provider;
