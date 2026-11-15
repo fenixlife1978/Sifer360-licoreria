@@ -32,7 +32,8 @@ async function ensureChart(){
 function accountMap(){return new Map(state().accounts.map(a=>[String(a.code),a]));}
 function nextEntrySequence(a=state()){const max=(a.entries||[]).reduce((n,e)=>Math.max(n,Number(e.sequence)||Number(String(e.id||'').match(/(\d+)$/)?.[1])||0),0);return Math.max(1,Number(a.nextEntry)||1,max+1);}
 function fmtAccount(a){return esc(a.code)+' · '+esc(a.name);}
-function movementAccounts(){const a=state(),activeBanks=new Set((a.banks||[]).filter(b=>b.active).map(b=>String(b.id)));return a.accounts.filter(x=>x.isMovement&&(!x.bankId||activeBanks.has(String(x.bankId))));}
+function allMovementAccounts(){return state().accounts.filter(x=>x.isMovement);}
+function movementAccounts(){const a=state(),activeBanks=new Set((a.banks||[]).filter(b=>b.active).map(b=>String(b.id)));return allMovementAccounts().filter(x=>!x.bankId||activeBanks.has(String(x.bankId)));}
 function totalsFor(entries,accountCode){
  let dUsd=0,cUsd=0,dBs=0,cBs=0;
  for(const e of entries)for(const l of e.lines||[])if(String(l.accountCode)===String(accountCode)){
@@ -91,7 +92,7 @@ function renderJournal(){
  return '<div class="ac-tools"><button class="ac-primary" id="acNewEntry">＋ Nuevo asiento</button><span class="ac-muted">'+es.length+' asientos contabilizados · Los originales no se eliminan</span></div><div class="ac-scroll"><table class="ac-table"><thead><tr><th>Fecha</th><th>Número</th><th>Referencia</th><th>Descripción</th><th class="ac-num">Debe US$</th><th class="ac-num">Haber US$</th><th>Acción</th></tr></thead><tbody>'+ (es.map(e=>'<tr><td>'+esc(e.date)+'</td><td class="ac-code">'+esc(e.number)+'</td><td>'+esc(e.reference||'—')+'</td><td>'+esc(e.description) +(e.reversalOf?'<div class="ac-muted">Reversión de '+esc(e.reversalOf)+'</div>':'')+'</td><td class="ac-num">'+money(e.totalDebitUsd)+'</td><td class="ac-num">'+money(e.totalCreditUsd)+'</td><td><button class="ac-small" data-view-entry="'+esc(e.id)+'">Ver</button> '+(!e.reversalOf&&!es.some(x=>x.reversalOf===e.id)?'<button class="ac-small" data-reverse="'+esc(e.id)+'">Revertir</button>':'')+'</td></tr>').join('')||'<tr><td colspan="7" class="ac-empty">No hay asientos contabilizados. Registre el primero cuando disponga del soporte.</td></tr>')+'</tbody></table></div>';
 }
 function renderLedger(){
- const accounts=movementAccounts(),chosen=accounts.find(a=>a.code===selectedAccount)||accounts[0];if(chosen)selectedAccount=chosen.code;
+ const accounts=allMovementAccounts(),chosen=accounts.find(a=>a.code===selectedAccount)||accounts[0];if(chosen)selectedAccount=chosen.code;
  if(!chosen)return '<p class="ac-empty">No hay cuentas imputables en el catálogo.</p>';
  const rows=validEntries().flatMap(e=>(e.lines||[]).filter(l=>String(l.accountCode)===String(chosen.code)).map(l=>({e,l}))).sort((a,b)=>String(a.e.date).localeCompare(String(b.e.date))||a.e.sequence-b.e.sequence);
  let runUsd=0,runBs=0;
@@ -99,7 +100,7 @@ function renderLedger(){
  return '<div class="ac-tools"><label>Cuenta</label><select class="ac-input" id="acLedgerAccount">'+accounts.map(a=>'<option value="'+esc(a.code)+'" '+(a.code===selectedAccount?'selected':'')+'>'+esc(a.code+' · '+a.name)+'</option>').join('')+'</select></div><div class="ac-scroll"><table class="ac-table"><thead><tr><th>Fecha</th><th>Asiento</th><th>Concepto</th><th class="ac-num">Debe US$</th><th class="ac-num">Haber US$</th><th class="ac-num">Saldo US$</th><th class="ac-num">Saldo Bs.</th></tr></thead><tbody>'+(html||'<tr><td colspan="7" class="ac-empty">Esta cuenta aún no tiene movimientos contabilizados.</td></tr>')+'</tbody></table></div>';
 }
 function renderTrial(){
- const rows=movementAccounts().map(a=>({a,t:totalsFor(validEntries(),a.code)})).filter(x=>Math.abs(x.t.dUsd)+Math.abs(x.t.cUsd)+Math.abs(x.t.dBs)+Math.abs(x.t.cBs)>0.000001);
+ const rows=allMovementAccounts().map(a=>({a,t:totalsFor(validEntries(),a.code)})).filter(x=>Math.abs(x.t.dUsd)+Math.abs(x.t.cUsd)+Math.abs(x.t.dBs)+Math.abs(x.t.cBs)>0.000001);
  const totals=rows.reduce((o,x)=>{o.du+=x.t.dUsd;o.cu+=x.t.cUsd;o.db+=x.t.dBs;o.cb+=x.t.cBs;return o;},{du:0,cu:0,db:0,cb:0});
  return '<div class="ac-tools"><span class="ac-muted">Solo asientos contabilizados. Las cuentas sin movimiento se omiten.</span><button class="ac-small" id="acExportTrial">Exportar CSV</button></div><div class="ac-scroll"><table class="ac-table"><thead><tr><th>Código</th><th>Cuenta</th><th class="ac-num">Debe US$</th><th class="ac-num">Haber US$</th><th class="ac-num">Debe Bs.</th><th class="ac-num">Haber Bs.</th></tr></thead><tbody>'+rows.map(x=>'<tr><td class="ac-code">'+esc(x.a.code)+'</td><td>'+esc(x.a.name)+'</td><td class="ac-num">'+money(x.t.dUsd)+'</td><td class="ac-num">'+money(x.t.cUsd)+'</td><td class="ac-num">'+money(x.t.dBs)+'</td><td class="ac-num">'+money(x.t.cBs)+'</td></tr>').join('')+'<tr class="ac-total"><td colspan="2">TOTALES</td><td class="ac-num">'+money(totals.du)+'</td><td class="ac-num">'+money(totals.cu)+'</td><td class="ac-num">'+money(totals.db)+'</td><td class="ac-num">'+money(totals.cb)+'</td></tr></tbody></table></div><div class="ac-check '+(Math.abs(totals.du-totals.cu)<0.01&&Math.abs(totals.db-totals.cb)<0.01?'ok':'warn')+'">'+(Math.abs(totals.du-totals.cu)<0.01&&Math.abs(totals.db-totals.cb)<0.01?'Cuadrado':'Diferencia detectada')+' · USD: '+money(totals.du-totals.cu)+' · Bs.: '+money(totals.db-totals.cb)+'</div>';
 }
@@ -168,13 +169,13 @@ async function reverseEntry(id){
  a.nextEntry=sequence+1;const persisted=await save();if(!persisted||!persisted.ok){a.entries=a.entries.filter(x=>x.id!==newId);a.nextEntry=sequence;alert('SQLite no confirmó la reversión. El asiento original permanece intacto.');return;}render();
 }
 function exportTrial(){
- const rows=movementAccounts().map(a=>({a,t:totalsFor(validEntries(),a.code)})).filter(x=>Math.abs(x.t.dUsd)+Math.abs(x.t.cUsd)+Math.abs(x.t.dBs)+Math.abs(x.t.cBs)>0.000001);
+ const rows=allMovementAccounts().map(a=>({a,t:totalsFor(validEntries(),a.code)})).filter(x=>Math.abs(x.t.dUsd)+Math.abs(x.t.cUsd)+Math.abs(x.t.dBs)+Math.abs(x.t.cBs)>0.000001);
  const csv=['Código,Cuenta,Debe USD,Haber USD,Debe Bs,Haber Bs',...rows.map(x=>[x.a.code,'"'+x.a.name.replace(/"/g,'""')+'"',x.t.dUsd,x.t.cUsd,x.t.dBs,x.t.cBs].join(','))].join('\r\n');
  const url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='sifer360-balance-comprobacion-'+today()+'.csv';a.click();URL.revokeObjectURL(url);
 }
 
 function cashFlowTotals(entries){
- const cashAccounts=movementAccounts().filter(a=>String(a.code).startsWith('1.1.1.'));
+ const cashAccounts=allMovementAccounts().filter(a=>String(a.code).startsWith('1.1.1.'));
  const cashCodes=new Set(cashAccounts.map(a=>String(a.code))),map=accountMap();
  const buckets={operating:{inUsd:0,outUsd:0,inBs:0,outBs:0},investing:{inUsd:0,outUsd:0,inBs:0,outBs:0},financing:{inUsd:0,outUsd:0,inBs:0,outBs:0}};
  for(const entry of entries){
@@ -197,7 +198,7 @@ function cashFlowTotals(entries){
 }
 function renderStatements(){
  const date=$('#acStatementDate',dialog)?.value||today(),entries=validEntries().filter(e=>String(e.date)<=date);
- const sums=type=>movementAccounts().filter(a=>a.type===type).map(a=>({a,t:totalsFor(entries,a.code)}));
+ const sums=type=>allMovementAccounts().filter(a=>a.type===type).map(a=>({a,t:totalsFor(entries,a.code)}));
  const natural=(type,t)=>type==='ACTIVO'||type==='COSTOS'||type==='GASTOS'?t.balUsd:t.cUsd-t.dUsd;
  const assets=sums('ACTIVO'),liabs=sums('PASIVO'),equity=sums('PATRIMONIO'),income=sums('INGRESOS'),costs=sums('COSTOS'),expenses=sums('GASTOS');
  const total=x=>x.reduce((n,z)=>n+natural(z.a.type,z.t),0);
@@ -337,7 +338,7 @@ function startAutomaticDepreciation(){
 }
 
 function exportStatement(){
- const date=$('#acStatementDate',dialog)?.value||today(),entries=validEntries().filter(e=>e.date<=date),rows=movementAccounts().map(a=>({a,t:totalsFor(entries,a.code)}));
+ const date=$('#acStatementDate',dialog)?.value||today(),entries=validEntries().filter(e=>e.date<=date),rows=allMovementAccounts().map(a=>({a,t:totalsFor(entries,a.code)}));
  const csv=['Código,Cuenta,Tipo,Saldo USD,Saldo Bs',...rows.map(x=>[x.a.code,'"'+x.a.name.replace(/"/g,'""')+'"',x.a.type,x.t.balUsd,x.t.balBs].join(','))].join('\r\n');
  const url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'})),link=document.createElement('a');link.href=url;link.download='sifer360-estados-financieros-'+date+'.csv';link.click();URL.revokeObjectURL(url);
 }
