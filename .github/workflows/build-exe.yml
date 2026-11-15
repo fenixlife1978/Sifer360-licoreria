@@ -8,7 +8,7 @@ on:
   push:
     branches: [ main, master, integration/sqlite-lan-stage-2-hardening ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, integration/sqlite-lan-stage-1 ]
   workflow_dispatch:
 
 permissions:
