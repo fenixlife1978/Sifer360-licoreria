@@ -862,6 +862,7 @@ const IC={
  inventario:'<path d="M3 8l9-5 9 5v9l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v9"/>',
  conteo:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/><path d="M16 14l2 2 4-4"/>',
  kardex:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 9v11M14 9v11"/>',
+ libroInventario:'<path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
  compras:'<path d="M3 4h3l2.5 10h9l2-7H7.5"/><circle cx="9.5" cy="18.5" r="1.5"/><circle cx="16.5" cy="18.5" r="1.5"/><path d="M13 3v6M10 6l3 3 3-3"/>',
  cxc:'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 9h2M16 15h2"/>',
  cxp:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h10M7 14h6"/><path d="M18 3l3 3-3 3"/>',
@@ -2431,6 +2432,12 @@ function comprasDlg(initialTab){
     if(motor==='gap'){const bcv=Number(pricing.bcvRate)||Number(bcvRate)||Number(S.cfg.rate)||1;const parallel=Number(pricing.parallelRate)||r2(bcv*1.22);return r2(c*(1+(Number(pricing.markupCost)||40)/100)*(parallel/bcv));}
     return r2(c*(1+(Number(pricing.markupCost)||40)/100));
   };
+  const getLastPurchaseCost=(code)=>{
+    const records=(S.purchases||[]).filter(c=>!c.void&&Array.isArray(c.lines)&&c.lines.some(line=>String(line.code)===String(code))).sort((a,b)=>Number(b.ts||0)-Number(a.ts||0)||Number(b.no||0)-Number(a.no||0));
+    if(!records.length)return null;
+    const line=records[0].lines.find(x=>String(x.code)===String(code));
+    return line&&Number.isFinite(Number(line.cost))?Number(line.cost):null;
+  };
   const refreshPurchaseRate=async(date,v,draw)=>{
     const token=++rateRequestToken;purchaseRate=0;purchaseRateRecord=null;rateStatus='Consultando histórico BCV…';if(draw)draw();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))){rateStatus='Fecha de documento inválida';if(draw)draw();return false;}
@@ -2460,7 +2467,7 @@ function comprasDlg(initialTab){
         '<div class="f"><label id="cpDocLabel" for="cpDoc">Nº de factura del proveedor *</label><input class="fld mono" id="cpDoc" value="" placeholder="Copiar del documento original" autocomplete="off" required></div>'+
         '<div class="f" id="cpCtrlWrap"><label for="cpCtrl">Nº de control fiscal *</label><input class="fld mono" id="cpCtrl" value="" placeholder="Número de control de la factura" autocomplete="off"></div>'+
         '<div class="f"><label for="cpDate">Fecha de emisión del documento *</label><input class="fld" id="cpDate" type="date" value="'+isoD(Date.now())+'" required></div>'+
-        '<div class="f"><label for="cpRate">Tasa BCV histórica (Bs./USD)</label><input class="fld r mono" id="cpRate" value="'+(purchaseRate?nf8(purchaseRate):'')+'" readonly placeholder="Consultando…"><small id="cpRateStatus" class="muted">'+esc(rateStatus)+'</small></div>'+
+        '<div class="f"><label for="cpRate">Tasa BCV del día del documento (Bs./USD)</label><input class="fld r mono" id="cpRate" value="'+(purchaseRate?nf8(purchaseRate):'')+'" readonly placeholder="Consultando…"><small id="cpRateStatus" class="muted">'+esc(rateStatus)+'</small></div>'+
         '<div class="f"><label for="cpCond">Condición de Compra</label><select class="fld" id="cpCond"><option value="Crédito"'+(cond==='Crédito'?' selected':'')+'>Crédito (Genera CxP)</option><option value="Contado"'+(cond==='Contado'?' selected':'')+'>Contado (Pagada)</option></select></div>'+
         '<div class="f" id="cpDaysWrap"><label for="cpDays">Plazo Crédito (días)</label><input class="fld r" id="cpDays" value="'+creditDays+'" inputmode="numeric"></div>'+
         '<div class="f"><label for="cpInit">Abono / Pago Inicial US$</label><input class="fld r" id="cpInit" value="'+(paidInit?nf(paidInit):'0,00')+'" inputmode="decimal"></div>'+
@@ -2477,8 +2484,8 @@ function comprasDlg(initialTab){
         '<button class="btn" id="cpBtnAdd">+ Agregar renglón</button>'+
         '<span class="hint" style="margin-left:auto">Verifique la alícuota IVA de cada renglón contra la factura del proveedor.</span>'+
       '</div>'+
-      '<div class="gridwrap invwrap"><table class="grid" style="min-width:820px">'+
-        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Costo Unit. US$</th><th class="r">P. Venta US$</th><th class="r">Base US$</th><th>IVA %</th><th>Auto</th><th></th></tr></thead>'+
+      '<div class="gridwrap invwrap"><table class="grid" style="min-width:1120px">'+
+        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Último costo US$</th><th class="r">CPP actual US$</th><th class="r">Nuevo costo US$</th><th class="r">CPP resultante US$</th><th class="r">P. Venta US$</th><th class="r">Base US$</th><th>IVA %</th><th>Auto</th><th></th></tr></thead>'+
         '<tbody id="cpBody"></tbody>'+
       '</table></div>'+
       '<div class="cierre" id="cpTotals"></div>';
@@ -2496,14 +2503,17 @@ function comprasDlg(initialTab){
           '<td><div class="desc">'+esc(p.desc)+'</div><div class="sub">'+esc(p.brand)+' · '+esc(p.cat)+'</div></td>'+
           '<td class="r '+stockCls(p)+'">'+fq(p.stock)+'</td>'+
           '<td class="r"><input class="fld cell r" data-cpf="qty" value="'+fq(l.qty)+'" inputmode="decimal"></td>'+
-          '<td class="r"><input class="fld cell r" data-cpf="cost" value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
+          '<td class="r">'+(getLastPurchaseCost(l.code)==null?'—':nf8(getLastPurchaseCost(l.code)))+'</td>'+
+          '<td class="r">'+nf8(p.cost)+'</td>'+
+          '<td class="r"><input class="fld cell r" data-cpf="cost" aria-label="Nuevo costo unitario US$" value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
+          '<td class="r"><b>'+nf8(projectedCost)+'</b></td>'+
           '<td class="r"><input class="fld cell r" data-cpf="price" value="'+nf8(l.price)+'" inputmode="decimal" '+(l.autoPrice?'readonly title="Calculado por el motor de precios"':'')+'></td>'+
           '<td class="r"><b>'+nf8(sub)+'</b></td>'+
           '<td><select class="fld cell" data-cpf="taxRate" aria-label="Alícuota IVA del renglón" '+(docType==='FACTURA_FISCAL'?'':'disabled')+'><option value="0" '+(Number(l.taxRate||0)===0?'selected':'')+'>0%</option><option value="8" '+(Number(l.taxRate)===8?'selected':'')+'>8%</option><option value="16" '+(Number(l.taxRate===undefined?16:l.taxRate)===16?'selected':'')+'>16%</option><option value="31" '+(Number(l.taxRate)===31?'selected':'')+'>31%</option></select></td>'+
           '<td class="c"><input type="checkbox" data-cpf="autoPrice" '+(l.autoPrice?'checked':'')+' aria-label="Calcular precio de venta automáticamente"></td>'+
           '<td class="c"><button class="mini" data-cpdel="'+i+'" title="Quitar">&times;</button></td>'+
         '</tr>';
-      }).join(''):'<tr class="empty"><td colspan="8">Agregue productos a la orden de compra.</td></tr>';
+      }).join(''):'<tr class="empty"><td colspan="13">Agregue productos a la orden de compra.</td></tr>';
 
       const base=r8(pLines.reduce((a,l)=>a+r8(l.qty*l.cost),0));
       const iva=docType==='FACTURA_FISCAL'?r8(pLines.reduce((a,l)=>a+r8(l.qty*l.cost*(Number(l.taxRate===undefined?16:l.taxRate)||0)/100),0)):0;
@@ -2570,7 +2580,7 @@ function comprasDlg(initialTab){
         if(!p)return;
         const ex=pLines.find(x=>x.code===code);
         if(ex)ex.qty=r8(ex.qty+qty);
-        else pLines.push({code,qty,cost:p.cost,price:p.price,taxRate:docType==='FACTURA_FISCAL'?prodTaxRate(p):0,autoPrice:!!(p.pricing&&p.pricing.mode==='auto')});
+        else pLines.push({code,qty,cost:p.cost,price:p.price,taxRate:docType==='FACTURA_FISCAL'?prodTaxRate(p):0,autoPrice:true});
         drawLines();
       }
       const del=e.target.closest('[data-cpdel]');
@@ -5568,6 +5578,7 @@ function seniatSudebanDlg(initialTab){
   let activeTab=initialTab||'resumen';
   let curPeriod='mes'; /* 'quincena1' | 'quincena2' | 'mes' | 'todo' */
   let qText='';
+  let inventoryBookView='existencias';
 
   const el=h('<div class="form" style="gap:10px">'+
     '<div class="semaforo-bar">'+
@@ -5774,25 +5785,38 @@ function seniatSudebanDlg(initialTab){
 }
 
   const drawInventario=()=>{
-    const products=(S.products||[]).slice().sort((a,b)=>String(a.code||a.sku||'').localeCompare(String(b.code||b.sku||''),'es'));
-    const rate=Number(S.cfg.rate)||0;
-    const movements=(S.kardex||[]).filter(k=>filterPeriod(k.ts)).slice().sort((a,b)=>a.ts-b.ts);
+    const allProducts=(S.products||[]).slice().sort((a,b)=>String(a.code||a.sku||'').localeCompare(String(b.code||b.sku||''),'es'));
+    const rate=Number(S.cfg.rate)||0,query=norm(qText);
+    const products=allProducts.filter(p=>!query||norm([p.code,p.sku,p.desc,p.brand,p.cat,p.subcat].join(' ')).includes(query));
+    const movements=(S.kardex||[]).filter(k=>filterPeriod(Number(k.ts)||Date.parse(k.date||'')||0)).filter(k=>!query||norm([k.code,k.type,k.doc,k.party,k.user].join(' ')).includes(query)).slice().sort((a,b)=>(Number(a.ts)||0)-(Number(b.ts)||0)||(Number(a.id)||0)-(Number(b.id)||0));
+    const productMap=new Map(allProducts.map(p=>[String(p.code),p]));
     let totalUnits=0,totalCost=0,belowMin=0;
     const rows=products.map((p,idx)=>{
-      const stock=Math.max(0,Number(p.stock)||0),cost=Math.max(0,Number(p.cost)||0),value=r2(stock*cost);
-      const min=Math.max(0,Number(p.min)||0),low=stock<=min;
+      const stock=Math.max(0,Number(p.stock)||0),cost=Math.max(0,Number(p.cost)||0),value=r2(stock*cost),min=Math.max(0,Number(p.min)||0),low=stock<=min;
       totalUnits+=stock;totalCost+=value;if(low)belowMin++;
-      const last=(S.kardex||[]).filter(k=>k.code===p.code).sort((a,b)=>b.ts-a.ts)[0];
+      const last=(S.kardex||[]).filter(k=>k.code===p.code).sort((a,b)=>(Number(b.ts)||0)-(Number(a.ts)||0))[0];
       return '<tr><td class="c">'+(idx+1)+'</td><td class="mono">'+esc(p.code||'')+'</td><td class="mono">'+esc(p.sku||'')+'</td><td><b>'+esc(p.desc||'Producto sin descripción')+'</b><div class="sub">'+esc(p.brand||'')+' · '+esc(p.cat||'')+'</div></td><td>'+esc(p.unit||'und')+'</td><td class="r">'+fq(stock)+'</td><td class="r">'+nf(cost)+'</td><td class="r"><b>'+nf(value)+'</b></td><td class="r">'+fq(min)+'</td><td>'+(low?'<span class="fiscal-tag warn">Revisar stock</span>':'<span class="fiscal-tag ok">Normal</span>')+'</td><td>'+(last?fmtDT(last.ts):'Sin movimientos registrados')+'</td></tr>';
     }).join('')||'<tr class="empty"><td colspan="11">No hay productos registrados. El libro no inventa existencias iniciales.</td></tr>';
-    const movRows=movements.map((m,i)=>'<tr><td>'+(i+1)+'</td><td>'+fmtDT(m.ts)+'</td><td class="mono">'+esc(m.code||'')+'</td><td>'+esc(m.type||'')+'</td><td>'+esc(m.dir||'')+'</td><td>'+esc(m.doc||'—')+'</td><td>'+esc(m.party||'')+'</td><td class="r">'+fq(m.qty||0)+'</td><td class="r">'+nf(m.cost||0)+'</td><td class="r">'+nf(m.stockAfter||0)+'</td></tr>').join('')||'<tr class="empty"><td colspan="10">Sin movimientos de Kardex para el período.</td></tr>';
-    return '<div class="semaforo-bar" style="background:#FFF6E5;border-color:#F5DEB0"><div class="semaforo-dot" style="background:#945D08;box-shadow:0 0 0 3px rgba(148,93,8,.2)"></div><div class="semaforo-text" style="color:#744600"><b>LIBRO DE INVENTARIO — CORTE ACTUAL</b>. Existencias y valoración al momento de generar el informe; los movimientos sí respetan el filtro de período. Valoración indicativa por costo unitario registrado en cada ficha, no sustituye la toma física ni la valoración contable aprobada.</div></div>'+
-      '<div class="fiscal-grid"><div class="fiscal-card"><span>Artículos registrados</span><b>'+products.length+'</b><small>SKU / códigos únicos en inventario</small></div><div class="fiscal-card"><span>Unidades existentes</span><b>'+fq(totalUnits)+'</b><small>Según saldo actual de las fichas</small></div><div class="fiscal-card"><span>Valor de inventario US$</span><b>'+usd(totalCost)+'</b><small>Existencia × costo unitario registrado</small></div><div class="fiscal-card"><span>Valor referencial Bs.</span><b>'+(rate>0?bsf(r2(totalCost*rate)):'No calculable: falta tasa BCV')+'</b><small>'+(rate>0?'Tasa configurada: '+nf(rate)+' Bs./US$':'Configure una tasa BCV real')+'</small></div><div class="fiscal-card"><span>Artículos en / bajo mínimo</span><b class="'+(belowMin?'warn':'ok')+'">'+belowMin+'</b><small>Comparación con stock mínimo configurado</small></div></div>'+
-      '<h3 style="margin:4px 0">Existencias y valoración actual</h3><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1180px"><thead><tr><th>#</th><th>Código</th><th>SKU</th><th>Descripción / clasificación</th><th>U.M.</th><th class="r">Existencia</th><th class="r">Costo unit. US$</th><th class="r">Valor US$</th><th class="r">Stock mínimo</th><th>Control</th><th>Último movimiento</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="5" class="r"><b>TOTAL GENERAL</b></td><td class="r"><b>'+fq(totalUnits)+'</b></td><td></td><td class="r"><b>'+nf(totalCost)+'</b></td><td colspan="3"></td></tr></tfoot></table></div>'+
-      '<h3 style="margin:8px 0 4px">Libro de movimientos (Kardex) — período seleccionado</h3><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1000px"><thead><tr><th>#</th><th>Fecha / hora</th><th>Código</th><th>Movimiento</th><th>Dirección</th><th>Documento fuente</th><th>Contraparte / detalle</th><th class="r">Cantidad</th><th class="r">Costo US$</th><th class="r">Saldo registrado</th></tr></thead><tbody>'+movRows+'</tbody></table></div>'+
-      '<p class="hint">Este libro usa productos y movimientos almacenados en el POS. Si se migraron existencias sin movimiento inicial de Kardex o se modificó el stock manualmente sin ajuste documentado, debe hacerse conteo físico y registrar la regularización antes de usarlo como soporte contable. No inventa movimientos ni existencias de apertura.</p>';
+    const totalIn=r2(movements.filter(m=>m.dir==='IN').reduce((n,m)=>n+(Number(m.qty)||0),0)),totalOut=r2(movements.filter(m=>m.dir==='OUT').reduce((n,m)=>n+(Number(m.qty)||0),0));
+    const valueIn=r2(movements.filter(m=>m.dir==='IN').reduce((n,m)=>n+(Number(m.qty)||0)*(Number(m.cost)||0),0)),valueOut=r2(movements.filter(m=>m.dir==='OUT').reduce((n,m)=>n+(Number(m.qty)||0)*(Number(m.cost)||0),0));
+    const movementRows=movements.map(m=>{
+      const p=productMap.get(String(m.code)),qty=Math.max(0,Number(m.qty)||0),amount=r2(qty*(Number(m.cost)||0)),balance=m.stockAfter===undefined||m.stockAfter===null?'No registrado':fq(m.stockAfter);
+      return '<tr><td>'+fmtDT(m.ts)+'</td><td class="mono">'+esc(m.code||'')+'</td><td>'+esc(p?.desc||'Artículo histórico no localizado')+'</td><td>'+esc(m.type||'')+'</td><td class="c">'+(m.dir==='IN'?'<span class="fiscal-tag ok">ENTRADA</span>':'<span class="fiscal-tag warn">SALIDA</span>')+'</td><td class="mono">'+esc(m.doc||'—')+'</td><td>'+esc(m.party||'')+'</td><td class="r">'+(m.dir==='IN'?'+':'-')+fq(qty)+' '+esc(p?.unit||'')+'</td><td class="r">'+nf(m.cost||0)+'</td><td class="r">'+nf(amount)+'</td><td class="r">'+balance+'</td><td>'+esc(m.user||'No registrado')+'</td></tr>';
+    }).join('')||'<tr class="empty"><td colspan="12">Sin movimientos de Kardex para el período/filtro. No se generan eventos ficticios.</td></tr>';
+    const grouped=new Map();
+    movements.forEach(m=>{const key=[m.code||'',m.type||'',m.dir||''].join('|'),row=grouped.get(key)||{code:m.code||'',type:m.type||'',dir:m.dir||'',qty:0,value:0,count:0,docs:new Set()};row.qty+=Number(m.qty)||0;row.value+=(Number(m.qty)||0)*(Number(m.cost)||0);row.count++;if(m.doc)row.docs.add(String(m.doc));grouped.set(key,row);});
+    const registerRows=Array.from(grouped.values()).sort((a,b)=>String(a.code).localeCompare(String(b.code),'es')||String(a.type).localeCompare(String(b.type),'es')).map(g=>{const p=productMap.get(String(g.code));return '<tr><td class="mono">'+esc(g.code)+'</td><td>'+esc(p?.desc||'Artículo histórico no localizado')+'</td><td>'+esc(p?.unit||'und')+'</td><td>'+esc(g.type)+'</td><td>'+(g.dir==='IN'?'Entradas':'Salidas')+'</td><td class="r">'+fq(g.qty)+'</td><td class="r">'+nf(g.qty?g.value/g.qty:0)+'</td><td class="r">'+nf(r2(g.value))+'</td><td class="r">'+g.count+'</td><td>'+esc(Array.from(g.docs).join(', ')||'Referencia no registrada')+'</td></tr>';}).join('')||'<tr class="empty"><td colspan="10">No existen eventos reales en el período seleccionado.</td></tr>';
+    const stockTable='<div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1180px"><thead><tr><th>#</th><th>Código</th><th>SKU</th><th>Descripción / clasificación</th><th>U.M.</th><th class="r">Existencia</th><th class="r">Costo CPP US$</th><th class="r">Valor US$</th><th class="r">Stock mínimo</th><th>Control</th><th>Último movimiento</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="5" class="r"><b>TOTAL GENERAL</b></td><td class="r"><b>'+fq(totalUnits)+'</b></td><td></td><td class="r"><b>'+nf(totalCost)+'</b></td><td colspan="3"></td></tr></tfoot></table></div>';
+    const views=[['existencias','Existencias actuales'],['kardex','Kardex detallado'],['entradas','Entradas y salidas'],['vennif','Valoración VEN-NIF'],['mercantil','Inventario mercantil']];
+    const tabs='<div class="tabs inv-book-tabs">'+views.map(([id,label])=>'<button class="tab '+(inventoryBookView===id?'active':'')+'" data-inv-view="'+id+'">'+label+'</button>').join('')+'</div>';
+    let content='';
+    if(inventoryBookView==='kardex')content='<div class="hint">Kardex cronológico reutilizando los eventos existentes de S.kardex. Importe = cantidad × costo registrado; el saldo se muestra únicamente cuando el evento lo conserva.</div><div class="kpis"><div class="kpi"><span>Entradas del período</span><b class="ok">'+fq(totalIn)+'</b><small>'+usd(valueIn)+'</small></div><div class="kpi"><span>Salidas del período</span><b class="warn">'+fq(totalOut)+'</b><small>'+usd(valueOut)+'</small></div><div class="kpi"><span>Eventos encontrados</span><b>'+movements.length+'</b><small>Sin duplicar el Kardex profesional</small></div></div><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1320px"><thead><tr><th>Fecha / hora</th><th>Código</th><th>Artículo</th><th>Tipo</th><th>Dirección</th><th>Documento fuente</th><th>Contraparte / detalle</th><th class="r">Cantidad</th><th class="r">Costo unit. US$</th><th class="r">Importe US$</th><th class="r">Saldo</th><th>Operador</th></tr></thead><tbody>'+movementRows+'</tbody></table></div>';
+    else if(inventoryBookView==='entradas')content='<div class="hint">Registro auxiliar por artículo, tipo y período, consolidado exclusivamente desde movimientos existentes. Las salidas por autoconsumo/retiro solo aparecerán si fueron registradas como operación fuente identificable; no se infieren.</div><div class="kpis"><div class="kpi"><span>Total entradas</span><b class="ok">'+fq(totalIn)+'</b><small>'+usd(valueIn)+'</small></div><div class="kpi"><span>Total salidas</span><b class="warn">'+fq(totalOut)+'</b><small>'+usd(valueOut)+'</small></div><div class="kpi"><span>Artículos con movimientos</span><b>'+new Set(movements.map(m=>String(m.code||''))).size+'</b><small>'+movements.length+' eventos fuente</small></div></div><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1120px"><thead><tr><th>Código</th><th>Artículo</th><th>U.M.</th><th>Tipo</th><th>Dirección</th><th class="r">Cantidad acumulada</th><th class="r">Costo medio US$</th><th class="r">Importe US$</th><th class="r">Eventos</th><th>Documentos fuente</th></tr></thead><tbody>'+registerRows+'</tbody></table></div>';
+    else if(inventoryBookView==='vennif')content='<div class="hint">Vista auxiliar de medición: costo unitario CPP y valor de existencias disponibles. No se encontró un submódulo de deterioro/valor neto realizable ni asientos automáticos de reducción; no se simulan ajustes ni se declara cumplimiento VEN-NIF por esta sola vista.</div>'+stockTable+'<div class="group"><b>Información no gestionada:</b> evaluación documentada del valor neto realizable, deterioro por artículo, reversión de deterioros y asientos contables de ajuste. Debe incorporarse como flujo específico antes de presentar esos importes como medición VEN-NIF completa.</div>';
+    else if(inventoryBookView==='mercantil')content='<div class="semaforo-bar" style="background:#FFF6E5;border-color:#F5DEB0"><div class="semaforo-dot" style="background:#945D08"></div><div class="semaforo-text" style="color:#744600"><b>VISTA PREPARATORIA DE INVENTARIO MERCANTIL</b>. El corte actual de mercancía no constituye por sí solo el libro mercantil completo ni acredita su apertura, cierre, firma o formalización.</div></div><div class="khead"><div><span>Fecha del corte disponible</span><b>'+esc(fmtDT(Date.now()))+'</b></div><div><span>Inventario actual a costo registrado</span><b>'+usd(totalCost)+'</b></div><div><span>Saldo de apertura validado</span><b>No disponible en esta auditoría</b></div><div><span>Estado de reconstrucción</span><b>Requiere validar apertura e historial</b></div></div>'+stockTable+'<div class="group"><b>Alcance pendiente:</b> apertura anual certificada; cierre físico y valorizado; activos, derechos, créditos y pasivos distintos de mercancía; y resultados del ejercicio. No se fabrican saldos históricos cuando faltan eventos o documentos de apertura.</div>';
+    else content='<div class="semaforo-bar" style="background:#FFF6E5;border-color:#F5DEB0"><div class="semaforo-dot" style="background:#945D08"></div><div class="semaforo-text" style="color:#744600"><b>EXISTENCIAS Y VALORACIÓN ACTUAL</b>. Costo y valor indicativos según el costo registrado en la ficha; no sustituyen conteo físico ni conciliación contable.</div></div><div class="fiscal-grid"><div class="fiscal-card"><span>Artículos registrados</span><b>'+products.length+'</b><small>Coincidencias del filtro</small></div><div class="fiscal-card"><span>Unidades existentes</span><b>'+fq(totalUnits)+'</b><small>Saldo actual de las fichas</small></div><div class="fiscal-card"><span>Valor inventario US$</span><b>'+usd(totalCost)+'</b><small>Existencia × costo unitario</small></div><div class="fiscal-card"><span>Valor referencial Bs.</span><b>'+(rate>0?bsf(r2(totalCost*rate)):'No calculable: falta tasa BCV')+'</b><small>'+(rate>0?'Tasa: '+nf(rate)+' Bs./US$':'No se inventa una tasa')+'</small></div><div class="fiscal-card"><span>Artículos bajo mínimo</span><b class="'+(belowMin?'warn':'ok')+'">'+belowMin+'</b><small>Comparación con mínimo configurado</small></div></div>'+stockTable;
+    return '<h3 style="margin:2px 0">Libro de Inventario y Movimientos de Mercancía</h3>'+tabs+content;
   };
-
   const drawIgtf=()=>{
     const sales=getFilteredSales().filter(s=>!s.void);
     const igtfSales=sales.filter(s=>(s.igtf>0)||(s.pays||[]).some(p=>p.cur==='USD'));
@@ -6046,6 +6070,7 @@ function seniatSudebanDlg(initialTab){
 
   const renderTabContent=()=>{
     const content=$('#snContent',el);
+    const search=$('#snQ',el);if(search)search.placeholder=activeTab==='inventario'?'Código, SKU, artículo, movimiento o documento...':'Factura, cliente, RIF o N° control...';
     if(activeTab==='resumen')content.innerHTML=drawResumen();
     else if(activeTab==='ventas')content.innerHTML=drawVentas();
     else if(activeTab==='compras')content.innerHTML=drawCompras();
@@ -6071,7 +6096,7 @@ function seniatSudebanDlg(initialTab){
     }else if(activeTab==='bancarias'){
       footL.innerHTML='<span class="hint">Registro auxiliar no gravable; conservar soportes y revisión del contador.</span>';
     }else if(activeTab==='inventario'){
-      footL.innerHTML='<button class="btn mini2" id="btnExpInv">Exportar inventario CSV</button><button class="btn mini2" id="btnPrintInv">Imprimir libro de inventario</button>';
+      footL.innerHTML='<button class="btn mini2" id="btnExpInv">Exportar vista CSV</button><button class="btn mini2" id="btnPrintInv">Imprimir vista</button>';
     }else if(activeTab==='igtf'){
       footL.innerHTML='<button class="btn mini2" id="btnExpIgtf">Exportar IGTF CSV</button>';
     }else if(activeTab==='auditoria'){
@@ -6091,6 +6116,8 @@ function seniatSudebanDlg(initialTab){
 
   el.addEventListener('click',async e=>{
     if(e.target.id==='btnFiscalPrinterManager'){fiscalPrinterConfigDlg();return;}
+    const inventoryViewBtn=e.target.closest('[data-inv-view]');
+    if(inventoryViewBtn){inventoryBookView=inventoryViewBtn.dataset.invView;renderTabContent();return;}
     const tabBtn=e.target.closest('.tab[data-tab]');
     if(tabBtn){
       $('.tab.active',el)?.classList.remove('active');
@@ -6174,15 +6201,17 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnPrintV')printFiscalReport('Libro de Ventas Fiscal Oficial (SENIAT)',drawVentas());
         if(ev.target.id==='btnExpC')exportLibroComprasCsv(getFilteredPurchases());
         if(ev.target.id==='btnExpInv'){
-          const rate=Number(S.cfg.rate)||0;
-          const headers=['Codigo','SKU','Descripcion','Marca','Categoria','Unidad','Existencia_actual','Costo_unitario_USD','Valor_inventario_USD','Valor_referencial_Bs','Stock_minimo','Ultimo_movimiento'];
-          const rows=(S.products||[]).slice().sort((a,b)=>String(a.code||a.sku||'').localeCompare(String(b.code||b.sku||''),'es')).map(p=>{
-            const last=(S.kardex||[]).filter(k=>k.code===p.code).sort((a,b)=>b.ts-a.ts)[0];
-            const stock=Math.max(0,Number(p.stock)||0),cost=Math.max(0,Number(p.cost)||0);
-            return [p.code||'',p.sku||'',p.desc||'',p.brand||'',p.cat||'',p.unit||'und',stock,cost.toFixed(2),r2(stock*cost).toFixed(2),rate>0?r2(stock*cost*rate).toFixed(2):'',Number(p.min)||0,last?new Date(last.ts).toISOString():''].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';');
-          });
-          downloadBlob('Libro_Inventario_SIFER_'+new Date().toISOString().slice(0,10)+'.csv','\uFEFF'+[headers.join(';')].concat(rows).join('\r\n'),'text/csv;charset=utf-8;');
-          msg('Libro de inventario actual exportado a CSV.');
+          const rate=Number(S.cfg.rate)||0,query=norm(qText);
+          if(inventoryBookView==='kardex'||inventoryBookView==='entradas'){
+            const headers=['Fecha','Codigo','SKU','Descripcion','Tipo','Direccion','Documento_fuente','Contraparte','Unidad','Cantidad','Costo_unitario_USD','Importe_USD','Saldo_unidades','Operador'];
+            const rows=(S.kardex||[]).filter(k=>filterPeriod(Number(k.ts)||Date.parse(k.date||'')||0)).filter(k=>!query||norm([k.code,k.type,k.doc,k.party,k.user].join(' ')).includes(query)).slice().sort((a,b)=>(Number(a.ts)||0)-(Number(b.ts)||0)).map(k=>{const p=(S.products||[]).find(x=>String(x.code)===String(k.code));return [k.ts?new Date(k.ts).toISOString():'',k.code||'',p?.sku||'',p?.desc||'',k.type||'',k.dir||'',k.doc||'',k.party||'',p?.unit||'',Number(k.qty)||0,Number(k.cost)||0,r2((Number(k.qty)||0)*(Number(k.cost)||0)),k.stockAfter??'',k.user||''].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';');});
+            downloadBlob('Movimientos_Mercancia_SIFER_'+new Date().toISOString().slice(0,10)+'.csv','\uFEFF'+[headers.join(';')].concat(rows).join('\r\n'),'text/csv;charset=utf-8;');
+          }else{
+            const headers=['Codigo','SKU','Descripcion','Marca','Categoria','Unidad','Existencia_actual','Costo_unitario_USD','Valor_inventario_USD','Valor_referencial_Bs','Stock_minimo','Ultimo_movimiento'];
+            const rows=(S.products||[]).filter(p=>!query||norm([p.code,p.sku,p.desc,p.brand,p.cat,p.subcat].join(' ')).includes(query)).slice().sort((a,b)=>String(a.code||a.sku||'').localeCompare(String(b.code||b.sku||''),'es')).map(p=>{const last=(S.kardex||[]).filter(k=>k.code===p.code).sort((a,b)=>(Number(b.ts)||0)-(Number(a.ts)||0))[0];const stock=Math.max(0,Number(p.stock)||0),cost=Math.max(0,Number(p.cost)||0);return [p.code||'',p.sku||'',p.desc||'',p.brand||'',p.cat||'',p.unit||'und',stock,cost.toFixed(2),r2(stock*cost).toFixed(2),rate>0?r2(stock*cost*rate).toFixed(2):'',Number(p.min)||0,last?new Date(last.ts).toISOString():''].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';');});
+            downloadBlob('Libro_Inventario_SIFER_'+new Date().toISOString().slice(0,10)+'.csv','\uFEFF'+[headers.join(';')].concat(rows).join('\r\n'),'text/csv;charset=utf-8;');
+          }
+          msg('Vista del libro de inventario exportada a CSV.');
         }
         if(ev.target.id==='btnPrintInv')printFiscalReport('Libro de Inventario — corte actual',drawInventario());
         if(ev.target.id==='btnExpIgtf')exportIgtfCsv(getFilteredSales());
@@ -6953,7 +6982,7 @@ function corteZDlg(){
 const TB=[
  ['nueva','Nueva','F2',newSale],['buscar','Buscar','F3',searchCatalogDlg],['cliente','Cliente','F4',clientDlg],
  ['suspender','Suspender','F5',suspend],['recuperar','Recuperar','F6',recoverDlg],['descuento','Descuento','F7',discountDlg],['quitar','Quitar','Supr',removeSel],
- '-',['inventario','Inventario','F8',inventoryDlg],['conteo','Conteo','F11',()=>conteoDlg()],['kardex','Kardex','',()=>kardexDlg()],['salidas','Salidas inventario','',inventoryExitDlg],
+ '-',['inventario','Inventario','F8',inventoryDlg],['conteo','Conteo','F11',()=>conteoDlg()],['kardex','Kardex','',()=>kardexDlg()],['libroInventario','Libro inventario','',()=>seniatSudebanDlg('inventario')],['salidas','Salidas inventario','',inventoryExitDlg],
  '-',['compras','Compras','F10',()=>comprasDlg('new')],['cxc','CxC','',()=>cxcDlg()],['cxp','CxP','',()=>cxpDlg()],['divisas','USD/Zelle','',()=>divisasDlg()],['cashea','Cashea','',()=>casheaDlg()],
  '-',['ventas','Ventas día','F9',salesDlg],['cortez','Corte Z','',corteZDlg],['seniat','Fiscal','',()=>seniatSudebanDlg()],['contabilidad','Contabilidad','',openAccountingModule],['documentos','Documentos','',()=>fiscalDocumentsDlg()],['basedatos','Base de datos','',()=>databaseSettingsDlg()],['tasa','Tasa BCV','',()=>activeUser().role==='cajero'?tasaBcvDlg():cfgDlg('cRate')]
 ];
@@ -7135,7 +7164,7 @@ function wire(){
   document.addEventListener('keydown',e=>{
     if(W){if(e.key==='Escape'){e.preventDefault();closeWin();}return;}
     if(e.key==='Escape'&&menuEl){closeMenu();if($('#btnMenu'))$('#btnMenu').focus();return;}
-    if(fk[e.key]){e.preventDefault();const session=activeUser();if(session.role==='contador'&&e.key!=='F1'){msg('El perfil contador solo tiene acceso al módulo Fiscal y Contabilidad.','bad');return;}closeMenu();fk[e.key]();return;}
+    if(fk[e.key]){e.preventDefault();const session=activeUser();if(session.role==='contador'&&!['F1','F8','F10'].includes(e.key)){msg('El perfil contador solo tiene acceso al módulo Fiscal y Contabilidad.','bad');return;}closeMenu();fk[e.key]();return;}
     const tag=document.activeElement?document.activeElement.tagName:'';
     if(/INPUT|SELECT|TEXTAREA/.test(tag))return;
     if(e.key==='Delete'){e.preventDefault();removeSel();}
@@ -7376,7 +7405,7 @@ function restoreWorkspaceAfterReload(){
   const key='sifer360_last_module_v1:'+user.username;
   let last='';try{last=localStorage.getItem(key)||'';}catch(e){}
   if(last==='dashboard'&&user.role==='admin'){showDashboardScreen();return;}
-  const allowed={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','contabilidad','documentos','basedatos','tasa','usuarios','cajas'],contador:['seniat','contabilidad']};
+  const allowed={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','contabilidad','documentos','basedatos','tasa','usuarios','cajas'],contador:['seniat','contabilidad','compras','inventario','cxc','cxp','kardex','libroInventario']};
   if(last&&(allowed[user.role]||[]).includes(last)){
     const button=$('#toolbar [data-tb="'+last+'"]');
     if(button&&!button.hidden){button.click();return;}

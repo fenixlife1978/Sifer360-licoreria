@@ -35,3 +35,27 @@ test('RegistrarCompra propone precio con el motor del producto y permite desacti
   assert.match(source,/pricing\.motor==='gap'/);
   assert.match(source,/data-cpf="autoPrice"/);
 });
+
+test('RegistrarCompra muestra último costo, CPP actual y CPP proyectado antes de confirmar',()=>{
+  assert.match(source,/getLastPurchaseCost/);
+  assert.match(source,/Último costo US\$/);
+  assert.match(source,/CPP actual US\$/);
+  assert.match(source,/Nuevo costo US\$/);
+  assert.match(source,/CPP resultante US\$/);
+  assert.match(source,/getLastPurchaseCost\(l\.code\)/);
+  assert.match(source,/nf8\(projectedCost\)/);
+});
+
+test('RegistrarCompra activa por defecto el precio automático según el motor configurado del producto',()=>{
+  assert.match(source,/autoPrice:true/);
+  assert.match(source,/const motor=pricing\.motor\|\|'cost'/);
+  assert.match(source,/if\(motor==='sale'\)/);
+  assert.match(source,/else if\(motor==='gap'\)/);
+  assert.match(source,/calcPurchaseSalePrice\(p,projectedCost,purchaseRate\)/);
+});
+
+test('La tasa BCV visible corresponde a la fecha del documento y queda asociada a la compra',()=>{
+  assert.match(source,/Tasa BCV del día del documento/);
+  assert.match(source,/rateDate:purchaseRateRecord\.date/);
+  assert.match(source,/rateEffectiveDate:purchaseRateRecord\.effectiveDate/);
+});

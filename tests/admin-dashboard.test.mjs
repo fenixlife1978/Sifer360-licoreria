@@ -133,15 +133,17 @@ test('fiscal purchase book records real supplier documents, invoice date and lin
   assert.doesNotMatch(main, /esc\(r\.estado\|\|'Registro histórico: revisar'\)/);
 });
 
-test('fiscal module includes a current inventory book with valuation, Kardex, print and CSV export', () => {
+test('fiscal module expands the existing inventory book with distinct views and export/print', () => {
   assert.match(main, /data-tab="inventario">Libro de Inventario/);
   assert.match(main, /const drawInventario=\(\)=>/);
-  assert.match(main, /Valor de inventario US\$/);
-  assert.match(main, /Libro de movimientos \(Kardex\)/);
+  for (const view of ['existencias','kardex','entradas','vennif','mercantil']) assert.ok(main.includes("'"+view+"'"), view);
+  assert.match(main, /Kardex cronológico reutilizando los eventos existentes/);
+  assert.match(main, /Registro auxiliar por artículo, tipo y período/);
+  assert.match(main, /VISTA PREPARATORIA DE INVENTARIO MERCANTIL/);
   assert.match(main, /id==='btnExpInv'/);
   assert.match(main, /id==='btnPrintInv'/);
-  assert.match(main, /Libro_Inventario_SIFER_/);
-  assert.match(main, /No inventa movimientos ni existencias de apertura/);
+  assert.match(main, /Movimientos_Mercancia_SIFER_/);
+  assert.match(main, /No se fabrican saldos históricos/);
 });
 
 test('main POS script parses and no longer references removed purchase IVA toggle state', () => {
@@ -165,7 +167,7 @@ test('compras acepta y conserva hasta ocho decimales en costos, precios, subtota
   assert.match(main, /const nf8=n=>[\s\S]*?toFixed\(8\)/);
   const comprasStart = main.indexOf('function comprasDlg(initialTab)');
   const compras = main.slice(comprasStart, main.indexOf('\nfunction cxcDlg', comprasStart));
-  assert.match(compras, /data-cpf="cost" value="\'\+nf8\(l\.cost\)/);
+  assert.match(compras, /data-cpf="cost"[^>]*value="\'\+nf8\(l\.cost\)/);
   assert.match(compras, /data-cpf="price" value="\'\+nf8\(l\.price\)/);
   assert.match(compras, /const base=r8\(pLines\.reduce/);
   assert.match(compras, /const iva=docType==='FACTURA_FISCAL'\?r8\(pLines\.reduce/);
