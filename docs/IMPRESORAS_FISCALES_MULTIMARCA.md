@@ -158,21 +158,23 @@ La pantalla fiscal ofrece destinos cerrados para PNP (DLL 32/64 bits y protocolo
 
 Los documentos con `docType: TICKET-INTERNO` o `documentMode: INTERNAL_THERMAL/NO_PRINTER` se conservan en el historial de ventas, inventario, caja y reportes comerciales. Se excluyen del Libro de Ventas Fiscal, de los resúmenes de documentos fiscales y del débito mensual de IVA. No reciben número de control fiscal, serial de máquina ni número fiscal simulado. Los documentos heredados sin modalidad explícita conservan el tratamiento anterior para no alterar registros históricos.
 
-## Pendiente funcional: restablecer el módulo de Contabilidad con bloqueo fiscal
+## Contabilidad restaurada y bloqueo fiscal
 
-El módulo de **Contabilidad debe volver a existir en SIFER360-LICORERIA**, recuperando el módulo y el comportamiento funcional que tenía anteriormente. Su retirada del código actual no representa una decisión funcional definitiva: la reintroducción queda registrada como trabajo pendiente y no debe confundirse con la integración de impresoras fiscales que se está desarrollando ahora.
+El módulo original de Contabilidad VEN-NIF está restaurado en la aplicación, con su dashboard de contador, estilos, catálogo predeterminado de cuentas y persistencia en el snapshot SQLite. Su acceso permanece bloqueado mientras no exista una impresora fiscal conectada, activa y capaz de emitir documentos fiscales. La comprobación se realiza en cada apertura y se vigila durante la sesión; si se pierde el estado fiscal, el módulo se cierra y se informa al usuario.
 
-Reglas obligatorias para su futura implementación:
+Para PNP, la validación se realiza ahora mediante el protocolo serial nativo v5.4: consulta de estado fiscal y confirmación del serial de máquina. No se exige una DLL puente externa para esta ruta nativa. Para otros fabricantes continúa siendo obligatoria la confirmación explícita del adaptador correspondiente: dispositivo conectado, estado fiscal listo y capacidad real de emitir.
 
-1. El módulo debe estar presente y visible en la navegación, aunque no haya una impresora fiscal conectada.
-2. Si no existe una impresora fiscal conectada, reconocida y operativa, el acceso al módulo estará bloqueado. Al seleccionarlo, el sistema mostrará un aviso claro: **«El módulo de Contabilidad requiere una impresora fiscal conectada y activa. Conecte y active una impresora fiscal para acceder».**
-3. El módulo solo se habilitará cuando el adaptador de la impresora fiscal confirme el estado operativo y la capacidad real de generar facturación fiscal. Que exista un perfil guardado, que se haya elegido un puerto COM o que Windows detecte un dispositivo no es suficiente.
-4. El estado debe vigilarse durante el uso. Si el equipo se desconecta, falla la comunicación o deja de estar habilitado para emitir documentos fiscales, se bloqueará el acceso y se informará al usuario del motivo.
-5. Al reconectar y validar correctamente la impresora fiscal, el acceso podrá habilitarse de nuevo sin reinstalar el sistema ni reconstruir datos.
-6. La reintroducción debe recuperar el módulo anterior como referencia, no sustituirlo por una pantalla nueva simplificada. Deben revisarse sus pantallas, operaciones, informes, permisos y relaciones funcionales antes de restaurarlo.
-7. La reintroducción no puede borrar ni sobrescribir datos históricos. Debe conservarse la base SQLite local y añadirse cualquier migración de forma compatible y reversible.
-8. El módulo debe trabajar con la información fiscal respaldada por documentos realmente emitidos por la impresora. Los tickets internos de una impresora térmica genérica y las ventas en modalidad sin impresora no se deben presentar como facturas fiscales.
+## Comunicación fiscal PNP nativa v5.4
 
-Pruebas de aceptación pendientes: módulo visible pero bloqueado sin equipo; mensaje correcto al intentar abrirlo; desbloqueo tras una conexión fiscal válida; bloqueo inmediato o al detectar pérdida de estado; reconexión y recuperación del acceso; rechazo de un simple puerto COM/perfil configurado como prueba de impresora fiscal; conservación de datos contables anteriores durante actualización y migración.
+La ruta PNP directa opera sobre el puerto COM configurado a 9600 baudios, 8 bits, sin paridad y 1 bit de parada por defecto. El intercambio sigue el protocolo oficial:
 
-Esta tarea es futura y separada del alcance actual de los constructores de tramas PNP. No se debe activar el módulo ni habilitar facturación fiscal hasta completar las pruebas de integración y validación física del fabricante/modelo correspondiente.
+1. Cada trama se valida por STX, secuencia, comando, ETX y BCC.
+2. Los campos vacíos se transmiten como DEL (0x7F), según el ejemplo del apéndice B del protocolo v5.4.
+3. Se espera la respuesta de cada comando antes de transmitir el siguiente. El carácter 0x12 extiende el tiempo de espera en 800 ms.
+4. Antes de abrir la factura se consulta el serial fiscal de la máquina. Después se abre con 0x40 y se envían los renglones con 0x42.
+5. Los descuentos se representan como renglones de anulación con calificador «m», ligados a la misma tasa del artículo.
+6. Antes del cierre se consulta SUBTOTAL (0x43), se analizan sus 17 campos y se concilian base y total con los importes del POS. Si existe diferencia, no se envía el cierre.
+7. Solo después de una conciliación correcta se envía CERRAR FACTURA (0x45). El número de documento se toma de la respuesta real de la impresora.
+8. No existe reintento automático de comandos fiscales. Si se pierde la respuesta después de enviar un comando, el resultado se marca como incierto y exige consultar la impresora/memoria de auditoría antes de volver a facturar.
+
+Las pruebas automatizadas utilizan respuestas simuladas y verifican secuencia, BCC, errores, descuentos, conciliación y ausencia de reenvíos. **No equivalen a una prueba física**: antes de habilitar facturación real en producción debe verificarse con el modelo PNP concreto, su firmware, tasas fiscales configuradas, comunicación COM y un procedimiento de aceptación acordado que no genere facturas de prueba duplicadas.

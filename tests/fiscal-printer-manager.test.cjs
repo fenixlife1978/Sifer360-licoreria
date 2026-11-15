@@ -189,3 +189,24 @@ test('la prueba del adaptador PNP usa protocolo nativo y confirma conexión y se
  }});
  assert.equal(result.protocol,'pnp-native-v5.4');assert.equal(result.deviceConnected,true);assert.equal(result.canEmitFiscalDocuments,true);assert.equal(result.serial,'PNP-NATIVE-01');
 });
+
+
+test('emite una factura PNP desde el payload real del POS, concilia descuento e identifica el documento una sola vez',async()=>{
+ const protocol=require('../electron/pnp-protocol.cjs');const commands=[];
+ const result=await manager.emitInvoice({provider:'pnp',model:'PF-220A',port:'COM4',enabled:true},{
+  idempotencyKey:'SIFER360-C01-100-1700000000000',customer:{name:'Cliente Prueba',rif:'J-12345678-9'},
+  lines:[{code:'A1',description:'Producto',quantity:1,unitPriceVes:100,netVes:90,taxRate:16}],
+  totals:{taxableBaseVes:90,ivaVes:14.4,totalVes:104.4,igtfVes:0},payments:[]
+ },{platform:'win32',execFileAsync:async(_command,args)=>{
+  const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
+  const match=script.match(/\\$hex='([0-9a-f]+)'/i);const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));commands.push(request.command);
+  let fields=['0000','0000'];
+  if(request.command===0x38)fields=['0000','0000','34','00','56','260101','120000','7','0','7','0','3'];
+  if(request.command===0x80)fields=['0000','0000','PNP-INTEGRATED-01','J-12345678-9','','','',''];
+  if(request.command===0x43)fields=['0000','0000','','','0.00','90.00','16.00','14.40','0.00','8.00','0.00','0.00','0.00','0.00','0.00','90.00','104.40'];
+  if(request.command===0x45)fields=['0000','0000','1','000014','0','0.00'];
+  return{stdout:protocol.encodeCommand(request.command,fields,request.sequence).toString('base64')};
+ }});
+ assert.equal(result.ok,true);assert.equal(result.fiscalDocumentNumber,'000014');assert.equal(result.fiscalSerial,'PNP-INTEGRATED-01');
+ assert.deepEqual(commands,[0x38,0x80,0x40,0x42,0x42,0x43,0x45]);
+});
