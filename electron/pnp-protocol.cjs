@@ -93,7 +93,7 @@ function createFiscalSerialQuery(sequence = MIN_SEQUENCE) {
 
 function parsePnpAmount(value, label) {
   const text = String(value == null ? '' : value).trim();
-  if (!/^\d+(?:\\.\d{1,2})?$/.test(text)) throw new Error('Monto PNP no válido en ' + label + '.');
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text)) throw new Error('Monto PNP no válido en ' + label + '.');
   const amount = Number(text);
   if (!Number.isFinite(amount)) throw new Error('Monto PNP no numérico en ' + label + '.');
   return Math.round((amount + Number.EPSILON) * 100) / 100;
