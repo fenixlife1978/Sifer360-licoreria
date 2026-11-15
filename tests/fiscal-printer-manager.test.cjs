@@ -152,3 +152,27 @@ test('Contabilidad solo se habilita con una impresora conectada, lista y capaz d
   const ready=await manager.checkFiscalReadiness(profile,{platform:'win32',pnpStatusProbe:async()=>({ready:true}),bridgeProbe:async()=>({deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:true})});assert.equal(ready.ready,true);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('el transporte PNP envía una sola trama y devuelve la respuesta sin reintentos', async () => {
+  const protocol = require('../electron/pnp-protocol.cjs');
+  const request = protocol.createStatusQuery(0x35);
+  const response = protocol.encodeCommand(0x38,['0000','0000','34','00','56','260101','120000','7','0','7','0','3'],0x35);
+  let calls = 0;
+  const received = await manager.exchangePnpFrame({provider:'pnp',port:'COM4'},request,{platform:'win32',execFileAsync:async(_command,args)=>{
+    calls++;
+    const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
+    assert.match(script,/SerialPort/);
+    assert.match(script,/DiscardInBuffer/);
+    assert.match(script,/AddMilliseconds\\(800\\)/);
+    const match=script.match(/\\$hex='([0-9a-f]+)'/i);
+    assert.equal(match[1],request.toString('hex'));
+    return {stdout:response.toString('base64')};
+  }});
+  assert.equal(calls,1);
+  assert.deepEqual(protocol.decodeFrame(received).fields,protocol.decodeFrame(response).fields);
+});
+
+test('el transporte PNP rechaza plataformas no Windows antes de transmitir', async () => {
+  await assert.rejects(()=>manager.exchangePnpFrame({provider:'pnp',port:'COM4'},Buffer.from([2,32,56,3,0,0,0,0]),{platform:'linux'}),/requiere Windows/);
+});
