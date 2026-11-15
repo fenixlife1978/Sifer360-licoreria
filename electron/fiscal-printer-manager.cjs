@@ -6,6 +6,7 @@ const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const PnpProtocol = require('./pnp-protocol.cjs');
 const PnpSerialTransport = require('./pnp-serial-transport.cjs');
+const BinaryArchitecture = require('./binary-architecture.cjs');
 const execFileAsync = promisify(execFile);
 
 const PROVIDERS = Object.freeze({
@@ -39,9 +40,50 @@ function normalizeProfile(input={}){
 }
 function getSdkStatus(profile){
   const normalized=normalizeProfile(profile),provider=providerInfo(normalized.provider);
-  const files=provider.sdkFiles.map(filename=>{const filePath=normalized.sdkPaths[filename]||'';let exists=false;try{exists=!!filePath&&fs.statSync(filePath).isFile();}catch{}return{filename,path:filePath,exists};});
-  let bridgeExists=false;try{bridgeExists=!!normalized.bridgePath&&fs.statSync(normalized.bridgePath).isFile();}catch{}
-  const groups=(provider.sdkGroups||[]).map(group=>({alternatives:group,present:group.some(filename=>files.some(file=>file.filename===filename&&file.exists))})); const sdkReady=groups.every(group=>group.present); return {provider:provider.id,providerLabel:provider.label,model:normalized.model,files,groups,bridgePath:normalized.bridgePath,bridgeExists,ready:!!normalized.port&&bridgeExists&&sdkReady,note:bridgeExists?'Puente localizado; falta comprobar que implemente sifer-fiscal-bridge/v1.':'No hay adaptador fiscal ejecutable configurado. Seleccione el puente oficial o autorizado del fabricante.'};
+  const files=provider.sdkFiles.map(filename=>{
+    const filePath=normalized.sdkPaths[filename]||'';let exists=false;
+    try{exists=!!filePath&&fs.statSync(filePath).isFile();}catch{}
+    const binary=/\.(dll|exe)$/i.test(filename);
+    const architecture=exists&&binary?BinaryArchitecture.inspectBinaryArchitecture(filePath):null;
+    return{filename,path:filePath,exists,binary,architecture};
+  });
+  let bridgeExists=false,bridgeArchitecture=null;
+  try{
+    bridgeExists=!!normalized.bridgePath&&fs.statSync(normalized.bridgePath).isFile();
+    if(bridgeExists)bridgeArchitecture=BinaryArchitecture.inspectBinaryArchitecture(normalized.bridgePath);
+  }catch{}
+  const osArchitecture=BinaryArchitecture.detectWindowsArchitecture();
+  const bridgeRuntimeArchitecture=bridgeArchitecture?BinaryArchitecture.resolveBridgeRuntimeArchitecture(osArchitecture,bridgeArchitecture.architecture):'unknown';
+  const groups=(provider.sdkGroups||[]).map(group=>{
+    const candidates=group.map(filename=>files.find(file=>file.filename===filename)).filter(file=>file&&file.exists&&file.binary);
+    const compatible=candidates.filter(file=>bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'&&BinaryArchitecture.canLoadSdk(bridgeRuntimeArchitecture,file.architecture.architecture)===true);
+    const incompatible=candidates.filter(file=>bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'&&BinaryArchitecture.canLoadSdk(bridgeRuntimeArchitecture,file.architecture.architecture)===false);
+    return{alternatives:group,present:candidates.length>0,compatible:candidates.length>0&&compatible.length>0,compatibleFiles:compatible.map(file=>file.filename),incompatibleFiles:incompatible.map(file=>file.filename)};
+  });
+  const bridgeRunnable=bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'?BinaryArchitecture.canRunBridge(osArchitecture,bridgeArchitecture.architecture):null;
+  const architectureVerified=!!bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'&&bridgeRunnable===true&&groups.every(group=>group.compatible);
+  const architectureIssues=[];
+  if(bridgeExists&&(!bridgeArchitecture||bridgeArchitecture.architecture==='unknown'))architectureIssues.push('No se pudo identificar la arquitectura del puente fiscal.');
+  else if(bridgeExists&&bridgeRunnable!==true)architectureIssues.push('El puente fiscal no coincide con la arquitectura de Windows o esta combinación no está verificada.');
+  for(const group of groups){
+    if(!group.present)architectureIssues.push('No hay una DLL SDK PE válida seleccionada para: '+group.alternatives.join(' / ')+'.');
+    else if(!group.compatible)architectureIssues.push('La arquitectura de las DLL SDK no coincide o no puede verificarse frente al puente fiscal: '+group.alternatives.join(' / ')+'.');
+  }
+  const sdkReady=groups.every(group=>group.present);
+  const ready=!!normalized.port&&bridgeExists&&sdkReady&&architectureVerified;
+  const note=ready
+    ?'Puente y SDK localizados. Arquitectura PE comprobada y compatible entre el adaptador y al menos una DLL de cada grupo.'
+    :architectureIssues.length
+      ?architectureIssues.join(' ')
+      :bridgeExists
+        ?'Puente localizado; falta comprobar que implemente sifer-fiscal-bridge/v1.'
+        :'No hay adaptador fiscal ejecutable configurado. Seleccione el puente oficial o autorizado del fabricante.';
+  return{
+    provider:provider.id,providerLabel:provider.label,model:normalized.model,files,groups,
+    bridgePath:normalized.bridgePath,bridgeExists,bridgeArchitecture,
+    hostProcessArchitecture:BinaryArchitecture.normalizeRuntimeArchitecture(process.arch),osArchitecture,bridgeRuntimeArchitecture,bridgeRunnable,
+    architectureVerified,architectureIssues,ready,note
+  };
 }
 async function listSerialPorts(options={}){
   const platform=options.platform||process.platform;if(platform!=='win32')return{supported:false,ports:[],message:'La detección de puertos COM está disponible en Windows.'};
@@ -303,7 +345,7 @@ async function checkFiscalReadiness(profile,options={}){
     return{ready:true,provider:p.provider,model:p.model,port:p.port,serial:identity.machineSerial,deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:true,message:'Impresora PNP conectada por protocolo nativo v5.4, lista y con serial fiscal confirmado.'};
   }
   const sdk=getSdkStatus(p);
-  if(!sdk.ready)return{ready:false,message:'La configuración fiscal está incompleta: falta puerto, SDK o puente autorizado.'};
+  if(!sdk.ready)return{ready:false,message:'Configuración fiscal no compatible: '+sdk.note};
   const bridgeProbe=options.bridgeProbe||((normalized)=>runBridge(normalized,'status',{requestId:crypto.randomUUID()},options));
   const bridge=await bridgeProbe(p,options);
   if(!bridge||bridge.deviceConnected!==true||bridge.fiscalReady!==true||bridge.canEmitFiscalDocuments!==true)return{ready:false,message:'El puente fiscal no confirmó dispositivo conectado, estado fiscal listo y capacidad real de emitir documentos fiscales.'};
