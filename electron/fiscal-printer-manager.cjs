@@ -18,9 +18,9 @@ const PROVIDERS = Object.freeze({
   ,hasar:{id:'hasar',label:'Hasar',sdkFiles:[],sdkGroups:[],models:['Hasar fiscal compatible (confirmar modelo y SDK con distribuidor)']}
 });
 const USB_SERIAL_DRIVERS = Object.freeze([
-  {id:'prolific',label:'Prolific PL2303',vendorId:'067B'},
-  {id:'ftdi',label:'FTDI VCP',vendorId:'0403'},
-  {id:'silabs',label:'Silicon Labs CP210x',vendorId:'10C4'}
+  {id:'prolific',label:'Prolific PL2303 probable',vendorId:'067B',productIds:['2303']},
+  {id:'ftdi',label:'FTDI VCP probable',vendorId:'0403',productIds:['6001']},
+  {id:'silabs',label:'Silicon Labs CP210x probable',vendorId:'10C4',productIds:['EA60']}
 ]);
 function cleanText(value,max=160){return String(value==null?'':value).trim().slice(0,max);}
 function providerInfo(id){const p=PROVIDERS[cleanText(id,30).toLowerCase()];if(!p)throw new Error('Fabricante fiscal no reconocido.');return p;}
@@ -47,7 +47,7 @@ async function listSerialPorts(options={}){
   const platform=options.platform||process.platform;if(platform!=='win32')return{supported:false,ports:[],message:'La detección de puertos COM está disponible en Windows.'};
   const exec=options.execFileAsync||execFileAsync;
   const script="$ErrorActionPreference='Stop'; $ports=@(); try { $ports=Get-CimInstance Win32_PnPEntity | Where-Object { $_.Name -match '\\(COM\\d+\\)' } | ForEach-Object { [PSCustomObject]@{ port=([regex]::Match($_.Name,'COM\\d+').Value); name=$_.Name; status=$_.Status; instanceId=$_.PNPDeviceID } } } catch {}; if($ports.Count -eq 0){ $ports=[System.IO.Ports.SerialPort]::GetPortNames() | ForEach-Object { [PSCustomObject]@{port=$_;name=$_;status='Unknown';instanceId=''} } }; ConvertTo-Json -InputObject @($ports) -Compress";
-  try{const{stdout}=await exec('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],{windowsHide:true,timeout:8000,maxBuffer:1048576});let parsed=JSON.parse(String(stdout||'[]').trim()||'[]');if(!Array.isArray(parsed))parsed=[parsed];const seen=new Set();const ports=parsed.filter(x=>x&&/^COM[1-9]\d{0,2}$/i.test(String(x.port||''))).map(x=>{const instanceId=String(x.instanceId||'');const match=instanceId.match(/VID_([0-9A-F]{4})/i);const vendorId=match?match[1].toUpperCase():'';const driver=USB_SERIAL_DRIVERS.find(d=>d.vendorId===vendorId);return{port:String(x.port).toUpperCase(),name:cleanText(x.name||x.port,240),status:cleanText(x.status||'Unknown',40),vendorId,driverId:driver?driver.id:''};}).filter(x=>!seen.has(x.port)&&seen.add(x.port));return{supported:true,ports,message:ports.length?'':'Windows no detectó puertos seriales. Compruebe el cable y el controlador USB-Serial.'};}catch(error){return{supported:true,ports:[],message:'No se pudieron enumerar los puertos COM: '+(error.message||String(error))};}
+  try{const{stdout}=await exec('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],{windowsHide:true,timeout:8000,maxBuffer:1048576});let parsed=JSON.parse(String(stdout||'[]').trim()||'[]');if(!Array.isArray(parsed))parsed=[parsed];const seen=new Set();const ports=parsed.filter(x=>x&&/^COM[1-9]\d{0,2}$/i.test(String(x.port||''))).map(x=>{const instanceId=String(x.instanceId||'');const match=instanceId.match(/VID_([0-9A-F]{4})/i);const pidMatch=instanceId.match(/PID_([0-9A-F]{4})/i);const vendorId=match?match[1].toUpperCase():'';const productId=pidMatch?pidMatch[1].toUpperCase():'';const driver=USB_SERIAL_DRIVERS.find(d=>d.vendorId===vendorId&&d.productIds.includes(productId));return{port:String(x.port).toUpperCase(),name:cleanText(x.name||x.port,240),status:cleanText(x.status||'Unknown',40),vendorId,productId,driverId:driver?driver.id:'',driverLabel:driver?driver.label:'Controlador USB-Serial no identificado'};}).filter(x=>!seen.has(x.port)&&seen.add(x.port));return{supported:true,ports,message:ports.length?'':'Windows no detectó puertos seriales. Compruebe el cable y el controlador USB-Serial.'};}catch(error){return{supported:true,ports:[],message:'No se pudieron enumerar los puertos COM: '+(error.message||String(error))};}
 }
 async function testSerialPort(profile,options={}){
   const p=normalizeProfile(profile);if(!p.port)throw new Error('Seleccione un puerto COM antes de probar la conexión.');if((options.platform||process.platform)!=='win32')throw new Error('La prueba directa de puertos COM requiere Windows.');
