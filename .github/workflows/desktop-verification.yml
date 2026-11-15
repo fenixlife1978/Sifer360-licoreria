@@ -7,6 +7,7 @@ on:
       - integration/sqlite-lan-stage-1
       - integration/sqlite-lan-stage-2-hardening
       - feature/fiscal-printer-auto-assistant
+      - feature/fiscal-sdk-architecture-validation
   pull_request:
     branches:
       - main
@@ -28,7 +29,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm test
-      - run: node --check electron/main.cjs && node --check electron/preload.cjs && node --check public/main.js && node --check public/access.js
+      - run: node --check electron/main.cjs && node --check electron/preload.cjs && node --check electron/binary-architecture.cjs && node --check public/main.js && node --check public/access.js
       - run: npm run build
 
   windows-desktop-package:
@@ -41,7 +42,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm test
-      - run: node --check electron/main.cjs && node --check electron/preload.cjs && node --check public/main.js && node --check public/access.js && node --check electron/lan-outbox.cjs && node --check electron/lan-tls.cjs && node --check electron/lan-event-store.cjs && node --check electron/lan-state-merge.cjs && node --check electron/sqlite-recovery.cjs && node --check electron/lan-address.cjs && node --check electron/lan-auth.cjs && node --check electron/cashbox-sequence.cjs && node --check electron/cashbox-sequence-migration.cjs
+      - run: node --check electron/main.cjs && node --check electron/preload.cjs && node --check public/main.js && node --check public/access.js && node --check electron/lan-outbox.cjs && node --check electron/lan-tls.cjs && node --check electron/lan-event-store.cjs && node --check electron/lan-state-merge.cjs && node --check electron/sqlite-recovery.cjs && node --check electron/lan-address.cjs && node --check electron/lan-auth.cjs && node --check electron/cashbox-sequence.cjs && node --check electron/cashbox-sequence-migration.cjs && node --check electron/binary-architecture.cjs
       - run: npm run build:exe
       - uses: actions/upload-artifact@v4
         with:
