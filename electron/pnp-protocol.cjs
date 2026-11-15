@@ -25,7 +25,8 @@ function encodeField(value) {
       throw new Error('Campo PNP contiene caracteres de control o fuera de Latin-1.');
     }
   }
-  return Buffer.from(text, 'latin1');
+  // PNP v5.4 represents an unused/empty field with DEL (0x7F), not a zero-length field.
+  return text === '' ? Buffer.from([0x7f]) : Buffer.from(text, 'latin1');
 }
 
 function encodeCommand(command, fields = [], sequence = MIN_SEQUENCE) {
@@ -86,6 +87,46 @@ function createFiscalSubtotal(sequence = MIN_SEQUENCE) {
   return encodeCommand(0x43, ['', ''], sequence);
 }
 
+function createFiscalSerialQuery(sequence = MIN_SEQUENCE) {
+  return encodeCommand(0x80, [], sequence);
+}
+
+function parsePnpAmount(value, label) {
+  const text = String(value == null ? '' : value).trim();
+  if (!/^\\d+(?:\\.\\d{1,2})?$/.test(text)) throw new Error('Monto PNP no válido en ' + label + '.');
+  const amount = Number(text);
+  if (!Number.isFinite(amount)) throw new Error('Monto PNP no numérico en ' + label + '.');
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
+// The v5.4 SUB_CF response has 17 fields: printer/fiscal status, two unused
+// fields, exempt/base/tax buckets, perceived tax, taxable base and invoice total.
+function parseFiscalSubtotal(response) {
+  if (!response || response.command !== 0x43 || !Array.isArray(response.fields) || response.fields.length < 17) {
+    throw new Error('La respuesta SUBTOTAL PNP está incompleta; no se cerrará la factura.');
+  }
+  const f = response.fields;
+  return {
+    printerStatus: f[0], fiscalStatus: f[1], exempt: parsePnpAmount(f[4], 'venta exenta'),
+    baseA: parsePnpAmount(f[5], 'base A'), rateA: f[6], taxA: parsePnpAmount(f[7], 'IVA A'),
+    baseB: parsePnpAmount(f[8], 'base B'), rateB: f[9], taxB: parsePnpAmount(f[10], 'IVA B'),
+    baseC: parsePnpAmount(f[11], 'base C'), rateC: f[12], taxC: parsePnpAmount(f[13], 'IVA C'),
+    perceivedTax: parsePnpAmount(f[14], 'impuesto percibido'),
+    base: parsePnpAmount(f[15], 'base total'), total: parsePnpAmount(f[16], 'total factura')
+  };
+}
+
+function reconcileFiscalSubtotal(subtotal, expected = {}, tolerance = 0.02) {
+  const expectedBase = parsePnpAmount(expected.base, 'base esperada');
+  const expectedTotal = parsePnpAmount(expected.total, 'total esperado');
+  const deltaBase = Math.round((subtotal.base - expectedBase) * 100) / 100;
+  const deltaTotal = Math.round((subtotal.total - expectedTotal) * 100) / 100;
+  if (Math.abs(deltaBase) > tolerance || Math.abs(deltaTotal) > tolerance) {
+    throw new Error('Los totales de la impresora PNP no coinciden con el POS (base: ' + subtotal.base.toFixed(2) + ' vs. ' + expectedBase.toFixed(2) + '; total: ' + subtotal.total.toFixed(2) + ' vs. ' + expectedTotal.toFixed(2) + '). Factura no cerrada; requiere conciliación.');
+  }
+  return { ok: true, deltaBase, deltaTotal };
+}
+
 function createFiscalCloseInvoice(input = {}, sequence = MIN_SEQUENCE) {
   const mode = String(input.mode == null ? 'T' : input.mode);
   if (!['A', 'B', 'T', 'U'].includes(mode)) throw new Error('Calificador de cierre fiscal PNP no válido.');
@@ -117,7 +158,8 @@ function decodeFrame(input) {
   let start = payload[0] === FS ? 1 : 0;
   for (let i = start; i <= payload.length; i++) {
     if (i === payload.length || payload[i] === FS) {
-      fields.push(payload.subarray(start, i).toString('latin1'));
+      const value = payload.subarray(start, i).toString('latin1');
+      fields.push(value === '\x7f' ? '' : value);
       start = i + 1;
     }
   }
@@ -138,4 +180,4 @@ function validateResponse(response, expected = {}) {
   return response;
 }
 
-module.exports = { STX, ETX, FS, CONTINUE, encodeCommand, decodeFrame, createStatusQuery, createFiscalOpenInvoice, createFiscalText, createFiscalItem, createFiscalSubtotal, createFiscalCloseInvoice, validateResponse };
+module.exports = { STX, ETX, FS, CONTINUE, encodeCommand, decodeFrame, createStatusQuery, createFiscalOpenInvoice, createFiscalText, createFiscalItem, createFiscalSubtotal, createFiscalCloseInvoice, createFiscalSerialQuery, parseFiscalSubtotal, reconcileFiscalSubtotal, validateResponse };

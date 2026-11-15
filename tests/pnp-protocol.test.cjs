@@ -79,3 +79,27 @@ test('rechaza datos fiscales PNP que exceden campos o formatos del protocolo', (
   assert.throws(() => pnp.createFiscalCloseInvoice({mode:'U',foreignCurrencyAmount:'1'}), /formato numérico/);
   assert.throws(() => pnp.createFiscalCloseInvoice({mode:'T',foreignCurrencyAmount:'1.00'}), /solo aplica/);
 });
+
+
+test('codifica campos PNP vacíos como DEL (0x7F), conforme al apéndice B v5.4', () => {
+  const frame = pnp.createFiscalOpenInvoice({customerName:'Cliente',customerRif:'J-12345678-9'},0x2b);
+  assert.equal(frame.includes(0x7f), true);
+  const decoded = pnp.decodeFrame(frame);
+  assert.equal(decoded.fields[2], '');
+  assert.equal(decoded.fields[8], '');
+  const subtotal = pnp.decodeFrame(pnp.createFiscalSubtotal(0x2c));
+  assert.deepEqual(subtotal.fields, ['', '']);
+});
+
+test('crea consulta de serial fiscal y analiza subtotal de 17 campos', () => {
+  const serial = pnp.decodeFrame(pnp.createFiscalSerialQuery(0x2d));
+  assert.equal(serial.command, 0x80);
+  const fields = ['0000','0000','','','0.00','100.00','16.00','16.00','0.00','8.00','0.00','0.00','0.00','0.00','0.00','100.00','116.00'];
+  const response = {command:0x43,fields};
+  const parsed = pnp.parseFiscalSubtotal(response);
+  assert.equal(parsed.base,100);
+  assert.equal(parsed.total,116);
+  assert.equal(pnp.reconcileFiscalSubtotal(parsed,{base:100,total:116}).ok,true);
+  assert.throws(()=>pnp.reconcileFiscalSubtotal(parsed,{base:99,total:116}),/no coinciden/);
+  assert.throws(()=>pnp.parseFiscalSubtotal({command:0x43,fields:fields.slice(0,16)}),/incompleta/);
+});
