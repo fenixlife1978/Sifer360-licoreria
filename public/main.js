@@ -2515,13 +2515,21 @@ function comprasDlg(initialTab){
       const effPaid=cond==='Contado'?payable:Math.min(payable,r8(paidInit));
       const pend=r8(Math.max(0,payable-effPaid));
       const rate=purchaseRate||0;
+      const rateInput=$('#cpRate',v),rateLabel=$('#cpRateStatus',v);
+      if(rateInput)rateInput.value=rate?nf8(rate):'';
+      if(rateLabel)rateLabel.textContent=rateStatus;
+      const ivaToggle=$('#cpApplyRetIva',v),ivaWrap=$('#cpRetIvaWrap',v);
+      const selectedSupplier=S.suppliers[supIdx]||{};
+      const ivaCanBeWithheld=docType==='FACTURA_FISCAL'&&!!(S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&selectedSupplier.retieneIva===true);
+      if(ivaToggle)ivaToggle.disabled=!ivaCanBeWithheld;
+      if(ivaWrap)ivaWrap.style.opacity=ivaCanBeWithheld?'1':'0.55';
       $('#cpTotals',v).innerHTML=
         '<table class="sumt"><thead><tr><th>Resumen de Compra</th><th class="r">US$</th><th class="r">Bs. (BCV '+(rate?nf8(rate):'sin tasa')+')</th></tr></thead><tbody>'+
           '<tr><td>Base imponible (Costo mercancía)</td><td class="r">'+nf8(base)+'</td><td class="r">'+nf8(r8(base*rate))+'</td></tr>'+
-          '<tr><td>IVA total según alícuotas indicadas</td><td class="r">'+nf8(iva)+'</td><td class="r">'+nf8(r8(iva*rate))+'</td></tr>'+
-          '<tr class="tot"><td>Total Factura de Compra</td><td class="r">'+nf8(tot)+'</td><td class="r">'+nf8(r8(tot*rate))+'</td></tr>'+
+          '<tr><td>'+(docType==='FACTURA_FISCAL'?'IVA según alícuotas indicadas':'IVA acreditable (documento no fiscal: 0)')+'</td><td class="r">'+nf8(iva)+'</td><td class="r">'+nf8(r8(iva*rate))+'</td></tr>'+
+          '<tr class="tot"><td>Total del documento</td><td class="r">'+nf8(tot)+'</td><td class="r">'+nf8(r8(tot*rate))+'</td></tr>'+
         '</tbody></table>'+
-        '<table class="sumt"><thead><tr><th>Condición Financiera</th><th class="r">US$</th><th class="r">Bs.</th></tr></thead><tbody>'+
+        '<table class="sumt"><thead><tr><th>Retenciones y condición financiera</th><th class="r">US$</th><th class="r">Bs.</th></tr></thead><tbody>'+
           '<tr><td>Modalidad</td><td colspan="2" class="r"><b>'+esc(cond)+(cond==='Crédito'?' ('+creditDays+' días)':'')+'</b></td></tr>'+
           '<tr class="good"><td>Monto Pagado / Abonado</td><td class="r">'+nf8(effPaid)+'</td><td class="r">'+nf8(r8(effPaid*S.cfg.rate))+'</td></tr>'+
           '<tr class="'+(pend>0?'warn':'')+'"><td>Saldo a Cuentas por Pagar (CxP)</td><td class="r">'+nf8(pend)+'</td><td class="r">'+nf8(r8(pend*S.cfg.rate))+'</td></tr>'+
@@ -2574,7 +2582,7 @@ function comprasDlg(initialTab){
         '<thead><tr><th>Compra Nº</th><th>Fac. Prov.</th><th>Fecha</th><th>Proveedor</th><th>Condición</th><th class="r">Total US$</th><th class="r">Pagado / Retenido US$</th><th class="r">Saldo CxP</th><th>Acción</th></tr></thead>'+
         '<tbody>'+(list.length?list.map(c=>{
           const payable=r8(c.payableTotal===undefined?Math.max(0,Number(c.total||0)-Number(c.retIva||0)):c.payableTotal);
-          const paidTotal=r8(Number(c.paid||0)+Number(c.withheldIslrPaid||0));
+          const paidTotal=r8(Number(c.paid||0));
           const pend=r8(Math.max(0,payable-paidTotal));
           return '<tr class="'+(c.void?'void':'')+'">'+
             '<td class="mono">COM-'+pad(c.no)+'</td>'+
@@ -2587,7 +2595,7 @@ function comprasDlg(initialTab){
             '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA':nf8(pend))+'</td>'+
             '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'">Anular</button>')+'</td>'+
           '</tr>';
-        }).join(''):'<tr class="empty"><td colspan="9">Sin compras registradas.</td></tr>')+'</tbody>'+
+        }).join(''):'<tr class="empty"><td colspan="11">Sin compras registradas.</td></tr>')+'</tbody>'+
       '</table></div>';
     v.onclick=async e=>{
       const b=e.target.closest('[data-void-comp]');
@@ -2679,7 +2687,7 @@ function comprasDlg(initialTab){
       const nextCost=nextStock>0?r8((prevVal+newVal)/nextStock):l.cost;
       p.stock=nextStock;
       p.cost=nextCost;
-      if(l.price>0){p.price=r8(l.price);if(p.presentations&&p.presentations[0]&&Number(p.presentations[0].factor)===1)p.presentations[0].price=p.price;if(p.pricing&&Array.isArray(p.pricing.gaps)&&p.pricing.gaps[0])p.pricing.gaps[0].price=p.price;}
+      if(l.price>0){p.price=r8(l.price);if(p.pricing){p.pricing.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;p.pricing.markupSale=p.price>0?r2(((p.price-p.cost)/p.price)*100):0;}if(p.presentations&&p.presentations[0]&&Number(p.presentations[0].factor)===1)p.presentations[0].price=p.price;if(p.pricing&&Array.isArray(p.pricing.gaps)&&p.pricing.gaps[0])p.pricing.gaps[0].price=p.price;}
       addKardex({
         ts,code:p.code,type:'COMPRA',dir:'IN',doc:'COM-'+pad(no),
         party:sup.name+' (Fac. '+docProv+')',qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
@@ -2713,7 +2721,7 @@ function comprasDlg(initialTab){
       if(!S.retencionesIva)S.retencionesIva=[];
       S.retencionesIva.push({
         id:retDoc,ts,periodo,cashbox:currentCaja(),sequence:retSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,
-        ctrlProv:comp.ctrlProv,base,iva,pct:retPct,rate:S.cfg.rate,
+        ctrlProv:comp.ctrlProv,base,iva,pct:retPct,rate:purchaseRate,
         retainedUsd:retUsd,retainedBs:retBs,
         estado:'Pendiente de revisión del contador',declarada:false,pagada:false,comprobanteEntregado:false,observaciones:''
       });
@@ -2722,7 +2730,7 @@ function comprasDlg(initialTab){
     S.purchases.push(comp);
     if(payableTotal-effPaid>=0.01){
       const cxpId='CXP-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxpNo,6);
-      const payments=effPaid>0?[{ts,method:payMethod,cur:'VES',amountBs:r2(effPaid*S.cfg.rate),amountUsd:effPaid,ref:'INI-'+no,note:'Abono inicial en compra'}]:[];
+      const payments=effPaid>0?[{ts,method:payMethod,cur:'VES',amountBs:r2(effPaid*purchaseRate),amountUsd:effPaid,ref:'INI-'+no,note:'Abono inicial en compra'}]:[];
       S.cxp.push({
         id:cxpId,sequence:cxpNo,purchaseNo:no,cashbox:currentCaja(),doc:docProv+' (COM-'+pad(no)+')',
         supplier:Object.assign({},sup),
