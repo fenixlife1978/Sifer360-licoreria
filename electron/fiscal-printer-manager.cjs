@@ -58,7 +58,7 @@ function getSdkStatus(profile){
     const incompatible=candidates.filter(file=>bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'&&BinaryArchitecture.canLoadSdk(bridgeArchitecture.architecture,file.architecture.architecture)===false);
     return{alternatives:group,present:candidates.length>0,compatible:candidates.length>0&&compatible.length>0,compatibleFiles:compatible.map(file=>file.filename),incompatibleFiles:incompatible.map(file=>file.filename)};
   });
-  const architectureVerified=!!bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'&&groups.length>0&&groups.every(group=>group.compatible);
+  const architectureVerified=!!bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'&&groups.every(group=>group.compatible);
   const architectureIssues=[];
   if(bridgeExists&&(!bridgeArchitecture||bridgeArchitecture.architecture==='unknown'))architectureIssues.push('No se pudo identificar la arquitectura del puente fiscal.');
   for(const group of groups){
@@ -341,7 +341,7 @@ async function checkFiscalReadiness(profile,options={}){
     return{ready:true,provider:p.provider,model:p.model,port:p.port,serial:identity.machineSerial,deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:true,message:'Impresora PNP conectada por protocolo nativo v5.4, lista y con serial fiscal confirmado.'};
   }
   const sdk=getSdkStatus(p);
-  if(!sdk.ready)return{ready:false,message:'La configuración fiscal está incompleta: falta puerto, SDK o puente autorizado.'};
+  if(!sdk.ready)return{ready:false,message:'Configuración fiscal no compatible: '+sdk.note};
   const bridgeProbe=options.bridgeProbe||((normalized)=>runBridge(normalized,'status',{requestId:crypto.randomUUID()},options));
   const bridge=await bridgeProbe(p,options);
   if(!bridge||bridge.deviceConnected!==true||bridge.fiscalReady!==true||bridge.canEmitFiscalDocuments!==true)return{ready:false,message:'El puente fiscal no confirmó dispositivo conectado, estado fiscal listo y capacidad real de emitir documentos fiscales.'};
