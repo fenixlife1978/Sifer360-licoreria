@@ -2589,8 +2589,8 @@ function comprasDlg(initialTab){
             '<td class="mono">'+esc(c.docProv)+'</td>'+
             '<td>'+fmtDT(c.ts)+'</td>'+
             '<td>'+esc(c.supplier.name)+'</td>'+
-            '<td>'+esc(c.cond)+'</td>'+
-            '<td class="r">'+nf8(c.total)+'</td>'+
+            '<td>'+esc(c.docType==='FACTURA_FISCAL'?'Fiscal':c.docType==='NOTA_ENTREGA'?'Nota entrega':'No fiscal')+'</td>'+\n            '<td>'+esc(c.cond)+'</td>'+
+            '<td class="r">'+nf8(c.total)+'</td>'+\n            '<td class="r">'+nf8(Number(c.retIva||0)+Number(c.retIslr||0))+'</td>'+
             '<td class="r">'+nf8(paidTotal)+'</td>'+
             '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA':nf8(pend))+'</td>'+
             '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'">Anular</button>')+'</td>'+

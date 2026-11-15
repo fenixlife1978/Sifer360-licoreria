@@ -219,6 +219,10 @@ async function exchangePnpFrame(profile, frame, options = {}) {
     "if($etxEnd -ge 0 -and $stream.Length -ge ($etxEnd+4)){break} }; " +
     "if($etxEnd -lt 0 -or $stream.Length -lt ($etxEnd+4)){throw 'La impresora no devolvió una trama PNP completa.'}; " +
     "[Console]::WriteLine([Convert]::ToBase64String($stream.ToArray())) } finally { if($p -and $p.IsOpen){$p.Close()}; if($p){$p.Dispose()} }";
+  if (typeof options.serialExchange === 'function') {
+    try { return Buffer.from(await options.serialExchange(p, bytes, { timeoutMs })); }
+    catch (error) { throw new Error('Error de transporte serial PNP en ' + p.port + ': ' + (error.message || String(error)) + '. No se reenvió el comando.'); }
+  }
   const exec = options.execFileAsync || execFileAsync;
   try {
     const encoded = Buffer.from(script, 'utf16le').toString('base64');

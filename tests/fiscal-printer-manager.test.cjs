@@ -220,14 +220,13 @@ test('el cierre PNP con IGTF usa solo pagos efectivos en efectivo USD/Zelle y va
   lines:[{description:'Producto',quantity:1,unitPriceVes:862.07,netVes:862.07,taxRate:16}],
   totals:{taxableBaseVes:862.07,ivaVes:137.93,totalVes:1000,subtotalVes:1000,subtotalUsd:100,totalUsd:100,igtfVes:30,igtfUsd:3},
   payments:[{id:'efUSD',cur:'USD',amount:103},{id:'credito',cur:'USD',amount:0}]
- },{platform:'win32',execFileAsync:async(_command,args)=>{
-  const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');const match=script.match(/\\$hex='([0-9a-f]+)'/i);const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));
-  let fields=['0000','0000'];
+ },{platform:'win32',serialExchange:async(_profile,frame)=>{
+  const request=protocol.decodeFrame(frame);let fields=['0000','0000'];
   if(request.command===0x38)fields=['0000','0000','34','00','56','260101','120000','7','0','7','0','3'];
   if(request.command===0x80)fields=['0000','0000','PNP-IGTF-01','J-12345678-9','','','',''];
   if(request.command===0x43)fields=['0000','0000','','','0.00','862.07','16.00','137.93','0.00','8.00','0.00','0.00','0.00','0.00','0.00','862.07','1000.00'];
   if(request.command===0x45){closeFields=request.fields;fields=['0000','0000','1','000015','0','3.00'];}
-  return{stdout:protocol.encodeCommand(request.command,fields,request.sequence).toString('base64')};
+  return protocol.encodeCommand(request.command,fields,request.sequence);
  }});
  assert.equal(result.fiscalDocumentNumber,'000015');assert.equal(closeFields[0],'U');assert.equal(closeFields[1],'103.00');
 });
