@@ -93,6 +93,26 @@ function normalizeRuntimeArchitecture(arch) {
   return 'unknown';
 }
 
+
+function normalizeWindowsArchitecture(value) {
+  const arch = String(value || '').trim().toUpperCase();
+  if (arch === 'AMD64' || arch === 'X64') return 'x64';
+  if (arch === 'X86' || arch === 'I386') return 'x86';
+  if (arch === 'ARM64' || arch === 'AARCH64') return 'arm64';
+  return 'unknown';
+}
+
+function detectWindowsArchitecture(env = process.env, runtimeArch = process.arch) {
+  return normalizeWindowsArchitecture(env.PROCESSOR_ARCHITEW6432 || env.PROCESSOR_ARCHITECTURE) || normalizeRuntimeArchitecture(runtimeArch);
+}
+
+function canRunBridge(osArchitecture, bridgeArchitecture) {
+  if (osArchitecture === 'x64') return bridgeArchitecture === 'x64' || bridgeArchitecture === 'x86';
+  if (osArchitecture === 'x86') return bridgeArchitecture === 'x86';
+  if (osArchitecture === 'arm64') return bridgeArchitecture === 'arm64';
+  return null;
+}
+
 function canLoadSdk(bridgeArchitecture, sdkArchitecture) {
   if (sdkArchitecture === 'anycpu') return true;
   if (bridgeArchitecture === 'anycpu' || bridgeArchitecture === 'unknown' || sdkArchitecture === 'unknown') return null;
@@ -103,5 +123,8 @@ module.exports = {
   inspectPeBuffer,
   inspectBinaryArchitecture,
   normalizeRuntimeArchitecture,
+  normalizeWindowsArchitecture,
+  detectWindowsArchitecture,
+  canRunBridge,
   canLoadSdk
 };
