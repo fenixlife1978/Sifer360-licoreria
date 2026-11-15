@@ -173,7 +173,7 @@ function seed(){
     clients:[{name:'Consumidor final',rif:'',tel:''}],
     suppliers:[],
     sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],openings:[],movimientosCaja:[],kardex:[],counts:[],
-    lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],rateAudit:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],fiscalPrinterJobs:[],
+    lotesSudeban:[],retencionesIva:[],cambiosDivisas:[],rateAudit:[],casheaMovimientos:[],casheaLiquidaciones:[],documents:[],fiscalPrinterJobs:[],accounting:{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
   };
@@ -184,7 +184,7 @@ function stateSnapshot(){
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
     sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],openings:S.openings||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,cambiosDivisas:S.cambiosDivisas,rateAudit:S.rateAudit||[],
-    casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],fiscalPrinterJobs:S.fiscalPrinterJobs||[],
+    casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],fiscalPrinterJobs:S.fiscalPrinterJobs||[],accounting:S.accounting||{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
   };
 }
@@ -719,6 +719,12 @@ function load(){
     if(Array.isArray(d.fiscalPrinterJobs))S.fiscalPrinterJobs=d.fiscalPrinterJobs;
     else if(!Array.isArray(S.fiscalPrinterJobs))S.fiscalPrinterJobs=[];
     if(!S.cfg.fiscalPrinters||typeof S.cfg.fiscalPrinters!=='object')S.cfg.fiscalPrinters={};
+    S.accounting=d.accounting&&typeof d.accounting==='object'?d.accounting:(S.accounting||{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false});
+    if(!Array.isArray(S.accounting.accounts))S.accounting.accounts=[];
+    if(!Array.isArray(S.accounting.entries))S.accounting.entries=[];
+    if(!Array.isArray(S.accounting.fixedAssets))S.accounting.fixedAssets=[];
+    if(!Number.isFinite(Number(S.accounting.nextEntry)))S.accounting.nextEntry=1;
+    if(!Number.isFinite(Number(S.accounting.nextAsset)))S.accounting.nextAsset=1;
     if(Array.isArray(d.casheaMovimientos)){
       const demoCasheaSignatures=[
         {id:'CSH-MOV-0001',aprobacion:'CSH-782194',ventaNo:1040,clienteCi:'V-12345678',totalVenta:85,financiadoUsd:51},
@@ -2641,7 +2647,7 @@ function comprasDlg(initialTab){
     let retSeq=null,cxpNo=null;
     if(aplicarRetencion){try{retSeq=await nextCajaSequence('retention-'+periodoRetencion,currentCaja());}catch(error){msg('No se pudo reservar el número de la retención: '+error.message,'bad');return false;}}
     if(payableTotal-effPaid>=0.01){try{cxpNo=await nextCajaSequence('cxp',currentCaja());}catch(error){msg('No se pudo reservar el número de CxP: '+error.message,'bad');return false;}}
-    const comp={no,cashbox:currentCaja(),docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
+    const comp={accountingSourceId:'PURCHASE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(no),no,cashbox:currentCaja(),docProv,ctrlProv,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,total,payableTotal,retIva:retUsd,rate:S.cfg.rate,paid:effPaid,payMethod,void:false};
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
       const periodo=periodoRetencion;
@@ -4575,7 +4581,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
   if(ctrlNext!==null){boxSeq.ctrl=ctrlNext+1;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));}
   const ctrlNo=internalTicketMode?'':ctrlPrefix+String(currentCaja()).replace(/\W/g,'').slice(-4)+'-'+pad(ctrlNext,8);
   const sale={
-    
+    accountingSourceId:'SALE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(invNo),
     no:invNo,ctrlNo,docType:internalTicketMode?'TICKET-INTERNO':'01-FACTURA',transType:'01-REG',documentMode:internalTicketMode?printMode:(fiscalMode?'FISCAL':'LEGACY'),
     ts,cashbox:currentCaja(),cashier:currentCajero(),client:Object.assign({},S.client),lines,
     sub:t.sub,disc:t.disc,base:t.base,
@@ -6256,6 +6262,7 @@ function cashboxList(){
 function persistCashboxes(boxes){localStorage.setItem(BOXES_STORAGE_KEY,JSON.stringify(boxes));}
 function showPosScreen(){
   const session=activeUser();
+  if(session.role==='contador'){window.SIFERAccountantDashboard.show();return;}
   if(session.role==='cajero'){
     const opening=readActiveOpening();
     if(!opening||opening.status!=='abierta'||String(opening.cashbox)!==currentCaja()||String(opening.username||'')!==String(session.username||'')){
@@ -6274,6 +6281,7 @@ function showPosScreen(){
 function showDashboardScreen(){
   const dashboardUser=activeUser();
   if(dashboardUser.username)try{localStorage.setItem('sifer360_last_module_v1:'+dashboardUser.username,'dashboard');}catch(e){}
+  if(dashboardUser.role==='contador'){window.SIFERAccountantDashboard.show();return;}
   const d=$('#adminDashboard'),main=$('.main'),left=$('.left');
   if(!d||!main)return;
   if(left)left.hidden=true; // Ocultar toda el área de venta; la cabecera y la toolbar están fuera de .main y permanecen visibles.
@@ -6329,7 +6337,7 @@ function showDashboardScreen(){
 function usersManagementDlg(editUsername){
   if(!window.SIFERAccess||!window.SIFERAccess.getUsers){msg('El servicio de usuarios no está disponible.','bad');return;}
   let users=window.SIFERAccess.getUsers(),boxes=cashboxList(),editing=editUsername||'';
-  const roleOptions=[['admin','Administrador'],['cajero','Cajero'],['contador','Fiscal']];
+  const roleOptions=[['admin','Administrador'],['cajero','Cajero'],['contador','Contador']];
   const el=h('<div class="form user-admin-form"><div class="hint">Cada usuario tiene un perfil y una caja asignada. El administrador puede quedarse sin caja asignada para operar solo desde el dashboard; para vender debe tener una caja creada y asignada.</div><input id="uaOriginal" type="hidden"><div class="newgrid"><div class="f"><label for="uaName">Nombre completo</label><input class="fld" id="uaName" required></div><div class="f"><label for="uaUsername">Usuario</label><input class="fld" id="uaUsername" required autocomplete="off"></div><div class="f"><label for="uaCode">Contraseña / código</label><input class="fld" id="uaCode" type="password" autocomplete="new-password" placeholder="Obligatorio para usuario nuevo"></div><div class="f"><label for="uaRole">Rol</label><select class="fld" id="uaRole">'+roleOptions.map(r=>'<option value="'+r[0]+'">'+r[1]+'</option>').join('')+'</select></div><div class="f"><label for="uaBox">Caja asignada</label><select class="fld" id="uaBox"><option value="">Sin caja asignada</option>'+boxes.filter(b=>b.active!==false).map(b=>'<option value="'+esc(b.id)+'">'+esc(b.name)+' ('+esc(b.id)+')</option>').join('')+'</select></div></div><div class="row" style="flex-wrap:wrap"><button class="btn primary" id="uaSave">Guardar usuario</button><button class="btn" id="uaClear" type="button">Limpiar</button><span class="hint" id="uaMsg"></span></div><div class="gridwrap" style="max-height:360px;flex:none"><table class="grid"><thead><tr><th>Nombre / usuario</th><th>Rol</th><th>Caja asignada</th><th>Acciones</th></tr></thead><tbody id="uaRows"></tbody></table></div></div>');
   const clear=()=>{editing='';$('#uaOriginal',el).value='';$('#uaName',el).value='';$('#uaUsername',el).value='';$('#uaUsername',el).disabled=false;$('#uaCode',el).value='';$('#uaCode',el).placeholder='Obligatorio para usuario nuevo';$('#uaRole',el).value='cajero';$('#uaBox',el).value=boxes.find(b=>b.active!==false)?.id||'';$('#uaMsg',el).textContent='';};
   const draw=()=>{users=window.SIFERAccess.getUsers();$('#uaRows',el).innerHTML=users.map(u=>'<tr><td><b>'+esc(u.name)+'</b><div class="sub">'+esc(u.username)+'</div></td><td>'+esc((roleOptions.find(r=>r[0]===u.role)||[u.role,u.role])[1])+'</td><td>'+esc(u.cashbox||'—')+'</td><td><button class="btn mini2" data-ua-edit="'+esc(u.username)+'">Editar</button> <button class="btn mini2" data-ua-delete="'+esc(u.username)+'" '+(u.username===activeUser().username||users.filter(x=>x.role==='admin').length<=1&&u.role==='admin'?'disabled':'')+'>Desactivar/eliminar</button></td></tr>').join('');};
@@ -6417,15 +6425,45 @@ function addAdminToolbarItems(){
   if(!TB.some(t=>Array.isArray(t)&&t[0]==='pos')){const idx=TB.findIndex(t=>Array.isArray(t)&&t[0]==='usuarios');TB.splice(idx<0?TB.length:idx,0,['pos','POS','',openCashboxDlg],['usuarios','Usuarios','',usersManagementDlg],['cajas','Gestión cajas','',cashboxesManagementDlg],'-');}
 }
 window.SIFERDashboard={show:showDashboardScreen,showPos:showPosScreen,refresh:showDashboardScreen};
+window.SIFERAccountingBridge={getState:()=>S,save:()=>save(),setAccounting:async data=>{if(!S)throw new Error('Estado POS no inicializado');const snapshot=JSON.parse(JSON.stringify(S));S.accounting=data;const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,snapshot);throw new Error('SQLite/servidor no confirmó los cambios contables.');}return true;}};
 
 /* ---------- menús y barra de herramientas ---------- */
 const focusEntry=()=>$('#entry').focus();
+async function verifyFiscalPrinterForAccounting(){
+ const message='El módulo de Contabilidad requiere una impresora fiscal conectada y activa que pueda generar documentos fiscales. Conecte y active una impresora fiscal para acceder.';
+ if(!S||!S.cfg||!S.cfg.fiscalPrinters)return {ready:false,message};
+ if(!window.posDesktop||typeof window.posDesktop.fiscalPrinterReadiness!=='function')return {ready:false,message:message+' La validación de hardware solo está disponible en la aplicación de escritorio.'};
+ const profiles=Object.values(S.cfg.fiscalPrinters).filter(p=>p&&p.enabled===true),failures=[];
+ if(!profiles.length)return {ready:false,message};
+ for(const profile of profiles){try{const status=await window.posDesktop.fiscalPrinterReadiness(profile);if(status&&status.ready===true)return status;failures.push(status&&status.message?status.message:'La impresora no confirmó disponibilidad fiscal.');}catch(e){failures.push(e&&e.message?e.message:String(e));}}
+ return {ready:false,message:message+(failures.length?' Motivo: '+failures.join(' · '):'')};
+}
+window.SIFERAccountingGate=verifyFiscalPrinterForAccounting;
+let accountingFiscalMonitor=null,accountingFiscalCheckBusy=false;
+function stopAccountingFiscalMonitor(){if(accountingFiscalMonitor){clearInterval(accountingFiscalMonitor);accountingFiscalMonitor=null;}}
+async function openAccountingModule(){
+ if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir Contabilidad.','bad');return;}
+ const app=window.SIFERAccountingApp;
+ if(!app||typeof app.open!=='function'){msg('Contabilidad VEN-NIF no está disponible: no se cargó el módulo.','bad');return;}
+ try{
+  const opened=await app.open();if(opened!==true)return;
+  stopAccountingFiscalMonitor();
+  accountingFiscalMonitor=setInterval(async()=>{
+   if(!app.isOpen||!app.isOpen()){stopAccountingFiscalMonitor();return;}
+   if(accountingFiscalCheckBusy)return;accountingFiscalCheckBusy=true;
+   try{const status=await verifyFiscalPrinterForAccounting();if(!status.ready){app.close();stopAccountingFiscalMonitor();msg('Contabilidad se bloqueó porque la impresora fiscal dejó de estar conectada u operativa. '+status.message,'bad');}}
+   catch(e){app.close();stopAccountingFiscalMonitor();msg('Contabilidad se bloqueó al perder la validación de la impresora fiscal: '+e.message,'bad');}
+   finally{accountingFiscalCheckBusy=false;}
+  },15000);
+ }catch(e){msg('No se pudo abrir Contabilidad: '+(e&&e.message?e.message:String(e)),'bad');}
+}
 const MENUS={
  'Archivo':[['Dashboard','',showDashboardScreen],['Abrir caja (POS)','',openCashboxDlg],['Nueva venta','F2',newSale],['Suspender venta','F5',suspend],['Recuperar venta','F6',recoverDlg],'-',['Ventas del día y cierre…','F9',salesDlg],'-',['Gestión de usuarios','',usersManagementDlg],['Gestión de cajas','',cashboxesManagementDlg],['Cerrar sesión','',()=>window.SIFERAccess&&window.SIFERAccess.logout()],'-',['Restablecer datos de ejemplo…','',resetAll]],
  'Ventas':[['Cobrar','F12',payDlg],['Módulo de Pagos CASHEA (BNPL)…','',()=>casheaDlg()],['Descuento…','F7',discountDlg],['Quitar renglón','Supr',removeSel],['Vaciar venta…','',clearCart],'-',['Cuentas por Cobrar (CxC)…','',()=>cxcDlg()]],
  'Compras':[['Registrar compra de mercancía…','F10',()=>comprasDlg('new')],['Historial de compras…','',()=>comprasDlg('hist')],['Directorio de proveedores…','',()=>comprasDlg('sup')],'-',['Cuentas por Pagar (CxP)…','',()=>cxpDlg()]],
   'Inventario':[['Maestro de inventario…','F8',inventoryDlg],['Nuevo producto (Ficha avanzada)…','',()=>productFormDlg(null)],['Generador de etiquetas / Hablador SKU (US$)…','',()=>labelGeneratorDlg()],'-',['Conteo físico de inventario (masivo)…','F11',()=>conteoDlg()],['Ficha / Tarjeta Kardex Profesional…','',()=>kardexDlg()],'-',['Buscar producto','F3',focusEntry]],
  'Finanzas':[['Cuentas por Cobrar (CxC)…','',()=>cxcDlg()],['Cuentas por Pagar (CxP)…','',()=>cxpDlg()],['Operaciones Cambiarias (Compra USD / Zelle)…','',()=>divisasDlg()],['Conciliación CASHEA (BNPL y Cuotas)…','',()=>casheaDlg()],'-',['Ventas del día y cierre de caja…','F9',salesDlg]],
+ 'Contabilidad':[['Contabilidad general VEN-NIF…','',openAccountingModule]],
  'Control SENIAT/SUDEBAN':[
    ['Módulo Fiscal Integral…','',()=>seniatSudebanDlg()],
    ['Libro de Ventas Fiscal (SENIAT)…','',()=>seniatSudebanDlg('ventas')],
@@ -6878,7 +6916,7 @@ const TB=[
  ['suspender','Suspender','F5',suspend],['recuperar','Recuperar','F6',recoverDlg],['descuento','Descuento','F7',discountDlg],['quitar','Quitar','Supr',removeSel],
  '-',['inventario','Inventario','F8',inventoryDlg],['conteo','Conteo','F11',()=>conteoDlg()],['kardex','Kardex','',()=>kardexDlg()],['salidas','Salidas inventario','',inventoryExitDlg],
  '-',['compras','Compras','F10',()=>comprasDlg('new')],['cxc','CxC','',()=>cxcDlg()],['cxp','CxP','',()=>cxpDlg()],['divisas','USD/Zelle','',()=>divisasDlg()],['cashea','Cashea','',()=>casheaDlg()],
- '-',['ventas','Ventas día','F9',salesDlg],['cortez','Corte Z','',corteZDlg],['seniat','Fiscal','',()=>seniatSudebanDlg()],['documentos','Documentos','',()=>fiscalDocumentsDlg()],['basedatos','Base de datos','',()=>databaseSettingsDlg()],['tasa','Tasa BCV','',()=>activeUser().role==='cajero'?tasaBcvDlg():cfgDlg('cRate')]
+ '-',['ventas','Ventas día','F9',salesDlg],['cortez','Corte Z','',corteZDlg],['seniat','Fiscal','',()=>seniatSudebanDlg()],['contabilidad','Contabilidad','',openAccountingModule],['documentos','Documentos','',()=>fiscalDocumentsDlg()],['basedatos','Base de datos','',()=>databaseSettingsDlg()],['tasa','Tasa BCV','',()=>activeUser().role==='cajero'?tasaBcvDlg():cfgDlg('cRate')]
 ];
 function buildChrome(){
   addAdminToolbarItems();
@@ -7048,7 +7086,7 @@ function wire(){
     const b=e.target.closest('[data-tb]');if(!b)return;
     const user=activeUser();
     if(user.username)try{localStorage.setItem('sifer360_last_module_v1:'+user.username,b.dataset.tb);}catch(err){}
-    const t=TB.find(x=>x[0]===b.dataset.tb);if(t){if(!window.SIFERAccess||!window.SIFERAccess.canAccess||!window.SIFERAccess.canAccess(b.dataset.tb,user)){msg('Tu perfil no tiene autorización para abrir este módulo.','bad');return;}if($('#adminDashboard')&&!$('#adminDashboard').hidden)showPosScreen();t[3]();}
+    const t=TB.find(x=>x[0]===b.dataset.tb);if(t){if(!window.SIFERAccess||!window.SIFERAccess.canAccess||!window.SIFERAccess.canAccess(b.dataset.tb,user)){msg('Tu perfil no tiene autorización para abrir este módulo.','bad');return;}if($('#adminDashboard')&&!$('#adminDashboard').hidden&&user.role!=='contador')showPosScreen();t[3]();}
   });
   document.addEventListener('pointerdown',e=>{
     if(menuEl&&!e.target.closest('.menu')&&!e.target.closest('#btnMenu'))closeMenu();
@@ -7058,7 +7096,7 @@ function wire(){
   document.addEventListener('keydown',e=>{
     if(W){if(e.key==='Escape'){e.preventDefault();closeWin();}return;}
     if(e.key==='Escape'&&menuEl){closeMenu();if($('#btnMenu'))$('#btnMenu').focus();return;}
-    if(fk[e.key]){e.preventDefault();const session=activeUser();if(session.role==='contador'&&e.key!=='F1'){msg('El perfil contador solo tiene acceso al módulo Fiscal.','bad');return;}closeMenu();fk[e.key]();return;}
+    if(fk[e.key]){e.preventDefault();const session=activeUser();if(session.role==='contador'&&e.key!=='F1'){msg('El perfil contador solo tiene acceso al módulo Fiscal y Contabilidad.','bad');return;}closeMenu();fk[e.key]();return;}
     const tag=document.activeElement?document.activeElement.tagName:'';
     if(/INPUT|SELECT|TEXTAREA/.test(tag))return;
     if(e.key==='Delete'){e.preventDefault();removeSel();}
@@ -7299,7 +7337,7 @@ function restoreWorkspaceAfterReload(){
   const key='sifer360_last_module_v1:'+user.username;
   let last='';try{last=localStorage.getItem(key)||'';}catch(e){}
   if(last==='dashboard'&&user.role==='admin'){showDashboardScreen();return;}
-  const allowed={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','documentos','basedatos','tasa','usuarios','cajas'],contador:['seniat']};
+  const allowed={admin:['pos','nueva','buscar','cliente','suspender','recuperar','descuento','quitar','inventario','conteo','kardex','compras','cxc','cxp','divisas','cashea','ventas','cortez','seniat','contabilidad','documentos','basedatos','tasa','usuarios','cajas'],contador:['seniat','contabilidad']};
   if(last&&(allowed[user.role]||[]).includes(last)){
     const button=$('#toolbar [data-tb="'+last+'"]');
     if(button&&!button.hidden){button.click();return;}

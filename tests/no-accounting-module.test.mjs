@@ -1,29 +1,5 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
-
-const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const main = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
-const access = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
-const styles = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
-
-test('general accounting module assets and navigation are completely absent', () => {
-  for (const path of [
-    '../public/accounting.js',
-    '../public/accounting.css',
-    '../public/accountant-dashboard.js',
-    '../public/accountant-dashboard.css',
-    '../public/data/plan-cuentas-predeterminado-ven-nif.json'
-  ]) assert.equal(existsSync(new URL(path, import.meta.url)), false, path);
-  assert.doesNotMatch(html, /accounting\.(?:js|css)|accountant-dashboard/);
-  assert.doesNotMatch(main, /SIFERAccounting|SIFERAccountantDashboard|openAccountingModule|accountingSourceId|accountingEntryId|Referencia contable|Contabilidad VEN-NIF|accounting:/i);
-  assert.doesNotMatch(access, /SIFERAccountantDashboard|accounting|contabilidad/i);
-  assert.doesNotMatch(styles, /accounting|accountant|contabilidad|btnAccountingTop/i);
-});
-
-test('fiscal operations remain available independently of general accounting', () => {
-  assert.match(main, /function seniatSudebanDlg/);
-  assert.match(main, /retencionesIva/);
-  assert.match(main, /Libro de Ventas Fiscal/);
-  assert.match(access, /contador:\['seniat'\]/);
-});
+import test from 'node:test';import assert from 'node:assert/strict';import{readFileSync}from'node:fs';
+const html=readFileSync(new URL('../index.html',import.meta.url),'utf8'),main=readFileSync(new URL('../public/main.js',import.meta.url),'utf8'),access=readFileSync(new URL('../public/access.js',import.meta.url),'utf8'),manager=readFileSync(new URL('../electron/fiscal-printer-manager.cjs',import.meta.url),'utf8'),accounting=readFileSync(new URL('../public/accounting.js',import.meta.url),'utf8');
+test('Contabilidad vuelve a estar integrada en el POS y se conserva en SQLite',()=>{assert.match(html,/accounting\.js/);assert.match(html,/accounting\.css/);assert.match(main,/accounting:S\.accounting\|\|/);assert.match(main,/S\.accounting=d\.accounting&&typeof d\.accounting==='object'/);assert.match(main,/window\.SIFERAccountingBridge=/);assert.match(main,/Contabilidad general VEN-NIF/);assert.match(access,/contador:\['seniat','contabilidad'\]/);});
+test('la apertura exige impresora fiscal conectada, lista y capaz de emitir',()=>{assert.match(main,/window\.SIFERAccountingGate=verifyFiscalPrinterForAccounting/);assert.match(main,/fiscalPrinterReadiness/);assert.match(manager,/deviceConnected!==true/);assert.match(manager,/fiscalReady!==true/);assert.match(manager,/canEmitFiscalDocuments!==true/);assert.match(accounting,/const readiness=await gate\(\)/);});
+test('Contabilidad se bloquea si se pierde la conexión fiscal durante la sesión',()=>{assert.match(main,/setInterval\(async\(\)=>/);assert.match(main,/app\.close\(\)/);assert.match(main,/impresora fiscal dejó de estar conectada u operativa/);});

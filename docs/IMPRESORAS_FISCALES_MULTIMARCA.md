@@ -61,11 +61,14 @@ Debe devolver por stdout una sola línea JSON, con código de salida cero:
   "protocol": "sifer-fiscal-bridge/v1",
   "ok": true,
   "fiscalDocumentNumber": "número devuelto por la máquina",
-  "fiscalSerial": "serial leído de la máquina"
+  "fiscalSerial": "serial leído de la máquina",
+  "deviceConnected": true,
+  "fiscalReady": true,
+  "canEmitFiscalDocuments": true
 }
 ~~~
 
-Para emitInvoice, el puente debe ser idempotente por requestId, validar los límites del equipo y devolver el número real asignado por la máquina. Nunca debe simular una emisión exitosa ni imprimir un ticket comercial como sustituto de un documento fiscal.
+Para la acción status, el puente debe consultar el dispositivo físico y devolver `deviceConnected: true`, `fiscalReady: true` y `canEmitFiscalDocuments: true` solo cuando las tres condiciones estén verificadas en el equipo. Estos indicadores son obligatorios para habilitar Contabilidad. Para emitInvoice, el puente debe ser idempotente por requestId, validar los límites del equipo y devolver el número real asignado por la máquina. Nunca debe simular una emisión exitosa ni imprimir un ticket comercial como sustituto de un documento fiscal.
 
 Los SDK de cada familia tienen APIs distintas. No se debe fabricar un puente genérico que envíe tramas inventadas a todos los modelos. Cada implementación HKA, Bematech, Epson, Quorion, Aclas o PNP debe compilarse y probarse con el SDK/manual original y con equipos físicos.
 

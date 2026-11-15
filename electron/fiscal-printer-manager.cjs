@@ -182,4 +182,8 @@ async function testPnpFiscalStatus(profile, options = {}) {
   }
 }
 
-module.exports={PROVIDERS,USB_SERIAL_DRIVERS,normalizeProfile,getSdkStatus,listSerialPorts,testSerialPort,testPnpFiscalStatus,interpretPnpStatus,runBridge,emitInvoice};
+
+async function checkFiscalReadiness(profile,options={}){
+ try{const p=normalizeProfile(profile);if(!p.enabled)return{ready:false,message:'La impresora fiscal no está habilitada para esta caja.'};const sdk=getSdkStatus(p);if(!sdk.ready)return{ready:false,message:'La configuración fiscal está incompleta: falta puerto, SDK o puente autorizado.'};if(p.provider==='pnp'){const probe=options.pnpStatusProbe||testPnpFiscalStatus;const physical=await probe(p,options);if(!physical||physical.ready!==true)return{ready:false,message:physical&&physical.message?physical.message:'La impresora PNP no confirmó estado fiscal listo.'};}const bridgeProbe=options.bridgeProbe||((normalized)=>runBridge(normalized,'status',{requestId:crypto.randomUUID()},options));const bridge=await bridgeProbe(p,options);if(!bridge||bridge.deviceConnected!==true||bridge.fiscalReady!==true||bridge.canEmitFiscalDocuments!==true)return{ready:false,message:'El puente fiscal no confirmó dispositivo conectado, estado fiscal listo y capacidad real de emitir documentos fiscales.'};return{ready:true,provider:p.provider,model:p.model,port:p.port,message:'Impresora fiscal conectada, operativa y habilitada para emitir documentos fiscales.'};}catch(error){return{ready:false,message:'No se pudo validar la impresora fiscal: '+(error&&error.message?error.message:String(error))};}
+}
+module.exports={PROVIDERS,USB_SERIAL_DRIVERS,normalizeProfile,getSdkStatus,listSerialPorts,testSerialPort,testPnpFiscalStatus,interpretPnpStatus,runBridge,emitInvoice,checkFiscalReadiness};

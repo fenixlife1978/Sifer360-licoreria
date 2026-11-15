@@ -139,3 +139,16 @@ test('la detección de puertos no Windows no inventa dispositivos', async () => 
   assert.equal(result.supported, false);
   assert.deepEqual(result.ports, []);
 });
+
+
+test('Contabilidad solo se habilita con una impresora conectada, lista y capaz de emitir',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'sifer-fiscal-ready-'));
+ try{
+  const dll=path.join(dir,'pnpdll.dll'),bridge=path.join(dir,'bridge.exe');fs.writeFileSync(dll,'fixture');fs.writeFileSync(bridge,'fixture');
+  const profile={provider:'pnp',model:'PF-220A',port:'COM4',enabled:true,bridgePath:bridge,sdkPaths:{'pnpdll.dll':dll}};
+  const disabled=await manager.checkFiscalReadiness({...profile,enabled:false},{platform:'win32'});assert.equal(disabled.ready,false);
+  const offline=await manager.checkFiscalReadiness(profile,{platform:'win32',pnpStatusProbe:async()=>({ready:false,message:'Fuera de línea'}),bridgeProbe:async()=>({deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:true})});assert.equal(offline.ready,false);
+  const noFiscal=await manager.checkFiscalReadiness(profile,{platform:'win32',pnpStatusProbe:async()=>({ready:true}),bridgeProbe:async()=>({deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:false})});assert.equal(noFiscal.ready,false);
+  const ready=await manager.checkFiscalReadiness(profile,{platform:'win32',pnpStatusProbe:async()=>({ready:true}),bridgeProbe:async()=>({deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:true})});assert.equal(ready.ready,true);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
