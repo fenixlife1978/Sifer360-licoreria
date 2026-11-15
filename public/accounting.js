@@ -32,7 +32,7 @@ async function ensureChart(){
 function accountMap(){return new Map(state().accounts.map(a=>[String(a.code),a]));}
 function nextEntrySequence(a=state()){const max=(a.entries||[]).reduce((n,e)=>Math.max(n,Number(e.sequence)||Number(String(e.id||'').match(/(\d+)$/)?.[1])||0),0);return Math.max(1,Number(a.nextEntry)||1,max+1);}
 function fmtAccount(a){return esc(a.code)+' · '+esc(a.name);}
-function movementAccounts(){return state().accounts.filter(a=>a.isMovement);}
+function movementAccounts(){const a=state(),activeBanks=new Set((a.banks||[]).filter(b=>b.active).map(b=>String(b.id)));return a.accounts.filter(x=>x.isMovement&&(!x.bankId||activeBanks.has(String(x.bankId))));}
 function totalsFor(entries,accountCode){
  let dUsd=0,cUsd=0,dBs=0,cBs=0;
  for(const e of entries)for(const l of e.lines||[])if(String(l.accountCode)===String(accountCode)){
