@@ -16,10 +16,7 @@ test('portable Electron carga todos los recursos de interfaz con rutas relativas
   assert.match(vite, /base:\s*['"]\.\/['"]/);
 });
 
-test('las fuentes tipográficas del POS se sirven desde el paquete local', () => {
-  const fontUrls = [...css.matchAll(/url\(["']?([^"')]+\.woff2)["']?\)/g)].map(match => match[1]);
-  assert.ok(fontUrls.length > 0, 'Debe haber fuentes locales declaradas');
-  for (const font of fontUrls) {
-    assert.equal(existsSync(new URL('../public/' + font, import.meta.url)), true, font);
-  }
+test('el POS no depende de fuentes inexistentes ni de servicios externos', () => {
+  assert.doesNotMatch(css, /url\(["']?fonts\//i);
+  assert.match(css, /font-family:[^;}]*sans-serif/i);
 });
