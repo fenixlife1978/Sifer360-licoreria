@@ -56,7 +56,7 @@ test('construye comandos de factura fiscal PNP v5.4 con campos y límites docume
   assert.equal(text.command,0x41);
   assert.deepEqual(text.fields,['Detalle de prueba','']);
 
-  const item = pnp.decodeFrame(pnp.createFiscalItem({description:'Producto prueba',quantity:'2.000',amount:'15.50',taxRate:'1600',qualifier:'M'},0x28));
+  const item = pnp.decodeFrame(pnp.createFiscalItem({description:'Producto prueba',quantity:'2.000',amount:'15.50',taxRate:'.1600',qualifier:'M'},0x28));
   assert.equal(item.command,0x42);
   assert.deepEqual(item.fields,['Producto prueba','2.000','15.50','1600','M','','','']);
 
@@ -72,9 +72,10 @@ test('construye comandos de factura fiscal PNP v5.4 con campos y límites docume
 test('rechaza datos fiscales PNP que exceden campos o formatos del protocolo', () => {
   assert.throws(() => pnp.createFiscalOpenInvoice({customerName:'X'.repeat(39)}), /máximo de 38/);
   assert.throws(() => pnp.createFiscalText({text:'X'.repeat(41)}), /máximo de 40/);
-  assert.throws(() => pnp.createFiscalItem({description:'X'.repeat(21),quantity:'1.000',amount:'1.00',taxRate:'1600'}), /máximo de 20/);
-  assert.throws(() => pnp.createFiscalItem({description:'Item',quantity:'1',amount:'1.00',taxRate:'1600'}), /formato numérico/);
-  assert.throws(() => pnp.createFiscalItem({description:'Item',quantity:'1.000',amount:'1.0',taxRate:'1600'}), /formato numérico/);
+  assert.throws(() => pnp.createFiscalItem({description:'X'.repeat(21),quantity:'1.000',amount:'1.00',taxRate:'.1600'}), /máximo de 20/);
+  assert.throws(() => pnp.createFiscalItem({description:'Item',quantity:'1',amount:'1.00',taxRate:'.1600'}), /formato numérico/);
+  assert.throws(() => pnp.createFiscalItem({description:'Item',quantity:'1.000',amount:'1.0',taxRate:'.1600'}), /formato numérico/);
+  assert.throws(() => pnp.createFiscalItem({description:'Item',quantity:'1.000',amount:'1.00',taxRate:'1600'}), /formato numérico/);
   assert.throws(() => pnp.createFiscalCloseInvoice({mode:'U',foreignCurrencyAmount:'1'}), /formato numérico/);
   assert.throws(() => pnp.createFiscalCloseInvoice({mode:'T',foreignCurrencyAmount:'1.00'}), /solo aplica/);
 });
