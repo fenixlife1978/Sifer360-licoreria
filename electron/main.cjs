@@ -796,6 +796,7 @@ function registerIpc() {
       pnpProtocol: 'https://desarrollospnp.com/archivos/PROTOCOLO0141.pdf',
       bematech: 'https://posvenezuela.com/librerias-dll/',
       bematechDownloads: 'https://posvenezuela.com/descargas-2/',
+      bematechMP4200: 'https://posvenezuela.com/descargas-mp4200/',
       prolific: 'https://prolificusa.com/product/pl2303gl-8-pin-usb-uart-bridge-controller/',
       ftdi: 'https://ftdichip.com/drivers/',
       silabs: 'https://www.silabs.com/software-and-tools/usb-to-uart-bridge-vcp-drivers',
