@@ -44,7 +44,7 @@ function buildFiscalInvoiceCommands(invoice, initialSequence = 0x20) {
     const rate = String(item.taxRate == null ? '.0000' : item.taxRate);
     if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Cantidad inválida en el renglón ' + (index + 1) + '.');
     const lineBase = Math.round((quantity * unitPrice + Number.EPSILON) * 100) / 100;
-    if (!/^\\.\\d{4}$/.test(rate)) throw new Error('La tasa PNP debe expresarse como .nnnn en el renglón ' + (index + 1) + '.');
+    if (!/^\.\d{4}$/.test(rate)) throw new Error('La tasa PNP debe expresarse como .nnnn en el renglón ' + (index + 1) + '.');
     const fraction = Number(rate);
     base += lineBase;
     total += lineBase * (1 + fraction);
