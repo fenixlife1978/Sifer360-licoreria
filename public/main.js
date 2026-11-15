@@ -2433,12 +2433,12 @@ function comprasDlg(initialTab){
   };
   const refreshPurchaseRate=async(date,v,draw)=>{
     const token=++rateRequestToken;purchaseRate=0;purchaseRateRecord=null;rateStatus='Consultando histórico BCV…';if(draw)draw();
-    if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(date||''))){rateStatus='Fecha de documento inválida';if(draw)draw();return false;}
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))){rateStatus='Fecha de documento inválida';if(draw)draw();return false;}
     try{
       const response=await fetch('https://bcv.today/api/v1/history/'+encodeURIComponent(date)+'.json',{cache:'no-store'});
       if(!response.ok)throw new Error('BCV HTTP '+response.status);
       const data=await response.json();const rate=Number(data&&data.USD),effectiveDate=String(data&&data.effective_date||data&&data.date||'');
-      if(!Number.isFinite(rate)||rate<=0||String(data.date)!==String(date)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(effectiveDate)||effectiveDate>date)throw new Error('El histórico no devolvió una tasa USD válida para la fecha solicitada.');
+      if(!Number.isFinite(rate)||rate<=0||String(data.date)!==String(date)||!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)||effectiveDate>date)throw new Error('El histórico no devolvió una tasa USD válida para la fecha solicitada.');
       if(token!==rateRequestToken)return false;
       purchaseRateRecord={date,effectiveDate,rate,source:'BCV Today · réplica pública de datos BCV',updatedAt:data.updated_at||null,retrievedAt:Date.now()};
       if(!S.bcvRates||typeof S.bcvRates!=='object')S.bcvRates={};S.bcvRates[date]=purchaseRateRecord;
