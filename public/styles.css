@@ -2,12 +2,6 @@
 /* SIFER 360 Licorería — interfaz administrativa y punto de venta.
    Concepto: mostrador de taller. Concreto frío de fondo, tinta petróleo, cobalto para acciones.
    Lo único audaz: el total, en una placa amarillo señal como el precio de un surtidor. */
-@font-face{font-family:"Barlow";font-weight:400;font-display:swap;src:local("Barlow"),local("Barlow Regular"),url("fonts/Barlow-Regular.woff2") format("woff2")}
-@font-face{font-family:"Barlow";font-weight:500;font-display:swap;src:local("Barlow Medium"),url("fonts/Barlow-Medium.woff2") format("woff2")}
-@font-face{font-family:"Barlow";font-weight:600;font-display:swap;src:local("Barlow SemiBold"),url("fonts/Barlow-SemiBold.woff2") format("woff2")}
-@font-face{font-family:"Barlow Condensed";font-weight:500;font-display:swap;src:local("Barlow Condensed Medium"),url("fonts/BarlowCondensed-Medium.woff2") format("woff2")}
-@font-face{font-family:"Barlow Condensed";font-weight:600;font-display:swap;src:local("Barlow Condensed SemiBold"),url("fonts/BarlowCondensed-SemiBold.woff2") format("woff2")}
-@font-face{font-family:"Barlow Condensed";font-weight:700;font-display:swap;src:local("Barlow Condensed Bold"),url("fonts/BarlowCondensed-Bold.woff2") format("woff2")}
 :root{
   --bg:#E4E8EA;
   --panel:#FFFFFF;
