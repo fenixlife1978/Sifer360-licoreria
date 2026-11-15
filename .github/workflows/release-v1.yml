@@ -1,0 +1,48 @@
+name: Publicar SIFER360 LICORERÍA 1.0.0
+
+on:
+  push:
+    branches:
+      - release/v1.0.0
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sifer360-release-v1
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Verificar, compilar y publicar Windows portable
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm install --legacy-peer-deps
+
+      - name: Ejecutar pruebas de regresión
+        run: npm test
+
+      - name: Compilar ejecutable portable
+        run: npm run build:exe
+
+      - name: Publicar Release oficial v1.0.0
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: SIFER360 LICORERÍA v1.0.0
+          body_path: RELEASE_NOTES.md
+          files: dist-exe/sifer360-licoreria-portable.exe
+          draft: false
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
