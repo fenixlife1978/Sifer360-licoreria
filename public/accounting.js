@@ -332,5 +332,7 @@ async function open(){
  }).catch(e=>{alert('No se pudo iniciar Contabilidad: '+e.message);throw e;});
 }
 window.addEventListener('sifer:ready',startAutomaticDepreciation,{once:true});
-window.SIFERAccountingApp={open,close,isOpen};
+window.SIFERAccountingApp={open};
+window.SIFERAccountingApp.close=close;
+window.SIFERAccountingApp.isOpen=isOpen;
 })();
