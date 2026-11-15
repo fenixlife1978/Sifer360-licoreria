@@ -109,3 +109,38 @@ El catálogo SIFER ya distribuido contiene dos agrupadoras bancarias históricas
 - Una operación POS/Tesorería solo se contabiliza una vez, incluso ante reintentos.
 - SQLite confirma la persistencia antes de informar éxito.
 - Los saldos de bancos, cajas, CxC, CxP e inventario se pueden rastrear hasta sus documentos y movimientos auxiliares.
+
+
+## Dashboard del contador y Libro de Movimientos de Mercancía (nuevo alcance SIFER360-LICORERIA)
+
+### Accesos directos en la toolbar del dashboard del contador
+- Añadir accesos directos visibles a Compras, Inventario, Cuentas por Cobrar (CxC), Cuentas por Pagar (CxP) y Libro de Movimientos de Mercancía.
+- Los accesos deben abrir los módulos existentes del POS, respetando permisos y sesión del usuario; no duplicar pantallas ni crear rutas paralelas innecesarias.
+- Mantener la toolbar usable en resoluciones pequeñas: icono y etiqueta legible, sin desbordamiento horizontal; si no cabe, usar distribución adaptable o menú de más opciones.
+- Mostrar el acceso al libro de mercancía como módulo propio del POS, no como un reporte contable aislado.
+
+### Libro de Movimientos de Mercancía dentro del POS
+- Crear un libro cronológico consultable de todos los movimientos reales de inventario.
+- Incluir entradas por compras/recepciones, salidas por ventas, devoluciones de clientes y a proveedores, ajustes, traslados si existen ubicaciones, mermas/pérdidas, vencimientos y demás tipos que el POS realmente soporte.
+- Cada fila debe conservar vínculo navegable al documento u operación de origen, fecha/hora, SKU/código, descripción, cantidad con signo, unidad, tipo, saldo resultante cuando pueda reconstruirse con certeza y usuario/terminal de origen si están disponibles.
+- Filtros por período, artículo, código, tipo de movimiento, documento y usuario; búsqueda rápida y exportación CSV imprimible.
+- Orden cronológico estable y detalle de movimientos; no presentar saldos reconstruidos si faltan eventos históricos necesarios.
+- El libro es estrictamente de consulta/auditoría: no modifica existencias ni crea movimientos. Toda corrección se ejecuta desde la operación funcional correspondiente y queda registrada como nuevo evento, nunca reescribiendo el pasado.
+- Cada operación fuente debe generar un solo evento de inventario, con clave de idempotencia o referencia única para impedir duplicados ante reintentos.
+- La fuente de verdad es SQLite local. No usar LocalStorage como autoridad ni generar datos de demostración.
+- Si una operación antigua no tiene detalle suficiente, identificarla como dato histórico incompleto en vez de inventar cantidad, usuario o documento.
+
+### Pruebas de aceptación del nuevo alcance
+- Los cinco accesos del contador abren el módulo correcto y respetan roles/permisos.
+- La toolbar se adapta a escritorio y ventanas estrechas sin ocultar accesos ni desbordarse.
+- Compras, ventas, devoluciones, ajustes y pérdidas soportados generan el movimiento correcto exactamente una vez.
+- Los filtros y exportaciones coinciden con el conjunto consultado y conservan referencias de origen.
+- La consulta no altera existencias, documentos, caja ni asientos.
+- Se verifica persistencia SQLite, trazabilidad, orden cronológico y conservación del historial tras reinicio.
+
+## Orden de ejecución actualizado
+
+1. Completar y validar movimientos bancarios y conciliación.
+2. Implementar toolbar del dashboard del contador con los cinco accesos solicitados.
+3. Crear el Libro de Movimientos de Mercancía en el POS y probar su integración con cada operación real de inventario.
+4. Continuar caja contable, submayores CxC/CxP, costo de ventas, inversiones y obligaciones, y administración del plan contable.
