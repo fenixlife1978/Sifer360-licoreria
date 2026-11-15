@@ -164,7 +164,7 @@ async function exchangePnpFrame(profile, frame, options = {}) {
     const { stdout } = await exec('powershell.exe', ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',encoded], {
       windowsHide:true, timeout:timeoutMs+4000, maxBuffer:65536
     });
-    const output = String(stdout || '').trim().split(/\\r?\\n/).filter(Boolean).pop();
+    const output = String(stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
     if (!output) throw new Error('Windows no devolvió una respuesta de la impresora.');
     return Buffer.from(output,'base64');
   } catch (error) {

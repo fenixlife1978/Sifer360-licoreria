@@ -164,8 +164,8 @@ test('el transporte PNP envía una sola trama y devuelve la respuesta sin reinte
     const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
     assert.match(script,/SerialPort/);
     assert.match(script,/DiscardInBuffer/);
-    assert.match(script,/AddMilliseconds\\(800\\)/);
-    const match=script.match(/\\$hex='([0-9a-f]+)'/i);
+    assert.match(script,/AddMilliseconds\(800\)/);
+    const match=script.match(/\$hex='([0-9a-f]+)'/i);
     assert.equal(match[1],request.toString('hex'));
     return {stdout:response.toString('base64')};
   }});
