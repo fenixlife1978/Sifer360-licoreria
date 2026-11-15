@@ -111,12 +111,13 @@ test('orquesta factura PNP con subtotal conciliado antes de enviar cierre', asyn
   const transport = { exchange: async frame => {
     const request = pnp.decodeFrame(frame); sent.push(request.command);
     let fields = ['0000','0000'];
+    if (request.command === 0x80) fields = ['0000','0000','PNP-TEST-001','J-12345678-9','','','',''];
     if (request.command === 0x43) fields = ['0000','0000','','','0.00','100.00','16.00','16.00','0.00','8.00','0.00','0.00','0.00','0.00','0.00','100.00','116.00'];
     if (request.command === 0x45) fields = ['0000','0000','1','000012','0','0.00'];
     return pnp.encodeCommand(request.command,fields,request.sequence);
   }};
   const result = await PnpInvoice.emitFiscalInvoice({idempotencyKey:'sale-1',customerName:'Cliente',items:[{description:'Producto',quantity:1,unitPrice:100,taxRate:'.1600'}],fiscalSerial:'PNP-TEST'},transport);
-  assert.deepEqual(sent,[0x40,0x42,0x43,0x45]);
+  assert.deepEqual(sent,[0x80,0x40,0x42,0x43,0x45]);
   assert.equal(result.fiscalDocumentNumber,'000012');
   assert.equal(result.fiscalSerial,'PNP-TEST');
 });
@@ -132,15 +133,33 @@ test('no cierra ni reenvía si el subtotal no coincide', async () => {
     return pnp.encodeCommand(request.command,fields,request.sequence);
   }};
   await assert.rejects(()=>PnpInvoice.emitFiscalInvoice({idempotencyKey:'sale-2',items:[{description:'Producto',quantity:1,unitPrice:100,taxRate:'.1600'}]},transport),/no coinciden/);
-  assert.deepEqual(sent,[0x40,0x42,0x43]);
+  assert.deepEqual(sent,[0x80,0x40,0x42,0x43]);
 });
 
 test('un timeout fiscal se marca como resultado incierto y nunca se reintenta', async () => {
   const PnpInvoice = require('../electron/pnp-serial-transport.cjs');
   let writes = 0;
-  const transport = { exchange: async () => { writes++; throw new Error('timeout'); } };
+  const transport = { exchange: async frame => { writes++; const request=pnp.decodeFrame(frame); if(request.command===0x80)return pnp.encodeCommand(0x80,['0000','0000','PNP-TEST-003','J-12345678-9','','','',''],request.sequence); throw new Error('timeout'); } };
   await assert.rejects(()=>PnpInvoice.emitFiscalInvoice({idempotencyKey:'sale-3',items:[{description:'Producto',quantity:1,unitPrice:1,taxRate:'.0000'}]},transport),error=>{
     assert.equal(error.outcomeUnknown,true); assert.equal(error.retryAllowed,false); return true;
   });
-  assert.equal(writes,1);
+  assert.equal(writes,2);
+});
+
+
+test('consulta serial real antes de abrir factura y registra descuento como renglón negativo', async () => {
+  const PnpInvoice = require('../electron/pnp-serial-transport.cjs');
+  const sent = [];
+  const transport = { exchange: async frame => {
+    const request = pnp.decodeFrame(frame); sent.push(request.command);
+    let fields = ['0000','0000'];
+    if (request.command === 0x80) fields = ['0000','0000','PNP-REAL-001','J-12345678-9','','','',''];
+    if (request.command === 0x42 && sent.filter(x=>x===0x42).length===2) fields = ['0000','0000'];
+    if (request.command === 0x43) fields = ['0000','0000','','','0.00','90.00','16.00','14.40','0.00','8.00','0.00','0.00','0.00','0.00','0.00','90.00','104.40'];
+    if (request.command === 0x45) fields = ['0000','0000','1','000013','0','0.00'];
+    return pnp.encodeCommand(request.command,fields,request.sequence);
+  }};
+  const result = await PnpInvoice.emitFiscalInvoice({idempotencyKey:'sale-discount',customerName:'Cliente',items:[{description:'Producto',quantity:1,unitPrice:100,netAmount:90,taxRate:'.1600'}]},transport);
+  assert.equal(result.fiscalSerial,'PNP-REAL-001');
+  assert.deepEqual(sent,[0x80,0x40,0x42,0x42,0x43,0x45]);
 });

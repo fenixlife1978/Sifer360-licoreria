@@ -26,6 +26,16 @@ function nextSequence(previous) {
   return n >= 0x7f ? 0x20 : n + 1;
 }
 
+function parseFiscalSerial(response) {
+  if (!response || ![0x80,0xbb].includes(response.command) || !Array.isArray(response.fields) || response.fields.length < 8) {
+    throw new Error('La respuesta de seriales fiscales PNP está incompleta.');
+  }
+  const machineSerial = String(response.fields[2] || '').trim();
+  const taxpayerRif = String(response.fields[3] || '').trim();
+  if (!machineSerial) throw new Error('La impresora PNP no devolvió su serial fiscal.');
+  return { machineSerial, taxpayerRif, fiscalMemorySerial:response.fields[4] || '', auditMemorySerial:response.fields[5] || '' };
+}
+
 function buildFiscalInvoiceCommands(invoice, initialSequence = 0x20) {
   if (!invoice || typeof invoice !== 'object' || Array.isArray(invoice)) throw new Error('Datos de factura PNP inválidos.');
   if (!String(invoice.idempotencyKey || '').trim()) throw new Error('La emisión PNP requiere una clave de idempotencia persistida antes del envío.');
@@ -36,6 +46,7 @@ function buildFiscalInvoiceCommands(invoice, initialSequence = 0x20) {
   let sequence = initialSequence;
   const next = () => { sequence = nextSequence(sequence); return sequence; };
   const commands = [];
+  commands.push({ kind:'serial', frame:Protocol.createFiscalSerialQuery(next()) });
   commands.push({ kind:'open', frame:Protocol.createFiscalOpenInvoice({customerName,customerRif}, next()) });
   let base = 0, total = 0;
   for (const [index, item] of invoice.items.entries()) {
@@ -43,11 +54,14 @@ function buildFiscalInvoiceCommands(invoice, initialSequence = 0x20) {
     const unitPrice = money(item.unitPrice, 'Precio unitario del renglón ' + (index + 1));
     const rate = String(item.taxRate == null ? '.0000' : item.taxRate);
     if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Cantidad inválida en el renglón ' + (index + 1) + '.');
-    const lineBase = Math.round((quantity * unitPrice + Number.EPSILON) * 100) / 100;
+    const grossBase = Math.round((quantity * unitPrice + Number.EPSILON) * 100) / 100;
     if (!/^\.\d{4}$/.test(rate)) throw new Error('La tasa PNP debe expresarse como .nnnn en el renglón ' + (index + 1) + '.');
+    const netAmount = item.netAmount == null ? grossBase : money(item.netAmount, 'Base neta del renglón ' + (index + 1));
+    if (netAmount > grossBase + 0.01) throw new Error('La base neta no puede superar el importe bruto del renglón ' + (index + 1) + '.');
+    const discountAmount = money(Math.max(0, grossBase - netAmount), 'Descuento del renglón ' + (index + 1));
     const fraction = Number(rate);
-    base += lineBase;
-    total += lineBase * (1 + fraction);
+    base += netAmount;
+    total += netAmount * (1 + fraction);
     commands.push({kind:'item',frame:Protocol.createFiscalItem({
       description:String(item.description || '').slice(0,20),
       quantity:Number(quantity).toFixed(3),
@@ -55,9 +69,15 @@ function buildFiscalInvoiceCommands(invoice, initialSequence = 0x20) {
       taxRate:rate,
       qualifier:'M'
     },next())});
+    if (discountAmount >= 0.01) {
+      commands.push({kind:'discount',frame:Protocol.createFiscalItem({
+        description:('DESC ' + String(item.description || '')).slice(0,20),
+        quantity:'1.000', amount:discountAmount.toFixed(2), taxRate:rate, qualifier:'m'
+      },next())});
+    }
   }
-  base = money(base,'Base esperada');
-  total = money(total,'Total esperado');
+  base = invoice.expectedBase == null ? money(base,'Base esperada') : money(invoice.expectedBase,'Base esperada');
+  total = invoice.expectedTotal == null ? money(total,'Total esperado') : money(invoice.expectedTotal,'Total esperado');
   commands.push({kind:'subtotal',frame:Protocol.createFiscalSubtotal(next()),expected:{base,total}});
   const closeMode = String(invoice.closeMode || 'T');
   const closeInput = {mode:closeMode};
@@ -71,6 +91,7 @@ async function emitFiscalInvoice(invoice, transport, options = {}) {
   const commands = buildFiscalInvoiceCommands(invoice, options.initialSequence || 0x20);
   const responses = [];
   let opened = false;
+  let fiscalSerial = '';
   for (const command of commands) {
     const request = Protocol.decodeFrame(command.frame);
     let raw;
@@ -84,18 +105,23 @@ async function emitFiscalInvoice(invoice, transport, options = {}) {
       throw new PnpFiscalTransportError(
         'Falló la comunicación PNP durante el comando 0x' + request.command.toString(16).toUpperCase() +
         '. El equipo pudo haber procesado el comando; no se reintentará automáticamente. Consulte el estado y la memoria de auditoría antes de continuar.',
-        {command:request.command,sequence:request.sequence,outcomeUnknown:true,documentMayBeOpen:opened}
+        {command:request.command,sequence:request.sequence,outcomeUnknown:command.kind !== 'serial',documentMayBeOpen:opened}
       );
     }
     let response;
     try {
       response = Protocol.decodeFrame(raw);
-      Protocol.validateResponse(response,{sequence:request.sequence,command:request.command});
+      if (command.kind === 'serial') {
+        if (response.sequence !== request.sequence) throw new Error('La secuencia de respuesta PNP no coincide con la consulta de serial.');
+        fiscalSerial = parseFiscalSerial(response).machineSerial;
+      } else {
+        Protocol.validateResponse(response,{sequence:request.sequence,command:request.command});
+      }
     } catch (error) {
       throw new PnpFiscalTransportError(
         'Respuesta PNP inválida o rechazada para el comando 0x' + request.command.toString(16).toUpperCase() +
         ': ' + error.message + ' No se enviarán más comandos.',
-        {command:request.command,sequence:request.sequence,outcomeUnknown:false,documentMayBeOpen:opened}
+        {command:request.command,sequence:request.sequence,outcomeUnknown:command.kind !== 'serial',documentMayBeOpen:opened}
       );
     }
     responses.push(response);
@@ -110,10 +136,10 @@ async function emitFiscalInvoice(invoice, transport, options = {}) {
         'La impresora respondió al cierre pero no devolvió el número de factura. No reintente; concilie el documento en la memoria de auditoría.',
         {command:request.command,sequence:request.sequence,outcomeUnknown:true,documentMayBeOpen:false}
       );
-      return {ok:true,fiscalDocumentNumber:number,fiscalSerial:String(invoice.fiscalSerial || '').trim(),responses};
+      return {ok:true,fiscalDocumentNumber:number,fiscalSerial,responses};
     }
   }
   throw new PnpFiscalTransportError('La secuencia PNP terminó sin confirmación de cierre fiscal.',{outcomeUnknown:true,documentMayBeOpen:opened});
 }
 
-module.exports = { PnpFiscalTransportError, buildFiscalInvoiceCommands, emitFiscalInvoice, nextSequence };
+module.exports = { PnpFiscalTransportError, parseFiscalSerial, buildFiscalInvoiceCommands, emitFiscalInvoice, nextSequence };
