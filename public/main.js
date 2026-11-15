@@ -6503,33 +6503,12 @@ window.SIFERAccountingBridge={getState:()=>S,save:()=>save(),setAccounting:async
 
 /* ---------- menús y barra de herramientas ---------- */
 const focusEntry=()=>$('#entry').focus();
-async function verifyFiscalPrinterForAccounting(){
- const message='El módulo de Contabilidad requiere una impresora fiscal conectada y activa que pueda generar documentos fiscales. Conecte y active una impresora fiscal para acceder.';
- if(!S||!S.cfg||!S.cfg.fiscalPrinters)return {ready:false,message};
- if(!window.posDesktop||typeof window.posDesktop.fiscalPrinterReadiness!=='function')return {ready:false,message:message+' La validación de hardware solo está disponible en la aplicación de escritorio.'};
- const profiles=Object.values(S.cfg.fiscalPrinters).filter(p=>p&&p.enabled===true),failures=[];
- if(!profiles.length)return {ready:false,message};
- for(const profile of profiles){try{const status=await window.posDesktop.fiscalPrinterReadiness(profile);if(status&&status.ready===true)return status;failures.push(status&&status.message?status.message:'La impresora no confirmó disponibilidad fiscal.');}catch(e){failures.push(e&&e.message?e.message:String(e));}}
- return {ready:false,message:message+(failures.length?' Motivo: '+failures.join(' · '):'')};
-}
-window.SIFERAccountingGate=verifyFiscalPrinterForAccounting;
-let accountingFiscalMonitor=null,accountingFiscalCheckBusy=false;
-function stopAccountingFiscalMonitor(){if(accountingFiscalMonitor){clearInterval(accountingFiscalMonitor);accountingFiscalMonitor=null;}}
 async function openAccountingModule(){
  if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir Contabilidad.','bad');return;}
  const app=window.SIFERAccountingApp;
  if(!app||typeof app.open!=='function'){msg('Contabilidad VEN-NIF no está disponible: no se cargó el módulo.','bad');return;}
- try{
-  const opened=await app.open();if(opened!==true)return;
-  stopAccountingFiscalMonitor();
-  accountingFiscalMonitor=setInterval(async()=>{
-   if(!app.isOpen||!app.isOpen()){stopAccountingFiscalMonitor();return;}
-   if(accountingFiscalCheckBusy)return;accountingFiscalCheckBusy=true;
-   try{const status=await verifyFiscalPrinterForAccounting();if(!status.ready){app.close();stopAccountingFiscalMonitor();msg('Contabilidad se bloqueó porque la impresora fiscal dejó de estar conectada u operativa. '+status.message,'bad');}}
-   catch(e){app.close();stopAccountingFiscalMonitor();msg('Contabilidad se bloqueó al perder la validación de la impresora fiscal: '+e.message,'bad');}
-   finally{accountingFiscalCheckBusy=false;}
-  },15000);
- }catch(e){msg('No se pudo abrir Contabilidad: '+(e&&e.message?e.message:String(e)),'bad');}
+ try{await app.open();}
+ catch(e){msg('No se pudo abrir Contabilidad: '+(e&&e.message?e.message:String(e)),'bad');}
 }
 const MENUS={
  'Archivo':[['Dashboard','',showDashboardScreen],['Abrir caja (POS)','',openCashboxDlg],['Nueva venta','F2',newSale],['Suspender venta','F5',suspend],['Recuperar venta','F6',recoverDlg],'-',['Ventas del día y cierre…','F9',salesDlg],'-',['Gestión de usuarios','',usersManagementDlg],['Gestión de cajas','',cashboxesManagementDlg],['Cerrar sesión','',()=>window.SIFERAccess&&window.SIFERAccess.logout()],'-',['Restablecer datos de ejemplo…','',resetAll]],
