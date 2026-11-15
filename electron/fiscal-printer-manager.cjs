@@ -70,7 +70,8 @@ function getSdkStatus(profile){
     else if(!group.compatible)architectureIssues.push('La arquitectura de las DLL SDK no coincide o no puede verificarse frente al puente fiscal: '+group.alternatives.join(' / ')+'.');
   }
   const sdkReady=groups.every(group=>group.present);
-  const ready=!!normalized.port&&bridgeExists&&sdkReady&&architectureVerified;
+  const configured=!!normalized.port&&bridgeExists&&sdkReady;
+  const ready=configured&&architectureVerified;
   const note=ready
     ?'Puente y SDK localizados. Arquitectura PE comprobada y compatible entre el adaptador y al menos una DLL de cada grupo.'
     :architectureIssues.length
@@ -82,7 +83,7 @@ function getSdkStatus(profile){
     provider:provider.id,providerLabel:provider.label,model:normalized.model,files,groups,
     bridgePath:normalized.bridgePath,bridgeExists,bridgeArchitecture,
     hostProcessArchitecture:BinaryArchitecture.normalizeRuntimeArchitecture(process.arch),osArchitecture,bridgeRuntimeArchitecture,bridgeRunnable,
-    architectureVerified,architectureIssues,ready,note
+    architectureVerified,architectureIssues,configured,ready,note
   };
 }
 async function listSerialPorts(options={}){
@@ -345,11 +346,13 @@ async function checkFiscalReadiness(profile,options={}){
     return{ready:true,provider:p.provider,model:p.model,port:p.port,serial:identity.machineSerial,deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:true,message:'Impresora PNP conectada por protocolo nativo v5.4, lista y con serial fiscal confirmado.'};
   }
   const sdk=getSdkStatus(p);
-  if(!sdk.ready)return{ready:false,message:'Configuración fiscal no compatible: '+sdk.note};
+  if(!sdk.configured)return{ready:false,message:'Falta configuración básica para probar la impresora fiscal: seleccione el puerto, el puente y los archivos SDK requeridos. '+sdk.note};
+  // La arquitectura PE es un diagnóstico preventivo, no una barrera de emisión.
+  // La prueba real del puente decide si el hardware responde y puede emitir.
   const bridgeProbe=options.bridgeProbe||((normalized)=>runBridge(normalized,'status',{requestId:crypto.randomUUID()},options));
   const bridge=await bridgeProbe(p,options);
   if(!bridge||bridge.deviceConnected!==true||bridge.fiscalReady!==true||bridge.canEmitFiscalDocuments!==true)return{ready:false,message:'El puente fiscal no confirmó dispositivo conectado, estado fiscal listo y capacidad real de emitir documentos fiscales.'};
-  return{ready:true,provider:p.provider,model:p.model,port:p.port,message:'Impresora fiscal conectada, operativa y habilitada para emitir documentos fiscales.'};
+  return{ready:true,provider:p.provider,model:p.model,port:p.port,architectureVerified:sdk.architectureVerified,architectureIssues:sdk.architectureIssues,message:sdk.architectureVerified?'Impresora fiscal conectada, operativa y habilitada para emitir documentos fiscales.':'La comunicación real confirmó la impresora y la capacidad de emisión. Advertencia de arquitectura: '+(sdk.architectureIssues||[]).join(' ')};
  } catch(error) {
   return{ready:false,message:'No se pudo validar la impresora fiscal: '+(error&&error.message?error.message:String(error))};
  }
