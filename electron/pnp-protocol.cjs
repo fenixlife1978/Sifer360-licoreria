@@ -74,9 +74,9 @@ function createFiscalText(input = {}, sequence = MIN_SEQUENCE) {
 
 function createFiscalItem(input = {}, sequence = MIN_SEQUENCE) {
   const description = assertTextField(input.description, 20, 'Descripción del renglón');
-  const quantity = assertDecimalField(input.quantity, /^\\d{1,4}\\.\\d{3}$/, 'Cantidad');
-  const amount = assertDecimalField(input.amount, /^\\d{1,6}\\.\\d{2}$/, 'Monto del ítem');
-  const taxRate = assertDecimalField(input.taxRate, /^\\.?\\d{4}$/, 'Tasa imponible');
+  const quantity = assertDecimalField(input.quantity, /^\d{1,4}\.\d{3}$/, 'Cantidad');
+  const amount = assertDecimalField(input.amount, /^\d{1,6}\.\d{2}$/, 'Monto del ítem');
+  const taxRate = assertDecimalField(input.taxRate, /^\.?\d{4}$/, 'Tasa imponible');
   const qualifier = String(input.qualifier == null ? 'M' : input.qualifier);
   if (!['M', 'm'].includes(qualifier)) throw new Error('Calificador de renglón PNP no válido.');
   return encodeCommand(0x42, [description, quantity, amount, taxRate, qualifier, '', '', ''], sequence);
@@ -91,7 +91,7 @@ function createFiscalCloseInvoice(input = {}, sequence = MIN_SEQUENCE) {
   if (!['A', 'B', 'T', 'U'].includes(mode)) throw new Error('Calificador de cierre fiscal PNP no válido.');
   let foreignCurrencyAmount = '';
   if (mode === 'B' || mode === 'U') {
-    foreignCurrencyAmount = assertDecimalField(input.foreignCurrencyAmount, /^\\d{1,10}\\.\\d{2}$/, 'Monto pagado en divisas para IGTF');
+    foreignCurrencyAmount = assertDecimalField(input.foreignCurrencyAmount, /^\d{1,10}\.\d{2}$/, 'Monto pagado en divisas para IGTF');
   } else if (input.foreignCurrencyAmount != null && String(input.foreignCurrencyAmount) !== '') {
     throw new Error('El monto en divisas solo aplica a los cierres PNP B o U.');
   }
