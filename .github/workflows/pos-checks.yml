@@ -2,9 +2,9 @@ name: POS checks
 
 on:
   push:
-    branches: [main, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening]
+    branches: [main, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-printer-auto-assistant]
   pull_request:
-    branches: [main, integration/sqlite-lan-stage-1]
+    branches: [main, integration/sqlite-lan-stage-1, release/v1.0.0]
 
 jobs:
   validate:
