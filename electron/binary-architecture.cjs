@@ -103,7 +103,7 @@ function normalizeWindowsArchitecture(value) {
 }
 
 function detectWindowsArchitecture(env = process.env, runtimeArch = process.arch) {
-  return normalizeWindowsArchitecture(env.PROCESSOR_ARCHITEW6432 || env.PROCESSOR_ARCHITECTURE) || normalizeRuntimeArchitecture(runtimeArch);
+  const detected = normalizeWindowsArchitecture(env.PROCESSOR_ARCHITEW6432 || env.PROCESSOR_ARCHITECTURE);\n  return detected !== 'unknown' ? detected : normalizeRuntimeArchitecture(runtimeArch);
 }
 
 function canRunBridge(osArchitecture, bridgeArchitecture) {
