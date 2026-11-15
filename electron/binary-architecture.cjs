@@ -106,10 +106,17 @@ function detectWindowsArchitecture(env = process.env, runtimeArch = process.arch
   const detected = normalizeWindowsArchitecture(env.PROCESSOR_ARCHITEW6432 || env.PROCESSOR_ARCHITECTURE);\n  return detected !== 'unknown' ? detected : normalizeRuntimeArchitecture(runtimeArch);
 }
 
+function resolveBridgeRuntimeArchitecture(osArchitecture, bridgeArchitecture) {
+  if (bridgeArchitecture !== 'anycpu') return bridgeArchitecture;
+  if (osArchitecture === 'x64' || osArchitecture === 'x86') return osArchitecture;
+  return 'unknown';
+}
+
 function canRunBridge(osArchitecture, bridgeArchitecture) {
-  if (osArchitecture === 'x64') return bridgeArchitecture === 'x64' || bridgeArchitecture === 'x86';
-  if (osArchitecture === 'x86') return bridgeArchitecture === 'x86';
-  if (osArchitecture === 'arm64') return bridgeArchitecture === 'arm64';
+  const effective = resolveBridgeRuntimeArchitecture(osArchitecture, bridgeArchitecture);
+  if (osArchitecture === 'x64') return effective === 'x64' || effective === 'x86';
+  if (osArchitecture === 'x86') return effective === 'x86';
+  if (osArchitecture === 'arm64') return effective === 'arm64';
   return null;
 }
 
@@ -126,5 +133,6 @@ module.exports = {
   normalizeWindowsArchitecture,
   detectWindowsArchitecture,
   canRunBridge,
+  resolveBridgeRuntimeArchitecture,
   canLoadSdk
 };
