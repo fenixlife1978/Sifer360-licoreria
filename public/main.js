@@ -5394,7 +5394,7 @@ function fiscalPrinterConfigDlg(){
       $('#fpPortList',el).innerHTML=ports.map(p=>'<option value="'+esc(p.port)+'">'+esc(p.name)+'</option>').join('');
       if(!ports.length){node.textContent=r.message||'Windows no detectó puertos COM. Conecte la impresora y revise cable y controlador.';return;}
       const driverNames={prolific:'Prolific PL2303',ftdi:'FTDI VCP',silabs:'Silicon Labs CP210x'};
-      const summaries=ports.map(p=>p.port+' — '+p.name+(p.driverId?' · chipset probable: '+(driverNames[p.driverId]||p.driverId):p.vendorId?' · VID '+p.vendorId:' · chipset no identificado'));
+      const summaries=ports.map(p=>p.port+' — '+p.name+(p.driverId?' · chipset probable: '+(driverNames[p.driverId]||p.driverId):'')+(p.vendorId?' · VID:PID '+p.vendorId+':'+(p.productId||'????'):''));
       const likely=ports.filter(p=>p.driverId);
       const base=profile();
       if(base.provider==='pnp'){
@@ -5419,7 +5419,8 @@ function fiscalPrinterConfigDlg(){
           }catch{}
         }
       }
-      node.textContent='DIAGNÓSTICO USB COMPLETADO. Puertos: '+summaries.join(' | ')+'. '+(likely.length?'Controlador/chipset probable: '+likely.map(p=>driverNames[p.driverId]).filter((v,i,a)=>a.indexOf(v)===i).join(', ')+'.':'No se identificó el chipset USB-Serial.')+' Esta detección NO identifica fabricante/modelo fiscal ni valida un SDK. Seleccione el puerto y confirme marca/modelo en la etiqueta; después valide el protocolo.';
+      const driverAdvice=likely.length?'Controlador USB-Serial probable: '+likely.map(p=>driverNames[p.driverId]||p.driverId).filter((v,i,a)=>a.indexOf(v)===i).join(', ')+'. Si Windows lo marca con error, consulte el fabricante del chipset.':'No se pudo inferir el chipset USB-Serial por su identificador.';
+      node.textContent='DIAGNÓSTICO DE HARDWARE COMPLETADO. '+summaries.join(' | ')+'. '+driverAdvice+' El VID/PID identifica el adaptador USB, NO la impresora fiscal conectada detrás de él. No se puede deducir marca/modelo fiscal ni compatibilidad del SDK con estos datos. Seleccione el puerto, confirme el modelo en la placa y elija el paquete oficial correspondiente; luego ejecute la prueba del protocolo.';
     }catch(e){node.textContent='No se pudieron detectar dispositivos: '+e.message;}
   };
   const applyDraft=()=>{
