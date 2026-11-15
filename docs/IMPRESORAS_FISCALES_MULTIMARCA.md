@@ -78,7 +78,8 @@ Los SDK de cada familia tienen APIs distintas. No se debe fabricar un puente gen
 - La emisión fiscal requiere número de documento y serial confirmados por el adaptador.
 - No se degrada automáticamente a impresión térmica común si la máquina fiscal falla.
 - No se instalan controladores ni se modifican dispositivos de Windows silenciosamente.
-- Los DLL/SDK y drivers propietarios no se incluyen en el instalador hasta verificar permiso de redistribución y firma/procedencia.
+- Los DLL/SDK y drivers gratuitos se obtienen desde los portales públicos del fabricante o su canal técnico. No se presume una prohibición de uso por el simple hecho de que la página no incluya una frase expresa de redistribución.
+- La descarga/uso individual y la copia del binario dentro del instalador son acciones distintas. El administrador puede descargar el paquete gratuito y seleccionarlo en la configuración. Solo se empaqueta una copia cuando la publicación o el paquete permita esa redistribución; si no está claro, se mantiene la descarga individual sin impedir el uso del paquete. Se respetan las restricciones que el fabricante indique claramente.
 - El sistema no descarga ni ejecuta controladores desde URLs configurables.
 
 ## Controladores USB-Serial
@@ -96,7 +97,7 @@ El usuario/instalador autorizado debe instalar el paquete firmado que correspond
 - Catálogo oficial de impresoras fiscales The Factory HKA: https://thefactoryhka.com/ve/productos/impresoras
 - Wiki The Factory HKA: https://wiki.thefactoryhka.com.ve/doku.php (la documentación pública consultada corresponde a Imprenta Digital REST API; no se debe confundir con el SDK local de impresora fiscal).
 - Manual HKA de impresora SRP-350 (referencia de conexión USB Prolific y puerto serial; confirmar aplicabilidad al modelo/país): https://www.thefactoryhka.com/extranet-pa/downloads/MANUAL%20DE%20USUARIO%20SRP-350.pdf
-- Bematech: solicitar el SDK fiscal de la referencia exacta al fabricante o representante autorizado. La documentación técnica pública de BemaFI32 describe configuración de puerto y archivos de retorno, pero debe confirmarse la versión y licencia de la DLL instalada.
+- Bematech / POS Venezuela: portal público de librerías DLL y descargas. Publica librerías DLL y drivers USB para MP-4000 y MP-4200: https://posvenezuela.com/librerias-dll/ y https://posvenezuela.com/descargas-2/. El paquete debe corresponder al modelo/firmware; no todos los modelos Bematech usan el mismo SDK.
 - Epson Venezuela — portal de desarrolladores: https://epson.com.ve/developers-products (Epson indica que los materiales técnicos para desarrolladores se solicitan directamente; no se asume que la DLL sea de descarga libre).
 - Quorion — descargas y manuales: https://quorionus.com/downloads/ (incluye software QMP y manuales; validar API/SDK fiscal con el distribuidor).
 - Aclas: https://www.aclas.com/
@@ -146,9 +147,9 @@ Preferir el controlador firmado que corresponda al identificador VID/PID y a la 
 
 ### Política de SDK y DLL fiscales
 
-Los SDKs fiscales (por ejemplo, TfhkaNet/tfhkaif, BemaFI, Epson Fiscal, QProg, AclasSDK y pnpdll) no se consideran redistribuibles solo por estar disponibles en Internet. Antes de empaquetarlos se requiere una licencia o autorización del fabricante que permita su redistribución. SIFER puede integrar bibliotecas gratuitas con licencia de redistribución explícita; no incluirá binarios propietarios obtenidos de repositorios no oficiales ni ejecutará instaladores sin consentimiento del administrador.
+SIFER facilita el acceso y uso de los SDK/DLL que los fabricantes o sus canales técnicos publican gratuitamente para usuarios e integradores. No se presume una prohibición de uso por ausencia de una frase expresa de redistribución. Se distingue entre (1) descarga y uso individual desde la fuente pública y (2) copiar el binario dentro del instalador de SIFER. El administrador puede descargar el paquete gratuito, seleccionarlo en la configuración y utilizarlo con el adaptador correspondiente. Solo se copia al instalador cuando la publicación o el paquete permita esa redistribución; si no está claro, se conserva el flujo de descarga individual sin impedir su uso. Se respetan las restricciones expresas del fabricante. No se ejecutan instaladores ni se modifican archivos sin confirmación del administrador.
 
-La pantalla de configuración fiscal incorpora accesos a los portales oficiales permitidos (PNP, Prolific, FTDI, Silicon Labs, The Factory HKA, Epson, Quorion y Aclas) mediante una lista cerrada de destinos en el proceso principal Electron. No acepta URLs arbitrarias. La descarga se realiza en el navegador externo y el administrador selecciona luego los archivos originales desde el POS. Bematech requiere el paquete fiscal exacto del representante autorizado. La compilación actual no descarga ni instala controladores o SDKs silenciosamente durante la instalación o ejecución. La instalación sin impresora y la modalidad térmica genérica no requieren DLLs fiscales.
+La pantalla fiscal ofrece destinos cerrados para PNP (DLL 32/64 bits y protocolo 0141), Bematech/POS Venezuela (DLL y drivers), Prolific, FTDI, Silicon Labs, The Factory HKA, Epson, Quorion y Aclas. No acepta URLs arbitrarias. La descarga se realiza desde la página pública del proveedor y el administrador selecciona luego los archivos originales desde el POS. La aplicación no descarga ni instala controladores silenciosamente.
 
 ### Separación de documentos internos y fiscales
 
