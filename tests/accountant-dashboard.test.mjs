@@ -14,9 +14,10 @@ test('contador inicia directamente en su dashboard fiscal-contable',()=>{
  assert.match(html,/accountant-dashboard\.js/);
 });
 test('la toolbar del contador autoriza exclusivamente Fiscal y Contabilidad',()=>{
- assert.match(access,/contador:\['seniat','contabilidad'\]/);
+ assert.match(access,/contador:\['seniat','contabilidad','compras','inventario','cxc','cxp','kardex','libroInventario'\]/);
  assert.match(access,/function canAccess\(module,u\)/);
  assert.match(access,/accountant-toolbar/);
+ assert.match(access,/libroInventario/);
  assert.match(access,/#toolbar \.tsep/);
  assert.match(access,/separator\.hidden=accountant/);
  assert.match(main,/SIFERAccess\.canAccess\(b\.dataset\.tb,user\)/);
@@ -47,4 +48,13 @@ test('los nuevos scripts y estilos cargan sin alterar el orden del POS y contabi
  assert.ok(html.indexOf('/accountant-dashboard.js')<html.indexOf('/accounting.js'));
  assert.match(html,/accountant-dashboard\.css/);
  assert.doesNotThrow(()=>new vm.Script(dashboard));
+});
+
+test('el contador reutiliza módulos POS existentes y accede al libro fiscal ampliado sin duplicar Kardex',()=>{
+ assert.match(main,/\['libroInventario','Libro inventario','',\(\)=>seniatSudebanDlg\('inventario'\)\]/);
+ assert.match(main,/function seniatSudebanDlg/);
+ for(const view of ['existencias','kardex','entradas','vennif','mercantil'])assert.ok(main.includes("'"+view+"'"),view);
+ assert.match(main,/S\.kardex/);
+ assert.match(main,/data-inv-view/);
+ assert.match(main,/No se fabrican saldos históricos/);
 });
