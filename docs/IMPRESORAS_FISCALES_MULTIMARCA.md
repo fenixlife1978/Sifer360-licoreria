@@ -158,11 +158,13 @@ La pantalla fiscal ofrece destinos cerrados para PNP (DLL 32/64 bits y protocolo
 
 Los documentos con `docType: TICKET-INTERNO` o `documentMode: INTERNAL_THERMAL/NO_PRINTER` se conservan en el historial de ventas, inventario, caja y reportes comerciales. Se excluyen del Libro de Ventas Fiscal, de los resúmenes de documentos fiscales y del débito mensual de IVA. No reciben número de control fiscal, serial de máquina ni número fiscal simulado. Los documentos heredados sin modalidad explícita conservan el tratamiento anterior para no alterar registros históricos.
 
-## Contabilidad restaurada y bloqueo fiscal
+## Contabilidad restaurada y separación del hardware fiscal
 
-El módulo original de Contabilidad VEN-NIF está restaurado en la aplicación, con su dashboard de contador, estilos, catálogo predeterminado de cuentas y persistencia en el snapshot SQLite. Su acceso permanece bloqueado mientras no exista una impresora fiscal conectada, activa y capaz de emitir documentos fiscales. La comprobación se realiza en cada apertura y se vigila durante la sesión; si se pierde el estado fiscal, el módulo se cierra y se informa al usuario.
+El módulo original de Contabilidad VEN-NIF está restaurado en la aplicación, con su dashboard de contador, estilos, catálogo predeterminado de cuentas y persistencia en el snapshot SQLite. El acceso contable está autorizado por rol (Administrador/Contador) y **no requiere una impresora fiscal conectada**. El libro diario, mayor, balance, plan de cuentas y consultas contables pueden utilizarse en instalaciones sin hardware fiscal.
 
-Para PNP, la validación se realiza ahora mediante el protocolo serial nativo v5.4: consulta de estado fiscal y confirmación del serial de máquina. No se exige una DLL puente externa para esta ruta nativa. Para otros fabricantes continúa siendo obligatoria la confirmación explícita del adaptador correspondiente: dispositivo conectado, estado fiscal listo y capacidad real de emitir.
+La validación de impresora se aplica exclusivamente al flujo de emisión de documentos fiscales. Antes de transmitir una factura, el adaptador debe confirmar dispositivo conectado, estado fiscal listo y capacidad real de emitir. La ausencia de impresora no bloquea la contabilidad, ventas internas, inventario, caja ni reportes comerciales. Los tickets internos no se convierten en documentos fiscales y no reciben numeración fiscal simulada.
+
+Para PNP, la validación previa a la emisión se realiza mediante el protocolo serial nativo v5.4 y confirmación del serial de máquina. No se exige una DLL puente externa para esta ruta nativa. Para otros fabricantes continúa siendo obligatoria la confirmación explícita del adaptador correspondiente. La compatibilidad física de cada modelo se mantiene pendiente hasta disponer del equipo para su aceptación; esta limitación no impide utilizar el módulo contable.
 
 ## Comunicación fiscal PNP nativa v5.4
 
