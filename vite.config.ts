@@ -5,6 +5,8 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // El portable Electron carga dist/index.html con file://; usar rutas relativas para todos los assets.
+    base: './',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
