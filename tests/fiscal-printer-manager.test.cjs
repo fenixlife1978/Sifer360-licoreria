@@ -117,7 +117,7 @@ test('la emisión PNP se bloquea antes de llamar al adaptador cuando el estado f
   const protocol = require('../electron/pnp-protocol.cjs');
   await assert.rejects(() => manager.emitInvoice(
     {provider:'pnp',model:'PF-220A',port:'COM4',bridgePath:path.join(os.tmpdir(),'bridge-no-ejecutado.exe')},
-    {idempotencyKey:'sale-pnp-01',total:10},
+    {idempotencyKey:'sale-pnp-01',customer:{name:'Cliente'},lines:[{description:'Producto',quantity:1,unitPriceVes:10,netVes:10,taxRate:0}],totals:{taxableBaseVes:10,totalVes:10},payments:[]},
     {platform:'win32',execFileAsync:async(_command,args)=>{
       const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
       const match=script.match(/\$hex='([0-9a-f]+)'/i);

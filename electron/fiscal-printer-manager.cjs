@@ -138,10 +138,10 @@ async function emitInvoice(profile,invoice,options={}){
   const requestId=cleanText(invoice.idempotencyKey,120);if(!requestId)throw new Error('La emisión fiscal exige una clave de idempotencia persistida antes del envío.');
   const normalized = normalizeProfile(profile);
   if (normalized.provider === 'pnp') {
+    const pnpInvoice = mapInvoiceToPnp(invoice);
     const status = await testPnpFiscalStatus(normalized, options);
     if (!status.ready) throw new Error('Emisión fiscal bloqueada por el estado de la impresora PNP: ' + status.statusDescription +
       (status.warnings.length ? ' ' + status.warnings.join(' ') : '') + ' No se envió la factura.');
-    const pnpInvoice = mapInvoiceToPnp(invoice);
     const issued = await PnpSerialTransport.emitFiscalInvoice(pnpInvoice,{
       exchange:(frame,meta)=>exchangePnpFrame(normalized,frame,{...options,timeoutMs:meta.timeoutMs})
     },options);

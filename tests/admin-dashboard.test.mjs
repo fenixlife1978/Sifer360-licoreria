@@ -168,7 +168,7 @@ test('compras acepta y conserva hasta ocho decimales en costos, precios, subtota
   assert.match(compras, /data-cpf="cost" value="\'\+nf8\(l\.cost\)/);
   assert.match(compras, /data-cpf="price" value="\'\+nf8\(l\.price\)/);
   assert.match(compras, /const base=r8\(pLines\.reduce/);
-  assert.match(compras, /const iva=r8\(pLines\.reduce/);
+  assert.match(compras, /const iva=docType==='FACTURA_FISCAL'\?r8\(pLines\.reduce/);
   assert.match(compras, /const tot=r8\(base\+iva\)/);
   assert.match(compras, /if\(t\.dataset\.cpf==='cost'\)l\.cost=r8\(val\)/);
   assert.match(compras, /const nextCost=nextStock>0\?r8\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
@@ -181,8 +181,8 @@ test('CxP de compras conserva ocho decimales en saldos y pagos y mantiene el his
   const purchaseEnd = main.indexOf('const renderSuppliersTab=v=>', purchaseStart);
   const purchaseHistory = main.slice(purchaseStart, purchaseEnd);
   assert.match(purchaseHistory, /const payable=r8\(c\.payableTotal===undefined/);
-  assert.match(purchaseHistory, /const paidTotal=r8\(Number\(c\.paid\|\|0\)\+Number\(c\.withheldIslrPaid\|\|0\)\)/);
-  assert.match(purchaseHistory, /Pagado \/ Retenido US\$/);
+  assert.match(purchaseHistory, /const paidTotal=r8\(Number\(c\.paid\|\|0\)\)/);
+  assert.match(purchaseHistory, /Retenciones US\$/);\n  assert.match(purchaseHistory, /Pagado US\$/);
   assert.match(purchaseHistory, /nf8\(c\.total\)/);
   assert.match(purchaseHistory, /nf8\(pend\)/);
   assert.match(purchaseHistory, /x\.void=true;x\.voidedAt=Date\.now\(\)/);

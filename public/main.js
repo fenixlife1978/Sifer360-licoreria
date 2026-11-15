@@ -2457,7 +2457,7 @@ function comprasDlg(initialTab){
       '<div class="fltgrid">'+
         '<div class="f" style="grid-column:span 2"><label for="cpSup">Proveedor</label><select class="fld" id="cpSup">'+supOpts+'</select></div>'+
         '<div class="f"><label for="cpDocType">Tipo de documento</label><select class="fld" id="cpDocType"><option value="FACTURA_FISCAL" '+(docType==='FACTURA_FISCAL'?'selected':'')+'>Factura fiscal</option><option value="NOTA_ENTREGA" '+(docType==='NOTA_ENTREGA'?'selected':'')+'>Nota de entrega / no fiscal</option><option value="OTRO_NO_FISCAL" '+(docType==='OTRO_NO_FISCAL'?'selected':'')+'>Otro documento no fiscal</option></select></div>'+
-        '<div class="f"><label for="cpDoc">Nº de documento del proveedor *</label><input class="fld mono" id="cpDoc" value="" placeholder="Copiar del documento original" autocomplete="off" required></div>'+
+        '<div class="f"><label id="cpDocLabel" for="cpDoc">Nº de factura del proveedor *</label><input class="fld mono" id="cpDoc" value="" placeholder="Copiar del documento original" autocomplete="off" required></div>'+
         '<div class="f" id="cpCtrlWrap"><label for="cpCtrl">Nº de control fiscal *</label><input class="fld mono" id="cpCtrl" value="" placeholder="Número de control de la factura" autocomplete="off"></div>'+
         '<div class="f"><label for="cpDate">Fecha de emisión del documento *</label><input class="fld" id="cpDate" type="date" value="'+isoD(Date.now())+'" required></div>'+
         '<div class="f"><label for="cpRate">Tasa BCV histórica (Bs./USD)</label><input class="fld r mono" id="cpRate" value="'+(purchaseRate?nf8(purchaseRate):'')+'" readonly placeholder="Consultando…"><small id="cpRateStatus" class="muted">'+esc(rateStatus)+'</small></div>'+
@@ -2530,7 +2530,9 @@ function comprasDlg(initialTab){
           '<tr class="tot"><td>Total del documento</td><td class="r">'+nf8(tot)+'</td><td class="r">'+nf8(r8(tot*rate))+'</td></tr>'+
         '</tbody></table>'+
         '<table class="sumt"><thead><tr><th>Retenciones y condición financiera</th><th class="r">US$</th><th class="r">Bs.</th></tr></thead><tbody>'+
-          '<tr><td>Retención IVA ('+retPct+'%)</td><td class="r">'+nf8(retIva)+'</td><td class="r">'+nf8(r8(retIva*rate))+'</td></tr>'+\n          '<tr><td>Retención ISLR ('+nf(retIslrPct)+'% sobre base)</td><td class="r">'+nf8(retIslr)+'</td><td class="r">'+nf8(r8(retIslr*rate))+'</td></tr>'+\n          '<tr><td>Modalidad</td><td colspan="2" class="r"><b>'+esc(cond)+(cond==='Crédito'?' ('+creditDays+' días)':'')+'</b></td></tr>'+
+          '<tr><td>Retención IVA ('+retPct+'%)</td><td class="r">'+nf8(retIva)+'</td><td class="r">'+nf8(r8(retIva*rate))+'</td></tr>'+
+          '<tr><td>Retención ISLR ('+nf(retIslrPct)+'% sobre base)</td><td class="r">'+nf8(retIslr)+'</td><td class="r">'+nf8(r8(retIslr*rate))+'</td></tr>'+
+          '<tr><td>Modalidad</td><td colspan="2" class="r"><b>'+esc(cond)+(cond==='Crédito'?' ('+creditDays+' días)':'')+'</b></td></tr>'+
           '<tr class="good"><td>Monto Pagado / Abonado al proveedor</td><td class="r">'+nf8(effPaid)+'</td><td class="r">'+nf8(r8(effPaid*rate))+'</td></tr>'+
           '<tr class="'+(pend>0?'warn':'')+'"><td>Saldo real a Cuentas por Pagar (CxP)</td><td class="r">'+nf8(pend)+'</td><td class="r">'+nf8(r8(pend*rate))+'</td></tr>'+
         '</tbody></table>';
@@ -2539,7 +2541,7 @@ function comprasDlg(initialTab){
     v.onchange=e=>{
       const t=e.target;
       if(t.id==='cpSup'){supIdx=+t.value;drawLines();return;}
-      if(t.id==='cpDocType'){docType=t.value;pLines.forEach(line=>{if(docType!=='FACTURA_FISCAL')line.taxRate=0;else if(Number(line.taxRate||0)===0){const product=prod(line.code);line.taxRate=product?prodTaxRate(product):16;}});$('#cpCtrlWrap',v).style.display=docType==='FACTURA_FISCAL'?'':'none';drawLines();return;}
+      if(t.id==='cpDocType'){docType=t.value;const docLabel=$('#cpDocLabel',v);if(docLabel)docLabel.textContent=docType==='FACTURA_FISCAL'?'Nº de factura del proveedor *':'Nº de documento del proveedor *';pLines.forEach(line=>{if(docType!=='FACTURA_FISCAL')line.taxRate=0;else if(Number(line.taxRate||0)===0){const product=prod(line.code);line.taxRate=product?prodTaxRate(product):16;}});$('#cpCtrlWrap',v).style.display=docType==='FACTURA_FISCAL'?'':'none';drawLines();return;}
       if(t.id==='cpDate'){refreshPurchaseRate(t.value,v,drawLines);return;}
       if(t.id==='cpRetIslrPct'){retIslrPct=Math.min(100,Math.max(0,pn(t.value)||0));t.value=nf(retIslrPct);drawLines();return;}
       if(t.id==='cpApplyRetIva'){applyRetIva=t.checked;drawLines();return;}
@@ -2589,8 +2591,10 @@ function comprasDlg(initialTab){
             '<td class="mono">'+esc(c.docProv)+'</td>'+
             '<td>'+fmtDT(c.ts)+'</td>'+
             '<td>'+esc(c.supplier.name)+'</td>'+
-            '<td>'+esc(c.docType==='FACTURA_FISCAL'?'Fiscal':c.docType==='NOTA_ENTREGA'?'Nota entrega':'No fiscal')+'</td>'+\n            '<td>'+esc(c.cond)+'</td>'+
-            '<td class="r">'+nf8(c.total)+'</td>'+\n            '<td class="r">'+nf8(Number(c.retIva||0)+Number(c.retIslr||0))+'</td>'+
+            '<td>'+esc(c.docType==='FACTURA_FISCAL'?'Fiscal':c.docType==='NOTA_ENTREGA'?'Nota entrega':'No fiscal')+'</td>'+
+            '<td>'+esc(c.cond)+'</td>'+
+            '<td class="r">'+nf8(c.total)+'</td>'+
+            '<td class="r">'+nf8(Number(c.retIva||0)+Number(c.retIslr||0))+'</td>'+
             '<td class="r">'+nf8(paidTotal)+'</td>'+
             '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA':nf8(pend))+'</td>'+
             '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'">Anular</button>')+'</td>'+
