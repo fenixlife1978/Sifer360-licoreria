@@ -5389,7 +5389,7 @@ function fiscalPrinterConfigDlg(){
       }else{
         const archLabel={x86:'32 bits (x86)',x64:'64 bits (x64)',arm64:'ARM64',anycpu:'AnyCPU',unknown:'desconocida'};
         const sdkArch=(r.files||[]).filter(x=>x.exists&&x.binary).map(x=>x.filename+': '+(archLabel[x.architecture&&x.architecture.architecture]||'desconocida')).join('; ')||'sin DLL seleccionadas';
-        node.textContent=(r.ready?'Arquitectura compatible verificada.':'Revisión de arquitectura pendiente.')+' '+r.note+' Windows: '+(archLabel[r.osArchitecture]||'desconocido')+'; proceso Electron: '+(archLabel[r.hostProcessArchitecture]||'desconocido')+'; puente: '+(archLabel[r.bridgeArchitecture&&r.bridgeArchitecture.architecture]||'desconocido')+'; SDK: '+sdkArch+'. Archivos: '+r.files.filter(x=>x.exists).length+'/'+r.files.length+'.';
+        node.textContent=(r.ready?'Arquitectura compatible verificada.':'Revisión de arquitectura pendiente.')+' '+r.note+' Windows: '+(archLabel[r.osArchitecture]||'desconocido')+'; proceso Electron: '+(archLabel[r.hostProcessArchitecture]||'desconocido')+'; puente: '+(archLabel[r.bridgeArchitecture&&r.bridgeArchitecture.architecture]||'desconocido')+' (runtime: '+(archLabel[r.bridgeRuntimeArchitecture]||'desconocido')+'); SDK: '+sdkArch+'. Archivos: '+r.files.filter(x=>x.exists).length+'/'+r.files.length+'.';
       }
     }catch(e){node.textContent='No se pudo verificar la configuración: '+e.message;}
     drawPendingJobs();
