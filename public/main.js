@@ -2530,9 +2530,9 @@ function comprasDlg(initialTab){
           '<tr class="tot"><td>Total del documento</td><td class="r">'+nf8(tot)+'</td><td class="r">'+nf8(r8(tot*rate))+'</td></tr>'+
         '</tbody></table>'+
         '<table class="sumt"><thead><tr><th>Retenciones y condición financiera</th><th class="r">US$</th><th class="r">Bs.</th></tr></thead><tbody>'+
-          '<tr><td>Modalidad</td><td colspan="2" class="r"><b>'+esc(cond)+(cond==='Crédito'?' ('+creditDays+' días)':'')+'</b></td></tr>'+
-          '<tr class="good"><td>Monto Pagado / Abonado</td><td class="r">'+nf8(effPaid)+'</td><td class="r">'+nf8(r8(effPaid*S.cfg.rate))+'</td></tr>'+
-          '<tr class="'+(pend>0?'warn':'')+'"><td>Saldo a Cuentas por Pagar (CxP)</td><td class="r">'+nf8(pend)+'</td><td class="r">'+nf8(r8(pend*S.cfg.rate))+'</td></tr>'+
+          '<tr><td>Retención IVA ('+retPct+'%)</td><td class="r">'+nf8(retIva)+'</td><td class="r">'+nf8(r8(retIva*rate))+'</td></tr>'+\n          '<tr><td>Retención ISLR ('+nf(retIslrPct)+'% sobre base)</td><td class="r">'+nf8(retIslr)+'</td><td class="r">'+nf8(r8(retIslr*rate))+'</td></tr>'+\n          '<tr><td>Modalidad</td><td colspan="2" class="r"><b>'+esc(cond)+(cond==='Crédito'?' ('+creditDays+' días)':'')+'</b></td></tr>'+
+          '<tr class="good"><td>Monto Pagado / Abonado al proveedor</td><td class="r">'+nf8(effPaid)+'</td><td class="r">'+nf8(r8(effPaid*rate))+'</td></tr>'+
+          '<tr class="'+(pend>0?'warn':'')+'"><td>Saldo real a Cuentas por Pagar (CxP)</td><td class="r">'+nf8(pend)+'</td><td class="r">'+nf8(r8(pend*rate))+'</td></tr>'+
         '</tbody></table>';
     };
 
@@ -2579,9 +2579,9 @@ function comprasDlg(initialTab){
     const list=(S.purchases||[]).filter(x=>String(x.cashbox||currentCaja())===currentCaja()).slice().sort((a,b)=>b.no-a.no);
     v.innerHTML=
       '<div class="gridwrap tallwrap"><table class="grid" style="min-width:820px">'+
-        '<thead><tr><th>Compra Nº</th><th>Fac. Prov.</th><th>Fecha</th><th>Proveedor</th><th>Condición</th><th class="r">Total US$</th><th class="r">Pagado / Retenido US$</th><th class="r">Saldo CxP</th><th>Acción</th></tr></thead>'+
+        '<thead><tr><th>Compra Nº</th><th>Documento Prov.</th><th>Fecha</th><th>Proveedor</th><th>Tipo doc.</th><th>Condición</th><th class="r">Total US$</th><th class="r">Retenciones US$</th><th class="r">Pagado US$</th><th class="r">Saldo CxP</th><th>Acción</th></tr></thead>'+
         '<tbody>'+(list.length?list.map(c=>{
-          const payable=r8(c.payableTotal===undefined?Math.max(0,Number(c.total||0)-Number(c.retIva||0)):c.payableTotal);
+          const payable=r8(c.payableTotal===undefined?Math.max(0,Number(c.total||0)-Number(c.retIva||0)-Number(c.retIslr||0)):c.payableTotal);
           const paidTotal=r8(Number(c.paid||0));
           const pend=r8(Math.max(0,payable-paidTotal));
           return '<tr class="'+(c.void?'void':'')+'">'+
