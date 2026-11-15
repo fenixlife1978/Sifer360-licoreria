@@ -119,3 +119,15 @@ test('no ejecuta la prueba del puente si la arquitectura SDK es incompatible', a
   assert.equal(bridgeCalled, false);
   assert.match(result.message, /arquitectura/i);
 });
+
+test('detecta Windows x64 cuando Electron de 32 bits corre bajo WOW64', () => {
+  assert.equal(BinaryArchitecture.detectWindowsArchitecture({
+    PROCESSOR_ARCHITEW6432:'AMD64', PROCESSOR_ARCHITECTURE:'x86'
+  }, 'ia32'), 'x64');
+});
+
+test('no permite ejecutar puente x64 en Windows x86 ni adivina emulación ARM64', () => {
+  assert.equal(BinaryArchitecture.canRunBridge('x86','x64'), false);
+  assert.equal(BinaryArchitecture.canRunBridge('arm64','x64'), false);
+  assert.equal(BinaryArchitecture.canRunBridge('x64','x86'), true);
+});
