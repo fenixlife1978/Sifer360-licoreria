@@ -305,10 +305,8 @@ function close(){if(dialog){dialog.remove();dialog=null;}}
 function isOpen(){return !!dialog&&dialog.isConnected;}
 async function open(){
  if(!bridge()){alert('El módulo contable no pudo conectarse con la base de datos del POS.');return false;}
- const gate=window.SIFERAccountingGate;
- if(typeof gate!=='function'){alert('Contabilidad está bloqueada: no se pudo validar la impresora fiscal.');return false;}
- const readiness=await gate();
- if(!readiness||readiness.ready!==true){alert(readiness&&readiness.message?readiness.message:'El módulo de Contabilidad requiere una impresora fiscal conectada y activa.');return false;}
+ // El acceso contable es independiente de la impresora fiscal.
+ // La emisión de documentos fiscales mantiene su propia validación de hardware.
  return ensureChart().then(()=>{
   const old=$('#siferAccountingDialog');if(old)old.remove();
   dialog=document.createElement('section');dialog.id='siferAccountingDialog';dialog.className='ac-overlay';
