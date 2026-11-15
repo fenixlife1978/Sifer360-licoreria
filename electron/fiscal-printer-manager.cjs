@@ -176,31 +176,14 @@ async function testPnpFiscalStatus(profile, options = {}) {
   const p = normalizeProfile(profile);
   if (p.provider !== 'pnp') throw new Error('La consulta de estado PNP solo aplica al ecosistema PNP.');
   if (!p.port) throw new Error('Seleccione el puerto COM de la impresora PNP.');
-  if ((options.platform || process.platform) !== 'win32') throw new Error('La consulta PNP directa requiere Windows.');
   const previousSequence = pnpSequence;
   pnpSequence = crypto.randomInt(0x20, 0x80);
   if (pnpSequence === previousSequence) pnpSequence = pnpSequence >= 0x7f ? 0x20 : pnpSequence + 1;
   const sequence = pnpSequence;
   const request = PnpProtocol.createStatusQuery(sequence);
-  const hex = request.toString('hex');
-  const parityName = p.parity[0].toUpperCase() + p.parity.slice(1);
-  const stopName = p.stopBits === 1 ? 'One' : 'Two';
-  const script = "$ErrorActionPreference='Stop'; " +
-    "$p=[System.IO.Ports.SerialPort]::new('" + p.port + "'," + p.baudRate + ",[System.IO.Ports.Parity]::" + parityName + "," + p.dataBits + ",[System.IO.Ports.StopBits]::" + stopName + "); " +
-    "try { $p.ReadTimeout=250; $p.WriteTimeout=" + p.timeoutMs + "; $p.Open(); $p.DiscardInBuffer(); " +
-    "$hex='" + hex + "'; $bytes=New-Object byte[] ($hex.Length/2); for($i=0;$i -lt $bytes.Length;$i++){ $bytes[$i]=[Convert]::ToByte($hex.Substring($i*2,2),16) }; " +
-    "$p.Write($bytes,0,$bytes.Length); $stream=New-Object System.IO.MemoryStream; $deadline=[DateTime]::UtcNow.AddMilliseconds(" + p.timeoutMs + "); $etxEnd=0; " +
-    "while([DateTime]::UtcNow -lt $deadline){ try{$v=$p.ReadByte()}catch [System.TimeoutException]{continue}; if($v -eq 18){$deadline=$deadline.AddMilliseconds(800);continue}; " +
-    "$stream.WriteByte([byte]$v); if($v -eq 3 -and $etxEnd -eq 0){$etxEnd=$stream.Length}; if($etxEnd -gt 0 -and $stream.Length -ge ($etxEnd+4)){break} }; " +
-    "if($etxEnd -eq 0 -or $stream.Length -lt ($etxEnd+4)){throw 'La impresora no devolvió una trama PNP completa.'}; " +
-    "[Console]::WriteLine([Convert]::ToBase64String($stream.ToArray())) } finally { if($p -and $p.IsOpen){$p.Close()}; if($p){$p.Dispose()} }";
-  const exec = options.execFileAsync || execFileAsync;
   try {
-    const encoded = Buffer.from(script, 'utf16le').toString('base64');
-    const { stdout } = await exec('powershell.exe', ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',encoded], { windowsHide:true, timeout:p.timeoutMs+4000, maxBuffer:65536 });
-    const output = String(stdout || '').trim().split(/\r?\n/).filter(Boolean).pop();
-    if (!output) throw new Error('Windows no devolvió datos de la impresora.');
-    const response = PnpProtocol.decodeFrame(Buffer.from(output, 'base64'));
+    const raw = await exchangePnpFrame(p, request, options);
+    const response = PnpProtocol.decodeFrame(raw);
     PnpProtocol.validateResponse(response, { sequence, command:0x38 });
     const interpreted = interpretPnpStatus(response.fields);
     return {
@@ -218,7 +201,6 @@ async function testPnpFiscalStatus(profile, options = {}) {
     throw new Error('No se pudo consultar el estado fiscal PNP: ' + (error.message || String(error)));
   }
 }
-
 
 async function checkFiscalReadiness(profile,options={}){
  try{const p=normalizeProfile(profile);if(!p.enabled)return{ready:false,message:'La impresora fiscal no está habilitada para esta caja.'};const sdk=getSdkStatus(p);if(!sdk.ready)return{ready:false,message:'La configuración fiscal está incompleta: falta puerto, SDK o puente autorizado.'};if(p.provider==='pnp'){const probe=options.pnpStatusProbe||testPnpFiscalStatus;const physical=await probe(p,options);if(!physical||physical.ready!==true)return{ready:false,message:physical&&physical.message?physical.message:'La impresora PNP no confirmó estado fiscal listo.'};}const bridgeProbe=options.bridgeProbe||((normalized)=>runBridge(normalized,'status',{requestId:crypto.randomUUID()},options));const bridge=await bridgeProbe(p,options);if(!bridge||bridge.deviceConnected!==true||bridge.fiscalReady!==true||bridge.canEmitFiscalDocuments!==true)return{ready:false,message:'El puente fiscal no confirmó dispositivo conectado, estado fiscal listo y capacidad real de emitir documentos fiscales.'};return{ready:true,provider:p.provider,model:p.model,port:p.port,message:'Impresora fiscal conectada, operativa y habilitada para emitir documentos fiscales.'};}catch(error){return{ready:false,message:'No se pudo validar la impresora fiscal: '+(error&&error.message?error.message:String(error))};}
