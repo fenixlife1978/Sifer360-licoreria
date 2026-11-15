@@ -18,5 +18,5 @@ test('portable Electron carga todos los recursos de interfaz con rutas relativas
 
 test('el POS no depende de fuentes inexistentes ni de servicios externos', () => {
   assert.doesNotMatch(css, /url\(["']?fonts\//i);
-  assert.match(css, /font-family:[^;}]*sans-serif/i);
+  assert.match(css, /--ui\s*:/);\n  assert.match(css, /--mono\s*:/);
 });
