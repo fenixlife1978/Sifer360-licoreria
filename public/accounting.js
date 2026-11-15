@@ -4,13 +4,21 @@ const $=(s,r=document)=>r.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>new Intl.NumberFormat('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
 const today=()=>new Date().toISOString().slice(0,10);
-const emptyState=()=>({version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false});
+const emptyState=()=>({version:1,accounts:[],entries:[],fixedAssets:[],banks:[],nextEntry:1,nextAsset:1,nextBank:1,initialized:false});
 let activeTab='accounts',filterText='',filterType='TODOS',selectedAccount='',dialog=null;
 function bridge(){return window.SIFERAccountingBridge;}
-function state(){const b=bridge();if(!b)throw new Error('El puente de persistencia de SIFER todavía no está disponible.');const s=b.getState();if(!s)throw new Error('No se pudo leer el estado operativo.');if(!s.accounting||typeof s.accounting!=='object')s.accounting=emptyState();return s.accounting;}
+function state(){const b=bridge();if(!b)throw new Error('El puente de persistencia de SIFER todavía no está disponible.');const s=b.getState();if(!s)throw new Error('No se pudo leer el estado operativo.');if(!s.accounting||typeof s.accounting!=='object')s.accounting=emptyState();if(!Array.isArray(s.accounting.banks))s.accounting.banks=[];if(!Number.isInteger(Number(s.accounting.nextBank)))s.accounting.nextBank=1;return s.accounting;}
 function save(){return bridge().save();}
+async function ensureBankParents(a=state()){
+ const root=a.accounts.find(x=>String(x.code)==='1.1.1');if(!root)throw new Error('El plan contable no contiene la cuenta padre 1.1.1 de Efectivo y Equivalentes.');
+ const required=[['1.1.1.06','Bancos Nacionales en Bolívares (BS.)'],['1.1.1.07','Bancos en Moneda Extranjera (USD)']];let changed=false;
+ for(const [code,name] of required){const found=a.accounts.find(x=>String(x.code)===code);if(!found){a.accounts.push({code,name,type:'ACTIVO',level:4,isMovement:false,parentCode:'1.1.1',source:'SICOVEN-compatible'});changed=true;}else if(found.isMovement){throw new Error('La cuenta padre '+code+' está marcada como imputable; no se puede crear un banco debajo de ella.');}}
+ if(!Array.isArray(a.banks)){a.banks=[];changed=true;}if(!Number.isInteger(Number(a.nextBank))){a.nextBank=1;changed=true;}
+ if(changed){const persisted=await save();if(!persisted||!persisted.ok)throw new Error('No se pudo guardar la estructura bancaria auxiliar en SQLite.');}
+ return a;
+}
 async function ensureChart(){
- const a=state();if(Array.isArray(a.accounts)&&a.accounts.length)return a;
+ const a=state();if(Array.isArray(a.accounts)&&a.accounts.length){await ensureBankParents(a);return a;}
  const res=await fetch('./data/plan-cuentas-predeterminado-ven-nif.json',{cache:'no-cache'});
  if(!res.ok)throw new Error('No se pudo cargar el catálogo VEN-NIF ('+res.status+').');
  const data=await res.json();
@@ -19,7 +27,7 @@ async function ensureChart(){
  if(codes.size!==data.accounts.length||data.accounts.some(x=>x.parentCode&&!codes.has(String(x.parentCode))))throw new Error('El catálogo contiene códigos duplicados o padres inexistentes.');
  a.accounts=data.accounts.map(x=>({...x}));
  a.catalogSource=data.source||null;a.initialized=true;a.version=1;
- const persisted=await save();if(!persisted||!persisted.ok)throw new Error('No se pudo guardar el plan de cuentas en SQLite.');return a;
+ const persisted=await save();if(!persisted||!persisted.ok)throw new Error('No se pudo guardar el plan de cuentas en SQLite.');await ensureBankParents(a);return a;
 }
 function accountMap(){return new Map(state().accounts.map(a=>[String(a.code),a]));}
 function nextEntrySequence(a=state()){const max=(a.entries||[]).reduce((n,e)=>Math.max(n,Number(e.sequence)||Number(String(e.id||'').match(/(\d+)$/)?.[1])||0),0);return Math.max(1,Number(a.nextEntry)||1,max+1);}
@@ -37,13 +45,46 @@ function accountRows(){
  const a=state(),q=filterText.toLowerCase(),accounts=a.accounts.filter(x=>(filterType==='TODOS'||x.type===filterType)&&(!q||(String(x.code)+' '+x.name).toLowerCase().includes(q)));
  return accounts.map(x=>{const t=totalsFor(validEntries(),x.code);return '<tr><td class="ac-code">'+esc(x.code)+'</td><td style="padding-left:'+Math.max(0,(x.level-1)*13)+'px">'+esc(x.name)+(x.isMovement?'':' <span class="ac-muted">· Agrupadora</span>')+'</td><td>'+esc(x.type)+'</td><td class="ac-num">'+money(t.balUsd)+'</td><td class="ac-num">'+money(t.balBs)+'</td></tr>';}).join('');
 }
-function tabButtons(){return [['accounts','Plan de cuentas'],['journal','Libro diario'],['ledger','Libro mayor'],['trial','Balance de comprobación'],['statements','Estados financieros'],['assets','Activos fijos'],['integration','Integración POS']].map(([id,label])=>'<button class="ac-tab '+(activeTab===id?'active':'')+'" data-tab="'+id+'">'+label+'</button>').join('');}
+function tabButtons(){return [['accounts','Plan de cuentas'],['treasury','Tesorería'],['journal','Libro diario'],['ledger','Libro mayor'],['trial','Balance de comprobación'],['statements','Estados financieros'],['assets','Activos fijos'],['integration','Integración POS']].map(([id,label])=>'<button class="ac-tab '+(activeTab===id?'active':'')+'" data-tab="'+id+'">'+label+'</button>').join('');}
 function accountSelect(value=''){
  return '<select class="ac-input" data-field="account"><option value="">Seleccione cuenta imputable…</option>'+movementAccounts().map(a=>'<option value="'+esc(a.code)+'" '+(String(value)===String(a.code)?'selected':'')+'>'+esc(a.code+' · '+a.name)+'</option>').join('')+'</select>';
 }
 function renderAccounts(){
  const types=['TODOS',...new Set(state().accounts.map(a=>a.type))];
  return '<div class="ac-tools"><input class="ac-input" id="acSearch" placeholder="Buscar por código o nombre" value="'+esc(filterText)+'"><select class="ac-input" id="acType">'+types.map(t=>'<option '+(filterType===t?'selected':'')+'>'+esc(t)+'</option>').join('')+'</select><span class="ac-muted">'+state().accounts.length+' cuentas · '+movementAccounts().length+' imputables</span></div><div class="ac-scroll"><table class="ac-table"><thead><tr><th>Código</th><th>Denominación</th><th>Tipo</th><th class="ac-num">Saldo US$</th><th class="ac-num">Saldo Bs.</th></tr></thead><tbody>'+accountRows()+'</tbody></table></div>';
+}
+function renderTreasury(){
+ const a=state(),banks=(a.banks||[]).slice().sort((x,y)=>String(x.accountCode).localeCompare(String(y.accountCode)));
+ const rows=banks.map(b=>{const account=accountMap().get(String(b.accountCode)),totals=account?totalsFor(validEntries(),account.code):{balUsd:0,balBs:0};return '<tr><td class="ac-code">'+esc(b.accountCode)+'</td><td><b>'+esc(b.bankName)+'</b><div class="ac-muted">'+esc(b.accountName||'')+'</div></td><td>'+esc(b.currency)+'</td><td>'+esc(b.accountType||'')+'</td><td>'+esc(b.accountNumberMasked||'—')+'</td><td class="ac-num">'+money(b.currency==='USD'?totals.balUsd:totals.balBs)+'</td><td><span class="ac-muted">'+(b.active?'Activa':'Inactiva')+'</span></td><td><button class="ac-small" data-toggle-bank="'+esc(b.id)+'">'+(b.active?'Desactivar':'Activar')+'</button></td></tr>';}).join('');
+ return '<div class="ac-tools"><div><b>Tesorería · Bancos y cuentas auxiliares</b><div class="ac-muted">Cada banco tiene una cuenta imputable propia; las cuentas padre solo agrupan.</div></div><button class="ac-primary" id="acNewBank">＋ Crear banco</button></div><section class="ac-report"><p class="ac-note">Monedas admitidas: bolívares (BS.) y dólares estadounidenses (USD). El alta crea automáticamente el auxiliar consecutivo bajo 1.1.1.06 o 1.1.1.07. Los movimientos contables se registran contra el auxiliar del banco, nunca contra la cuenta padre.</p></section><div class="ac-scroll"><table class="ac-table"><thead><tr><th>Cuenta auxiliar</th><th>Banco / titular</th><th>Moneda</th><th>Tipo</th><th>Cuenta bancaria</th><th class="ac-num">Saldo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8" class="ac-empty">Todavía no hay bancos registrados. Use «Crear banco» para agregar el primero.</td></tr>')+'</tbody></table></div>';
+}
+function nextBankAccountCode(parentCode,a=state()){
+ const prefix=parentCode+'.',used=a.accounts.filter(x=>String(x.parentCode)===parentCode&&String(x.code).startsWith(prefix)).map(x=>Number(String(x.code).slice(prefix.length))).filter(Number.isFinite);
+ return prefix+String(Math.max(0,...used)+1).padStart(3,'0');
+}
+function showBankForm(){
+ const a=state(),el=document.createElement('div');el.className='ac-modal';
+ el.innerHTML='<div class="ac-modal-card"><div class="ac-modal-head"><b>Crear banco y cuenta auxiliar</b><button class="ac-small" id="acCloseBank">Cerrar</button></div><div class="ac-form-grid"><label>Nombre del banco<input class="ac-input" id="bkName" maxlength="100" placeholder="Ej. Banco de Venezuela" required></label><label>Moneda<select class="ac-input" id="bkCurrency"><option value="BS.">Bolívares (BS.)</option><option value="USD">Dólares (USD)</option></select></label><label>Tipo de cuenta<select class="ac-input" id="bkType"><option>Corriente</option><option>Ahorro</option><option>Otra</option></select></label><label>Número de cuenta<input class="ac-input" id="bkNumber" maxlength="40" inputmode="numeric" placeholder="Número de cuenta bancaria"></label><label>Titular<input class="ac-input" id="bkHolder" maxlength="120" placeholder="Titular de la cuenta"></label><label>Identificación del titular<input class="ac-input" id="bkTaxId" maxlength="30" placeholder="RIF / C.I. (opcional)"></label><label class="wide">Descripción / referencia<input class="ac-input" id="bkNotes" maxlength="180" placeholder="Uso o identificación interna"></label></div><p class="ac-note">El código auxiliar se asignará automáticamente. No se permiten euros ni movimientos directos en las cuentas agrupadoras.</p><div class="ac-form-foot"><button class="ac-primary" id="acSaveBank">Crear banco</button></div></div>';
+ dialog.appendChild(el);$('#acCloseBank',el).onclick=()=>el.remove();
+ $('#acSaveBank',el).onclick=async()=>{
+  const bankName=$('#bkName',el).value.trim(),currency=$('#bkCurrency',el).value,accountType=$('#bkType',el).value,accountNumber=$('#bkNumber',el).value.replace(/\s+/g,''),holder=$('#bkHolder',el).value.trim(),taxId=$('#bkTaxId',el).value.trim(),notes=$('#bkNotes',el).value.trim();
+  if(!bankName){alert('Indique el nombre del banco.');return;}
+  const parentCode=currency==='USD'?'1.1.1.07':'1.1.1.06',parent=accountMap().get(parentCode);if(!parent||parent.isMovement){alert('No está disponible la cuenta padre compatible para esta moneda.');return;}
+  if(accountNumber&&a.banks.some(b=>b.currency===currency&&String(b.accountNumber||'').replace(/\s+/g,'')===accountNumber)){alert('Ya existe un banco registrado con ese número de cuenta y moneda.');return;}
+  const code=nextBankAccountCode(parentCode,a),id='BANK-'+String(a.nextBank||1).padStart(5,'0');
+  if(a.accounts.some(x=>String(x.code)===code)){alert('El consecutivo auxiliar ya existe; actualice y vuelva a intentar.');return;}
+  const bank={id,bankName,currency,accountType,accountNumber,accountNumberMasked:accountNumber?('•••• '+accountNumber.slice(-4)):'',accountName:holder,taxId,notes,accountCode:code,parentCode,active:true,createdAt:new Date().toISOString()};
+  const account={code,name:bankName+(holder?' · '+holder:''),type:'ACTIVO',level:5,isMovement:true,parentCode,bankId:id,currency,bankName};
+  a.banks.push(bank);a.accounts.push(account);a.nextBank=Number(a.nextBank||1)+1;
+  const persisted=await save();if(!persisted||!persisted.ok){a.banks=a.banks.filter(x=>x.id!==id);a.accounts=a.accounts.filter(x=>x.code!==code);a.nextBank=Math.max(1,Number(a.nextBank)-1);alert('SQLite no confirmó el alta. No se dejó el banco registrado.');return;}
+  el.remove();render();
+ };
+}
+async function toggleBank(id){
+ const a=state(),bank=a.banks.find(x=>x.id===id);if(!bank)return;
+ const account=a.accounts.find(x=>String(x.code)===String(bank.accountCode));
+ if(bank.active&&account&&validEntries().some(e=>(e.lines||[]).some(l=>String(l.accountCode)===String(account.code)))){if(!confirm('El banco tiene movimientos contables. Se desactivará para nuevas operaciones, pero se conservarán su auxiliar e historial. ¿Continuar?'))return;}
+ bank.active=!bank.active;const persisted=await save();if(!persisted||!persisted.ok){bank.active=!bank.active;alert('SQLite no confirmó el cambio de estado.');return;}render();
 }
 function renderJournal(){
  const es=validEntries().slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))||b.sequence-a.sequence);
@@ -65,7 +106,7 @@ function renderTrial(){
 function render(){
  if(!dialog)return;
  const content=$('#acContent',dialog);
- content.innerHTML=activeTab==='accounts'?renderAccounts():activeTab==='journal'?renderJournal():activeTab==='ledger'?renderLedger():activeTab==='trial'?renderTrial():activeTab==='statements'?renderStatements():activeTab==='assets'?renderAssets():renderIntegration();
+ content.innerHTML=activeTab==='accounts'?renderAccounts():activeTab==='treasury'?renderTreasury():activeTab==='journal'?renderJournal():activeTab==='ledger'?renderLedger():activeTab==='trial'?renderTrial():activeTab==='statements'?renderStatements():activeTab==='assets'?renderAssets():renderIntegration();
  dialog.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===activeTab));
 }
 function addLine(container,values={}){
@@ -310,11 +351,13 @@ async function open(){
  return ensureChart().then(()=>{
   const old=$('#siferAccountingDialog');if(old)old.remove();
   dialog=document.createElement('section');dialog.id='siferAccountingDialog';dialog.className='ac-overlay';
-  dialog.innerHTML='<div class="ac-window"><header class="ac-header"><div><strong>Contabilidad VEN-NIF</strong><small>Plan de cuentas · Diario · Mayor · Balance</small></div><button id="acClose" class="ac-close">×</button></header><nav class="ac-tabs">'+tabButtons()+'</nav><main id="acContent" class="ac-content"></main><footer class="ac-footer"><span>Catálogo fuente: SICOVEN · 97 cuentas · Persistencia SQLite SIFER</span><button id="acCloseFoot" class="ac-small">Cerrar</button></footer></div>';
+  dialog.innerHTML='<div class="ac-window"><header class="ac-header"><div><strong>Contabilidad VEN-NIF</strong><small>Plan de cuentas · Tesorería · Diario · Mayor · Balance</small></div><button id="acClose" class="ac-close">×</button></header><nav class="ac-tabs">'+tabButtons()+'</nav><main id="acContent" class="ac-content"></main><footer class="ac-footer"><span>Catálogo VEN-NIF · '+state().accounts.length+' cuentas · Persistencia SQLite SIFER</span><button id="acCloseFoot" class="ac-small">Cerrar</button></footer></div>';
   document.body.appendChild(dialog);
   dialog.addEventListener('click',e=>{
    if(e.target===dialog||e.target.closest('#acClose')||e.target.closest('#acCloseFoot')){dialog.remove();dialog=null;return;}
    const tab=e.target.closest('[data-tab]');if(tab){activeTab=tab.dataset.tab;render();return;}
+   if(e.target.closest('#acNewBank')){showBankForm();return;}
+   const bankToggle=e.target.closest('[data-toggle-bank]');if(bankToggle){toggleBank(bankToggle.dataset.toggleBank);return;}
    if(e.target.closest('#acNewEntry')){showEntryForm();return;}
    const rev=e.target.closest('[data-reverse]');if(rev){reverseEntry(rev.dataset.reverse);return;}
    const view=e.target.closest('[data-view-entry]');if(view){const entry=state().entries.find(x=>x.id===view.dataset.viewEntry);if(entry)showEntryForm(entry);return;}
