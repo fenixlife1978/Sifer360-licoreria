@@ -2432,6 +2432,12 @@ function comprasDlg(initialTab){
     if(motor==='gap'){const bcv=Number(pricing.bcvRate)||Number(bcvRate)||Number(S.cfg.rate)||1;const parallel=Number(pricing.parallelRate)||r2(bcv*1.22);return r2(c*(1+(Number(pricing.markupCost)||40)/100)*(parallel/bcv));}
     return r2(c*(1+(Number(pricing.markupCost)||40)/100));
   };
+  const getLastPurchaseCost=(code)=>{
+    const records=(S.purchases||[]).filter(c=>!c.void&&Array.isArray(c.lines)&&c.lines.some(line=>String(line.code)===String(code))).sort((a,b)=>Number(b.ts||0)-Number(a.ts||0)||Number(b.no||0)-Number(a.no||0));
+    if(!records.length)return null;
+    const line=records[0].lines.find(x=>String(x.code)===String(code));
+    return line&&Number.isFinite(Number(line.cost))?Number(line.cost):null;
+  };
   const refreshPurchaseRate=async(date,v,draw)=>{
     const token=++rateRequestToken;purchaseRate=0;purchaseRateRecord=null;rateStatus='Consultando histórico BCV…';if(draw)draw();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))){rateStatus='Fecha de documento inválida';if(draw)draw();return false;}
@@ -2461,7 +2467,7 @@ function comprasDlg(initialTab){
         '<div class="f"><label id="cpDocLabel" for="cpDoc">Nº de factura del proveedor *</label><input class="fld mono" id="cpDoc" value="" placeholder="Copiar del documento original" autocomplete="off" required></div>'+
         '<div class="f" id="cpCtrlWrap"><label for="cpCtrl">Nº de control fiscal *</label><input class="fld mono" id="cpCtrl" value="" placeholder="Número de control de la factura" autocomplete="off"></div>'+
         '<div class="f"><label for="cpDate">Fecha de emisión del documento *</label><input class="fld" id="cpDate" type="date" value="'+isoD(Date.now())+'" required></div>'+
-        '<div class="f"><label for="cpRate">Tasa BCV histórica (Bs./USD)</label><input class="fld r mono" id="cpRate" value="'+(purchaseRate?nf8(purchaseRate):'')+'" readonly placeholder="Consultando…"><small id="cpRateStatus" class="muted">'+esc(rateStatus)+'</small></div>'+
+        '<div class="f"><label for="cpRate">Tasa BCV del día del documento (Bs./USD)</label><input class="fld r mono" id="cpRate" value="'+(purchaseRate?nf8(purchaseRate):'')+'" readonly placeholder="Consultando…"><small id="cpRateStatus" class="muted">'+esc(rateStatus)+'</small></div>'+
         '<div class="f"><label for="cpCond">Condición de Compra</label><select class="fld" id="cpCond"><option value="Crédito"'+(cond==='Crédito'?' selected':'')+'>Crédito (Genera CxP)</option><option value="Contado"'+(cond==='Contado'?' selected':'')+'>Contado (Pagada)</option></select></div>'+
         '<div class="f" id="cpDaysWrap"><label for="cpDays">Plazo Crédito (días)</label><input class="fld r" id="cpDays" value="'+creditDays+'" inputmode="numeric"></div>'+
         '<div class="f"><label for="cpInit">Abono / Pago Inicial US$</label><input class="fld r" id="cpInit" value="'+(paidInit?nf(paidInit):'0,00')+'" inputmode="decimal"></div>'+
@@ -2478,8 +2484,8 @@ function comprasDlg(initialTab){
         '<button class="btn" id="cpBtnAdd">+ Agregar renglón</button>'+
         '<span class="hint" style="margin-left:auto">Verifique la alícuota IVA de cada renglón contra la factura del proveedor.</span>'+
       '</div>'+
-      '<div class="gridwrap invwrap"><table class="grid" style="min-width:820px">'+
-        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Costo Unit. US$</th><th class="r">P. Venta US$</th><th class="r">Base US$</th><th>IVA %</th><th>Auto</th><th></th></tr></thead>'+
+      '<div class="gridwrap invwrap"><table class="grid" style="min-width:1120px">'+
+        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Último costo US$</th><th class="r">CPP actual US$</th><th class="r">Nuevo costo US$</th><th class="r">CPP resultante US$</th><th class="r">P. Venta US$</th><th class="r">Base US$</th><th>IVA %</th><th>Auto</th><th></th></tr></thead>'+
         '<tbody id="cpBody"></tbody>'+
       '</table></div>'+
       '<div class="cierre" id="cpTotals"></div>';
@@ -2497,14 +2503,17 @@ function comprasDlg(initialTab){
           '<td><div class="desc">'+esc(p.desc)+'</div><div class="sub">'+esc(p.brand)+' · '+esc(p.cat)+'</div></td>'+
           '<td class="r '+stockCls(p)+'">'+fq(p.stock)+'</td>'+
           '<td class="r"><input class="fld cell r" data-cpf="qty" value="'+fq(l.qty)+'" inputmode="decimal"></td>'+
-          '<td class="r"><input class="fld cell r" data-cpf="cost" value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
+          '<td class="r">'+(getLastPurchaseCost(l.code)==null?'—':nf8(getLastPurchaseCost(l.code)))+'</td>'+
+          '<td class="r">'+nf8(p.cost)+'</td>'+
+          '<td class="r"><input class="fld cell r" data-cpf="cost" aria-label="Nuevo costo unitario US$" value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
+          '<td class="r"><b>'+nf8(projectedCost)+'</b></td>'+
           '<td class="r"><input class="fld cell r" data-cpf="price" value="'+nf8(l.price)+'" inputmode="decimal" '+(l.autoPrice?'readonly title="Calculado por el motor de precios"':'')+'></td>'+
           '<td class="r"><b>'+nf8(sub)+'</b></td>'+
           '<td><select class="fld cell" data-cpf="taxRate" aria-label="Alícuota IVA del renglón" '+(docType==='FACTURA_FISCAL'?'':'disabled')+'><option value="0" '+(Number(l.taxRate||0)===0?'selected':'')+'>0%</option><option value="8" '+(Number(l.taxRate)===8?'selected':'')+'>8%</option><option value="16" '+(Number(l.taxRate===undefined?16:l.taxRate)===16?'selected':'')+'>16%</option><option value="31" '+(Number(l.taxRate)===31?'selected':'')+'>31%</option></select></td>'+
           '<td class="c"><input type="checkbox" data-cpf="autoPrice" '+(l.autoPrice?'checked':'')+' aria-label="Calcular precio de venta automáticamente"></td>'+
           '<td class="c"><button class="mini" data-cpdel="'+i+'" title="Quitar">&times;</button></td>'+
         '</tr>';
-      }).join(''):'<tr class="empty"><td colspan="8">Agregue productos a la orden de compra.</td></tr>';
+      }).join(''):'<tr class="empty"><td colspan="13">Agregue productos a la orden de compra.</td></tr>';
 
       const base=r8(pLines.reduce((a,l)=>a+r8(l.qty*l.cost),0));
       const iva=docType==='FACTURA_FISCAL'?r8(pLines.reduce((a,l)=>a+r8(l.qty*l.cost*(Number(l.taxRate===undefined?16:l.taxRate)||0)/100),0)):0;
@@ -2571,7 +2580,7 @@ function comprasDlg(initialTab){
         if(!p)return;
         const ex=pLines.find(x=>x.code===code);
         if(ex)ex.qty=r8(ex.qty+qty);
-        else pLines.push({code,qty,cost:p.cost,price:p.price,taxRate:docType==='FACTURA_FISCAL'?prodTaxRate(p):0,autoPrice:!!(p.pricing&&p.pricing.mode==='auto')});
+        else pLines.push({code,qty,cost:p.cost,price:p.price,taxRate:docType==='FACTURA_FISCAL'?prodTaxRate(p):0,autoPrice:true});
         drawLines();
       }
       const del=e.target.closest('[data-cpdel]');
