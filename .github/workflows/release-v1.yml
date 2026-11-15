@@ -8,10 +8,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: sifer360-release-v1
-  cancel-in-progress: true
-
 jobs:
   release:
     name: Verificar, compilar y publicar Windows portable
