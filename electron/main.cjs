@@ -793,6 +793,10 @@ function registerIpc() {
     const downloads = {
       pnpSdk32: 'https://desarrollospnp.com/archivos/pnpdll2025a.zip',
       pnpSdk64: 'https://desarrollospnp.com/archivos/pnpdll2022.zip',
+      pnpProtocol: 'https://desarrollospnp.com/archivos/PROTOCOLO0141.pdf',
+      bematech: 'https://posvenezuela.com/librerias-dll/',
+      bematechDownloads: 'https://posvenezuela.com/descargas-2/',
+      bematechMP4200: 'https://posvenezuela.com/descargas-mp4200/',
       prolific: 'https://prolificusa.com/product/pl2303gl-8-pin-usb-uart-bridge-controller/',
       ftdi: 'https://ftdichip.com/drivers/',
       silabs: 'https://www.silabs.com/software-and-tools/usb-to-uart-bridge-vcp-drivers',
@@ -817,7 +821,8 @@ function registerIpc() {
   ipcMain.handle('fiscal-printer:status', async (_e, profile = {}) => FiscalPrinterManager.getSdkStatus(profile));
   ipcMain.handle('fiscal-printer:test-port', async (_e, profile = {}) => FiscalPrinterManager.testSerialPort(profile));
   ipcMain.handle('fiscal-printer:test-pnp', async (_e, profile = {}) => FiscalPrinterManager.testPnpFiscalStatus(profile));
-  ipcMain.handle('fiscal-printer:test-bridge', async (_e, profile = {}) => FiscalPrinterManager.runBridge(profile, 'status', { requestId: crypto.randomUUID() }));
+  ipcMain.handle('fiscal-printer:readiness', async (_e, profile = {}) => FiscalPrinterManager.checkFiscalReadiness(profile));
+  ipcMain.handle('fiscal-printer:test-bridge', async (_e, profile = {}) => FiscalPrinterManager.testBridge(profile));
   ipcMain.handle('fiscal-printer:emit-invoice', async (_e, profile = {}, invoice = {}) => FiscalPrinterManager.emitInvoice(profile, invoice));
 
 }

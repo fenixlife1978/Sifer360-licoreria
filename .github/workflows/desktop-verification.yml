@@ -5,6 +5,12 @@ on:
     branches:
       - auto-depreciacion-mensual
       - integration/sqlite-lan-stage-1
+      - integration/sqlite-lan-stage-2-hardening
+  pull_request:
+    branches:
+      - main
+      - master
+      - integration/sqlite-lan-stage-1
   workflow_dispatch:
 
 permissions:

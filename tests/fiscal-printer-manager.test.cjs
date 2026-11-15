@@ -117,7 +117,7 @@ test('la emisión PNP se bloquea antes de llamar al adaptador cuando el estado f
   const protocol = require('../electron/pnp-protocol.cjs');
   await assert.rejects(() => manager.emitInvoice(
     {provider:'pnp',model:'PF-220A',port:'COM4',bridgePath:path.join(os.tmpdir(),'bridge-no-ejecutado.exe')},
-    {idempotencyKey:'sale-pnp-01',total:10},
+    {idempotencyKey:'sale-pnp-01',customer:{name:'Cliente'},lines:[{description:'Producto',quantity:1,unitPriceVes:10,netVes:10,taxRate:0}],totals:{taxableBaseVes:10,totalVes:10},payments:[]},
     {platform:'win32',execFileAsync:async(_command,args)=>{
       const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
       const match=script.match(/\$hex='([0-9a-f]+)'/i);
@@ -138,4 +138,99 @@ test('la detección de puertos no Windows no inventa dispositivos', async () => 
   const result = await manager.listSerialPorts({platform:'linux'});
   assert.equal(result.supported, false);
   assert.deepEqual(result.ports, []);
+});
+
+
+test('Contabilidad solo se habilita con una impresora conectada, lista y capaz de emitir',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'sifer-fiscal-ready-'));
+ try{
+  const dll=path.join(dir,'pnpdll.dll'),bridge=path.join(dir,'bridge.exe');fs.writeFileSync(dll,'fixture');fs.writeFileSync(bridge,'fixture');
+  const profile={provider:'pnp',model:'PF-220A',port:'COM4',enabled:true,bridgePath:bridge,sdkPaths:{'pnpdll.dll':dll}};
+  const disabled=await manager.checkFiscalReadiness({...profile,enabled:false},{platform:'win32'});assert.equal(disabled.ready,false);
+  const offline=await manager.checkFiscalReadiness(profile,{platform:'win32',pnpStatusProbe:async()=>({ready:false,message:'Fuera de línea'}),bridgeProbe:async()=>({deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:true})});assert.equal(offline.ready,false);
+  const noIdentity=await manager.checkFiscalReadiness(profile,{platform:'win32',pnpStatusProbe:async()=>({ready:true}),pnpIdentityProbe:async()=>({machineSerial:''})});assert.equal(noIdentity.ready,false);
+  const ready=await manager.checkFiscalReadiness(profile,{platform:'win32',pnpStatusProbe:async()=>({ready:true}),pnpIdentityProbe:async()=>({machineSerial:'PNP-REAL-01'})});assert.equal(ready.ready,true);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('el transporte PNP envía una sola trama y devuelve la respuesta sin reintentos', async () => {
+  const protocol = require('../electron/pnp-protocol.cjs');
+  const request = protocol.createStatusQuery(0x35);
+  const response = protocol.encodeCommand(0x38,['0000','0000','34','00','56','260101','120000','7','0','7','0','3'],0x35);
+  let calls = 0;
+  const received = await manager.exchangePnpFrame({provider:'pnp',port:'COM4'},request,{platform:'win32',execFileAsync:async(_command,args)=>{
+    calls++;
+    const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
+    assert.match(script,/SerialPort/);
+    assert.match(script,/DiscardInBuffer/);
+    assert.match(script,/AddMilliseconds\(800\)/);
+    const match=script.match(/\$hex='([0-9a-f]+)'/i);
+    assert.equal(match[1],request.toString('hex'));
+    return {stdout:response.toString('base64')};
+  }});
+  assert.equal(calls,1);
+  assert.deepEqual(protocol.decodeFrame(received).fields,protocol.decodeFrame(response).fields);
+});
+
+test('el transporte PNP rechaza plataformas no Windows antes de transmitir', async () => {
+  await assert.rejects(()=>manager.exchangePnpFrame({provider:'pnp',port:'COM4'},Buffer.from([2,32,56,3,0,0,0,0]),{platform:'linux'}),/requiere Windows/);
+});
+
+
+test('la prueba del adaptador PNP usa protocolo nativo y confirma conexión y serial sin DLL puente', async()=>{
+ const protocol=require('../electron/pnp-protocol.cjs');
+ const profile={provider:'pnp',port:'COM4'};
+ const result=await manager.testBridge(profile,{platform:'win32',execFileAsync:async(_command,args)=>{
+  const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
+  const match=script.match(/\$hex='([0-9a-f]+)'/i);const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));
+  const fields=request.command===0x38?['0000','0000','34','00','56','260101','120000','7','0','7','0','3']:['0000','0000','PNP-NATIVE-01','J-12345678-9','','','',''];
+  return {stdout:protocol.encodeCommand(request.command,fields,request.sequence).toString('base64')};
+ }});
+ assert.equal(result.protocol,'pnp-native-v5.4');assert.equal(result.deviceConnected,true);assert.equal(result.canEmitFiscalDocuments,true);assert.equal(result.serial,'PNP-NATIVE-01');
+});
+
+
+test('emite una factura PNP desde el payload real del POS, concilia descuento e identifica el documento una sola vez',async()=>{
+ const protocol=require('../electron/pnp-protocol.cjs');const commands=[];
+ const result=await manager.emitInvoice({provider:'pnp',model:'PF-220A',port:'COM4',enabled:true},{
+  idempotencyKey:'SIFER360-C01-100-1700000000000',customer:{name:'Cliente Prueba',rif:'J-12345678-9'},
+  lines:[{code:'A1',description:'Producto',quantity:1,unitPriceVes:100,netVes:90,taxRate:16}],
+  totals:{taxableBaseVes:90,ivaVes:14.4,totalVes:104.4,igtfVes:0},payments:[]
+ },{platform:'win32',execFileAsync:async(_command,args)=>{
+  const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
+  const match=script.match(/\$hex='([0-9a-f]+)'/i);const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));commands.push(request.command);
+  let fields=['0000','0000'];
+  if(request.command===0x38)fields=['0000','0000','34','00','56','260101','120000','7','0','7','0','3'];
+  if(request.command===0x80)fields=['0000','0000','PNP-INTEGRATED-01','J-12345678-9','','','',''];
+  if(request.command===0x43)fields=['0000','0000','','','0.00','90.00','16.00','14.40','0.00','8.00','0.00','0.00','0.00','0.00','0.00','90.00','104.40'];
+  if(request.command===0x45)fields=['0000','0000','1','000014','0','0.00'];
+  return{stdout:protocol.encodeCommand(request.command,fields,request.sequence).toString('base64')};
+ }});
+ assert.equal(result.ok,true);assert.equal(result.fiscalDocumentNumber,'000014');assert.equal(result.fiscalSerial,'PNP-INTEGRATED-01');
+ assert.deepEqual(commands,[0x38,0x80,0x40,0x42,0x42,0x43,0x45]);
+});
+
+
+test('el cierre PNP con IGTF usa solo pagos efectivos en efectivo USD/Zelle y valida el 3%',async()=>{
+ const protocol=require('../electron/pnp-protocol.cjs');let closeFields=null;
+ const result=await manager.emitInvoice({provider:'pnp',model:'PF-220A',port:'COM4',enabled:true},{
+  idempotencyKey:'sale-igtf-1',customer:{name:'Cliente',rif:'J-12345678-9'},
+  exchangeRate:10,
+  lines:[{description:'Producto',quantity:1,unitPriceVes:862.07,netVes:862.07,taxRate:16}],
+  totals:{taxableBaseVes:862.07,ivaVes:137.93,totalVes:1000,subtotalVes:1000,subtotalUsd:100,totalUsd:100,igtfVes:30,igtfUsd:3},
+  payments:[{id:'efUSD',cur:'USD',amount:103},{id:'credito',cur:'USD',amount:0}]
+ },{platform:'win32',serialExchange:async(_profile,frame)=>{
+  const request=protocol.decodeFrame(frame);let fields=['0000','0000'];
+  if(request.command===0x38)fields=['0000','0000','34','00','56','260101','120000','7','0','7','0','3'];
+  if(request.command===0x80)fields=['0000','0000','PNP-IGTF-01','J-12345678-9','','','',''];
+  if(request.command===0x43)fields=['0000','0000','','','0.00','862.07','16.00','137.93','0.00','8.00','0.00','0.00','0.00','0.00','0.00','862.07','1000.00'];
+  if(request.command===0x45){closeFields=request.fields;fields=['0000','0000','1','000015','0','3.00'];}
+  return protocol.encodeCommand(request.command,fields,request.sequence);
+ }});
+ assert.equal(result.fiscalDocumentNumber,'000015');assert.equal(closeFields[0],'U');assert.equal(closeFields[1],'103.00');
+});
+
+test('bloquea la emisión PNP cuando el IGTF del POS no coincide con el pago en divisas',async()=>{
+ await assert.rejects(()=>manager.emitInvoice({provider:'pnp',port:'COM4',enabled:true},{idempotencyKey:'sale-igtf-bad',customer:{name:'Cliente'},exchangeRate:10,lines:[{quantity:1,unitPriceVes:100,netVes:100,taxRate:0}],totals:{taxableBaseVes:100,totalVes:100,totalUsd:10,igtfVes:1},payments:[{id:'efUSD',cur:'USD',amount:10}]},{platform:'win32',execFileAsync:async()=>{throw new Error('No debe abrir COM');}}),/IGTF calculado por el POS no coincide/);
 });

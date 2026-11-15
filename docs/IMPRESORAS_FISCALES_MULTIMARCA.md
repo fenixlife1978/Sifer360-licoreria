@@ -61,11 +61,14 @@ Debe devolver por stdout una sola línea JSON, con código de salida cero:
   "protocol": "sifer-fiscal-bridge/v1",
   "ok": true,
   "fiscalDocumentNumber": "número devuelto por la máquina",
-  "fiscalSerial": "serial leído de la máquina"
+  "fiscalSerial": "serial leído de la máquina",
+  "deviceConnected": true,
+  "fiscalReady": true,
+  "canEmitFiscalDocuments": true
 }
 ~~~
 
-Para emitInvoice, el puente debe ser idempotente por requestId, validar los límites del equipo y devolver el número real asignado por la máquina. Nunca debe simular una emisión exitosa ni imprimir un ticket comercial como sustituto de un documento fiscal.
+Para la acción status, el puente debe consultar el dispositivo físico y devolver `deviceConnected: true`, `fiscalReady: true` y `canEmitFiscalDocuments: true` solo cuando las tres condiciones estén verificadas en el equipo. Estos indicadores son obligatorios para habilitar Contabilidad. Para emitInvoice, el puente debe ser idempotente por requestId, validar los límites del equipo y devolver el número real asignado por la máquina. Nunca debe simular una emisión exitosa ni imprimir un ticket comercial como sustituto de un documento fiscal.
 
 Los SDK de cada familia tienen APIs distintas. No se debe fabricar un puente genérico que envíe tramas inventadas a todos los modelos. Cada implementación HKA, Bematech, Epson, Quorion, Aclas o PNP debe compilarse y probarse con el SDK/manual original y con equipos físicos.
 
@@ -78,7 +81,8 @@ Los SDK de cada familia tienen APIs distintas. No se debe fabricar un puente gen
 - La emisión fiscal requiere número de documento y serial confirmados por el adaptador.
 - No se degrada automáticamente a impresión térmica común si la máquina fiscal falla.
 - No se instalan controladores ni se modifican dispositivos de Windows silenciosamente.
-- Los DLL/SDK y drivers propietarios no se incluyen en el instalador hasta verificar permiso de redistribución y firma/procedencia.
+- Los DLL/SDK y drivers gratuitos se obtienen desde los portales públicos del fabricante o su canal técnico. No se presume una prohibición de uso por el simple hecho de que la página no incluya una frase expresa de redistribución.
+- La descarga/uso individual y la copia del binario dentro del instalador son acciones distintas. El administrador puede descargar el paquete gratuito y seleccionarlo en la configuración. Solo se empaqueta una copia cuando la publicación o el paquete permita esa redistribución; si no está claro, se mantiene la descarga individual sin impedir el uso del paquete. Se respetan las restricciones que el fabricante indique claramente.
 - El sistema no descarga ni ejecuta controladores desde URLs configurables.
 
 ## Controladores USB-Serial
@@ -96,7 +100,7 @@ El usuario/instalador autorizado debe instalar el paquete firmado que correspond
 - Catálogo oficial de impresoras fiscales The Factory HKA: https://thefactoryhka.com/ve/productos/impresoras
 - Wiki The Factory HKA: https://wiki.thefactoryhka.com.ve/doku.php (la documentación pública consultada corresponde a Imprenta Digital REST API; no se debe confundir con el SDK local de impresora fiscal).
 - Manual HKA de impresora SRP-350 (referencia de conexión USB Prolific y puerto serial; confirmar aplicabilidad al modelo/país): https://www.thefactoryhka.com/extranet-pa/downloads/MANUAL%20DE%20USUARIO%20SRP-350.pdf
-- Bematech: solicitar el SDK fiscal de la referencia exacta al fabricante o representante autorizado. La documentación técnica pública de BemaFI32 describe configuración de puerto y archivos de retorno, pero debe confirmarse la versión y licencia de la DLL instalada.
+- Bematech / POS Venezuela: portal público de librerías DLL y descargas. Publica librerías DLL y drivers USB para MP-4000 y MP-4200: https://posvenezuela.com/librerias-dll/ y https://posvenezuela.com/descargas-2/. Para MP-4200 existe una página separada https://posvenezuela.com/descargas-mp4200/ con archivos DLL y manual de instalación. El portal de MP-4000 enumera paquetes de DLL de 10 y 13 dígitos y varias versiones BemaFI/BemaMFD; se debe elegir por modelo, firmware y configuración fiscal. El paquete debe corresponder al modelo/firmware; no todos los modelos Bematech usan el mismo SDK.
 - Epson Venezuela — portal de desarrolladores: https://epson.com.ve/developers-products (Epson indica que los materiales técnicos para desarrolladores se solicitan directamente; no se asume que la DLL sea de descarga libre).
 - Quorion — descargas y manuales: https://quorionus.com/downloads/ (incluye software QMP y manuales; validar API/SDK fiscal con el distribuidor).
 - Aclas: https://www.aclas.com/
@@ -110,7 +114,7 @@ El usuario/instalador autorizado debe instalar el paquete firmado que correspond
 
 ## Pendiente para certificar compatibilidad real
 
-1. Recibir SDK/manual original de cada modelo y comprobar sus términos de redistribución. Para PNP, utilizar como referencia inicial pnpdll2025a.zip y PROTOCOLO0141.pdf publicados por el fabricante; la biblioteca x64 pnpdll64.dll aparece documentada en el paquete pnpdll2022.zip. El proyecto incluye ahora un codec comprobado para el framing del protocolo PNP v5.4 y una consulta de estado de solo lectura por COM usando el comando 0x38 con parámetro N. La consulta utiliza un número de secuencia variable, valida la trama y su BCC, y no imprime Reporte X/Z ni modifica la memoria fiscal. La emisión de facturas todavía requiere completar y validar la secuencia de facturación con equipo físico.
+1. Recibir SDK/manual original de cada modelo y comprobar sus términos de redistribución. Para PNP, utilizar como referencia inicial pnpdll2025a.zip y PROTOCOLO0141.pdf publicados por el fabricante; la biblioteca x64 pnpdll64.dll aparece documentada en el paquete pnpdll2022.zip. El proyecto incluye ahora un codec comprobado para el framing del protocolo PNP v5.4 y una consulta de estado de solo lectura por COM usando el comando 0x38 con parámetro N. La consulta utiliza un número de secuencia variable, valida la trama y su BCC, y no imprime Reporte X/Z ni modifica la memoria fiscal. La emisión de facturas todavía requiere completar y validar la secuencia de facturación con equipo físico. Se añadieron constructores de tramas para los comandos 0x40 (abrir factura), 0x41 (texto fiscal), 0x42 (renglón), 0x43 (subtotal) y 0x45 (cierre), con límites de campos y validaciones numéricas derivados del manual. La tasa imponible del comando 0x42 se exige en la notación literal `.nnnn` (por ejemplo `.1600`), no como cuatro dígitos sin punto; esta regla se contrasta con el formato de campo del protocolo oficial v5.4. Estos constructores solo generan bytes y tienen pruebas automatizadas sin impresora; todavía no abren el puerto, no traducen los importes del POS ni emiten documentos. La siguiente etapa es implementar el transporte serial comando/respuesta, conciliar los totales del subtotal y validar la conversión monetaria/IGTF antes de conectar el cierre a una venta.
 2. Construir los puentes específicos de fabricante; no basta con que exista el archivo DLL.
 3. Probar lectura de estado, papel/tapa, emisión, consulta del último documento, anulaciones/notas de crédito cuando el equipo lo permita y Reporte Z.
 4. Ejecutar pruebas físicas por cada modelo, firmware, interfaz (USB/COM/Ethernet) y arquitectura Windows.
@@ -146,10 +150,43 @@ Preferir el controlador firmado que corresponda al identificador VID/PID y a la 
 
 ### Política de SDK y DLL fiscales
 
-Los SDKs fiscales (por ejemplo, TfhkaNet/tfhkaif, BemaFI, Epson Fiscal, QProg, AclasSDK y pnpdll) no se consideran redistribuibles solo por estar disponibles en Internet. Antes de empaquetarlos se requiere una licencia o autorización del fabricante que permita su redistribución. SIFER puede integrar bibliotecas gratuitas con licencia de redistribución explícita; no incluirá binarios propietarios obtenidos de repositorios no oficiales ni ejecutará instaladores sin consentimiento del administrador.
+SIFER facilita el acceso y uso de los SDK/DLL que los fabricantes o sus canales técnicos publican gratuitamente para usuarios e integradores. No se presume una prohibición de uso por ausencia de una frase expresa de redistribución. Se distingue entre (1) descarga y uso individual desde la fuente pública y (2) copiar el binario dentro del instalador de SIFER. El administrador puede descargar el paquete gratuito, seleccionarlo en la configuración y utilizarlo con el adaptador correspondiente. Solo se copia al instalador cuando la publicación o el paquete permita esa redistribución; si no está claro, se conserva el flujo de descarga individual sin impedir su uso. Se respetan las restricciones expresas del fabricante. No se ejecutan instaladores ni se modifican archivos sin confirmación del administrador.
 
-La pantalla de configuración fiscal incorpora accesos a los portales oficiales permitidos (PNP, Prolific, FTDI, Silicon Labs, The Factory HKA, Epson, Quorion y Aclas) mediante una lista cerrada de destinos en el proceso principal Electron. No acepta URLs arbitrarias. La descarga se realiza en el navegador externo y el administrador selecciona luego los archivos originales desde el POS. Bematech requiere el paquete fiscal exacto del representante autorizado. La compilación actual no descarga ni instala controladores o SDKs silenciosamente durante la instalación o ejecución. La instalación sin impresora y la modalidad térmica genérica no requieren DLLs fiscales.
+La pantalla fiscal ofrece destinos cerrados para PNP (DLL 32/64 bits y protocolo 0141), Bematech/POS Venezuela (DLL y drivers), Prolific, FTDI, Silicon Labs, The Factory HKA (su sitio declara herramientas gratuitas para integradores), Epson, Quorion y Aclas. No acepta URLs arbitrarias. La descarga se realiza desde la página pública del proveedor y el administrador selecciona luego los archivos originales desde el POS. La aplicación no descarga ni instala controladores silenciosamente.
 
 ### Separación de documentos internos y fiscales
 
 Los documentos con `docType: TICKET-INTERNO` o `documentMode: INTERNAL_THERMAL/NO_PRINTER` se conservan en el historial de ventas, inventario, caja y reportes comerciales. Se excluyen del Libro de Ventas Fiscal, de los resúmenes de documentos fiscales y del débito mensual de IVA. No reciben número de control fiscal, serial de máquina ni número fiscal simulado. Los documentos heredados sin modalidad explícita conservan el tratamiento anterior para no alterar registros históricos.
+
+## Contabilidad restaurada y bloqueo fiscal
+
+El módulo original de Contabilidad VEN-NIF está restaurado en la aplicación, con su dashboard de contador, estilos, catálogo predeterminado de cuentas y persistencia en el snapshot SQLite. Su acceso permanece bloqueado mientras no exista una impresora fiscal conectada, activa y capaz de emitir documentos fiscales. La comprobación se realiza en cada apertura y se vigila durante la sesión; si se pierde el estado fiscal, el módulo se cierra y se informa al usuario.
+
+Para PNP, la validación se realiza ahora mediante el protocolo serial nativo v5.4: consulta de estado fiscal y confirmación del serial de máquina. No se exige una DLL puente externa para esta ruta nativa. Para otros fabricantes continúa siendo obligatoria la confirmación explícita del adaptador correspondiente: dispositivo conectado, estado fiscal listo y capacidad real de emitir.
+
+## Comunicación fiscal PNP nativa v5.4
+
+La ruta PNP directa opera sobre el puerto COM configurado a 9600 baudios, 8 bits, sin paridad y 1 bit de parada por defecto. El intercambio sigue el protocolo oficial:
+
+1. Cada trama se valida por STX, secuencia, comando, ETX y BCC.
+2. Los campos vacíos se transmiten como DEL (0x7F), según el ejemplo del apéndice B del protocolo v5.4.
+3. Se espera la respuesta de cada comando antes de transmitir el siguiente. El carácter 0x12 extiende el tiempo de espera en 800 ms.
+4. Antes de abrir la factura se consulta el serial fiscal de la máquina. Después se abre con 0x40 y se envían los renglones con 0x42.
+5. Los descuentos se representan como renglones de anulación con calificador «m», ligados a la misma tasa del artículo.
+6. Antes del cierre se consulta SUBTOTAL (0x43), se analizan sus 17 campos y se concilian base y total con los importes del POS. Si existe diferencia, no se envía el cierre.
+7. Solo después de una conciliación correcta se envía CERRAR FACTURA (0x45). El número de documento se toma de la respuesta real de la impresora.
+8. No existe reintento automático de comandos fiscales. Si se pierde la respuesta después de enviar un comando, el resultado se marca como incierto y exige consultar la impresora/memoria de auditoría antes de volver a facturar.
+
+Las pruebas automatizadas utilizan respuestas simuladas y verifican secuencia, BCC, errores, descuentos, conciliación y ausencia de reenvíos. **No equivalen a una prueba física**: antes de habilitar facturación real en producción debe verificarse con el modelo PNP concreto, su firmware, tasas fiscales configuradas, comunicación COM y un procedimiento de aceptación acordado que no genere facturas de prueba duplicadas.
+
+## Formulario Registrar Compra de Mercancía
+
+El formulario de compras diferencia **Factura fiscal**, **Nota de entrega / no fiscal** y **Otro documento no fiscal**. La factura fiscal exige número de control; los documentos no fiscales no generan IVA acreditable ni retención de IVA y sus renglones quedan con alícuota cero. Se conserva el número real del documento del proveedor, sin generar referencias ficticias.
+
+La tasa USD/BCV se consulta por fecha del documento en el histórico público JSON de BCV Today (https://bcv.today/api/v1/history/YYYY-MM-DD.json). El formulario muestra la tasa y fecha valor, guarda el dato histórico en el snapshot SQLite y utiliza esa tasa para las equivalencias en bolívares, el pago inicial y las constancias de retención. Si no hay conexión, solo acepta una tasa histórica exacta previamente guardada para esa fecha; no sustituye una tasa histórica faltante por la tasa actual. BCV Today declara que replica datos publicados por el BCV; es un servicio público de terceros, no un certificado oficial emitido por el BCV. El responsable contable debe verificar la tasa/documento de origen.
+
+La retención de IVA solo se calcula si la empresa tiene confirmada la designación y el proveedor está marcado como sujeto, con la proporción configurada (75% o 100%). La retención ISLR es opcional y parte en cero: el usuario introduce el porcentaje aplicable según el concepto, tipo de proveedor y comprobante; el sistema no inventa una alícuota. Ambas retenciones se separan del importe adeudado al proveedor y se registran como obligaciones de retención. El IVA soportado se conserva separado del costo base y el documento no fiscal no lo acredita.
+
+El precio de venta se propone automáticamente cuando el producto tiene motor de precios en modo automático: usa el costo promedio proyectado después de la recepción y respeta el motor configurado (markup sobre costo, margen sobre venta o brecha BCV/paralelo). El usuario puede desactivar el cálculo automático por renglón y editar el precio manualmente. Las presentaciones y escalas de precio automático se actualizan junto al precio base.
+
+El registro conserva tipo de documento, elegibilidad de crédito fiscal, tasa BCV y fecha valor, importes en USD/Bs., retenciones, y precio de venta propuesto. La tasa y la retención quedan congeladas en la compra para que cambios posteriores de tasa o configuración no alteren operaciones históricas.

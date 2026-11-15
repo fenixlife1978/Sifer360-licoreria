@@ -104,3 +104,19 @@ test('las descargas externas solo pueden abrir destinos oficiales permitidos', (
   assert.match(main, /data-fiscal-download="pnpSdk32"/);
   assert.match(main, /data-fiscal-download="prolific"/);
 });
+
+
+test('la configuración fiscal expone fuentes públicas Bematech y protocolo PNP con destinos cerrados', () => {
+  assert.match(electronMain, /bematech: 'https:\/\/posvenezuela\.com\/librerias-dll\//);
+  assert.match(electronMain, /bematechDownloads: 'https:\/\/posvenezuela\.com\/descargas-2\//);
+  assert.match(electronMain, /pnpProtocol: 'https:\/\/desarrollospnp\.com\/archivos\/PROTOCOLO0141\.pdf'/);
+  assert.match(main, /data-fiscal-download="bematech"/);
+  assert.match(main, /data-fiscal-download="pnpProtocol"/);
+});
+
+
+test('la configuración fiscal incluye descargas Bematech separadas para MP-4000 y MP-4200', () => {
+  assert.match(electronMain, /bematechMP4200: 'https:\/\/posvenezuela\.com\/descargas-mp4200\//);
+  assert.match(main, /data-fiscal-download="bematechMP4200"/);
+  assert.match(main, /DLL y driver Bematech MP-4200/);
+});

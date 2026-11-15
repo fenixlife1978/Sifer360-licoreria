@@ -33,7 +33,9 @@ test('cashier opening state is isolated to the authenticated browser session',()
 
 test('cashier toolbar shows only sales workflow actions',()=>{
   assert.match(access,/cajero:\['nueva','buscar','cliente','suspender','recuperar','descuento','quitar','ventas','cortez','tasa','salidas'\]/);
-  assert.doesNotMatch(access,/btnAccountingTop|accounting|contabilidad/i);
+  assert.doesNotMatch(access,/cajero:\[[^\]]*contabilidad/i);
+  assert.match(access,/contador:\['seniat','contabilidad'\]/);
+  assert.match(access,/btnAccountingTop/);
   assert.match(access,/btnSeniatTop/);
 });
 

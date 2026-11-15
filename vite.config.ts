@@ -5,6 +5,9 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // El portable Electron abre dist/index.html con file://; las rutas relativas
+    // mantienen CSS, JS, WASM e imágenes dentro del paquete sin servidor web.
+    base: './',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
