@@ -5357,7 +5357,7 @@ function fiscalPrinterConfigDlg(){
     '<div class="f"><label for="fpParity">Paridad</label><select class="fld" id="fpParity">'+['none','even','odd','mark','space'].map(v=>'<option value="'+v+'" '+(draft.parity===v?'selected':'')+'>'+v.toUpperCase()+'</option>').join('')+'</select></div>'+
     '<div class="f"><label for="fpStop">Bits de parada</label><select class="fld" id="fpStop"><option value="1" '+(Number(draft.stopBits)===1?'selected':'')+'>1</option><option value="2" '+(Number(draft.stopBits)===2?'selected':'')+'>2</option></select></div>'+
     '<div class="f"><label for="fpTimeout">Tiempo de espera (ms)</label><input class="fld r" id="fpTimeout" type="number" min="1000" max="60000" value="'+esc(draft.timeoutMs)+'"></div>'+
-    '</div><div class="row" style="flex-wrap:wrap;margin:8px 0"><button class="btn" id="fpDetect">Detectar puertos COM</button><button class="btn" id="fpTestPort">Probar apertura del puerto</button></div>'+
+    '</div><div class="row" style="flex-wrap:wrap;margin:8px 0"><button class="btn" id="fpDetect">Detectar puertos COM y controladores</button><button class="btn" id="fpTestPort">Probar apertura del puerto</button><button class="btn" id="fpTestPnp" hidden>Consultar estado fiscal PNP</button></div><div class="group" id="fpCompatibility" aria-live="polite"><div class="gtitle">Asistente de compatibilidad</div><p class="hint">Al detectar el equipo se mostrarán VID/PID, controlador USB-Serial probable y el siguiente paso recomendado. La identificación del adaptador USB no identifica por sí sola la marca o modelo fiscal.</p></div>'+
     '<div class="group"><div class="gtitle">SDK del fabricante</div><div id="fpSdkFields"></div><div class="hint">Selecciona únicamente archivos originales entregados por el fabricante o distribuidor autorizado. Detectar un DLL no significa que el protocolo esté integrado.</div></div>'+
     '<div class="group"><div class="gtitle">Descargas públicas y portales oficiales</div><p class="hint">Abre la fuente oficial para localizar el SDK o controlador que corresponda al modelo y al chipset detectado. El administrador puede abrir la fuente pública, descargar el paquete gratuito que corresponda y seleccionarlo en esta pantalla. SIFER no altera el paquete ni lo instala silenciosamente; solicita confirmación antes de cualquier instalación.</p><div class="row" style="flex-wrap:wrap"><button class="btn mini2" data-fiscal-download="pnpSdk32">SDK PNP 32 bits</button><button class="btn mini2" data-fiscal-download="pnpSdk64">SDK PNP 64 bits</button><button class="btn mini2" data-fiscal-download="pnpProtocol">Protocolo PNP 0141</button><button class="btn mini2" data-fiscal-download="bematech">DLL y drivers Bematech MP-4000</button><button class="btn mini2" data-fiscal-download="bematechMP4200">DLL y driver Bematech MP-4200</button><button class="btn mini2" data-fiscal-download="prolific">Driver Prolific PL2303</button><button class="btn mini2" data-fiscal-download="ftdi">Driver FTDI VCP</button><button class="btn mini2" data-fiscal-download="silabs">Driver Silicon Labs CP210x</button><button class="btn mini2" data-fiscal-download="hka">Herramientas gratuitas HKA</button><button class="btn mini2" data-fiscal-download="epson">Portal Epson Developers</button><button class="btn mini2" data-fiscal-download="quorion">Portal Quorion</button><button class="btn mini2" data-fiscal-download="aclas">Portal Aclas</button></div><p class="hint">Para Bematech MP-4000, el portal publica paquetes DLL de 10 y 13 dígitos, varias versiones de BemaFI/BemaMFD y drivers USB. Para MP-4200 existe una página de descargas separada con archivos DLL y manual de instalación. Seleccione el paquete según modelo, firmware y longitud de dígitos fiscales.</p></div>'+
     '<div class="group"><div class="gtitle">Puente de comunicación fiscal</div><div class="f"><label for="fpBridge">Ejecutable adaptador del fabricante</label><input class="fld" id="fpBridge" readonly value="'+esc(draft.bridgePath)+'"></div><div class="row" style="flex-wrap:wrap;margin-top:8px"><button class="btn" id="fpChooseBridge">Seleccionar adaptador .exe</button><button class="btn" id="fpTestBridge">Comprobar adaptador</button></div><p class="hint">El adaptador debe implementar sifer-fiscal-bridge/v1 y usar el SDK oficial. No se envían comandos fiscales desde esta prueba.</p></div>'+
@@ -5376,7 +5376,7 @@ function fiscalPrinterConfigDlg(){
   };
   const drawSdk=()=>{
     const p=profile(),files=providerCatalog[p.provider].files;
-    $('#fpTestPnp',el).hidden=p.provider!=='pnp';
+    const pnpTest=$('#fpTestPnp',el);if(pnpTest)pnpTest.hidden=p.provider!=='pnp';
     $('#fpSdkFields',el).innerHTML=files.map(file=>'<div class="row" style="gap:6px;margin:5px 0;align-items:center"><div style="flex:1;min-width:0"><b>'+esc(file)+'</b><div class="hint" style="overflow-wrap:anywhere">'+esc(draft.sdkPaths[file]||'No seleccionado')+'</div></div><button class="btn mini2" data-sdk-file="'+esc(file)+'">Buscar archivo</button></div>').join('');
   };
   const status=async()=>{
@@ -5387,39 +5387,17 @@ function fiscalPrinterConfigDlg(){
     drawPendingJobs();
   };
   const detect=async()=>{
-    const node=$('#fpStatus',el);node.textContent='Buscando impresoras en COM1–COM10…';
+    const node=$('#fpStatus',el);node.textContent='Enumerando dispositivos USB-Serial y puertos COM de Windows…';
     try{
+      if(!window.posDesktop||!window.posDesktop.fiscalPrinterListPorts)throw new Error('La detección requiere la aplicación de escritorio.');
       const r=await window.posDesktop.fiscalPrinterListPorts();
-      const ports=(r.ports||[]).filter(p=>Number(String(p.port).replace(/^COM/i,''))>=1&&Number(String(p.port).replace(/^COM/i,''))<=10);
+      const ports=r.ports||[];
       $('#fpPortList',el).innerHTML=ports.map(p=>'<option value="'+esc(p.port)+'">'+esc(p.name)+'</option>').join('');
-      if(!ports.length){node.textContent=r.message||'No se detectaron puertos COM1–COM10. Puede continuar sin impresora o elegir ticket interno.';return;}
-      const base=profile();
-      if(base.provider==='pnp'){
-        for(const candidate of ports){
-          try{
-            const result=await window.posDesktop.fiscalPrinterTestPnp({...base,port:candidate.port});
-            $('#fpPort',el).value=candidate.port;draft.port=candidate.port;drafts[box]=draft;
-            node.textContent='Impresora PNP identificada y protocolo validado en '+candidate.port+'. '+result.message+' Última factura: '+result.currentInvoice+' · Último Z: '+result.lastZ+'.';
-            return;
-          }catch{}
-        }
-        node.textContent='Se detectaron puertos COM, pero ninguno respondió al protocolo de estado PNP. No se seleccionó ningún puerto automáticamente. Revise el cable, controlador y modelo.';
-        return;
-      }
-      if(base.bridgePath){
-        for(const candidate of ports){
-          try{
-            const result=await window.posDesktop.fiscalPrinterTestBridge({...base,port:candidate.port});
-            $('#fpPort',el).value=candidate.port;draft.port=candidate.port;drafts[box]=draft;
-            node.textContent='El adaptador fiscal respondió correctamente en '+candidate.port+'. '+JSON.stringify(result);
-            return;
-          }catch{}
-        }
-        node.textContent='Hay puertos COM disponibles, pero el adaptador no reconoció una impresora en ninguno. No se asignó un puerto.';
-        return;
-      }
-      node.textContent='Puertos candidatos: '+ports.map(p=>p.port+' — '+p.name).join(' · ')+'. Seleccione uno y configure el SDK/adaptador oficial para validar el protocolo. Un puerto abierto por sí solo no confirma una impresora fiscal.';
-    }catch(e){node.textContent='No se pudieron detectar puertos: '+e.message;}
+      if(!ports.length){node.textContent=r.message||'Windows no detectó puertos COM. Compruebe cable y controlador USB-Serial.';return;}
+      const driverNames={prolific:'Prolific PL2303',ftdi:'FTDI VCP',silabs:'Silicon Labs CP210x'};
+      const summaries=ports.map(p=>p.port+' — '+p.name+(p.driverId?' · chipset probable: '+(driverNames[p.driverId]||p.driverId):'')+(p.vendorId?' · VID:PID '+p.vendorId+':'+(p.productId||'????'):''));
+      node.textContent='DISPOSITIVOS DETECTADOS: '+summaries.join(' | ')+'. Seleccione manualmente el puerto COM en el campo correspondiente. La detección no envía comandos a ningún puerto ni identifica por sí sola la impresora fiscal. '+(profile().provider==='pnp'?'Después pulse «Consultar estado fiscal PNP» para probar únicamente el puerto seleccionado.':(profile().bridgePath?'Después pulse «Comprobar adaptador» para probar únicamente el puerto seleccionado.':'Configure el modelo exacto y el adaptador oficial antes de probar el protocolo.'));
+    }catch(e){node.textContent='No se pudieron detectar dispositivos: '+e.message;}
   };
   const applyDraft=()=>{
     $('#fpProvider',el).value=draft.provider;
@@ -5559,7 +5537,7 @@ function printerSetupWizardDlg(){
     '<div class="group"><b>Detección de dispositivos</b><p class="hint">En Windows se pueden enumerar los puertos COM. La identificación fiscal automática requiere una respuesta válida del protocolo de cada fabricante; no se confundirá un puerto abierto con una impresora fiscal reconocida.</p><button class="btn" type="button" id="printerWizardDetect">Buscar dispositivos conectados</button><div class="hint" id="printerWizardStatus" role="status" aria-live="polite">La búsqueda no enviará comandos fiscales de emisión ni de cierre.</div></div></div>');
   $('#printerWizardDetect',el).addEventListener('click',async()=>{
     const node=$('#printerWizardStatus',el);node.textContent='Consultando dispositivos y puertos COM…';
-    try{if(!window.posDesktop||!window.posDesktop.fiscalPrinterListPorts)throw new Error('La detección requiere la aplicación de escritorio.');const r=await window.posDesktop.fiscalPrinterListPorts();node.textContent=(r.ports||[]).length?'Puertos detectados: '+r.ports.map(p=>p.port+' — '+p.name).join(' · '):r.message||'No se detectaron impresoras seriales. Puede continuar sin impresora o elegir ticket térmico genérico.';}
+    try{if(!window.posDesktop||!window.posDesktop.fiscalPrinterListPorts)throw new Error('La detección requiere la aplicación de escritorio.');const r=await window.posDesktop.fiscalPrinterListPorts();const ports=r.ports||[];const names={prolific:'Prolific PL2303',ftdi:'FTDI VCP',silabs:'Silicon Labs CP210x'};node.textContent=ports.length?'Puertos COM detectados: '+ports.map(p=>p.port+' — '+p.name+' ['+(p.vendorId?'VID '+p.vendorId+(p.productId?'/PID '+p.productId:''):'sin VID/PID')+'; '+(p.driverLabel||names[p.driverId]||'controlador no identificado')+']').join(' · ')+'. El VID/PID y el chipset identifican el adaptador USB, no el modelo fiscal. Confirme la marca/modelo en la etiqueta y configure su SDK oficial antes de habilitar facturación.':' '+(r.message||'No se detectaron impresoras seriales. Puede continuar sin impresora o elegir ticket térmico genérico.');}
     catch(e){node.textContent=e.message+' Puede continuar con ticket interno o sin impresora.';}
   });
   openWin({title:'Asistente inicial · Impresoras y tickets',w:620,body:el,foot:[{label:'Configurar y continuar',primary:true,fn:async()=>{
