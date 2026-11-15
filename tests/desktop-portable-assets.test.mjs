@@ -18,6 +18,6 @@ test('portable Electron carga todos los recursos de interfaz con rutas relativas
 
 test('el POS no depende de fuentes inexistentes ni de servicios externos', () => {
   assert.doesNotMatch(css, /url\(["']?fonts\//i);
-  assert.match(css, /--ui\\s*:/);
-  assert.match(css, /--mono\\s*:/);
+  assert.ok(css.includes('--ui:'), 'Debe existir fuente de interfaz de respaldo');
+  assert.ok(css.includes('--mono:'), 'Debe existir fuente monoespaciada de respaldo');
 });
