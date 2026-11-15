@@ -43,6 +43,61 @@ function encodeCommand(command, fields = [], sequence = MIN_SEQUENCE) {
   return Buffer.concat([body, bcc]);
 }
 
+
+function assertTextField(value, maxLength, label) {
+  const text = String(value == null ? '' : value);
+  if (text.length > maxLength) throw new Error(label + ' excede el máximo de ' + maxLength + ' caracteres.');
+  encodeField(text);
+  return text;
+}
+
+function assertDecimalField(value, pattern, label) {
+  const text = String(value == null ? '' : value);
+  if (!pattern.test(text)) throw new Error(label + ' no cumple el formato numérico del protocolo PNP.');
+  return text;
+}
+
+// Command builders mirror the published PNP v5.4 field order. They only
+// construct frames; they never open a port or emit a fiscal document.
+function createFiscalOpenInvoice(input = {}, sequence = MIN_SEQUENCE) {
+  const customerName = assertTextField(input.customerName, 38, 'Razón social del comprador');
+  const customerRif = assertTextField(input.customerRif, 12, 'RIF del comprador');
+  return encodeCommand(0x40, [customerName, customerRif, '', '', '', '', '', '', ''], sequence);
+}
+
+function createFiscalText(input = {}, sequence = MIN_SEQUENCE) {
+  const text = assertTextField(input.text, 40, 'Texto fiscal');
+  const auditFlag = input.auditFlag == null ? '' : String(input.auditFlag);
+  if (!['', 'S'].includes(auditFlag)) throw new Error('Indicador de cinta de auditoría no válido.');
+  return encodeCommand(0x41, [text, auditFlag], sequence);
+}
+
+function createFiscalItem(input = {}, sequence = MIN_SEQUENCE) {
+  const description = assertTextField(input.description, 20, 'Descripción del renglón');
+  const quantity = assertDecimalField(input.quantity, /^\\d{1,4}\\.\\d{3}$/, 'Cantidad');
+  const amount = assertDecimalField(input.amount, /^\\d{1,6}\\.\\d{2}$/, 'Monto del ítem');
+  const taxRate = assertDecimalField(input.taxRate, /^\\.?\\d{4}$/, 'Tasa imponible');
+  const qualifier = String(input.qualifier == null ? 'M' : input.qualifier);
+  if (!['M', 'm'].includes(qualifier)) throw new Error('Calificador de renglón PNP no válido.');
+  return encodeCommand(0x42, [description, quantity, amount, taxRate, qualifier, '', '', ''], sequence);
+}
+
+function createFiscalSubtotal(sequence = MIN_SEQUENCE) {
+  return encodeCommand(0x43, ['', ''], sequence);
+}
+
+function createFiscalCloseInvoice(input = {}, sequence = MIN_SEQUENCE) {
+  const mode = String(input.mode == null ? 'T' : input.mode);
+  if (!['A', 'B', 'T', 'U'].includes(mode)) throw new Error('Calificador de cierre fiscal PNP no válido.');
+  let foreignCurrencyAmount = '';
+  if (mode === 'B' || mode === 'U') {
+    foreignCurrencyAmount = assertDecimalField(input.foreignCurrencyAmount, /^\\d{1,10}\\.\\d{2}$/, 'Monto pagado en divisas para IGTF');
+  } else if (input.foreignCurrencyAmount != null && String(input.foreignCurrencyAmount) !== '') {
+    throw new Error('El monto en divisas solo aplica a los cierres PNP B o U.');
+  }
+  return encodeCommand(0x45, [mode, foreignCurrencyAmount], sequence);
+}
+
 function decodeFrame(input) {
   const frame = Buffer.isBuffer(input) ? input : Buffer.from(input || []);
   if (frame.length < 8 || frame[0] !== STX) throw new Error('Trama PNP incompleta o sin STX.');
@@ -83,4 +138,4 @@ function validateResponse(response, expected = {}) {
   return response;
 }
 
-module.exports = { STX, ETX, FS, CONTINUE, encodeCommand, decodeFrame, createStatusQuery, validateResponse };
+module.exports = { STX, ETX, FS, CONTINUE, encodeCommand, decodeFrame, createStatusQuery, createFiscalOpenInvoice, createFiscalText, createFiscalItem, createFiscalSubtotal, createFiscalCloseInvoice, validateResponse };
