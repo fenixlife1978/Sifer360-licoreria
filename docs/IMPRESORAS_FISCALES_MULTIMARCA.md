@@ -154,3 +154,22 @@ La pantalla fiscal ofrece destinos cerrados para PNP (DLL 32/64 bits y protocolo
 ### Separación de documentos internos y fiscales
 
 Los documentos con `docType: TICKET-INTERNO` o `documentMode: INTERNAL_THERMAL/NO_PRINTER` se conservan en el historial de ventas, inventario, caja y reportes comerciales. Se excluyen del Libro de Ventas Fiscal, de los resúmenes de documentos fiscales y del débito mensual de IVA. No reciben número de control fiscal, serial de máquina ni número fiscal simulado. Los documentos heredados sin modalidad explícita conservan el tratamiento anterior para no alterar registros históricos.
+
+## Pendiente funcional: restablecer el módulo de Contabilidad con bloqueo fiscal
+
+El módulo de **Contabilidad debe volver a existir en SIFER360-LICORERIA**, recuperando el módulo y el comportamiento funcional que tenía anteriormente. Su retirada del código actual no representa una decisión funcional definitiva: la reintroducción queda registrada como trabajo pendiente y no debe confundirse con la integración de impresoras fiscales que se está desarrollando ahora.
+
+Reglas obligatorias para su futura implementación:
+
+1. El módulo debe estar presente y visible en la navegación, aunque no haya una impresora fiscal conectada.
+2. Si no existe una impresora fiscal conectada, reconocida y operativa, el acceso al módulo estará bloqueado. Al seleccionarlo, el sistema mostrará un aviso claro: **«El módulo de Contabilidad requiere una impresora fiscal conectada y activa. Conecte y active una impresora fiscal para acceder».**
+3. El módulo solo se habilitará cuando el adaptador de la impresora fiscal confirme el estado operativo y la capacidad real de generar facturación fiscal. Que exista un perfil guardado, que se haya elegido un puerto COM o que Windows detecte un dispositivo no es suficiente.
+4. El estado debe vigilarse durante el uso. Si el equipo se desconecta, falla la comunicación o deja de estar habilitado para emitir documentos fiscales, se bloqueará el acceso y se informará al usuario del motivo.
+5. Al reconectar y validar correctamente la impresora fiscal, el acceso podrá habilitarse de nuevo sin reinstalar el sistema ni reconstruir datos.
+6. La reintroducción debe recuperar el módulo anterior como referencia, no sustituirlo por una pantalla nueva simplificada. Deben revisarse sus pantallas, operaciones, informes, permisos y relaciones funcionales antes de restaurarlo.
+7. La reintroducción no puede borrar ni sobrescribir datos históricos. Debe conservarse la base SQLite local y añadirse cualquier migración de forma compatible y reversible.
+8. El módulo debe trabajar con la información fiscal respaldada por documentos realmente emitidos por la impresora. Los tickets internos de una impresora térmica genérica y las ventas en modalidad sin impresora no se deben presentar como facturas fiscales.
+
+Pruebas de aceptación pendientes: módulo visible pero bloqueado sin equipo; mensaje correcto al intentar abrirlo; desbloqueo tras una conexión fiscal válida; bloqueo inmediato o al detectar pérdida de estado; reconexión y recuperación del acceso; rechazo de un simple puerto COM/perfil configurado como prueba de impresora fiscal; conservación de datos contables anteriores durante actualización y migración.
+
+Esta tarea es futura y separada del alcance actual de los constructores de tramas PNP. No se debe activar el módulo ni habilitar facturación fiscal hasta completar las pruebas de integración y validación física del fabricante/modelo correspondiente.

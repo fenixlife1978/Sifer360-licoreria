@@ -58,7 +58,7 @@ test('construye comandos de factura fiscal PNP v5.4 con campos y límites docume
 
   const item = pnp.decodeFrame(pnp.createFiscalItem({description:'Producto prueba',quantity:'2.000',amount:'15.50',taxRate:'.1600',qualifier:'M'},0x28));
   assert.equal(item.command,0x42);
-  assert.deepEqual(item.fields,['Producto prueba','2.000','15.50','1600','M','','','']);
+  assert.deepEqual(item.fields,['Producto prueba','2.000','15.50','.1600','M','','','']);
 
   const subtotal = pnp.decodeFrame(pnp.createFiscalSubtotal(0x29));
   assert.equal(subtotal.command,0x43);
