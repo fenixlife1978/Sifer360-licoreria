@@ -43,7 +43,7 @@ function getSdkStatus(profile){
   const files=provider.sdkFiles.map(filename=>{
     const filePath=normalized.sdkPaths[filename]||'';let exists=false;
     try{exists=!!filePath&&fs.statSync(filePath).isFile();}catch{}
-    const binary=/\\.(dll|exe)$/i.test(filename);
+    const binary=/\.(dll|exe)$/i.test(filename);
     const architecture=exists&&binary?BinaryArchitecture.inspectBinaryArchitecture(filePath):null;
     return{filename,path:filePath,exists,binary,architecture};
   });
@@ -58,9 +58,12 @@ function getSdkStatus(profile){
     const incompatible=candidates.filter(file=>bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'&&BinaryArchitecture.canLoadSdk(bridgeArchitecture.architecture,file.architecture.architecture)===false);
     return{alternatives:group,present:candidates.length>0,compatible:candidates.length>0&&compatible.length>0,compatibleFiles:compatible.map(file=>file.filename),incompatibleFiles:incompatible.map(file=>file.filename)};
   });
-  const architectureVerified=!!bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'&&groups.every(group=>group.compatible);
+  const osArchitecture=BinaryArchitecture.detectWindowsArchitecture();
+  const bridgeRunnable=bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'?BinaryArchitecture.canRunBridge(osArchitecture,bridgeArchitecture.architecture):null;
+  const architectureVerified=!!bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'&&bridgeRunnable===true&&groups.every(group=>group.compatible);
   const architectureIssues=[];
   if(bridgeExists&&(!bridgeArchitecture||bridgeArchitecture.architecture==='unknown'))architectureIssues.push('No se pudo identificar la arquitectura del puente fiscal.');
+  else if(bridgeExists&&bridgeRunnable!==true)architectureIssues.push('El puente fiscal no coincide con la arquitectura de Windows o esta combinación no está verificada.');
   for(const group of groups){
     if(!group.present)architectureIssues.push('No hay una DLL SDK PE válida seleccionada para: '+group.alternatives.join(' / ')+'.');
     else if(!group.compatible)architectureIssues.push('La arquitectura de las DLL SDK no coincide o no puede verificarse frente al puente fiscal: '+group.alternatives.join(' / ')+'.');
@@ -77,7 +80,7 @@ function getSdkStatus(profile){
   return{
     provider:provider.id,providerLabel:provider.label,model:normalized.model,files,groups,
     bridgePath:normalized.bridgePath,bridgeExists,bridgeArchitecture,
-    hostProcessArchitecture:BinaryArchitecture.normalizeRuntimeArchitecture(process.arch),
+    hostProcessArchitecture:BinaryArchitecture.normalizeRuntimeArchitecture(process.arch),osArchitecture,bridgeRunnable,
     architectureVerified,architectureIssues,ready,note
   };
 }
