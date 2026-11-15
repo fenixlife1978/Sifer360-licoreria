@@ -5382,8 +5382,16 @@ function fiscalPrinterConfigDlg(){
   const status=async()=>{
     const node=$('#fpStatus',el),p=profile();
     if(!window.posDesktop||!window.posDesktop.fiscalPrinterStatus){node.textContent='La administración de impresoras fiscales requiere la aplicación Electron de escritorio.';return;}
-    try{const r=await window.posDesktop.fiscalPrinterStatus(p);node.textContent=(r.ready?'Adaptador y SDK detectados.':'Configuración incompleta.')+' '+r.note+' Archivos SDK: '+r.files.filter(x=>x.exists).length+'/'+r.files.length+'. Puente: '+(r.bridgeExists?'presente':'no configurado')+'.';}
-    catch(e){node.textContent='No se pudo verificar la configuración: '+e.message;}
+    try{
+      const r=await window.posDesktop.fiscalPrinterStatus(p);
+      if(r.provider==='pnp'){
+        node.textContent='PNP utiliza comunicación serial nativa; no necesita un puente .exe para esta ruta. La presencia de DLL no confirma comunicación ni habilita emisión. Seleccione el puerto y use «Consultar estado fiscal PNP» para una consulta física de solo lectura.';
+      }else{
+        const archLabel={x86:'32 bits (x86)',x64:'64 bits (x64)',arm64:'ARM64',anycpu:'AnyCPU',unknown:'desconocida'};
+        const sdkArch=(r.files||[]).filter(x=>x.exists&&x.binary).map(x=>x.filename+': '+(archLabel[x.architecture&&x.architecture.architecture]||'desconocida')).join('; ')||'sin DLL seleccionadas';
+        node.textContent=(r.ready?'Arquitectura compatible verificada.':'Revisión de arquitectura pendiente.')+' '+r.note+' Windows: '+(archLabel[r.osArchitecture]||'desconocido')+'; proceso Electron: '+(archLabel[r.hostProcessArchitecture]||'desconocido')+'; puente: '+(archLabel[r.bridgeArchitecture&&r.bridgeArchitecture.architecture]||'desconocido')+'; SDK: '+sdkArch+'. Archivos: '+r.files.filter(x=>x.exists).length+'/'+r.files.length+'.';
+      }
+    }catch(e){node.textContent='No se pudo verificar la configuración: '+e.message;}
     drawPendingJobs();
   };
   const detect=async()=>{
