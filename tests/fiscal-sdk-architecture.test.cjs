@@ -105,7 +105,7 @@ test('AnyCPU puede acompañar un puente x64', t => {
   assert.equal(status.ready, true);
 });
 
-test('no ejecuta la prueba del puente si la arquitectura SDK es incompatible', async t => {
+test('la arquitectura SDK incompatible advierte, pero permite la prueba real del puente', async t => {
   const files = withTempFiles(t, {
     'bridge.exe': makePe(0x8664),
     'BemaFI32.dll': makePe(0x014C)
@@ -115,8 +115,9 @@ test('no ejecuta la prueba del puente si la arquitectura SDK es incompatible', a
     provider:'bematech', model:'MP-4000 TH FI', port:'COM4', enabled:true,
     bridgePath:files['bridge.exe'], sdkPaths:{'BemaFI32.dll':files['BemaFI32.dll']}
   }, { bridgeProbe:async()=>{bridgeCalled=true;return{deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:true};} });
-  assert.equal(result.ready, false);
-  assert.equal(bridgeCalled, false);
+  assert.equal(bridgeCalled, true);
+  assert.equal(result.ready, true);
+  assert.equal(result.architectureVerified, false);
   assert.match(result.message, /arquitectura/i);
 });
 
