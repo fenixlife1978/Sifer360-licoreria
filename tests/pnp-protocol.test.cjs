@@ -119,7 +119,7 @@ test('orquesta factura PNP con subtotal conciliado antes de enviar cierre', asyn
   const result = await PnpInvoice.emitFiscalInvoice({idempotencyKey:'sale-1',customerName:'Cliente',items:[{description:'Producto',quantity:1,unitPrice:100,taxRate:'.1600'}],fiscalSerial:'PNP-TEST'},transport);
   assert.deepEqual(sent,[0x80,0x40,0x42,0x43,0x45]);
   assert.equal(result.fiscalDocumentNumber,'000012');
-  assert.equal(result.fiscalSerial,'PNP-TEST');
+  assert.equal(result.fiscalSerial,'PNP-TEST-001');
 });
 
 test('no cierra ni reenvía si el subtotal no coincide', async () => {
@@ -127,7 +127,9 @@ test('no cierra ni reenvía si el subtotal no coincide', async () => {
   const sent = [];
   const transport = { exchange: async frame => {
     const request = pnp.decodeFrame(frame); sent.push(request.command);
-    const fields = request.command === 0x43
+    const fields = request.command === 0x80
+      ? ['0000','0000','PNP-TEST-002','J-12345678-9','','','','']
+      : request.command === 0x43
       ? ['0000','0000','','','0.00','99.00','16.00','15.84','0.00','8.00','0.00','0.00','0.00','0.00','0.00','99.00','114.84']
       : ['0000','0000'];
     return pnp.encodeCommand(request.command,fields,request.sequence);

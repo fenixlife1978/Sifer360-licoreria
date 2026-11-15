@@ -146,7 +146,7 @@ function decodeFrame(input) {
   if (etxAt < 0 || frame.length !== etxAt + 5) throw new Error('Trama PNP sin ETX/BCC completo.');
   const sequence = assertSequence(frame[1]);
   const command = frame[2];
-  if (command < 0x30 || command > 0xaf) throw new Error('Comando de respuesta PNP no válido.');
+  if (command < 0x30) throw new Error('Comando de respuesta PNP no válido.'); // The v5.4 serial-identity response is documented as 0xBB.
   const bccText = frame.subarray(etxAt + 1).toString('ascii');
   if (!/^[0-9A-Fa-f]{4}$/.test(bccText)) throw new Error('BCC PNP no tiene cuatro dígitos hexadecimales.');
   let checksum = 0;
