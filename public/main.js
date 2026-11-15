@@ -5387,7 +5387,7 @@ function fiscalPrinterConfigDlg(){
     drawPendingJobs();
   };
   const detect=async()=>{
-    const node=$('#fpStatus',el);node.textContent='Buscando impresoras en COM1–COM10…';
+    const node=$('#fpStatus',el);node.textContent='Buscando dispositivos seriales conectados…';
     try{
       const r=await window.posDesktop.fiscalPrinterListPorts();
       const ports=(r.ports||[]).filter(p=>Number(String(p.port).replace(/^COM/i,''))>=1&&Number(String(p.port).replace(/^COM/i,''))<=10);
@@ -5559,7 +5559,7 @@ function printerSetupWizardDlg(){
     '<div class="group"><b>Detección de dispositivos</b><p class="hint">En Windows se pueden enumerar los puertos COM. La identificación fiscal automática requiere una respuesta válida del protocolo de cada fabricante; no se confundirá un puerto abierto con una impresora fiscal reconocida.</p><button class="btn" type="button" id="printerWizardDetect">Buscar dispositivos conectados</button><div class="hint" id="printerWizardStatus" role="status" aria-live="polite">La búsqueda no enviará comandos fiscales de emisión ni de cierre.</div></div></div>');
   $('#printerWizardDetect',el).addEventListener('click',async()=>{
     const node=$('#printerWizardStatus',el);node.textContent='Consultando dispositivos y puertos COM…';
-    try{if(!window.posDesktop||!window.posDesktop.fiscalPrinterListPorts)throw new Error('La detección requiere la aplicación de escritorio.');const r=await window.posDesktop.fiscalPrinterListPorts();node.textContent=(r.ports||[]).length?'Puertos detectados: '+r.ports.map(p=>p.port+' — '+p.name).join(' · '):r.message||'No se detectaron impresoras seriales. Puede continuar sin impresora o elegir ticket térmico genérico.';}
+    try{if(!window.posDesktop||!window.posDesktop.fiscalPrinterListPorts)throw new Error('La detección requiere la aplicación de escritorio.');const r=await window.posDesktop.fiscalPrinterListPorts();const ports=r.ports||[];const names={prolific:'Prolific PL2303',ftdi:'FTDI VCP',silabs:'Silicon Labs CP210x'};node.textContent=ports.length?'Puertos COM detectados: '+ports.map(p=>p.port+' — '+p.name+' ['+(p.vendorId?'VID '+p.vendorId+(p.productId?'/PID '+p.productId:''):'sin VID/PID')+'; '+(p.driverLabel||names[p.driverId]||'controlador no identificado')+']').join(' · ')+'. El VID/PID y el chipset identifican el adaptador USB, no el modelo fiscal. Confirme la marca/modelo en la etiqueta y configure su SDK oficial antes de habilitar facturación.':' '+(r.message||'No se detectaron impresoras seriales. Puede continuar sin impresora o elegir ticket térmico genérico.');}
     catch(e){node.textContent=e.message+' Puede continuar con ticket interno o sin impresora.';}
   });
   openWin({title:'Asistente inicial · Impresoras y tickets',w:620,body:el,foot:[{label:'Configurar y continuar',primary:true,fn:async()=>{
