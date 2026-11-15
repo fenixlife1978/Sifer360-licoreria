@@ -112,7 +112,8 @@ function mapInvoiceToPnp(invoice) {
     if (!Number.isFinite(rate) || rate <= 0 || !Number.isFinite(totalUsd)) throw new Error('No se puede verificar la tasa y el total USD necesarios para calcular el IGTF PNP.');
     const nonIgtfUsd = payments.reduce((sum,payment) => {
       const id = String(payment.id || '').toLowerCase();
-      if (id === 'cashea' || id === 'credito') return sum + Math.max(0,Number(payment.amount) || 0);
+      if (['efusd','zelle'].includes(id)) return sum;
+      if (payment.cur === 'USD') return sum + Math.max(0,Number(payment.amount) || 0);
       if (payment.cur === 'VES') return sum + Math.max(0,Number(payment.amount) || 0) / rate;
       return sum;
     },0);
