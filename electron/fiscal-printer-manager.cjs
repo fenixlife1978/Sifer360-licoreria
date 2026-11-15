@@ -57,7 +57,7 @@ function getSdkStatus(profile){
   const groups=(provider.sdkGroups||[]).map(group=>{
     const candidates=group.map(filename=>files.find(file=>file.filename===filename)).filter(file=>file&&file.exists&&file.binary);
     const compatible=candidates.filter(file=>bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'&&BinaryArchitecture.canLoadSdk(bridgeRuntimeArchitecture,file.architecture.architecture)===true);
-    const incompatible=candidates.filter(file=>bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'&&BinaryArchitecture.canLoadSdk(bridgeArchitecture.architecture,file.architecture.architecture)===false);
+    const incompatible=candidates.filter(file=>bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'&&BinaryArchitecture.canLoadSdk(bridgeRuntimeArchitecture,file.architecture.architecture)===false);
     return{alternatives:group,present:candidates.length>0,compatible:candidates.length>0&&compatible.length>0,compatibleFiles:compatible.map(file=>file.filename),incompatibleFiles:incompatible.map(file=>file.filename)};
   });
   const bridgeRunnable=bridgeArchitecture&&bridgeArchitecture.architecture!=='unknown'?BinaryArchitecture.canRunBridge(osArchitecture,bridgeArchitecture.architecture):null;
