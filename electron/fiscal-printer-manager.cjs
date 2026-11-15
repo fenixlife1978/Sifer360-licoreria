@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const PnpProtocol = require('./pnp-protocol.cjs');
+const PnpSerialTransport = require('./pnp-serial-transport.cjs');
 const execFileAsync = promisify(execFile);
 
 const PROVIDERS = Object.freeze({
@@ -75,17 +76,60 @@ function runBridge(profile,action,payload={},options={}){
     child.stdin.end(JSON.stringify(request)+'\n');
   });
 }
+function mapInvoiceToPnp(invoice) {
+  const customer = invoice.customer || {};
+  const lines = Array.isArray(invoice.lines) ? invoice.lines : [];
+  if (!lines.length) throw new Error('La factura no contiene renglones para la impresora PNP.');
+  const items = lines.map((line,index) => {
+    const quantity = Number(line.quantity);
+    const unitPrice = Number(line.unitPriceVes);
+    let rate = Number(line.taxRate || 0);
+    if (rate > 0 && rate <= 1) rate *= 100;
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) throw new Error('Alícuota inválida en renglón ' + (index + 1) + '.');
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('Precio en bolívares inválido en renglón ' + (index + 1) + '.');
+    const netAmount = Number(line.netVes);
+    if (!Number.isFinite(netAmount) || netAmount < 0) throw new Error('Base neta en bolívares inválida en renglón ' + (index + 1) + '.');
+    return {
+      description:line.description || line.desc || line.code || ('Producto ' + (index + 1)),
+      quantity, unitPrice, netAmount,
+      taxRate:'.' + String(Math.round(rate * 100)).padStart(4,'0')
+    };
+  });
+  const totals = invoice.totals || {};
+  const expectedBase = Number(totals.taxableBaseVes);
+  const expectedTotal = Number(totals.totalVes);
+  if (!Number.isFinite(expectedBase) || !Number.isFinite(expectedTotal)) throw new Error('La factura no contiene totales en bolívares para conciliación PNP.');
+  const igtfVes = Number(totals.igtfVes || 0);
+  const foreignCurrencyAmount = (Array.isArray(invoice.payments) ? invoice.payments : []).reduce((sum,payment) => {
+    const id = String(payment.id || '').toLowerCase();
+    if (payment.cur !== 'USD' || id === 'credito' || id === 'cashea') return sum;
+    return sum + Math.max(0,Number(payment.amount) || 0);
+  },0);
+  if (igtfVes > 0.01 && foreignCurrencyAmount <= 0) throw new Error('La factura tiene IGTF, pero no se pudo identificar el monto efectivamente pagado en divisas. Emisión bloqueada para evitar un IGTF incorrecto.');
+  return {
+    idempotencyKey:invoice.idempotencyKey,
+    customerName:customer.name || customer.razonSocial || 'Consumidor final',
+    customerRif:customer.rif || '',
+    items, expectedBase, expectedTotal,
+    closeMode:igtfVes > 0.01 ? 'U' : 'T',
+    foreignCurrencyAmount:foreignCurrencyAmount.toFixed(2)
+  };
+}
+
 async function emitInvoice(profile,invoice,options={}){
   if(!invoice||typeof invoice!=='object'||Array.isArray(invoice))throw new Error('Datos de factura inválidos.');
   const requestId=cleanText(invoice.idempotencyKey,120);if(!requestId)throw new Error('La emisión fiscal exige una clave de idempotencia persistida antes del envío.');
   const normalized = normalizeProfile(profile);
   if (normalized.provider === 'pnp') {
     const status = await testPnpFiscalStatus(normalized, options);
-    if (!status.ready) {
-      throw new Error('Emisión fiscal bloqueada por el estado de la impresora PNP: ' + status.statusDescription +
-        (status.warnings.length ? ' ' + status.warnings.join(' ') : '') +
-        ' No se envió la factura al adaptador.');
-    }
+    if (!status.ready) throw new Error('Emisión fiscal bloqueada por el estado de la impresora PNP: ' + status.statusDescription +
+      (status.warnings.length ? ' ' + status.warnings.join(' ') : '') + ' No se envió la factura.');
+    const pnpInvoice = mapInvoiceToPnp(invoice);
+    const issued = await PnpSerialTransport.emitFiscalInvoice(pnpInvoice,{
+      exchange:(frame,meta)=>exchangePnpFrame(normalized,frame,{...options,timeoutMs:meta.timeoutMs})
+    },options);
+    if (!issued.fiscalDocumentNumber || !issued.fiscalSerial) throw new Error('La impresora PNP no confirmó número de factura y serial fiscal.');
+    return {ok:true,fiscalDocumentNumber:issued.fiscalDocumentNumber,fiscalSerial:issued.fiscalSerial,authorization:'',raw:issued};
   }
   const response=await runBridge(normalized,'emitInvoice',{...invoice,requestId},options);
   const fiscalDocumentNumber=cleanText(response.fiscalDocumentNumber||response.documentNumber,80),fiscalSerial=cleanText(response.fiscalSerial||response.serialNumber,100);
@@ -202,7 +246,49 @@ async function testPnpFiscalStatus(profile, options = {}) {
   }
 }
 
-async function checkFiscalReadiness(profile,options={}){
- try{const p=normalizeProfile(profile);if(!p.enabled)return{ready:false,message:'La impresora fiscal no está habilitada para esta caja.'};const sdk=getSdkStatus(p);if(!sdk.ready)return{ready:false,message:'La configuración fiscal está incompleta: falta puerto, SDK o puente autorizado.'};if(p.provider==='pnp'){const probe=options.pnpStatusProbe||testPnpFiscalStatus;const physical=await probe(p,options);if(!physical||physical.ready!==true)return{ready:false,message:physical&&physical.message?physical.message:'La impresora PNP no confirmó estado fiscal listo.'};}const bridgeProbe=options.bridgeProbe||((normalized)=>runBridge(normalized,'status',{requestId:crypto.randomUUID()},options));const bridge=await bridgeProbe(p,options);if(!bridge||bridge.deviceConnected!==true||bridge.fiscalReady!==true||bridge.canEmitFiscalDocuments!==true)return{ready:false,message:'El puente fiscal no confirmó dispositivo conectado, estado fiscal listo y capacidad real de emitir documentos fiscales.'};return{ready:true,provider:p.provider,model:p.model,port:p.port,message:'Impresora fiscal conectada, operativa y habilitada para emitir documentos fiscales.'};}catch(error){return{ready:false,message:'No se pudo validar la impresora fiscal: '+(error&&error.message?error.message:String(error))};}
+async function getPnpFiscalIdentity(profile,options={}) {
+  const p=normalizeProfile(profile);
+  if(p.provider!=='pnp')throw new Error('La consulta de serial fiscal solo aplica a PNP.');
+  const sequence=crypto.randomInt(0x20,0x80);
+  const frame=PnpProtocol.createFiscalSerialQuery(sequence);
+  const raw=await exchangePnpFrame(p,frame,options);
+  const response=PnpProtocol.decodeFrame(raw);
+  if(response.sequence!==sequence)throw new Error('La secuencia de respuesta del serial fiscal PNP no coincide.');
+  return PnpSerialTransport.parseFiscalSerial(response);
 }
-module.exports={PROVIDERS,USB_SERIAL_DRIVERS,normalizeProfile,getSdkStatus,listSerialPorts,testSerialPort,exchangePnpFrame,testPnpFiscalStatus,interpretPnpStatus,runBridge,emitInvoice,checkFiscalReadiness};
+
+async function testBridge(profile,options={}) {
+  const p=normalizeProfile(profile);
+  if(p.provider==='pnp') {
+    const status=await testPnpFiscalStatus(p,options);
+    if(!status.ready)throw new Error('La impresora PNP no está lista: '+status.statusDescription);
+    const identity=await getPnpFiscalIdentity(p,options);
+    return {ok:true,protocol:'pnp-native-v5.4',deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:true,serial:identity.machineSerial,rif:identity.taxpayerRif,message:'Comunicación serial PNP y serial fiscal verificados.'};
+  }
+  return runBridge(p,'status',{requestId:crypto.randomUUID()},options);
+}
+
+async function checkFiscalReadiness(profile,options={}){
+ try {
+  const p=normalizeProfile(profile);
+  if(!p.enabled)return{ready:false,message:'La impresora fiscal no está habilitada para esta caja.'};
+  if(p.provider==='pnp') {
+    const probe=options.pnpStatusProbe||testPnpFiscalStatus;
+    const physical=await probe(p,options);
+    if(!physical||physical.ready!==true)return{ready:false,message:physical&&physical.message?physical.message:'La impresora PNP no confirmó estado fiscal listo.'};
+    const identityProbe=options.pnpIdentityProbe||getPnpFiscalIdentity;
+    const identity=await identityProbe(p,options);
+    if(!identity||!identity.machineSerial)return{ready:false,message:'La impresora PNP no confirmó su serial fiscal.'};
+    return{ready:true,provider:p.provider,model:p.model,port:p.port,serial:identity.machineSerial,deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:true,message:'Impresora PNP conectada por protocolo nativo v5.4, lista y con serial fiscal confirmado.'};
+  }
+  const sdk=getSdkStatus(p);
+  if(!sdk.ready)return{ready:false,message:'La configuración fiscal está incompleta: falta puerto, SDK o puente autorizado.'};
+  const bridgeProbe=options.bridgeProbe||((normalized)=>runBridge(normalized,'status',{requestId:crypto.randomUUID()},options));
+  const bridge=await bridgeProbe(p,options);
+  if(!bridge||bridge.deviceConnected!==true||bridge.fiscalReady!==true||bridge.canEmitFiscalDocuments!==true)return{ready:false,message:'El puente fiscal no confirmó dispositivo conectado, estado fiscal listo y capacidad real de emitir documentos fiscales.'};
+  return{ready:true,provider:p.provider,model:p.model,port:p.port,message:'Impresora fiscal conectada, operativa y habilitada para emitir documentos fiscales.'};
+ } catch(error) {
+  return{ready:false,message:'No se pudo validar la impresora fiscal: '+(error&&error.message?error.message:String(error))};
+ }
+}
+module.exports={PROVIDERS,USB_SERIAL_DRIVERS,normalizeProfile,getSdkStatus,listSerialPorts,testSerialPort,exchangePnpFrame,testPnpFiscalStatus,getPnpFiscalIdentity,testBridge,interpretPnpStatus,runBridge,emitInvoice,checkFiscalReadiness};

@@ -148,8 +148,8 @@ test('Contabilidad solo se habilita con una impresora conectada, lista y capaz d
   const profile={provider:'pnp',model:'PF-220A',port:'COM4',enabled:true,bridgePath:bridge,sdkPaths:{'pnpdll.dll':dll}};
   const disabled=await manager.checkFiscalReadiness({...profile,enabled:false},{platform:'win32'});assert.equal(disabled.ready,false);
   const offline=await manager.checkFiscalReadiness(profile,{platform:'win32',pnpStatusProbe:async()=>({ready:false,message:'Fuera de línea'}),bridgeProbe:async()=>({deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:true})});assert.equal(offline.ready,false);
-  const noFiscal=await manager.checkFiscalReadiness(profile,{platform:'win32',pnpStatusProbe:async()=>({ready:true}),bridgeProbe:async()=>({deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:false})});assert.equal(noFiscal.ready,false);
-  const ready=await manager.checkFiscalReadiness(profile,{platform:'win32',pnpStatusProbe:async()=>({ready:true}),bridgeProbe:async()=>({deviceConnected:true,fiscalReady:true,canEmitFiscalDocuments:true})});assert.equal(ready.ready,true);
+  const noIdentity=await manager.checkFiscalReadiness(profile,{platform:'win32',pnpStatusProbe:async()=>({ready:true}),pnpIdentityProbe:async()=>({machineSerial:''})});assert.equal(noIdentity.ready,false);
+  const ready=await manager.checkFiscalReadiness(profile,{platform:'win32',pnpStatusProbe:async()=>({ready:true}),pnpIdentityProbe:async()=>({machineSerial:'PNP-REAL-01'})});assert.equal(ready.ready,true);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 
@@ -175,4 +175,17 @@ test('el transporte PNP envía una sola trama y devuelve la respuesta sin reinte
 
 test('el transporte PNP rechaza plataformas no Windows antes de transmitir', async () => {
   await assert.rejects(()=>manager.exchangePnpFrame({provider:'pnp',port:'COM4'},Buffer.from([2,32,56,3,0,0,0,0]),{platform:'linux'}),/requiere Windows/);
+});
+
+
+test('la prueba del adaptador PNP usa protocolo nativo y confirma conexión y serial sin DLL puente', async()=>{
+ const protocol=require('../electron/pnp-protocol.cjs');
+ const profile={provider:'pnp',port:'COM4'};
+ const result=await manager.testBridge(profile,{platform:'win32',execFileAsync:async(_command,args)=>{
+  const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
+  const match=script.match(/\\$hex='([0-9a-f]+)'/i);const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));
+  const fields=request.command===0x38?['0000','0000','34','00','56','260101','120000','7','0','7','0','3']:['0000','0000','PNP-NATIVE-01','J-12345678-9','','','',''];
+  return {stdout:protocol.encodeCommand(request.command,fields,request.sequence).toString('base64')};
+ }});
+ assert.equal(result.protocol,'pnp-native-v5.4');assert.equal(result.deviceConnected,true);assert.equal(result.canEmitFiscalDocuments,true);assert.equal(result.serial,'PNP-NATIVE-01');
 });

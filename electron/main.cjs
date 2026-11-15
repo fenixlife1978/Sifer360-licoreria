@@ -822,7 +822,7 @@ function registerIpc() {
   ipcMain.handle('fiscal-printer:test-port', async (_e, profile = {}) => FiscalPrinterManager.testSerialPort(profile));
   ipcMain.handle('fiscal-printer:test-pnp', async (_e, profile = {}) => FiscalPrinterManager.testPnpFiscalStatus(profile));
   ipcMain.handle('fiscal-printer:readiness', async (_e, profile = {}) => FiscalPrinterManager.checkFiscalReadiness(profile));
-  ipcMain.handle('fiscal-printer:test-bridge', async (_e, profile = {}) => FiscalPrinterManager.runBridge(profile, 'status', { requestId: crypto.randomUUID() }));
+  ipcMain.handle('fiscal-printer:test-bridge', async (_e, profile = {}) => FiscalPrinterManager.testBridge(profile));
   ipcMain.handle('fiscal-printer:emit-invoice', async (_e, profile = {}, invoice = {}) => FiscalPrinterManager.emitInvoice(profile, invoice));
 
 }
