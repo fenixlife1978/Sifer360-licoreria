@@ -8,7 +8,7 @@ test('identifica VID/PID y recomienda el controlador USB-serial sin identificar 
     execFileAsync: async () => ({
       stdout: JSON.stringify([{
         port: 'COM7',
-        name: 'USB-SERIAL CH340 (COM7)',
+        name: 'Prolific USB-to-Serial (COM7)',
         status: 'OK',
         instanceId: 'USB\\VID_067B&PID_2303\\ABC123'
       }])
@@ -44,4 +44,35 @@ test('mantiene detección serial restringida a Windows', async () => {
   const result = await FiscalPrinterManager.listSerialPorts({ platform: 'linux' });
   assert.equal(result.supported, false);
   assert.deepEqual(result.ports, []);
+});
+
+test('no infiere chipset usando solamente el VID cuando el PID es desconocido', async () => {
+  const result = await FiscalPrinterManager.listSerialPorts({
+    platform: 'win32',
+    execFileAsync: async () => ({
+      stdout: JSON.stringify([{
+        port: 'COM11',
+        name: 'USB Serial Device (COM11)',
+        status: 'OK',
+        instanceId: 'USB\\\\VID_067B&PID_9999\\\\XYZ'
+      }])
+    })
+  });
+  assert.equal(result.ports[0].port, 'COM11');
+  assert.equal(result.ports[0].vendorId, '067B');
+  assert.equal(result.ports[0].productId, '9999');
+  assert.equal(result.ports[0].driverId, '');
+});
+
+test('enumera puertos COM superiores a COM10 sin truncarlos', async () => {
+  const result = await FiscalPrinterManager.listSerialPorts({
+    platform: 'win32',
+    execFileAsync: async () => ({
+      stdout: JSON.stringify([
+        { port: 'COM11', name: 'Serial Port (COM11)', status: 'OK', instanceId: '' },
+        { port: 'COM27', name: 'Serial Port (COM27)', status: 'OK', instanceId: '' }
+      ])
+    })
+  });
+  assert.deepEqual(result.ports.map(port => port.port), ['COM11', 'COM27']);
 });
