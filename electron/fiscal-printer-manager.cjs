@@ -100,12 +100,28 @@ function mapInvoiceToPnp(invoice) {
   const expectedTotal = Number(totals.totalVes);
   if (!Number.isFinite(expectedBase) || !Number.isFinite(expectedTotal)) throw new Error('La factura no contiene totales en bolívares para conciliación PNP.');
   const igtfVes = Number(totals.igtfVes || 0);
-  const foreignCurrencyAmount = (Array.isArray(invoice.payments) ? invoice.payments : []).reduce((sum,payment) => {
+  const payments = Array.isArray(invoice.payments) ? invoice.payments : [];
+  const foreignCurrencyAmount = payments.reduce((sum,payment) => {
     const id = String(payment.id || '').toLowerCase();
-    if (payment.cur !== 'USD' || id === 'credito' || id === 'cashea') return sum;
+    if (payment.cur !== 'USD' || !['efusd','zelle'].includes(id)) return sum;
     return sum + Math.max(0,Number(payment.amount) || 0);
   },0);
-  if (igtfVes > 0.01 && foreignCurrencyAmount <= 0) throw new Error('La factura tiene IGTF, pero no se pudo identificar el monto efectivamente pagado en divisas. Emisión bloqueada para evitar un IGTF incorrecto.');
+  if (igtfVes > 0.01) {
+    const rate = Number(invoice.exchangeRate);
+    const totalUsd = Number(totals.totalUsd);
+    if (!Number.isFinite(rate) || rate <= 0 || !Number.isFinite(totalUsd)) throw new Error('No se puede verificar la tasa y el total USD necesarios para calcular el IGTF PNP.');
+    const nonIgtfUsd = payments.reduce((sum,payment) => {
+      const id = String(payment.id || '').toLowerCase();
+      if (id === 'cashea' || id === 'credito') return sum + Math.max(0,Number(payment.amount) || 0);
+      if (payment.cur === 'VES') return sum + Math.max(0,Number(payment.amount) || 0) / rate;
+      return sum;
+    },0);
+    const usdApplied = Math.min(foreignCurrencyAmount / 1.03,Math.max(0,totalUsd - nonIgtfUsd));
+    const expectedIgtfVes = Math.round((usdApplied * 0.03 * rate + Number.EPSILON) * 100) / 100;
+    if (foreignCurrencyAmount <= 0 || Math.abs(expectedIgtfVes - igtfVes) > 0.02) {
+      throw new Error('El IGTF calculado por el POS no coincide con el monto en divisas que recibirá la impresora PNP. Emisión bloqueada para evitar una percepción fiscal incorrecta.');
+    }
+  }
   return {
     idempotencyKey:invoice.idempotencyKey,
     customerName:customer.name || customer.razonSocial || 'Consumidor final',
