@@ -21,7 +21,7 @@ test('RegistrarCompra consulta y congela la tasa BCV por fecha del documento',()
 });
 
 test('RegistrarCompra calcula IVA e ISLR retenidos por separado del saldo CxP',()=>{
-  assert.match(source,/retIva=aplicarRetencion\?r2\(iva\*\(retPct\/100\)\):0/);
+  assert.match(source,/retUsd=aplicarRetencion\?r2\(iva\*\(retPct\/100\)\):0/);
   assert.match(source,/retIslrUsd=r2\(retIslrBase\*retIslrRate\/100\)/);
   assert.match(source,/total-retUsd-retIslrUsd/);
   assert.match(source,/retencionesIslr/);
