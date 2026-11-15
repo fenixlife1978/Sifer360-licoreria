@@ -111,32 +111,48 @@ El catálogo SIFER ya distribuido contiene dos agrupadoras bancarias históricas
 - Los saldos de bancos, cajas, CxC, CxP e inventario se pueden rastrear hasta sus documentos y movimientos auxiliares.
 
 
-## Dashboard del contador y Libro de Movimientos de Mercancía (nuevo alcance SIFER360-LICORERIA)
+## Dashboard del contador y Libro de Inventario y Movimientos de Mercancía
+
+### Auditoría de funciones ya existentes (no duplicar)
+- El módulo Fiscal ya tiene un tab **Libro de Inventario** con corte actual de productos, existencias, costo unitario registrado, valor referencial y último movimiento.
+- Ese mismo tab ya consulta `S.kardex` por período y muestra fecha, código, tipo, dirección, documento, contraparte, cantidad, costo y saldo registrado.
+- El POS ya dispone de **Ficha/Tarjeta Kardex Profesional** bajo costo promedio ponderado (CPP), y registra eventos para compras, ventas, anulaciones, conteos y ajustes.
+- Por tanto, no se creará un segundo Kardex ni otro listado de existencias. Se ampliará el libro fiscal existente y se reutilizarán las funciones de inventario y sus eventos reales.
+- En la versión auditada no existe todavía un registro mensual de entradas/salidas consolidado por artículo y tipo con importes, ni una vista de apertura/cierre mercantil anual validada. Tampoco se encontró un módulo que gestione deterioro o valor neto realizable VEN-NIF para inventario.
 
 ### Accesos directos en la toolbar del dashboard del contador
-- Añadir accesos directos visibles a Compras, Inventario, Cuentas por Cobrar (CxC), Cuentas por Pagar (CxP) y Libro de Movimientos de Mercancía.
-- Los accesos deben abrir los módulos existentes del POS, respetando permisos y sesión del usuario; no duplicar pantallas ni crear rutas paralelas innecesarias.
-- Mantener la toolbar usable en resoluciones pequeñas: icono y etiqueta legible, sin desbordamiento horizontal; si no cabe, usar distribución adaptable o menú de más opciones.
-- Mostrar el acceso al libro de mercancía como módulo propio del POS, no como un reporte contable aislado.
+- Habilitar en la toolbar del contador los accesos directos a **Compras, Inventario, CxC, CxP y Libro de Inventario y Movimientos de Mercancía**.
+- Los cuatro primeros deben abrir los módulos funcionales existentes del POS; el quinto debe abrir directamente el tab `inventario` del módulo Fiscal.
+- Respetar la sesión y permisos del perfil contador. No crear pantallas paralelas ni duplicar módulos.
+- La toolbar debe adaptarse a ventanas estrechas sin desbordamiento horizontal ni ocultar accesos.
 
-### Libro de Movimientos de Mercancía dentro del POS
-- Crear un libro cronológico consultable de todos los movimientos reales de inventario.
-- Incluir entradas por compras/recepciones, salidas por ventas, devoluciones de clientes y a proveedores, ajustes, traslados si existen ubicaciones, mermas/pérdidas, vencimientos y demás tipos que el POS realmente soporte.
-- Cada fila debe conservar vínculo navegable al documento u operación de origen, fecha/hora, SKU/código, descripción, cantidad con signo, unidad, tipo, saldo resultante cuando pueda reconstruirse con certeza y usuario/terminal de origen si están disponibles.
-- Filtros por período, artículo, código, tipo de movimiento, documento y usuario; búsqueda rápida y exportación CSV imprimible.
-- Orden cronológico estable y detalle de movimientos; no presentar saldos reconstruidos si faltan eventos históricos necesarios.
-- El libro es estrictamente de consulta/auditoría: no modifica existencias ni crea movimientos. Toda corrección se ejecuta desde la operación funcional correspondiente y queda registrada como nuevo evento, nunca reescribiendo el pasado.
-- Cada operación fuente debe generar un solo evento de inventario, con clave de idempotencia o referencia única para impedir duplicados ante reintentos.
-- La fuente de verdad es SQLite local. No usar LocalStorage como autoridad ni generar datos de demostración.
-- Si una operación antigua no tiene detalle suficiente, identificarla como dato histórico incompleto en vez de inventar cantidad, usuario o documento.
+### Ampliación del Libro de Inventario existente (sin duplicar Kardex)
+El nombre visible del módulo será **Libro de Inventario y Movimientos de Mercancía**, manteniendo el tab y los datos actuales. Incorporará vistas diferenciadas sobre la misma fuente de eventos:
 
-### Pruebas de aceptación del nuevo alcance
-- Los cinco accesos del contador abren el módulo correcto y respetan roles/permisos.
-- La toolbar se adapta a escritorio y ventanas estrechas sin ocultar accesos ni desbordarse.
-- Compras, ventas, devoluciones, ajustes y pérdidas soportados generan el movimiento correcto exactamente una vez.
-- Los filtros y exportaciones coinciden con el conjunto consultado y conservan referencias de origen.
-- La consulta no altera existencias, documentos, caja ni asientos.
-- Se verifica persistencia SQLite, trazabilidad, orden cronológico y conservación del historial tras reinicio.
+1. **Existencias y valoración actual:** conservar la vista que ya existe, con SKU, descripción, unidad, cantidad, costo CPP registrado, valor, mínimo y fecha del último movimiento.
+2. **Kardex detallado:** reutilizar `S.kardex` y la ficha profesional existentes. Añadir filtros/búsqueda y mostrar documento fuente, tipo, dirección, cantidad, costo, importe del movimiento, saldo y operador solo cuando esos datos estén presentes. No crear eventos nuevos para alimentar el informe.
+3. **Registro auxiliar de entradas y salidas por artículo y período:** consolidar por SKU y tipo las entradas y salidas reales, unidades, costos e importes, con detalle navegable a la operación de origen. Incluir compras/recepciones, ventas, devoluciones, ajustes, conteos, mermas, vencimientos o traslados únicamente cuando el POS realmente tenga el evento correspondiente. Las salidas por retiro/autoconsumo se reflejarán solo si existe una operación fuente real que las identifique. Presentarlo como registro auxiliar de apoyo al cumplimiento y revisión del contador, no como garantía automática de cumplimiento del Reglamento ISLR/SENIAT.
+4. **Inventario mercantil de apertura y cierre:** preparar la estructura de inventario inicial y cierre anual por artículo, cantidades y valoración; identificar fecha de corte, método y soportes. No reconstruir una apertura si faltan eventos o un saldo inicial validado. El libro mercantil completo del Código de Comercio comprende además otros activos, derechos, créditos, pasivos y resultados; esta vista de mercancía no lo sustituye ni certifica sus formalidades legales.
+5. **Vista de valoración VEN-NIF:** exponer costo de adquisición/CPP y valor contable disponible, con alertas de información faltante. El sistema no debe afirmar que calcula deterioro o valor neto realizable mientras no existan datos, política, evaluación y asientos de ajuste específicos.
+
+### Reglas de integridad
+- SQLite local es la fuente operativa de verdad. No usar LocalStorage como autoridad ni generar datos de demostración.
+- Cada operación fuente genera un solo movimiento; conservar identificador de origen/idempotencia para impedir duplicados ante reintentos.
+- El libro es estrictamente de consulta y exportación: no cambia existencias, documentos, caja ni asientos.
+- Las correcciones se ejecutan desde la operación funcional correspondiente y se registran como reversión/ajuste nuevo, nunca reescribiendo el pasado.
+- Los saldos históricos solo se muestran cuando pueden reconstruirse con eventos suficientes. En caso contrario, marcar el dato como incompleto/no reconstruible.
+- Exportación CSV e impresión deben corresponder a la vista, filtros y período seleccionados.
+- La generación de informes digitales no equivale por sí sola a formalizar libros mercantiles ni garantiza cumplimiento tributario; el contador debe validar normativa, soportes y formalidades aplicables.
+
+### Pruebas de aceptación
+- Los cinco accesos del contador abren el módulo correcto y respetan permisos.
+- La toolbar se adapta a escritorio y ventanas pequeñas.
+- La vista actual de existencias conserva sus cifras y cálculos ya existentes.
+- Kardex y registro de entradas/salidas coinciden con eventos reales, documentos y cantidades; los filtros no alteran datos.
+- La exportación/impresión refleja la vista y período elegidos.
+- La vista mercantil no inventa apertura ni presenta el reporte de mercancía como libro mercantil completo.
+- La vista VEN-NIF no registra ni simula deterioros sin sustento.
+- Se verifica persistencia SQLite, trazabilidad, idempotencia y conservación del historial tras reinicio.
 
 ## Orden de ejecución actualizado
 
