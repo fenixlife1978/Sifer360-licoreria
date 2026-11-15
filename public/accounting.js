@@ -358,6 +358,7 @@ async function open(){
    const tab=e.target.closest('[data-tab]');if(tab){activeTab=tab.dataset.tab;render();return;}
    if(e.target.closest('#acNewBank')){showBankForm();return;}
    const bankToggle=e.target.closest('[data-toggle-bank]');if(bankToggle){toggleBank(bankToggle.dataset.toggleBank);return;}
+   if(e.target.closest('#acSaveIntegration')){saveIntegration();return;}
    if(e.target.closest('#acNewEntry')){showEntryForm();return;}
    const rev=e.target.closest('[data-reverse]');if(rev){reverseEntry(rev.dataset.reverse);return;}
    const view=e.target.closest('[data-view-entry]');if(view){const entry=state().entries.find(x=>x.id===view.dataset.viewEntry);if(entry)showEntryForm(entry);return;}
