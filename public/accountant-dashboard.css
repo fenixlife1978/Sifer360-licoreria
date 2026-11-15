@@ -27,3 +27,9 @@ body.accountant-mode .statusbar #sbRate,body.accountant-mode .statusbar #sbDivis
 @media(max-width:1050px){.acct-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.acct-dash-bottom{grid-template-columns:1fr}}
 @media(max-width:620px){.acct-kpi-grid{grid-template-columns:1fr 1fr;gap:8px}.acct-kpi{padding:12px}.acct-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.acct-company{text-align:left}.acct-dash-head{display:block}.acct-company{margin-top:12px}body.accountant-mode .toolbar.accountant-toolbar{gap:4px;padding:0 6px}body.accountant-mode .toolbar.accountant-toolbar .tb{min-width:100px;padding:8px 10px}}
 @media(max-width:390px){.acct-kpi-grid{grid-template-columns:1fr}.acct-kpi-value{font-size:20px}}
+
+body.accountant-mode .toolbar.accountant-toolbar{display:flex;flex-wrap:wrap;align-items:center;overflow:visible}
+body.accountant-mode .toolbar.accountant-toolbar .tb{flex:0 1 auto}
+.inv-book-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.inv-book-tabs .tab{white-space:normal}
+@media(max-width:620px){body.accountant-mode .toolbar.accountant-toolbar{justify-content:flex-start;gap:4px;max-height:none}.inv-book-tabs .tab{flex:1 1 145px}}
