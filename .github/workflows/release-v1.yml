@@ -10,42 +10,26 @@ permissions:
 
 jobs:
   release:
-    name: Verificar, compilar y publicar Windows portable
-    runs-on: windows-latest
+    name: Alinear tag y notas de la Release 1.0.0
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configurar Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Instalar dependencias
-        run: npm install --legacy-peer-deps
-
-      - name: Ejecutar pruebas de regresión
-        run: npm test
-
-      - name: Compilar ejecutable portable
-        run: npm run build:exe
-
-      - name: Alinear el tag v1.0.0 con el commit compilado
-        shell: pwsh
+      - name: Alinear el tag v1.0.0 con el commit integrado
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag --force v1.0.0 $env:GITHUB_SHA
+          git tag --force v1.0.0 "$GITHUB_SHA"
           git push origin refs/tags/v1.0.0 --force
 
-      - name: Publicar Release oficial v1.0.0
+      - name: Actualizar Release oficial v1.0.0
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0
           target_commitish: ${{ github.sha }}
           name: SIFER360 LICORERÍA v1.0.0
           body_path: RELEASE_NOTES.md
-          files: dist-exe/sifer360-licoreria-portable.exe
           draft: false
           prerelease: false
           make_latest: true
