@@ -2412,7 +2412,7 @@ function comprasDlg(initialTab){
   let pLines=[];
   let cond='Crédito', creditDays=15, paidInit=0, payMethod='Transferencia Bs.';
   let docType='FACTURA_FISCAL', purchaseRate=0, purchaseRateRecord=null, rateStatus='Pendiente de consulta';
-  let rateRequestToken=0, retIslrPct=0, applyRetIva=true;
+  let rateRequestToken=0, retIslrPct=0, retIslrBaseOverride=null, applyRetIva=true;
 
   const el=h('<div class="form"><div class="tabs"><button class="tab" data-tab="new">Registrar Compra de Mercancía</button><button class="tab" data-tab="hist">Historial de Compras</button><button class="tab" data-tab="sup">Directorio de Proveedores</button></div><div id="compView"></div></div>');
 
@@ -2466,6 +2466,7 @@ function comprasDlg(initialTab){
         '<div class="f"><label for="cpInit">Abono / Pago Inicial US$</label><input class="fld r" id="cpInit" value="'+(paidInit?nf(paidInit):'0,00')+'" inputmode="decimal"></div>'+
         '<div class="f"><label for="cpMethod">Medio de Pago Inicial</label><select class="fld" id="cpMethod">'+METHODS.map(m=>'<option value="'+esc(m.name)+'"'+(payMethod===m.name?' selected':'')+'>'+esc(m.name)+'</option>').join('')+'</select></div>'+
         '<div class="f"><label for="cpRetIslrPct">Retención ISLR (%)</label><input class="fld r" id="cpRetIslrPct" value="'+nf(retIslrPct)+'" inputmode="decimal"><small class="muted">Solo si corresponde según concepto, sujeto y comprobante.</small></div>'+
+        '<div class="f"><label for="cpRetIslrBase">Base sujeta a ISLR US$</label><input class="fld r" id="cpRetIslrBase" value="" inputmode="decimal"><small class="muted">Por defecto, la base imponible; ajústela según el concepto y la norma aplicable.</small></div>'+
         '<div class="f" id="cpRetIvaWrap"><label><input type="checkbox" id="cpApplyRetIva" '+(applyRetIva?'checked':'')+'> Aplicar retención de IVA ('+(Number(S.cfg.retIvaPct)===100?100:75)+'%)</label><small class="muted">Solo si la designación y la condición del proveedor están confirmadas.</small></div>'+
       '</div>'+
       '<div class="invbar">'+
@@ -2510,7 +2511,9 @@ function comprasDlg(initialTab){
       const sup=S.suppliers[supIdx]||{};
       const ivaEligible=docType==='FACTURA_FISCAL'&&!!(S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true);
       const retIva=ivaEligible&&applyRetIva?r2(iva*retPct/100):0;
-      const retIslr=r2(base*Math.min(100,Math.max(0,Number(retIslrPct)||0))/100);
+      const retIslrBase=retIslrBaseOverride==null?base:Math.min(base,Math.max(0,Number(retIslrBaseOverride)||0));
+      const islrBaseInput=$('#cpRetIslrBase',v);if(islrBaseInput)islrBaseInput.value=nf8(retIslrBase);
+      const retIslr=r2(retIslrBase*Math.min(100,Math.max(0,Number(retIslrPct)||0))/100);
       const payable=r2(Math.max(0,tot-retIva-retIslr));
       const effPaid=cond==='Contado'?payable:Math.min(payable,r8(paidInit));
       const pend=r8(Math.max(0,payable-effPaid));
@@ -2544,6 +2547,7 @@ function comprasDlg(initialTab){
       if(t.id==='cpDocType'){docType=t.value;const docLabel=$('#cpDocLabel',v);if(docLabel)docLabel.textContent=docType==='FACTURA_FISCAL'?'Nº de factura del proveedor *':'Nº de documento del proveedor *';pLines.forEach(line=>{if(docType!=='FACTURA_FISCAL')line.taxRate=0;else if(Number(line.taxRate||0)===0){const product=prod(line.code);line.taxRate=product?prodTaxRate(product):16;}});$('#cpCtrlWrap',v).style.display=docType==='FACTURA_FISCAL'?'':'none';drawLines();return;}
       if(t.id==='cpDate'){refreshPurchaseRate(t.value,v,drawLines);return;}
       if(t.id==='cpRetIslrPct'){retIslrPct=Math.min(100,Math.max(0,pn(t.value)||0));t.value=nf(retIslrPct);drawLines();return;}
+      if(t.id==='cpRetIslrBase'){const raw=String(t.value||'').trim();retIslrBaseOverride=raw===''?null:Math.max(0,pn(raw)||0);drawLines();return;}
       if(t.id==='cpApplyRetIva'){applyRetIva=t.checked;drawLines();return;}
       if(t.id==='cpCond'){cond=t.value;drawLines();return;}
       if(t.id==='cpDays'){creditDays=Math.max(1,Math.round(pn(t.value)||15));drawLines();return;}
@@ -2702,11 +2706,11 @@ function comprasDlg(initialTab){
     const base=r8(lines.reduce((a,x)=>a+x.sub,0));
     const iva=r8(lines.reduce((a,l)=>a+(l.iva||0),0));
     const total=r8(base+iva);
-    const dueTs=ts+creditDays*86400000;
+    const dueTs=docDateTs+creditDays*86400000;
     const retPct=Number(S.cfg.retIvaPct)===100?100:75;
     const aplicarRetencion=!!(docType==='FACTURA_FISCAL'&&applyRetIva&&iva>0&&S.cfg.contribEspecial&&S.cfg.retencionHabilitadaConfirmada===true&&sup.retieneIva===true);
     const retUsd=aplicarRetencion?r2(iva*(retPct/100)):0,retBs=r2(retUsd*purchaseRate);
-    const retIslrRate=Math.min(100,Math.max(0,Number(retIslrPct)||0)),retIslrBase=base;
+    const retIslrRate=Math.min(100,Math.max(0,Number(retIslrPct)||0)),retIslrBase=retIslrBaseOverride==null?base:Math.min(base,Math.max(0,Number(retIslrBaseOverride)||0));
     const retIslrUsd=r2(retIslrBase*retIslrRate/100),retIslrBs=r2(retIslrUsd*purchaseRate);
     const payableTotal=r2(Math.max(0,total-retUsd-retIslrUsd));
     const effPaid=cond==='Contado'?payableTotal:Math.min(payableTotal,paidInit);
