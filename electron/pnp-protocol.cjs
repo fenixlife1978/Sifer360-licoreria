@@ -76,7 +76,7 @@ function createFiscalItem(input = {}, sequence = MIN_SEQUENCE) {
   const description = assertTextField(input.description, 20, 'Descripción del renglón');
   const quantity = assertDecimalField(input.quantity, /^\d{1,4}\.\d{3}$/, 'Cantidad');
   const amount = assertDecimalField(input.amount, /^\d{1,6}\.\d{2}$/, 'Monto del ítem');
-  const taxRate = assertDecimalField(input.taxRate, /^\.?\d{4}$/, 'Tasa imponible');
+  const taxRate = assertDecimalField(input.taxRate, /^\.\d{4}$/, 'Tasa imponible');
   const qualifier = String(input.qualifier == null ? 'M' : input.qualifier);
   if (!['M', 'm'].includes(qualifier)) throw new Error('Calificador de renglón PNP no válido.');
   return encodeCommand(0x42, [description, quantity, amount, taxRate, qualifier, '', '', ''], sequence);
