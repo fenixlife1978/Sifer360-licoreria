@@ -178,3 +178,15 @@ La ruta PNP directa opera sobre el puerto COM configurado a 9600 baudios, 8 bits
 8. No existe reintento automático de comandos fiscales. Si se pierde la respuesta después de enviar un comando, el resultado se marca como incierto y exige consultar la impresora/memoria de auditoría antes de volver a facturar.
 
 Las pruebas automatizadas utilizan respuestas simuladas y verifican secuencia, BCC, errores, descuentos, conciliación y ausencia de reenvíos. **No equivalen a una prueba física**: antes de habilitar facturación real en producción debe verificarse con el modelo PNP concreto, su firmware, tasas fiscales configuradas, comunicación COM y un procedimiento de aceptación acordado que no genere facturas de prueba duplicadas.
+
+## Formulario Registrar Compra de Mercancía
+
+El formulario de compras diferencia **Factura fiscal**, **Nota de entrega / no fiscal** y **Otro documento no fiscal**. La factura fiscal exige número de control; los documentos no fiscales no generan IVA acreditable ni retención de IVA y sus renglones quedan con alícuota cero. Se conserva el número real del documento del proveedor, sin generar referencias ficticias.
+
+La tasa USD/BCV se consulta por fecha del documento en el histórico público JSON de BCV Today (https://bcv.today/api/v1/history/YYYY-MM-DD.json). El formulario muestra la tasa y fecha valor, guarda el dato histórico en el snapshot SQLite y utiliza esa tasa para las equivalencias en bolívares, el pago inicial y las constancias de retención. Si no hay conexión, solo acepta una tasa histórica exacta previamente guardada para esa fecha; no sustituye una tasa histórica faltante por la tasa actual. BCV Today declara que replica datos publicados por el BCV; es un servicio público de terceros, no un certificado oficial emitido por el BCV. El responsable contable debe verificar la tasa/documento de origen.
+
+La retención de IVA solo se calcula si la empresa tiene confirmada la designación y el proveedor está marcado como sujeto, con la proporción configurada (75% o 100%). La retención ISLR es opcional y parte en cero: el usuario introduce el porcentaje aplicable según el concepto, tipo de proveedor y comprobante; el sistema no inventa una alícuota. Ambas retenciones se separan del importe adeudado al proveedor y se registran como obligaciones de retención. El IVA soportado se conserva separado del costo base y el documento no fiscal no lo acredita.
+
+El precio de venta se propone automáticamente cuando el producto tiene motor de precios en modo automático: usa el costo promedio proyectado después de la recepción y respeta el motor configurado (markup sobre costo, margen sobre venta o brecha BCV/paralelo). El usuario puede desactivar el cálculo automático por renglón y editar el precio manualmente. Las presentaciones y escalas de precio automático se actualizan junto al precio base.
+
+El registro conserva tipo de documento, elegibilidad de crédito fiscal, tasa BCV y fecha valor, importes en USD/Bs., retenciones, y precio de venta propuesto. La tasa y la retención quedan congeladas en la compra para que cambios posteriores de tasa o configuración no alteren operaciones históricas.
