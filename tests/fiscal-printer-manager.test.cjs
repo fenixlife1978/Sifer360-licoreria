@@ -183,7 +183,7 @@ test('la prueba del adaptador PNP usa protocolo nativo y confirma conexión y se
  const profile={provider:'pnp',port:'COM4'};
  const result=await manager.testBridge(profile,{platform:'win32',execFileAsync:async(_command,args)=>{
   const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
-  const match=script.match(/\\$hex='([0-9a-f]+)'/i);const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));
+  const match=script.match(/\$hex='([0-9a-f]+)'/i);const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));
   const fields=request.command===0x38?['0000','0000','34','00','56','260101','120000','7','0','7','0','3']:['0000','0000','PNP-NATIVE-01','J-12345678-9','','','',''];
   return {stdout:protocol.encodeCommand(request.command,fields,request.sequence).toString('base64')};
  }});
@@ -199,7 +199,7 @@ test('emite una factura PNP desde el payload real del POS, concilia descuento e 
   totals:{taxableBaseVes:90,ivaVes:14.4,totalVes:104.4,igtfVes:0},payments:[]
  },{platform:'win32',execFileAsync:async(_command,args)=>{
   const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
-  const match=script.match(/\\$hex='([0-9a-f]+)'/i);const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));commands.push(request.command);
+  const match=script.match(/\$hex='([0-9a-f]+)'/i);const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));commands.push(request.command);
   let fields=['0000','0000'];
   if(request.command===0x38)fields=['0000','0000','34','00','56','260101','120000','7','0','7','0','3'];
   if(request.command===0x80)fields=['0000','0000','PNP-INTEGRATED-01','J-12345678-9','','','',''];
