@@ -104,3 +104,12 @@ test('las descargas externas solo pueden abrir destinos oficiales permitidos', (
   assert.match(main, /data-fiscal-download="pnpSdk32"/);
   assert.match(main, /data-fiscal-download="prolific"/);
 });
+
+
+test('la configuración fiscal expone fuentes públicas Bematech y protocolo PNP con destinos cerrados', () => {
+  assert.match(electronMain, /bematech: 'https:\/\/posvenezuela\.com\/librerias-dll\//);
+  assert.match(electronMain, /bematechDownloads: 'https:\/\/posvenezuela\.com\/descargas-2\//);
+  assert.match(electronMain, /pnpProtocol: 'https:\/\/desarrollospnp\.com\/archivos\/PROTOCOLO0141\.pdf'/);
+  assert.match(main, /data-fiscal-download="bematech"/);
+  assert.match(main, /data-fiscal-download="pnpProtocol"/);
+});
