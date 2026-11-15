@@ -131,3 +131,33 @@ test('no permite ejecutar puente x64 en Windows x86 ni adivina emulación ARM64'
   assert.equal(BinaryArchitecture.canRunBridge('arm64','x64'), false);
   assert.equal(BinaryArchitecture.canRunBridge('x64','x86'), true);
 });
+
+test('resuelve un puente .NET AnyCPU al runtime x64 de Windows', t => {
+  const files = withTempFiles(t, {
+    'bridge.exe': makePe(0x014C, 0x00000001),
+    'BemaFI64.dll': makePe(0x8664)
+  });
+  const status = FiscalPrinterManager.getSdkStatus({
+    provider:'bematech', model:'MP-4000 TH FI', port:'COM4',
+    bridgePath:files['bridge.exe'], sdkPaths:{'BemaFI64.dll':files['BemaFI64.dll']}
+  });
+  assert.equal(status.bridgeArchitecture.architecture, 'anycpu');
+  assert.equal(status.bridgeRuntimeArchitecture, 'x64');
+  assert.equal(status.bridgeRunnable, true);
+  assert.equal(status.architectureVerified, true);
+  assert.equal(status.ready, true);
+});
+
+test('no permite que puente AnyCPU ejecutado como x64 cargue SDK nativo x86', t => {
+  const files = withTempFiles(t, {
+    'bridge.exe': makePe(0x014C, 0x00000001),
+    'BemaFI32.dll': makePe(0x014C)
+  });
+  const status = FiscalPrinterManager.getSdkStatus({
+    provider:'bematech', model:'MP-4000 TH FI', port:'COM4',
+    bridgePath:files['bridge.exe'], sdkPaths:{'BemaFI32.dll':files['BemaFI32.dll']}
+  });
+  assert.equal(status.bridgeRuntimeArchitecture, 'x64');
+  assert.equal(status.architectureVerified, false);
+  assert.equal(status.ready, false);
+});
