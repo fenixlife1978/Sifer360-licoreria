@@ -135,7 +135,7 @@ test('el cobro solo exige aprobación real para CASHEA', () => {
   assert.ok(pos.includes("const refPrompts={cashea:"));
   assert.ok(!pos.includes("const refPrompts={zelle:"));
   assert.ok(pos.includes("Aprobación CASHEA"));
-  assert.ok(pos.includes("finalize(last,enteredAmts,isCred,cDays,enteredRefs,el)"));
+  assert.ok(pos.includes("finalize(last,enteredAmts,isCred,cDays,enteredRefs,el,$('#payDocumentMode',el)?$('#payDocumentMode',el).value:'')"));
 });
 
 test('el asistente Cashea vuelve al modal de pago y conserva el plan aplicado', () => {
