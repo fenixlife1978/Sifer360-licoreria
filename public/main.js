@@ -4935,7 +4935,7 @@ function showTicket(s){
 
   const noPrinter=s.documentMode==='NO_PRINTER';
   openWin({title:(noPrinter?'Comprobante interno — Nº ':'Ticket de Venta — Nº ')+pad(s.no),w:500,body:el,foot:[
-    {label:noPrinter?'Sin impresora configurada':'Imprimir 80mm',left:true,fn:()=>{
+    {label:noPrinter?'Sin impresora configurada':'Imprimir 80mm',left:true,fn:async()=>{
       if(noPrinter){msg('Esta instalación está configurada sin impresora. El comprobante queda guardado en SQLite y puede imprimirse después de configurar un dispositivo.');return false;}
       const thermal=S.cfg.thermalPrinters&&S.cfg.thermalPrinters[s.cashbox];
       if(thermal&&thermal.enabled===true&&thermal.printerName&&window.posDesktop&&window.posDesktop.printerPrintTicket){
