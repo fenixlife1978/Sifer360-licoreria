@@ -7395,6 +7395,9 @@ async function databaseSettingsDlg(){
   const gdriveEmail = $('#gdriveEmail', el);
   const showDriveStatus = s => {
     if (!isDesktop) { gdriveStatus.textContent = 'Esta función requiere la aplicación de escritorio Windows.'; return; }
+    $('#gdriveConnect', el).disabled = !s.oauthReady;
+    $('#gdriveEnable', el).disabled = !s.configured || !s.oauthReady;
+    $('#gdriveNow', el).disabled = !s.configured || !s.oauthReady;
     if (s.email) gdriveEmail.value = s.email;
     const history = (s.history || []).map(x => (x.ok ? '✓ ' : '✕ ') + (x.at || '')).join(' · ');
     gdriveStatus.textContent = (s.configured ? 'Cuenta conectada: ' + s.email : 'Google Drive no conectado.') +
@@ -7432,7 +7435,7 @@ async function databaseSettingsDlg(){
   });
   $('#gdriveNow', el).addEventListener('click', async () => {
     gdriveStatus.textContent = 'Verificando SQLite, cifrando y enviando el respaldo…';
-    try { const result = await window.posDesktop.backupRunNow(); gdriveStatus.textContent = 'Respaldo verificado y cargado: ' + result.fileName + ' · SHA-256 ' + result.sha256; await refreshDriveStatus(); }
+    try { const result = await window.posDesktop.backupRunNow(); gdriveStatus.textContent = 'Respaldos verificados y cargados: ' + result.fileName + (result.json ? ' y ' + result.json.fileName : '') + ' · SHA-256 SQLite ' + result.sha256; await refreshDriveStatus(); }
     catch (e) { gdriveStatus.textContent = 'No se completó el respaldo: ' + e.message; }
   });
   $('#gdriveRecovery', el).addEventListener('click', async () => {
