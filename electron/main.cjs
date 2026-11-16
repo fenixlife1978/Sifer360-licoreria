@@ -428,8 +428,9 @@ async function startLanServer(requestedPort) {
         if(!user) return sendJson(res,403,{error:'El cajero indicado no existe o está inactivo en el servidor.'});
         if(user.role==='cajero'&&String(user.cashbox)!==cashbox) return sendJson(res,403,{error:'El cajero no tiene asignada la caja de origen indicada.'});
         if(body.invoice.idempotencyKey!==body.idempotencyKey) return sendJson(res,400,{error:'La clave idempotente de la factura no coincide.'});
+        const invoice={...body.invoice,origin:{...(body.invoice.origin||{}),cashbox,cashier,terminal:station,deviceId:sourceDeviceId}};
         const queue=ensureFiscalNetworkQueue();
-        const accepted=queue.enqueue({idempotencyKey:body.idempotencyKey,cashbox,cashier,station,sourceDeviceId,saleId:body.saleId,invoice:body.invoice});
+        const accepted=queue.enqueue({idempotencyKey:body.idempotencyKey,cashbox,cashier,station,sourceDeviceId,saleId:body.saleId,invoice});
         return sendJson(res,202,{ok:true,duplicate:accepted.duplicate,job:publicFiscalNetworkJob(accepted.job)});
       } catch(error) { return sendJson(res,400,{error:error.message||'No se pudo registrar el trabajo fiscal.'}); }
     }
@@ -623,6 +624,7 @@ async function flushClientOutbox() {
 function registerNetworkIpc() {
   ipcMain.handle('fiscal-network:submit', async (_e,input={}) => {
     const payload={...input,sourceDeviceId:networkConfig.deviceId,station:String(input.station||os.hostname())};
+    if(payload.invoice&&typeof payload.invoice==='object')payload.invoice={...payload.invoice,origin:{...(payload.invoice.origin||{}),cashbox:payload.cashbox,cashier:payload.cashier,terminal:payload.station,deviceId:payload.sourceDeviceId}};
     if(networkConfig.role==='client') return clientApi('/api/fiscal/queue',{method:'POST',body:JSON.stringify(payload),timeoutMs:15000});
     if(networkConfig.role==='server'&&networkServer){
       const accepted=ensureFiscalNetworkQueue().enqueue(payload);
