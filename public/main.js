@@ -5527,7 +5527,60 @@ function fiscalNetworkQueueDlg(){
   refresh();
 }
 
-async function fiscalPrinterConfigDlg(){
+async async async function thermalPrinterConfigDlg(){
+  const user=activeUser();
+  if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras térmicas.','bad');return;}
+  if(!window.posDesktop||typeof window.posDesktop.printerList!=='function'){msg('La configuración de impresoras térmicas requiere SIFER360 de escritorio en Windows.','bad');return;}
+  const boxes=cashboxList().filter(x=>x.active!==false);
+  let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
+  const savedFor=id=>(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[id])||{};
+  let draft={...savedFor(box)};
+  const options=boxes.map(x=>'<option value="'+esc(x.id)+'" '+(String(x.id)===box?'selected':'')+'>'+esc(x.id)+' — '+esc(x.name||('Caja '+x.id))+'</option>').join('');
+  const el=h('<div class="form"><div class="hint">Configure una impresora térmica para tickets y notas de venta no fiscales. Cada caja conserva su propia impresora. La prueba envía un ticket de prueba al spooler de Windows; no confirma físicamente la salida del papel.</div><div class="f"><label for="tpCashbox">Caja</label><select class="fld" id="tpCashbox">'+options+'</select></div><div class="f"><label for="tpPrinter">Impresora Windows</label><select class="fld" id="tpPrinter"><option value="">Seleccione impresora…</option></select></div><div class="f"><label for="tpWidth">Papel</label><select class="fld" id="tpWidth"><option value="32">58 mm · 32 columnas</option><option value="42">80 mm · 42 columnas</option><option value="48">80 mm · 48 columnas</option></select></div><label class="chk"><input type="checkbox" id="tpEnabled"> Habilitar tickets en esta caja</label><div class="hint" id="tpStatus" role="status" aria-live="polite">Consultando impresoras de Windows…</div></div>');
+  const status=$('#tpStatus',el),printer=$('#tpPrinter',el),width=$('#tpWidth',el),enabled=$('#tpEnabled',el);
+  const apply=()=>{
+    printer.value=draft.printerName||'';
+    width.value=String(draft.columns||42);
+    enabled.checked=draft.enabled===true;
+  };
+  const read=()=>({printerName:printer.value,columns:Number(width.value),enabled:enabled.checked});
+  const detect=async()=>{
+    status.textContent='Buscando impresoras instaladas en Windows…';
+    try{
+      const found=await window.posDesktop.printerList();
+      const names=(Array.isArray(found)?found:(found.printers||[])).map(x=>typeof x==='string'?x:(x.name||x.printerName)).filter(Boolean);
+      const previous=printer.value||draft.printerName||'';
+      printer.innerHTML='<option value="">Seleccione impresora…</option>'+names.map(name=>'<option value="'+esc(name)+'">'+esc(name)+'</option>').join('');
+      if(names.includes(previous))printer.value=previous;
+      status.textContent=names.length?names.length+' impresora(s) detectada(s). Seleccione la que corresponde a esta caja.':'Windows no reportó impresoras instaladas. Instale el controlador y vuelva a detectar.';
+    }catch(error){status.textContent='No se pudieron enumerar impresoras: '+error.message;}
+  };
+  el.addEventListener('change',async e=>{
+    if(e.target.id==='tpCashbox'){
+      const current=read();S.cfg.thermalPrinters=S.cfg.thermalPrinters||{};S.cfg.thermalPrinters[box]=current;
+      box=String(e.target.value);draft={...savedFor(box)};await detect();apply();
+    }
+  });
+  const saveThermal={label:'Guardar configuración',primary:true,fn:async()=>{
+    const p=read();
+    if(p.enabled&&!p.printerName){msg('Seleccione una impresora antes de habilitar los tickets.','bad');return false;}
+    if(![32,42,48].includes(p.columns)){msg('Ancho de papel no válido.','bad');return false;}
+    if(!S.cfg.thermalPrinters)S.cfg.thermalPrinters={};
+    S.cfg.thermalPrinters[box]=p;
+    const persisted=await save();
+    if(!persisted||!persisted.ok){msg('SQLite no confirmó la configuración térmica.','bad');return false;}
+    msg('Impresora térmica guardada para Caja '+box+'.');
+    return true;
+  }};
+  openWin({title:'Impresora térmica no fiscal · Caja '+esc(box),w:620,body:el,foot:[{label:'Cerrar'},{label:'Actualizar impresoras',fn:async()=>{await detect();return false;}},{label:'Imprimir prueba',fn:async()=>{
+    const p=read();if(!p.printerName){msg('Seleccione una impresora para la prueba.','bad');return false;}
+    try{const result=await window.posDesktop.printerTest(p.printerName);status.textContent=result.message+' Windows aceptó el trabajo; verifique físicamente el papel.';msg('Prueba enviada a '+p.printerName+'. Compruebe la salida física.');}
+    catch(error){status.textContent='Falló el envío de prueba: '+error.message;msg('No se pudo enviar la prueba: '+error.message,'bad');}
+    return false;
+  }},saveThermal],onOpen:async()=>{apply();await detect();apply();}});
+}
+
+function fiscalPrinterConfigDlg(){
   const user=activeUser();
   if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras fiscales de las cajas.','bad');return;}
   let isLanClient=false,isSharedLan=false;
