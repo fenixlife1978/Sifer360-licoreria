@@ -5580,7 +5580,7 @@ async async async function thermalPrinterConfigDlg(){
   }},saveThermal],onOpen:async()=>{apply();await detect();apply();}});
 }
 
-function fiscalPrinterConfigDlg(){
+async function fiscalPrinterConfigDlg(){
   const user=activeUser();
   if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras fiscales de las cajas.','bad');return;}
   let isLanClient=false,isSharedLan=false;
