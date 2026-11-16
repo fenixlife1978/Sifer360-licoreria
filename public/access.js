@@ -90,7 +90,7 @@ function renderLogin(error=''){
   if(!c)return;
   c.innerHTML=
     '<div class="sa-card sa-login-card" id="sa-login-card">' +
-      '<div class="sa-login-title">' +
+      '<div class="sa-brand-logo"><img src="./logo-horizontal.svg" alt="SIFER360 Licorería"></div><div class="sa-login-title">' +
         '<svg class="sa-user-glyph" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
           '<path d="M12 12c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm0 2.5c-3.33 0-10 1.67-10 5v2.5h20v-2.5c0-3.33-6.67-5-10-5z"/>' +
         '</svg>' +
@@ -98,16 +98,16 @@ function renderLogin(error=''){
       '</div>' +
       '<form id="sa-login" novalidate>' +
         '<div class="sa-field">' +
-          '<label for="sa-user">Usuario</label>' +
+          '<label for="sa-user">USUARIO / CORREO ELECTRÓNICO</label>' +
           '<div class="sa-control">' +
             '<span class="sa-control-icon" aria-hidden="true">' +
               '<svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 12c2.48 0 4.5-2.02 4.5-4.5S14.48 3 12 3 7.5 5.02 7.5 7.5 9.52 12 12 12zm0 2.25c-3.01 0-9 1.51-9 4.5v2.25h18v-2.25c0-2.99-5.99-4.5-9-4.5z"/></svg>' +
             '</span>' +
-            '<input id="sa-user" autocomplete="username" required placeholder="Ingrese su usuario">' +
+            '<input id="sa-user" autocomplete="username" required placeholder="Ingrese usuario o correo electrónico">' +
           '</div>' +
         '</div>' +
         '<div class="sa-field">' +
-          '<label for="sa-code">Contraseña</label>' +
+          '<label for="sa-code">CONTRASEÑA</label>' +
           '<div class="sa-control sa-input-wrap">' +
             '<span class="sa-control-icon" aria-hidden="true">' +
               '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>' +
@@ -154,7 +154,7 @@ function renderLogin(error=''){
       '<div class="sa-login-meta">' +
         '<div class="sa-product-meta">' +
           '<img class="sa-meta-gear" src="./icon.svg" alt="Emblema SIFER360">' +
-          '<div><strong>SIFER360 - Licorería</strong><span>Versión 1.0.2</span></div>' +
+          '<div><strong>SIFER360 - Licorería</strong><span>Versión 1.0.3</span></div>' +
         '</div>' +
         '<div class="sa-date-meta">' +
           '<svg class="sa-meta-cal" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
