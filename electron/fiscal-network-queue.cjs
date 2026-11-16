@@ -79,6 +79,26 @@ function createFiscalNetworkQueue({ store, emitInvoice, resolveProfile, now = ()
       pumping = false;
     }
   }
+  async function reconcile(idOrKey, decision, details = {}) {
+    const job=get(idOrKey);
+    if(!job)throw new Error('Trabajo fiscal no encontrado.');
+    if(job.status!=='uncertain')throw new Error('Solo se pueden conciliar trabajos en estado incierto.');
+    const at=now();
+    if(decision==='issued'){
+      const fiscalDocumentNumber=safeText(details.fiscalDocumentNumber,80);
+      const fiscalSerial=safeText(details.fiscalSerial,80);
+      const result={fiscalDocumentNumber,fiscalSerial,authorization:String(details.authorization||'').slice(0,160),manualReconciliation:true};
+      store.markReconciledIssued(job.id,result,at);
+    }else if(decision==='not-issued'){
+      const note=safeText(details.note||'Administrador verificó físicamente que no existe documento emitido.',300);
+      store.markReconciledNotIssued(job.id,note,at);
+    }else{
+      throw new Error('La decisión de conciliación debe ser issued o not-issued.');
+    }
+    halted=typeof store.hasUncertain==='function'?store.hasUncertain():false;
+    if(!halted)queueMicrotask(()=>{pump().catch(()=>{});});
+    return get(job.id);
+  }
   function get(idOrKey) {
     return store.getByKey(idOrKey) || store.getById(idOrKey) || null;
   }
@@ -87,6 +107,6 @@ function createFiscalNetworkQueue({ store, emitInvoice, resolveProfile, now = ()
   }
   function isBlocked() { return halted; }
   function close() { closed = true; }
-  return { recover, enqueue, pump, get, list, isBlocked, close };
+  return { recover, enqueue, pump, get, list, reconcile, isBlocked, close };
 }
 module.exports = { createFiscalNetworkQueue, stableHash };
