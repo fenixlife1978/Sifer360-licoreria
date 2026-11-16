@@ -198,7 +198,7 @@ function createGoogleDriveBackup(options = {}) {
       const redirectUri = 'http://127.0.0.1:' + address.port + '/oauth2callback';
       const authUrl = new URL(GOOGLE_AUTH);
       for (const [key, value] of Object.entries({
-        client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: DRIVE_SCOPE,
+        client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: DRIVE_SCOPE + ' https://www.googleapis.com/auth/userinfo.email',
         access_type: 'offline', prompt: 'consent', login_hint: email, state,
         code_challenge: challenge, code_challenge_method: 'S256'
       })) authUrl.searchParams.set(key, value);
@@ -216,7 +216,7 @@ function createGoogleDriveBackup(options = {}) {
           resolve(code);
         });
       });
-      await shell.openExternal(authUrl.toString());
+      callback.catch(() => {});\n      await shell.openExternal(authUrl.toString());
       const code = await callback;
       const token = await exchangeToken({ code, client_id: clientId, redirect_uri: redirectUri, grant_type: 'authorization_code', code_verifier: verifier });
       if (!token.refresh_token) throw new Error('Google no entregó un token de renovación. Revoca el acceso de SIFER360 en tu cuenta Google y vuelve a conectar.');
