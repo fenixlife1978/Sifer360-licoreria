@@ -5463,20 +5463,57 @@ function thermalPrinterConfigDlg(){
 function fiscalNetworkQueueDlg(){
   const user=activeUser();
   if(!user||user.role!=='admin'){msg('Solo el administrador puede consultar la cola fiscal compartida.','bad');return;}
-  const el=h('<div class="form"><div class="hint">Cola fiscal del equipo servidor. Todos los puntos de venta envían aquí sus facturas; el servidor transmite un solo trabajo a la vez. Los trabajos inciertos bloquean nuevas emisiones hasta conciliarlos físicamente.</div><div id="fnqStatus" class="hint" role="status" aria-live="polite">Consultando servidor…</div><div class="gridwrap"><table class="grid"><thead><tr><th>Estado</th><th>Caja / Cajero</th><th>Terminal</th><th>Trabajo</th><th>Resultado / incidencia</th></tr></thead><tbody id="fnqRows"></tbody></table></div></div>');
+  const el=h('<div class="form"><div class="hint">Cola fiscal del equipo servidor. Todos los puntos de venta envían aquí sus facturas; el servidor transmite un solo trabajo a la vez. Los trabajos inciertos bloquean nuevas emisiones hasta conciliarlos físicamente.</div><div id="fnqStatus" class="hint" role="status" aria-live="polite">Consultando servidor…</div><div class="gridwrap"><table class="grid"><thead><tr><th>Estado</th><th>Caja / Cajero</th><th>Terminal</th><th>Trabajo</th><th>Resultado / incidencia</th><th>Conciliación</th></tr></thead><tbody id="fnqRows"></tbody></table></div></div>');
   const status=$('#fnqStatus',el),rows=$('#fnqRows',el);
+  el.addEventListener('click',async event=>{
+    const issue=event.target.closest('[data-fnq-issued]');
+    const noIssue=event.target.closest('[data-fnq-not-issued]');
+    if(!issue&&!noIssue)return;
+    const key=(issue||noIssue).dataset.fnqIssued||(issue||noIssue).dataset.fnqNotIssued;
+    const password=prompt('Confirme su contraseña de administrador para conciliar esta emisión fiscal:');
+    if(!password)return;
+    let details={},decision='not-issued';
+    if(issue){
+      const documentNumber=prompt('Número exacto de documento fiscal que aparece en la impresora:');
+      if(!documentNumber)return;
+      const serial=prompt('Serial fiscal exacto de la máquina:');
+      if(!serial)return;
+      if(!confirm('¿Verificó físicamente que ese documento corresponde a esta venta?'))return;
+      decision='issued';details={fiscalDocumentNumber:documentNumber.trim(),fiscalSerial:serial.trim()};
+    }else{
+      if(!confirm('Confirme que consultó la impresora y verificó que NO existe documento emitido para esta operación. Solo entonces se liberará la cola.'))return;
+      details={note:'Administrador verificó físicamente que no existe documento emitido.'};
+    }
+    try{
+      const result=await window.posDesktop.fiscalNetworkReconcile({adminUsername:user.username,password,idempotencyKey:key,decision,details});
+      const local=(S.fiscalPrinterJobs||[]).find(job=>job.idempotencyKey===key);
+      if(local){
+        if(decision==='issued'){
+          local.status='uncertain';local.fiscalDocumentNumber=details.fiscalDocumentNumber;local.fiscalSerial=details.fiscalSerial;
+          local.lastError='Emisión confirmada en la cola del servidor. Complete la conciliación de la venta local desde la configuración fiscal.';
+        }else{
+          local.status='not-issued';local.reconciledAt=Date.now();local.reconciliation='confirmed-not-issued-by-admin';
+        }
+        const saved=await save();
+        if(!saved||!saved.ok)throw new Error('El servidor resolvió la cola, pero SQLite no confirmó la actualización local. No repita la operación; revise la venta pendiente.');
+      }
+      msg(decision==='issued'?'Emisión fiscal verificada en servidor. Si esta terminal conserva una intención pendiente, abra la configuración fiscal y confirme la reconstrucción de la venta.':'La impresora fue verificada sin documento emitido. La cola quedó liberada; puede registrar una nueva operación.');
+      await refresh();
+    }catch(error){msg('No se pudo conciliar la cola fiscal: '+error.message,'bad');}
+  });
   const refresh=async()=>{
     status.textContent='Actualizando cola fiscal…';
     try{
       const net=await window.posDesktop.networkStatus();
-      if(net.role==='client'){status.textContent='Esta PC es cliente. Consulte la cola desde el equipo servidor que tiene conectada la impresora fiscal.';rows.innerHTML='';return;}
-      if(net.role!=='server'||net.running!==true){status.textContent='El servidor LAN no está iniciado. Active el modo servidor en el equipo conectado a la impresora fiscal.';rows.innerHTML='';return;}
+      if(net.role==='standalone'){status.textContent='Esta PC no está conectada a un servidor LAN. Inicie o empareje el equipo servidor.';rows.innerHTML='';return;}
+      if(net.role==='server'&&net.running!==true){status.textContent='El servidor LAN no está iniciado. Active el modo servidor en el equipo conectado a la impresora fiscal.';rows.innerHTML='';return;}
       const jobs=await window.posDesktop.fiscalNetworkList();
       rows.innerHTML=jobs.length?jobs.map(job=>{
         const result=job.result||{};
         const detail=job.status==='issued'?'Doc. '+esc(result.fiscalDocumentNumber||'—')+' · Serial '+esc(result.fiscalSerial||'—'):esc(job.error||'En espera de procesamiento');
         const state=job.status==='issued'?'Emitida':job.status==='uncertain'?'INCIERTA':job.status==='rejected'?'Rechazada':job.status==='processing'?'Procesando':'Pendiente';
-        return '<tr><td><b>'+state+'</b></td><td>'+esc(job.cashbox)+' / '+esc(job.cashier)+'</td><td>'+esc(job.station)+'</td><td><span class="mono">'+esc(job.idempotencyKey)+'</span><br><span class="hint">'+esc(job.createdAt||'')+'</span></td><td>'+detail+'</td></tr>';
+        const actions=job.status==='uncertain'?'<button class="btn mini2 primary" data-fnq-issued="'+esc(job.idempotencyKey)+'">Confirmar emitida</button> <button class="btn mini2" data-fnq-not-issued="'+esc(job.idempotencyKey)+'">Confirmar no emitida</button>':'—';
+        return '<tr><td><b>'+state+'</b></td><td>'+esc(job.cashbox)+' / '+esc(job.cashier)+'</td><td>'+esc(job.station)+'</td><td><span class="mono">'+esc(job.idempotencyKey)+'</span><br><span class="hint">'+esc(job.createdAt||'')+'</span></td><td>'+detail+'</td><td>'+actions+'</td></tr>';
       }).join(''):'<tr><td colspan="5" class="hint">No hay trabajos fiscales registrados.</td></tr>';
       const uncertain=jobs.filter(x=>x.status==='uncertain').length;
       status.textContent='Servidor activo · '+jobs.length+' trabajos · '+uncertain+' inciertos. '+(uncertain?'La cola permanece bloqueada; no se reenvían automáticamente.':'');
