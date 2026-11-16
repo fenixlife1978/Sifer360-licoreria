@@ -38,14 +38,14 @@ jobs:
         run: npm run build
 
       - name: Construir ejecutable portátil de Windows (.exe)
-        run: npx --yes electron-builder --win portable --config electron-builder.json --publish never
+        run: npx --yes electron-builder --win --config electron-builder.json --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Guardar ejecutable como artefacto privado de CI
         uses: actions/upload-artifact@v4
         with:
-          name: SIFER360-Licoreria-${{ github.ref_name }}-Windows-Portable
+          name: SIFER360-Licoreria-Windows-Installer-and-Portable
           path: dist-exe/*.exe
           if-no-files-found: error
           retention-days: 30

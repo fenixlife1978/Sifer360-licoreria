@@ -1,0 +1,18 @@
+{
+  "name": "SIFER360 Licorería",
+  "short_name": "SIFER360",
+  "description": "Control total de tu negocio: punto de venta y administración para licorerías.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#123C6C",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
