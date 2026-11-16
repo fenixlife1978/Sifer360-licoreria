@@ -937,15 +937,24 @@ function openWin(o){
     }
   });
   W={el:bd,prev:document.activeElement};
-  $('#win').inert=true;
+  // El backdrop ya bloquea la interacción con el POS. No marcar todo #win
+  // como inert: si un flujo de error retira el diálogo fuera de closeWin(),
+  // Chromium puede dejar toda la aplicación sin campos editables.
   document.body.appendChild(bd);
-  if(o.onOpen)o.onOpen(bd);
+  try{if(o.onOpen)o.onOpen(bd);}
+  catch(error){
+    console.error('SIFER360: error al preparar diálogo '+o.title,error);
+    msg('No se pudo preparar la ventana: '+String(error&&error.message||error)+'. Puede cerrar e intentarlo nuevamente.','bad');
+  }
   if(!bd.contains(document.activeElement)){const f=$('input:not([readonly]),select',body)||$('.btn.primary',footR);if(f)f.focus();}
 }
 function closeWin(silent){
-  if(!W)return;
-  W.el.remove();$('#win').inert=false;
-  const prev=W.prev;W=null;
+  const current=W;
+  W=null;
+  const appRoot=$('#win');
+  if(appRoot)appRoot.inert=false;
+  if(current&&current.el&&current.el.isConnected)current.el.remove();
+  const prev=current&&current.prev;
   if(!silent&&prev&&prev.focus&&document.contains(prev))prev.focus();
 }
 function ask(title,text,okLabel,fn){
