@@ -7,6 +7,7 @@ concurrency:
 on:
   push:
     branches: [ main, master, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-sdk-architecture-validation ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main, master, integration/sqlite-lan-stage-1, release/v1.0.0 ]
   workflow_dispatch:
@@ -44,7 +45,7 @@ jobs:
       - name: Guardar ejecutable como artefacto privado de CI
         uses: actions/upload-artifact@v4
         with:
-          name: sifer360-windows-portable-validation
+          name: SIFER360-Licoreria-${{ github.ref_name }}-Windows-Portable
           path: dist-exe/*.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
