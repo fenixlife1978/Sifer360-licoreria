@@ -603,3 +603,40 @@ test('una operación pendiente o conflictiva no se marca como capturada en la l�
   assert.match(capture, /throw new Error\(delivery&&delivery\.deliveryError/);
   assert.ok(capture.indexOf('seen.add(identity)') > capture.indexOf('delivery.serverConfirmed!==true'));
 });
+
+
+test('el handler de snapshots cliente vacía y confirma la outbox antes de enviar el snapshot', () => {
+  const handler = electron.slice(electron.indexOf("ipcMain.handle('posdb:save-state'"), electron.indexOf("ipcMain.handle('posdb:list-documents'"));
+  assert.match(handler, /if \(networkConfig\.role === 'client'\)[\s\S]{0,350}await flushClientOutbox\(\);[\s\S]{0,300}clientApi\('\/api\/sync\/state'/);
+});
+
+test('los tombstones de ventas suspendidas se cargan desde el snapshot y sobreviven al reinicio del renderer', () => {
+  assert.match(pos, /S\.heldDeletedIds=Array\.isArray\(d\.heldDeletedIds\)\?d\.heldDeletedIds:\[\]/);
+  assert.match(pos, /if\(!Array\.isArray\(S\.heldDeletedIds\)\)S\.heldDeletedIds=\[\]/);
+  assert.match(pos, /S\.heldDeletedIds\.push\(\{id:String\(hd\.id/);
+});
+
+test('si el servidor LAN no puede reanudarse al iniciar, la aplicación falla cerrada y no crea un modo local paralelo', () => {
+  assert.match(electron, /if \(networkConfig\.role === 'server'\) \{ try \{ await startLanServer\(networkConfig\.port\); \} catch \(error\) \{ throw new Error\('No se pudo reanudar el servidor LAN/);
+  const startup = electron.slice(electron.indexOf('app.whenReady().then'), electron.indexOf("app.on('window-all-closed'"));
+  assert.doesNotMatch(startup, /networkConfig\.role = 'standalone'/);
+  assert.match(startup, /app\.quit\(\)/);
+});
+
+test('el renderer solicita consecutivos sin enviar mínimos calculados desde su snapshot local', () => {
+  const sequence = pos.slice(pos.indexOf('async function nextCajaSequence'), pos.indexOf('async function nextCajaInvoice'));
+  assert.match(sequence, /networkNextSequence\(\{cashbox:String\(box\),operation\}\)/);
+  assert.doesNotMatch(sequence, /let minimum=1|S\.sales|S\.cortesZ|localStorage/);
+  assert.match(electron, /getCashboxSequenceMinimum\(state, cashboxId, operationType\)/);
+  assert.doesNotMatch(electron.slice(electron.indexOf("url.pathname === '\/api\/sequences\/next'"), electron.indexOf("url.pathname === '\/api\/sync\/events'")), /body\.minimum/);
+});
+
+test('al reconectar después de un fallo, el cliente vacía la outbox y recarga el estado autoritativo sin enviar snapshots locales no confirmados', () => {
+  const sync = pos.slice(pos.indexOf('async function networkSyncAttempt'), pos.indexOf('window.SIFERNetworkSync'));
+  assert.match(sync, /if\(persistenceBlocked\)\{[\s\S]{0,300}networkFlushOutbox\(\)/);
+  assert.match(sync, /const authoritative=await posSqliteDriver\.loadState\(\)/);
+  assert.match(sync, /Object\.assign\(S,authoritative\)/);
+  assert.ok(sync.indexOf('if(persistenceBlocked)') < sync.indexOf('networkSyncNow(local)'));
+  assert.match(electron, /ipcMain\.handle\('network:flush-outbox'/);
+  assert.match(preload, /networkFlushOutbox: \(\) => ipcRenderer\.invoke\('network:flush-outbox'\)/);
+});
