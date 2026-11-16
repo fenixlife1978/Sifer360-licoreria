@@ -79,7 +79,7 @@ test('cashier can register justified collaboration, own consumption and donation
 });
 
 test('reload preserves authenticated session and restores the last permitted module',()=>{
-  assert.match(access,/const saved=\(\(\)=>\{try\{return JSON\.parse\(sessionStorage\.getItem\(SESSION\)\|\|'null'\)/);
+  assert.match(access,/let saved=\(\(\)=>\{try\{return JSON\.parse\(sessionStorage\.getItem\(SESSION\)\|\|'null'\)/);
   assert.doesNotMatch(access,/sessionStorage\.removeItem\(SESSION\);shell\(\);/);
   assert.match(main,/sifer360_last_module_v1:/);
   assert.match(main,/localStorage\.setItem\('sifer360_last_module_v1:'\+user\.username,b\.dataset\.tb\)/);
