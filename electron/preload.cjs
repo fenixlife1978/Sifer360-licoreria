@@ -29,7 +29,7 @@ contextBridge.exposeInMainWorld('posDesktop', {
   networkSyncNow: state => ipcRenderer.invoke('network:sync-now', state),
   printerList: () => ipcRenderer.invoke('printer:list'),
   printerPrintTicket: (printerName, text, options) => ipcRenderer.invoke('printer:print-ticket', printerName, text, options),
-  printerTest: printerName => ipcRenderer.invoke('printer:test', printerName),
+  printerTest: (printerName, options) => ipcRenderer.invoke('printer:test', printerName, options),
   fiscalNetworkSubmit: input => ipcRenderer.invoke('fiscal-network:submit', input),
   fiscalNetworkStatus: key => ipcRenderer.invoke('fiscal-network:status', key),
   fiscalNetworkList: () => ipcRenderer.invoke('fiscal-network:list'),
