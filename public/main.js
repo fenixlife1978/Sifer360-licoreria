@@ -4789,7 +4789,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       let issued;
       if(useSharedFiscal){
         const accepted=await window.posDesktop.fiscalNetworkSubmit({
-          idempotencyKey,cashbox:currentCaja(),cashier:currentCajero(),
+          idempotencyKey,cashbox:currentCaja(),cashier:currentCajero(),userSessionToken:String((activeUser()||{}).authToken||''),
           saleId:sale.accountingSourceId,invoice:fiscalInvoice
         });
         let remoteJob=accepted&&accepted.job;
@@ -4819,7 +4819,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       if(fiscalProfile)fiscalProfile.serial=issued.fiscalSerial;
       sale.fiscal={provider:(fiscalProfile&&fiscalProfile.provider)||issued.provider||'shared',model:(fiscalProfile&&fiscalProfile.model)||issued.model||'Impresora fiscal compartida',documentNumber:issued.fiscalDocumentNumber,serial:issued.fiscalSerial,authorization:issued.authorization||'',status:'issued'};
     }catch(error){
-      if(fiscalJob.status!=='rejected')fiscalJob.status=/cola fiscal está bloqueada/i.test(String(error.message||error))?'rejected':'uncertain';
+      if(fiscalJob.status!=='rejected')fiscalJob.status=(error.statusCode===401||/sesión.*expiró|no autorizado|cajero.*autenticado|usuario.*asignado/i.test(String(error.message||error))||/cola fiscal está bloqueada/i.test(String(error.message||error)))?'rejected':'uncertain';
       fiscalJob.lastError=String(error.message||error).slice(0,1000);
       fiscalJob.lastAttemptAt=Date.now();
       const journalResult=await save();
