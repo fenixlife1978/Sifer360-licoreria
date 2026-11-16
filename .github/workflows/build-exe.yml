@@ -6,7 +6,7 @@ concurrency:
 
 on:
   push:
-    branches: [ main, master, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-sdk-architecture-validation ]
+    branches: [ main, master, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-sdk-architecture-validation, feature/google-drive-automatic-backups ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, master, integration/sqlite-lan-stage-1, release/v1.0.0 ]
