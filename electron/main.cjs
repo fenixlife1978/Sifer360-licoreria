@@ -392,6 +392,7 @@ function publicFiscalNetworkJob(job) {
   return {id:job.id,idempotencyKey:job.idempotency_key,status:job.status,cashbox:job.source_cashbox,cashier:job.source_cashier,station:job.source_station,sourceDeviceId:job.source_device_id,saleId:job.sale_id,createdAt:job.created_at,startedAt:job.started_at,finishedAt:job.finished_at,result,error:job.error||''};
 }
 async function startLanServer(requestedPort) {
+  if (fiscalNetworkQueue && fiscalNetworkQueue.isBusy()) throw new Error('No se puede reiniciar el servidor LAN mientras se transmite una factura fiscal. Espere a que termine el comando o consulte el estado de la impresora.');
   if (networkConfig.role === 'client' || networkConfig.serverPromotionBlocked) throw new Error('Este equipo ya fue cliente LAN y su SQLite local no se considera autoridad. No puede convertirse en servidor automáticamente; restaure o migre la base central mediante un procedimiento explícito antes de promoverlo.');
   if (!db) await initializeDatabase();
   const fiscalQueue = ensureFiscalNetworkQueue();
