@@ -17,6 +17,7 @@ const { getCashboxSequenceMinimum } = require('./cashbox-sequence-minimum.cjs');
 const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
 const { createPasswordHash, verifyPassword, normalizeLegacyUser, publicUser } = require('./auth-credentials.cjs');
 const FiscalPrinterManager = require('./fiscal-printer-manager.cjs');
+const PrinterManager = require('./printer-manager.cjs');
 const authSessions = new Map();
 const initSqlJs = require('sql.js');
 
@@ -829,6 +830,9 @@ function registerIpc() {
     await shell.openExternal(url);
     return { ok: true };
   });
+  ipcMain.handle('printer:list', async () => PrinterManager.listPrinters());
+  ipcMain.handle('printer:print-ticket', async (_e, printerName, text, options = {}) => PrinterManager.printTicket(printerName, text, options));
+  ipcMain.handle('printer:test', async (_e, printerName) => PrinterManager.printTicket(printerName, 'SIFER360 LICORERIA\\nPRUEBA DE IMPRESION\\nTicket no fiscal\\n\\n', { columns: 42 }));
   ipcMain.handle('fiscal-printer:list-ports', async () => FiscalPrinterManager.listSerialPorts());
   ipcMain.handle('fiscal-printer:select-file', async (_e, kind = 'sdk') => {
     const filters = kind === 'bridge'
