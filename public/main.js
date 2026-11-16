@@ -4650,7 +4650,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   if(fiscalMode&&window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
     try{fiscalNetworkInfo=await window.posDesktop.networkStatus()||fiscalNetworkInfo;}catch{}
   }
-  const useSharedFiscal=fiscalMode&&(fiscalNetworkInfo.role==='client'||(fiscalNetworkInfo.role==='server'&&fiscalNetworkInfo.running===true));
+  const useSharedFiscal=fiscalMode&&(fiscalNetworkInfo.role==='client'||fiscalNetworkInfo.role==='server');
   if(fiscalMode&&(!fiscalProfile||fiscalProfile.enabled!==true)){msg('La impresora fiscal no está habilitada para esta caja en la configuración compartida. Configure el dispositivo en el servidor fiscal.','bad');return;}
   if(useSharedFiscal&&(!window.posDesktop||typeof window.posDesktop.fiscalNetworkSubmit!=='function'||typeof window.posDesktop.fiscalNetworkStatus!=='function')){msg('La cola fiscal compartida no está disponible en esta versión. No se registró la venta.','bad');return;}
   const unresolvedFiscalJobs=(S.fiscalPrinterJobs||[]).filter(job=>String(job.cashbox)===String(currentCaja())&&['pending','uncertain'].includes(job.status));
@@ -5510,7 +5510,7 @@ function fiscalNetworkQueueDlg(){
     try{
       const net=await window.posDesktop.networkStatus();
       if(net.role==='standalone'){status.textContent='Esta PC no está conectada a un servidor LAN. Inicie o empareje el equipo servidor.';rows.innerHTML='';return;}
-      if(net.role==='server'&&net.running!==true){status.textContent='El servidor LAN no está iniciado. Active el modo servidor en el equipo conectado a la impresora fiscal.';rows.innerHTML='';return;}
+      const serverStopped=net.role==='server'&&net.running!==true;
       const jobs=await window.posDesktop.fiscalNetworkList();
       rows.innerHTML=jobs.length?jobs.map(job=>{
         const result=job.result||{};
@@ -5520,7 +5520,7 @@ function fiscalNetworkQueueDlg(){
         return '<tr><td><b>'+state+'</b></td><td>'+esc(job.cashbox)+' / '+esc(job.cashier)+'</td><td>'+esc(job.station)+'</td><td><span class="mono">'+esc(job.idempotencyKey)+'</span><br><span class="hint">'+esc(job.createdAt||'')+'</span></td><td>'+detail+'</td><td>'+actions+'</td></tr>';
       }).join(''):'<tr><td colspan="5" class="hint">No hay trabajos fiscales registrados.</td></tr>';
       const uncertain=jobs.filter(x=>x.status==='uncertain').length;
-      status.textContent='Servidor activo · '+jobs.length+' trabajos · '+uncertain+' inciertos. '+(uncertain?'La cola permanece bloqueada; no se reenvían automáticamente.':'');
+      status.textContent=(serverStopped?'Servidor LAN detenido; cola local consultable · ':'Conexión LAN activa · ')+jobs.length+' trabajos · '+uncertain+' inciertos. '+(uncertain?'La cola permanece bloqueada; no se reenvían automáticamente.':'');
     }catch(error){status.textContent='No se pudo consultar la cola fiscal: '+error.message;}
   };
   openWin({title:'Cola fiscal compartida · LAN',w:900,body:el,foot:[{label:'Cerrar'},{label:'Actualizar',primary:true,fn:()=>{refresh();return false;}}]});
@@ -5532,7 +5532,7 @@ async function fiscalPrinterConfigDlg(){
   if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras fiscales de las cajas.','bad');return;}
   let isLanClient=false,isSharedLan=false;
   if(window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
-    try{const net=await window.posDesktop.networkStatus();isLanClient=!!(net&&net.role==='client');isSharedLan=isLanClient||!!(net&&net.role==='server'&&net.running===true);}
+    try{const net=await window.posDesktop.networkStatus();isLanClient=!!(net&&net.role==='client');isSharedLan=isLanClient||!!(net&&net.role==='server');}
     catch(error){msg('No se pudo verificar el rol LAN: '+error.message,'bad');return;}
   }
   const boxes=cashboxList().filter(x=>x.active!==false);
