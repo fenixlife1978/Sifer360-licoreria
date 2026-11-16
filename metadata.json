@@ -1,6 +1,16 @@
 {
-  "name": "SIFER 360 Licorería",
-  "description": "Sistema de punto de venta y administración para licorerías con ventas, compras, inventario por presentación, caja, pagos multimoneda y control fiscal.",
+  "name": "SIFER360 Licorería",
+  "description": "SIFER360 Licorería — Control total de tu negocio. Sistema de punto de venta y administración para licorerías.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ],
+  "branding": {
+    "primary": "#F5821F",
+    "secondary": "#123C6C",
+    "accent": "#FFCA19",
+    "foreground": "#FFFFFF",
+    "icon": "public/icon.svg",
+    "logo": "public/logo-horizontal.svg"
+  }
 }
