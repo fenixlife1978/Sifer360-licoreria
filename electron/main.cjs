@@ -20,6 +20,7 @@ const FiscalPrinterManager = require('./fiscal-printer-manager.cjs');
 const PrinterManager = require('./printer-manager.cjs');
 const { createFiscalNetworkQueue } = require('./fiscal-network-queue.cjs');
 let fiscalNetworkQueue = null;
+let fiscalNetworkQueueRecovered = false;
 const authSessions = new Map();
 const initSqlJs = require('sql.js');
 
@@ -373,6 +374,7 @@ function createFiscalNetworkQueueStore() {
 }
 function ensureFiscalNetworkQueue() {
   if (fiscalNetworkQueue) return fiscalNetworkQueue;
+  fiscalNetworkQueueRecovered = false;
   fiscalNetworkQueue = createFiscalNetworkQueue({
     store: createFiscalNetworkQueueStore(),
     resolveProfile: async cashbox => {
@@ -397,6 +399,7 @@ async function startLanServer(requestedPort) {
   if (!db) await initializeDatabase();
   const fiscalQueue = ensureFiscalNetworkQueue();
   const fiscalRecovery = await fiscalQueue.recover();
+  fiscalNetworkQueueRecovered = true;
   if (!fiscalRecovery.blocked) fiscalQueue.pump().catch(() => {});
   const port = normalizeLanPort(requestedPort || networkConfig.port || 38760);
   if (networkServer) {
@@ -628,8 +631,10 @@ function registerNetworkIpc() {
     const payload={...input,sourceDeviceId:networkConfig.deviceId,station:String(input.station||os.hostname())};
     if(payload.invoice&&typeof payload.invoice==='object')payload.invoice={...payload.invoice,origin:{...(payload.invoice.origin||{}),cashbox:payload.cashbox,cashier:payload.cashier,terminal:payload.station,deviceId:payload.sourceDeviceId}};
     if(networkConfig.role==='client') return clientApi('/api/fiscal/queue',{method:'POST',body:JSON.stringify(payload),timeoutMs:15000});
-    if(networkConfig.role==='server'&&networkServer){
-      const accepted=ensureFiscalNetworkQueue().enqueue(payload);
+    if(networkConfig.role==='server'){
+      const queue=ensureFiscalNetworkQueue();
+      if(!fiscalNetworkQueueRecovered){const recovery=await queue.recover();fiscalNetworkQueueRecovered=true;if(!recovery.blocked)queue.pump().catch(()=>{});}
+      const accepted=queue.enqueue(payload);
       return {ok:true,duplicate:accepted.duplicate,job:publicFiscalNetworkJob(accepted.job)};
     }
     throw new Error('La impresora fiscal compartida requiere que este equipo esté conectado como cliente o servidor LAN activo.');
@@ -642,6 +647,7 @@ function registerNetworkIpc() {
       }catch(error){if(error.statusCode===404)return {status:'missing'};throw error;}
     }
     const queue=ensureFiscalNetworkQueue();
+    if(!fiscalNetworkQueueRecovered){await queue.recover();fiscalNetworkQueueRecovered=true;}
     return publicFiscalNetworkJob(queue.get(String(key)))||{status:'missing'};
   });
   ipcMain.handle('fiscal-network:list', async () => {
@@ -649,7 +655,9 @@ function registerNetworkIpc() {
       const result=await clientApi('/api/fiscal/queue',{timeoutMs:10000});
       return result.jobs||[];
     }
-    return ensureFiscalNetworkQueue().list(200).map(publicFiscalNetworkJob);
+    const queue=ensureFiscalNetworkQueue();
+    if(!fiscalNetworkQueueRecovered){await queue.recover();fiscalNetworkQueueRecovered=true;}
+    return queue.list(200).map(publicFiscalNetworkJob);
   });
   ipcMain.handle('fiscal-network:reconcile', async (_e,input={}) => {
     const username=String(input.adminUsername||'').trim();
@@ -660,8 +668,10 @@ function registerNetworkIpc() {
     }
     const admin=one("SELECT username,role,password_hash FROM app_users WHERE username=? COLLATE NOCASE AND active=1",[username]);
     if(!admin||admin.role!=='admin'||!(await verifyPassword(String(input.password||''),admin.password_hash))) throw new Error('Credenciales de administrador incorrectas.');
-    if(networkConfig.role!=='server'||!networkServer) throw new Error('Inicie el servidor LAN para conciliar la cola fiscal compartida.');
-    const job=await ensureFiscalNetworkQueue().reconcile(String(input.idempotencyKey||''),input.decision,input.details||{});
+    if(networkConfig.role!=='server') throw new Error('La conciliación de la cola fiscal debe realizarse en el equipo servidor.');
+    const queue=ensureFiscalNetworkQueue();
+    if(!fiscalNetworkQueueRecovered){await queue.recover();fiscalNetworkQueueRecovered=true;}
+    const job=await queue.reconcile(String(input.idempotencyKey||''),input.decision,input.details||{});
     return publicFiscalNetworkJob(job);
   });
   ipcMain.handle('network:status', () => ({ ...networkConfig, running: !!networkServer, addresses: localAddresses() }));
