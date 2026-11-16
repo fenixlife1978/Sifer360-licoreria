@@ -7583,6 +7583,32 @@ async function databaseSettingsDlg(){
       '</div>' +
       '<div id="dbMsg" class="hint" style="margin-top:10px;min-height:18px"></div>' +
     '</div>' +
+    '<div style="background:#131C2E;border:1px solid #1E293B;border-radius:8px;padding:12px">' +
+      '<b style="color:#F8FAFC;font-size:13px;display:block;margin-bottom:8px">Copias de Seguridad y Restauración de SQLite</b>' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px">' +
+        '<button class="btn primary" id="dbExportSqlite" type="button" style="display:inline-flex;align-items:center;gap:6px">' +
+          '<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+          'Descargar copia (.sqlite)' +
+        '</button>' +
+        '<button class="btn" id="dbImportSqliteBtn" type="button" style="display:inline-flex;align-items:center;gap:6px">' +
+          '<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' +
+          'Restaurar copia (.sqlite)' +
+        '</button>' +
+        '<input type="file" id="dbImportSqliteFile" accept=".sqlite,.db" hidden>' +
+        '<button class="btn" id="dbExportJson" type="button" title="Respaldo completo de datos en formato JSON">Respaldo JSON</button>' +
+        '<button class="btn" id="dbResetAll" type="button" style="color:#F87171;border-color:#7F1D1D" title="Vaciar datos operativos locales">Reiniciar base</button>' +
+      '</div>' +
+      '<div id="dbMsg" class="hint" style="margin-top:10px;min-height:18px"></div>' +
+    '</div>' +
+    '<div style="background:#131C2E;border:1px solid #7C5B16;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:9px">' +
+      '<div style="display:flex;align-items:center;gap:8px"><b style="color:#FDE68A;font-size:13px">Respaldo cifrado automático en Google Drive</b><span style="background:#713F12;color:#FDE68A;padding:2px 7px;border-radius:4px;font-size:10px">OPCIONAL</span></div>' +
+      '<div class="hint" style="margin:0">SQLite continúa siendo la única base operativa. Solo el equipo independiente o servidor LAN puede generar copias. El archivo se cifra localmente antes de subirlo a una carpeta privada de tu Google Drive.</div>' +
+      '<div class="f"><label for="gdriveEmail">Correo de la cuenta Google Drive</label><input class="fld" id="gdriveEmail" type="email" autocomplete="email" placeholder="tu-correo@gmail.com" style="width:100%"></div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn" id="gdriveConnect" type="button">Conectar Google Drive</button><button class="btn" id="gdriveEnable" type="button">Activar respaldo diario 8:00 p. m.</button><button class="btn" id="gdriveDisable" type="button">Desactivar</button></div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn primary" id="gdriveNow" type="button">Realizar respaldo ahora</button><button class="btn" id="gdriveRecovery" type="button">Guardar clave de recuperación</button></div>' +
+      '<div id="gdriveStatus" class="hint" role="status" aria-live="polite" style="margin:0;min-height:28px">Consultando configuración de Google Drive…</div>' +
+      '<div class="hint" style="margin:0;color:#FDE68A">Importante: conserva la clave de recuperación fuera de este equipo. Sin ella no podrás descifrar los respaldos si cambias de PC o Windows. Puedes cambiar de cuenta Google cuando quieras; los respaldos anteriores permanecerán en la cuenta antigua y los nuevos irán a la cuenta nueva.</div>' +
+    '</div>' +
   '</div>');
 
   const note = $('#dbMsg', el);
@@ -7639,6 +7665,60 @@ async function databaseSettingsDlg(){
       note.textContent = 'Error al exportar: ' + e.message;
     }
   });
+
+  const gdriveStatus = $('#gdriveStatus', el);
+  const gdriveEmail = $('#gdriveEmail', el);
+  const showDriveStatus = s => {
+    if (!isDesktop) { gdriveStatus.textContent = 'Esta función requiere la aplicación de escritorio Windows.'; return; }
+    $('#gdriveConnect', el).disabled = !s.oauthReady;
+    $('#gdriveEnable', el).disabled = !s.configured || !s.oauthReady;
+    $('#gdriveNow', el).disabled = !s.configured || !s.oauthReady;
+    if (s.email) gdriveEmail.value = s.email;
+    $('#gdriveConnect', el).textContent = s.configured ? 'Cambiar cuenta de Google' : 'Conectar Google Drive';
+    const history = (s.history || []).map(x => (x.ok ? '✓ ' : '✕ ') + (x.at || '')).join(' · ');
+    gdriveStatus.textContent = (s.configured ? 'Cuenta conectada: ' + s.email : 'Google Drive no conectado.') +
+      (s.enabled ? ' · Respaldo diario activo: 8:00 p. m. hora Venezuela.' : ' · Programación desactivada.') +
+      (s.lastBackupAt ? ' · Último intento: ' + s.lastBackupAt + ' (' + (s.lastBackupStatus || 'sin estado') + ')' : '') +
+      (s.lastBackupError ? ' · Error: ' + s.lastBackupError : '') +
+      (history ? ' · Historial: ' + history : '') +
+      (!s.oauthReady ? ' · Falta registrar/configurar el OAuth Client ID de SIFER360 en Google Cloud; la conexión se habilitará al incorporar esa credencial pública.' : '');
+  };
+  const refreshDriveStatus = async () => {
+    if (!isDesktop || !window.posDesktop.backupStatus) { showDriveStatus({}); return; }
+    try { showDriveStatus(await window.posDesktop.backupStatus()); }
+    catch (e) { gdriveStatus.textContent = 'No se pudo consultar Google Drive: ' + e.message; }
+  };
+  $('#gdriveConnect', el).disabled = !isDesktop;
+  $('#gdriveEnable', el).disabled = !isDesktop;
+  $('#gdriveDisable', el).disabled = !isDesktop;
+  $('#gdriveNow', el).disabled = !isDesktop;
+  $('#gdriveRecovery', el).disabled = !isDesktop;
+  $('#gdriveConnect', el).addEventListener('click', async () => {
+    const email = gdriveEmail.value.trim();
+    if (!email) { gdriveStatus.textContent = 'Escribe el correo de Google que quieres conectar.'; return; }
+    gdriveStatus.textContent = 'Validando la nueva cuenta de Google. La cuenta actual seguirá activa si la autorización falla…';
+    try { const previous = await window.posDesktop.backupStatus(); const previousEmail = previous.email || ''; const result = await window.posDesktop.backupConnectGoogle(email); showDriveStatus(result); gdriveStatus.textContent += (previousEmail && previousEmail.toLowerCase() !== email.toLowerCase() ? ' Cuenta cambiada correctamente. Los respaldos anteriores permanecen en la cuenta anterior; los siguientes se guardarán aquí.' : ' Guarda ahora la clave de recuperación antes de activar la programación.'); }
+    catch (e) { gdriveStatus.textContent = 'No se pudo conectar Google Drive: ' + e.message; }
+  });
+  $('#gdriveEnable', el).addEventListener('click', async () => {
+    gdriveStatus.textContent = 'Programando la tarea diaria de Windows…';
+    try { showDriveStatus(await window.posDesktop.backupEnableDaily()); }
+    catch (e) { gdriveStatus.textContent = 'No se pudo activar el respaldo diario: ' + e.message; }
+  });
+  $('#gdriveDisable', el).addEventListener('click', async () => {
+    try { showDriveStatus(await window.posDesktop.backupDisableDaily()); }
+    catch (e) { gdriveStatus.textContent = 'No se pudo desactivar: ' + e.message; }
+  });
+  $('#gdriveNow', el).addEventListener('click', async () => {
+    gdriveStatus.textContent = 'Verificando SQLite, cifrando y enviando el respaldo…';
+    try { const result = await window.posDesktop.backupRunNow(); gdriveStatus.textContent = 'Respaldos verificados y cargados: ' + result.fileName + (result.json ? ' y ' + result.json.fileName : '') + ' · SHA-256 SQLite ' + result.sha256; await refreshDriveStatus(); }
+    catch (e) { gdriveStatus.textContent = 'No se completó el respaldo: ' + e.message; }
+  });
+  $('#gdriveRecovery', el).addEventListener('click', async () => {
+    try { const result = await window.posDesktop.backupExportRecoveryKey(); gdriveStatus.textContent = result.saved ? 'Clave de recuperación guardada. Guárdala en un medio seguro separado de esta PC.' : 'No se guardó la clave.'; }
+    catch (e) { gdriveStatus.textContent = 'No se pudo guardar la clave: ' + e.message; }
+  });
+  refreshDriveStatus();
 
   $('#dbResetAll', el).addEventListener('click', () => {
     resetAll();
