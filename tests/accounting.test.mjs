@@ -128,3 +128,22 @@ test('la depreciación mensual se ejecuta automáticamente y recupera períodos 
   assert.doesNotMatch(accounting, /prompt\('Indique el período hasta el cual desea depreciar/);
   assert.doesNotMatch(accounting, /data-depreciate=/);
 });
+
+test('la creación de bancos admite saldo inicial y genera un asiento de apertura cuadrado y trazable', () => {
+  assert.match(accounting, /id="bkOpeningAmount"/);
+  assert.match(accounting, /id="bkOpeningDate"/);
+  assert.match(accounting, /id="bkOpeningRate"/);
+  assert.match(accounting, /id="bkOpeningCounter"/);
+  assert.match(accounting, /description:'Saldo inicial de banco/);
+  assert.match(accounting, /openingBalance:true/);
+  assert.match(accounting, /bank\.openingEntryId=entryId/);
+  assert.match(accounting, /totalDebitUsd:amountUsd,totalCreditUsd:amountUsd,totalDebitBs:amountBs,totalCreditBs:amountBs/);
+  assert.match(accounting, /Para registrar saldo inicial indique fecha, tasa válida y cuenta de contrapartida/);
+  assert.match(accounting, /a\.banks\.splice\(before\.banks\);a\.accounts\.splice\(before\.accounts\);a\.entries\.splice\(before\.entries\)/);
+});
+
+test('un error de diálogo no deja el POS globalmente inerte y closeWin siempre restaura la interacción', () => {
+  assert.doesNotMatch(pos, /\$\('#win'\)\.inert=true/);
+  assert.match(pos, /function closeWin\(silent\)\{[\s\S]*?const appRoot=\$\('#win'\);[\s\S]*?if\(appRoot\)appRoot\.inert=false/);
+  assert.match(pos, /try\{if\(o\.onOpen\)o\.onOpen\(bd\);\}[\s\S]*?catch\(error\)/);
+});
