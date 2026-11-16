@@ -52,7 +52,7 @@ jobs:
       - name: Guardar ejecutable como artefacto privado de CI
         uses: actions/upload-artifact@v5
         with:
-          name: SIFER360-Licoreria-Windows-Installer-and-Portable
+          name: SIFER360-1.0.4-Windows-Installer-and-Portable
           path: dist-exe/*.exe
           if-no-files-found: error
           retention-days: 30
