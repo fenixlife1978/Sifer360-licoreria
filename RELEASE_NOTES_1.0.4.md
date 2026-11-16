@@ -9,6 +9,13 @@
 - Se puede ejecutar una copia manual, consultar el último resultado y desactivar la programación.
 - En una instalación LAN, solo el equipo servidor que conserva la única SQLite puede configurar y enviar el respaldo. Los clientes no transmiten bases de datos.
 
+## Configuración de Google OAuth
+- Crear un cliente OAuth 2.0 de tipo **Desktop app** en Google Cloud.
+- Guardar su Client ID como secreto de GitHub Actions llamado `SIFER360_GOOGLE_OAUTH_CLIENT_ID`.
+- Después de crear o modificar ese secreto, ejecutar nuevamente los flujos de compilación de Windows para que el Client ID quede incluido en el instalador y el portable nuevos.
+- El Client ID identifica la aplicación y no es una contraseña. No introducir ni distribuir un Client Secret en el ejecutable de escritorio.
+- Si el secreto no está configurado al momento de compilar, la integración debe permanecer deshabilitada y mostrar que falta la configuración.
+
 ## Seguridad y límites
 - SQLite local continúa siendo la única fuente operativa. No hay nube para ventas, inventario, sincronización ni consultas POS.
 - OAuth usa PKCE y el scope Drive limitado a archivos creados por SIFER360.
