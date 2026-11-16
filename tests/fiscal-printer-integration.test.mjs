@@ -6,6 +6,16 @@ const main = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8')
 const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
 const electronMain = readFileSync(new URL('../electron/main.cjs', import.meta.url), 'utf8');
 
+test('thermal printer settings are per cashbox and persist only after SQLite confirms save', () => {
+  assert.match(main, /async function thermalPrinterConfigDlg\(\)/);
+  assert.match(main, /S\.cfg\.thermalPrinters\[box\]=p/);
+  assert.match(main, /printerList\(\)/);
+  assert.match(main, /printerTest\(p\.printerName\)/);
+  assert.match(main, /SQLite no confirmó la configuración térmica/);
+});
+test('fiscal settings dialog is asynchronous before LAN role checks', () => {
+  assert.match(main, /async function fiscalPrinterConfigDlg\(\)/);
+});
 test('la configuración fiscal se guarda por caja dentro del estado SQLite', () => {
   assert.match(main, /fiscalPrinters\[box\]=p/);
   assert.match(main, /fiscalPrinterJobs:S\.fiscalPrinterJobs/);
