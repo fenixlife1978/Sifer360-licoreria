@@ -1,6 +1,11 @@
 name: Publicar SIFER360 LICORERÍA 1.0.2
 
 on:
+  push:
+    branches:
+      - release/v1.0.0
+    paths:
+      - '.release-trigger-v1.0.2'
   workflow_dispatch:
     inputs:
       publish_release:
@@ -14,7 +19,7 @@ permissions:
 
 jobs:
   release:
-    if: ${{ inputs.publish_release == true }}
+    if: ${{ github.event_name == 'push' || inputs.publish_release == true }}
     name: Alinear tag y notas de la Release 1.0.2
     runs-on: ubuntu-latest
     steps:
