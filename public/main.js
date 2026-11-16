@@ -5371,6 +5371,52 @@ function newRetencionIvaDlg(onDone){
 }
 
 
+function thermalPrinterConfigDlg(){
+  const user=activeUser();
+  if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras térmicas.','bad');return;}
+  const boxes=cashboxList().filter(x=>x.active!==false);
+  let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
+  const savedFor=id=>Object.assign({printerName:'',enabled:false,columns:42},(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[id])||{});
+  let draft=savedFor(box);
+  const options=boxes.map(x=>'<option value="'+esc(x.id)+'" '+(String(x.id)===box?'selected':'')+'>'+esc(x.id)+' — '+esc(x.name||('Caja '+x.id))+'</option>').join('');
+  const el=h('<div class="form"><div class="hint"><b>Impresora térmica no fiscal.</b> Se utiliza la cola instalada en Windows y se envían bytes ESC/POS RAW (texto, avance y corte). Esta configuración no habilita facturación fiscal.</div><div class="f"><label for="tpCashbox">Caja</label><select class="fld" id="tpCashbox">'+options+'</select></div><div class="f"><label for="tpPrinter">Impresora Windows</label><select class="fld" id="tpPrinter"><option value="">Consultar impresoras…</option></select></div><div class="f"><label for="tpColumns">Ancho de caracteres</label><select class="fld" id="tpColumns"><option value="32">32 columnas · rollo 58 mm</option><option value="42">42 columnas · rollo 80 mm</option><option value="48">48 columnas · rollo 80 mm ancho</option></select></div><label class="chk"><input type="checkbox" id="tpEnabled" '+(draft.enabled?'checked':'')+'> Habilitar impresión térmica para esta caja</label><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" id="tpRefresh" type="button">Actualizar impresoras</button><button class="btn" id="tpTest" type="button">Imprimir prueba</button></div><div id="tpStatus" class="hint" role="status" aria-live="polite">Pendiente de consulta.</div><div class="group"><b>Importante</b><p class="hint">El resultado confirma que Windows recibió el trabajo en la cola, no que el papel haya salido físicamente. Verifique la impresión de prueba y el corte en el dispositivo real. Las impresoras configuradas en esta pantalla son exclusivamente para tickets y comprobantes no fiscales.</p></div></div>');
+  const printer=$('#tpPrinter',el),status=$('#tpStatus',el);
+  const load=async()=>{
+    status.textContent='Consultando impresoras instaladas en Windows…';
+    try{
+      const result=await window.posDesktop.printerList();
+      printer.innerHTML='<option value="">Seleccione una impresora…</option>'+(result.printers||[]).map(p=>'<option value="'+esc(p.name)+'">'+esc(p.name)+' · '+esc(p.driverName||'Controlador')+' · '+esc(p.portName||'Puerto')+'</option>').join('');
+      if(draft.printerName&&(result.printers||[]).some(p=>p.name===draft.printerName))printer.value=draft.printerName;
+      status.textContent=result.printers&&result.printers.length?'Impresoras detectadas: '+result.printers.length+'. Seleccione la cola que corresponde a la térmica.':(result.message||'No se detectaron impresoras.');
+    }catch(error){status.textContent='No se pudieron consultar las impresoras: '+error.message;}
+  };
+  $('#tpColumns',el).value=String(draft.columns||42);
+  $('#tpCashbox',el).addEventListener('change',()=>{
+    box=String($('#tpCashbox',el).value);draft=savedFor(box);
+    $('#tpColumns',el).value=String(draft.columns||42);$('#tpEnabled',el).checked=draft.enabled;
+    load();
+  });
+  $('#tpRefresh',el).addEventListener('click',load);
+  $('#tpTest',el).addEventListener('click',async()=>{
+    const name=printer.value;if(!name){status.textContent='Seleccione primero una impresora.';return;}
+    status.textContent='Enviando ticket de prueba ESC/POS…';
+    try{const result=await window.posDesktop.printerTest(name);status.textContent=result.message+' Verifique papel, ancho y corte en la impresora.';}
+    catch(error){status.textContent='La prueba no fue confirmada: '+error.message;}
+  });
+  openWin({title:'Printer Manager · Térmica no fiscal',w:620,body:el,foot:[{label:'Cancelar'},{label:'Guardar configuración',primary:true,fn:async()=>{
+    const name=printer.value,enabled=$('#tpEnabled',el).checked;
+    if(enabled&&!name){msg('Seleccione una impresora Windows antes de habilitarla.','bad');return false;}
+    if(!S.cfg.thermalPrinters)S.cfg.thermalPrinters={};
+    const previous=JSON.parse(JSON.stringify(S.cfg.thermalPrinters[box]||{}));
+    S.cfg.thermalPrinters[box]={printerName:name,enabled,columns:Number($('#tpColumns',el).value)||42};
+    const persisted=await save();
+    if(!persisted||!persisted.ok){S.cfg.thermalPrinters[box]=previous;msg('SQLite no confirmó la configuración térmica. No se aplicaron los cambios.','bad');return false;}
+    msg(enabled?'Impresora térmica guardada para la Caja '+box+'.':'Impresora térmica deshabilitada para la Caja '+box+'.');
+    closeWin();return false;
+  }}]});
+  load();
+}
+
 function fiscalPrinterConfigDlg(){
   const user=activeUser();
   if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras fiscales de las cajas.','bad');return;}
@@ -6082,7 +6128,7 @@ function seniatSudebanDlg(initialTab){
       '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
       '<div class="f"><label for="fTipo">Modalidad de Facturación Fiscal</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option><option value="NO_FISCAL_INTERNAL" '+(c.fiscalTipo==='NO_FISCAL_INTERNAL'?'selected':'')+'>Sin emisión fiscal · Ticket interno no fiscal</option></select></div>'+
       '<div class="f wide"><label for="fPrintMode">Modo de impresión del POS</label><select class="fld" id="fPrintMode"><option value="FISCAL_PRINTER" '+((c.printMode||'LEGACY')==='FISCAL_PRINTER'?'selected':'')+'>Impresora fiscal homologada</option><option value="INTERNAL_THERMAL" '+(c.printMode==='INTERNAL_THERMAL'?'selected':'')+'>Impresora térmica genérica · Ticket interno</option><option value="NO_PRINTER" '+(c.printMode==='NO_PRINTER'?'selected':'')+'>Sin impresora · Solo registro en SQLite</option><option value="LEGACY" '+((c.printMode||'LEGACY')==='LEGACY'?'selected':'')+'>Conservar configuración anterior</option></select><p class="hint">Los modos de ticket interno no emiten documentos fiscales. Cada comprobante llevará la leyenda “Ticket de Venta - No válido como factura fiscal”.</p><button class="btn" type="button" id="btnPrinterSetupWizard">Abrir asistente de instalación de impresoras</button></div>'+
-      '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button></div>'+
+      '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" type="button" id="btnThermalPrinterManager">Configurar impresora térmica no fiscal</button><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button></div></div>'+
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
       '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
       '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
@@ -6146,6 +6192,7 @@ function seniatSudebanDlg(initialTab){
   };
 
   el.addEventListener('click',async e=>{
+    if(e.target.id==='btnThermalPrinterManager'){thermalPrinterConfigDlg();return;}
     if(e.target.id==='btnFiscalPrinterManager'){fiscalPrinterConfigDlg();return;}
     const inventoryViewBtn=e.target.closest('[data-inv-view]');
     if(inventoryViewBtn){inventoryBookView=inventoryViewBtn.dataset.invView;renderTabContent();return;}
