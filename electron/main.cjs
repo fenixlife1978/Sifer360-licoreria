@@ -419,14 +419,34 @@ async function startLanServer(requestedPort) {
     if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Headers': 'content-type,authorization', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); return res.end(); }
     if (!hasValidBearerToken(req.headers.authorization, networkConfig.token)) return sendJson(res, 401, { error: 'No autorizado' });
     if (url.pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { ok: true, deviceId: networkConfig.deviceId, role: 'server', protocol: 1 });
+    if (url.pathname === '/api/auth/login' && req.method === 'POST') {
+      try {
+        const credentials=await readBody(req);
+        const username=String(credentials.username||'').trim();
+        const password=typeof credentials.password==='string'?credentials.password:'';
+        if(!username||!password||username.length>64||password.length>1024)return sendJson(res,400,{error:'Usuario o contraseña incorrectos.'});
+        const user=one('SELECT username,name,role,cashbox,password_hash FROM app_users WHERE username=? COLLATE NOCASE AND active=1',[username]);
+        if(!user||!(await verifyPassword(password,user.password_hash)))return sendJson(res,401,{error:'Usuario o contraseña incorrectos.'});
+        const token=crypto.randomBytes(32).toString('hex');
+        const safeUser=publicUser(user);
+        const expiresAt=Date.now()+12*60*60*1000;
+        authSessions.set(token,{user:safeUser,expiresAt});
+        return sendJson(res,200,{token,user:safeUser,expiresAt});
+      }catch(error){return sendJson(res,400,{error:error.message||'No se pudo autenticar el usuario.'});}
+    }
     if (url.pathname === '/api/fiscal/queue' && req.method === 'POST') {
       try {
         const body=await readBody(req);
+        const userSession=authSessions.get(String(body.userSessionToken||''));
+        if(!userSession||userSession.expiresAt<=Date.now())return sendJson(res,401,{error:'La sesión del cajero expiró. Inicie sesión nuevamente.'});
+        const authenticatedUser=userSession.user;
         const cashbox=String(body.cashbox||'').trim();
         const cashier=String(body.cashier||'').trim();
         const station=String(body.station||'').trim();
         const sourceDeviceId=String(body.sourceDeviceId||'').trim();
         if(!cashbox||!cashier||!station||!sourceDeviceId||!body.saleId||!body.idempotencyKey||!body.invoice) return sendJson(res,400,{error:'Faltan datos de origen o factura para la cola fiscal.'});
+        if(String(cashier)!==String(authenticatedUser.name))return sendJson(res,403,{error:'El cajero de origen no coincide con el usuario autenticado.'});
+        if(authenticatedUser.role==='cajero'&&String(authenticatedUser.cashbox)!==cashbox)return sendJson(res,403,{error:'El usuario autenticado no está asignado a la caja indicada.'});
         if(!/^[A-Za-z0-9._:-]{8,180}$/.test(String(body.idempotencyKey))||! /^[A-Za-z0-9._:-]{8,80}$/.test(sourceDeviceId)) return sendJson(res,400,{error:'Identificador de trabajo o dispositivo inválido.'});
         if(body.invoice.idempotencyKey!==body.idempotencyKey) return sendJson(res,400,{error:'La clave idempotente de la factura no coincide.'});
         const invoice={...body.invoice,origin:{...(body.invoice.origin||{}),cashbox,cashier,terminal:station,deviceId:sourceDeviceId}};
@@ -866,6 +886,10 @@ function registerIpc() {
     return { migrated: Number(before&&before.total)===0, synchronized:true, count:migrated.length, users:migrated };
   });
   ipcMain.handle('auth:login', async (_event, credentials = {}) => {
+    if(networkConfig.role==='client'){
+      const result=await clientApi('/api/auth/login',{method:'POST',body:JSON.stringify({username:String(credentials.username||''),password:String(credentials.password||'')}),timeoutMs:12000});
+      return result;
+    }
     const username = String(credentials.username || '').trim();
     const password = typeof credentials.password === 'string' ? credentials.password : '';
     if (!username || !password || username.length > 64 || password.length > 1024) throw new Error('Usuario o contraseña incorrectos.');
