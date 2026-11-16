@@ -410,8 +410,8 @@ body.sa-locked .statusbar {
 
 #sifer-access .sa-meta-gear {
   width: 44px;
-  height: 30px;
-  fill: #184672;
+  height: 44px;
+  object-fit: contain;
   flex: 0 0 44px;
 }
 
