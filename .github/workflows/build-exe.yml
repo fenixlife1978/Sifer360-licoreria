@@ -21,12 +21,13 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Clonar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Configurar Node.js 20
-        uses: actions/setup-node@v4
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
+          package-manager-cache: false
 
       - name: Instalar dependencias
         run: npm install --legacy-peer-deps
@@ -49,7 +50,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Guardar ejecutable como artefacto privado de CI
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: SIFER360-Licoreria-Windows-Installer-and-Portable
           path: dist-exe/*.exe
