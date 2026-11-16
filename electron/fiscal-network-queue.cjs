@@ -19,7 +19,7 @@ function createFiscalNetworkQueue({ store, emitInvoice, resolveProfile, now = ()
 
   async function recover() {
     const interrupted = store.recoverProcessing(now());
-    if (interrupted && interrupted.length) halted = true;
+    halted = !!((interrupted && interrupted.length) || (typeof store.hasUncertain === 'function' && store.hasUncertain()));
     return { interrupted: interrupted || [], blocked: halted };
   }
   function validate(input) {
