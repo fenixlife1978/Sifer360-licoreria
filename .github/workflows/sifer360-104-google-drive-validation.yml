@@ -33,7 +33,8 @@ jobs:
       - name: Inject public Google OAuth Desktop Client ID
         env:
           SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
-        run: node -e "require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId: process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || ''}, null, 2))"
+        run: |
+          node -e "require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({ clientId: process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || '' }, null, 2))"
       - name: Run complete automated tests
         run: npm test
       - name: Validate desktop JavaScript syntax
@@ -65,7 +66,8 @@ jobs:
       - name: Inject public Google OAuth Desktop Client ID
         env:
           SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
-        run: node -e "require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId: process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || ''}, null, 2))"
+        run: |
+          node -e "require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({ clientId: process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || '' }, null, 2))"
       - name: Run complete automated tests
         run: npm test
       - name: Build Windows installer and portable executable
