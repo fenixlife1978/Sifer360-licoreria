@@ -197,7 +197,13 @@ function renderLogin(error=''){
       cashbox=String(u.cashbox);
     }
     u.cashbox=cashbox;
-    const active={username:u.username,name:u.name,role:u.role,cashbox,loginAt:Date.now()};
+    let serverAuth=null;
+    if(window.posDesktop&&typeof window.posDesktop.authLogin==='function'){
+      try{serverAuth=await window.posDesktop.authLogin({username:u.username,password:u.code});}
+      catch(error){$('#sa-error').textContent='No se pudo validar el usuario en la base central: '+error.message;return;}
+      if(!serverAuth||!serverAuth.token){$('#sa-error').textContent='El servidor no emitió una sesión válida. No se inició el POS.';return;}
+    }
+    const active={username:u.username,name:u.name,role:u.role,cashbox,loginAt:Date.now(),authToken:serverAuth&&serverAuth.token||''};
     sessionStorage.setItem(SESSION,JSON.stringify(active));
     if(u.role!=='cajero'){
       sessionStorage.setItem('sifer360_active_box',JSON.stringify(active));
@@ -256,7 +262,7 @@ function waitForPosReady(timeoutMs=30000){
  });
 }
 function renderDashboard(u){if(u.role==='admin'){document.body.classList.remove('sa-locked');const access=$('#sifer-access');if(access)access.remove();applyPermissions(u);if(window.SIFERDashboard)window.SIFERDashboard.show();window.dispatchEvent(new CustomEvent('sifer:authenticated',{detail:{role:u.role}}));return;}if(u.role==='contador'){document.body.classList.remove('sa-locked');const access=$('#sifer-access');if(access)access.remove();applyPermissions(u);if(window.SIFERAccountantDashboard)window.SIFERAccountantDashboard.show();return;}const r=roles[u.role];const c=$('#sa-content');c.innerHTML='<div class="sa-top"><div class="sa-user"><div class="sa-avatar">'+esc(u.name.slice(0,1).toUpperCase())+'</div><div><div class="sa-role">'+esc(r.label)+'</div><b>'+esc(u.name)+'</b><div class="sa-muted">Sesión iniciada · '+esc(u.cashbox)+'</div></div></div><button class="sa-btn secondary" id="sa-logout" style="width:auto;margin:0">Salir</button></div><div class="sa-eyebrow">ESPACIO DE TRABAJO</div><h2 style="margin:10px 0 8px">¿Qué necesitas hacer?</h2><p class="sa-muted" style="margin-bottom:22px">Módulos disponibles según tu perfil de acceso.</p><div class="sa-dashgrid">'+r.modules.map((m,i)=>'<button class="sa-module" data-module="'+esc(m[1])+'"><div class="sa-icon">'+m[0]+'</div><b>'+esc(m[1])+'</b><span>'+esc(m[2])+'</span></button>').join('')+'</div><div class="sa-small">Las operaciones críticas deben solicitar autorización PIN. La autorización debe validarse en el servidor para producción.</div>';$('#sa-logout').onclick=logout;applyPermissions(u);c.querySelectorAll('[data-module]').forEach(b=>b.onclick=()=>{const m=b.dataset.module;if(m==='Dashboard')return;if(m==='Red y sincronización'){renderNetwork(u);return;}document.body.classList.remove('sa-locked');$('#sifer-access').remove();const map={'Contabilidad general':'contabilidad','Punto de venta':'nueva','Ventas':'ventas','Compras':'compras','Compras y proveedores':'compras','Inventario':'inventario','Cajas':'cortez','Mi caja':'cortez','Reportes':'ventas','Libros fiscales':'seniat','Retenciones IVA':'seniat','Conciliación':'seniat','Exportar reportes':'seniat','Configuración':'basedatos','Consultar precios':'buscar','Dashboard':null};const id=map[m];if(id){document.body.classList.remove('sa-locked');$('#sifer-access').remove();const target=$('#toolbar [data-tb="'+id+'"]');if(target)target.click();else alert('El módulo aún no está conectado en esta pantalla: '+m)}else{applyPermissions(u);document.body.classList.remove('sa-locked');$('#sifer-access').remove();if(m==='Punto de venta'){const entry=$('#entry');if(entry)entry.focus()}}})}
-function logout(){const current=(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION)||'null')}catch{return null}})();sessionStorage.removeItem(SESSION);sessionStorage.removeItem('sifer360_active_box');sessionStorage.removeItem('sifer360_active_opening');if(current&&current.username){const box=(()=>{try{return JSON.parse(localStorage.getItem('sifer360_active_box')||'null')}catch{return null}})();if(box&&box.username===current.username)localStorage.removeItem('sifer360_active_box');}const old=$('#sifer-access');if(old)old.remove();shell()}
+function logout(){const current=(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION)||'null')}catch{return null}})();if(current&&current.authToken&&window.posDesktop&&typeof window.posDesktop.authLogout==='function')window.posDesktop.authLogout(current.authToken).catch(()=>{});sessionStorage.removeItem(SESSION);sessionStorage.removeItem('sifer360_active_box');sessionStorage.removeItem('sifer360_active_opening');if(current&&current.username){const box=(()=>{try{return JSON.parse(localStorage.getItem('sifer360_active_box')||'null')}catch{return null}})();if(box&&box.username===current.username)localStorage.removeItem('sifer360_active_box');}const old=$('#sifer-access');if(old)old.remove();shell()}
 async function migrateLegacyUsersToSqlite(users){
   if(!window.posDesktop||typeof window.posDesktop.authInitializeLegacyUsers!=='function')return;
   try{
@@ -269,7 +275,11 @@ async function migrateLegacyUsersToSqlite(users){
 document.addEventListener('DOMContentLoaded',async()=>{
   const users=initUsers();
   await migrateLegacyUsersToSqlite(users);
-  const saved=(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION)||'null')}catch{return null}})();
+  let saved=(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION)||'null')}catch{return null}})();
+  if(saved&&window.posDesktop&&typeof window.posDesktop.authVerifySession==='function'){
+    const verified=saved.authToken?await window.posDesktop.authVerifySession(saved.authToken):{valid:false};
+    if(!verified||!verified.valid){saved=null;sessionStorage.removeItem(SESSION);sessionStorage.removeItem('sifer360_active_box');}
+  }
   const user=saved&&users.find(x=>x.username===saved.username&&x.role===saved.role);
   if(user){
     const restored=Object.assign({},saved,{name:user.name,role:user.role,cashbox:user.role==='cajero'?user.cashbox:(saved.cashbox||user.cashbox||'—')});
