@@ -2,7 +2,7 @@ name: POS checks
 
 on:
   push:
-    branches: [main, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-printer-auto-assistant, feature/fiscal-sdk-architecture-validation]
+    branches: [main, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-printer-auto-assistant, feature/fiscal-sdk-architecture-validation, feature/dual-printer-manager]
   pull_request:
     branches: [main, integration/sqlite-lan-stage-1, release/v1.0.0]
 
@@ -11,11 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
+          package-manager-cache: false
       - name: Install dependencies
         run: npm install
       - name: Automated tests

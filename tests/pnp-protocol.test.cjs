@@ -165,3 +165,14 @@ test('consulta serial real antes de abrir factura y registra descuento como reng
   assert.equal(result.fiscalSerial,'PNP-REAL-001');
   assert.deepEqual(sent,[0x80,0x40,0x42,0x42,0x43,0x45]);
 });
+test('PNP places caja, cashier and terminal origin lines after subtotal and before fiscal close', () => {
+  const PnpInvoice = require('../electron/pnp-serial-transport.cjs');
+  const commands=PnpInvoice.buildFiscalInvoiceCommands({
+    idempotencyKey:'sale-origin-01',customerName:'Cliente',items:[{description:'Producto',quantity:1,unitPrice:100,netAmount:100,taxRate:'.1600'}],
+    expectedBase:100,expectedTotal:116,footerLines:['CAJA: 01','CAJERO: Cajero 01','TERMINAL: POS-01']
+  });
+  const textCommands=commands.filter(x=>x.kind==='text').map(x=>pnp.decodeFrame(x.frame).fields[0]);
+  assert.deepEqual(textCommands,['CAJA: 01','CAJERO: Cajero 01','TERMINAL: POS-01']);
+  assert.ok(commands.findIndex(x=>x.kind==='subtotal')<commands.findIndex(x=>x.kind==='text'));
+  assert.ok(commands.findIndex(x=>x.kind==='text')<commands.findIndex(x=>x.kind==='close'));
+});

@@ -1,3 +1,9 @@
+test('POS login authenticates against SQLite central before trusting local user cache', () => {
+  assert.match(ui, /authLogin\(\{username,password:code\}\)/);
+  assert.match(ui, /authoritativeUser=verified\.user/);
+  assert.match(ui, /authToken:serverAuth&&serverAuth\.token/);
+  assert.match(ui, /authVerifySession\(saved\.authToken\)/);
+});
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -11,6 +17,23 @@ const lanAddress = readFileSync(new URL('../electron/lan-address.cjs', import.me
 const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
 const pos = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
+
+test('la migración de usuarios heredados solo se ejecuta como bootstrap y no sobrescribe SQLite', () => {
+  const access = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
+  const bootstrap = electron.slice(electron.indexOf("ipcMain.handle('auth:initialize-legacy'"), electron.indexOf("ipcMain.handle('auth:login'"));
+  assert.match(access, /authInitializeLegacyUsers\(payload\)/);
+  assert.match(access, /code:user\.code/);
+  assert.match(bootstrap, /if \(before > 0\)/);
+  assert.doesNotMatch(bootstrap, /UPDATE app_users SET active=0/);
+  assert.match(bootstrap, /INSERT INTO app_users\(username,name,role,cashbox,password_hash,active\)/);
+});
+
+test('la gestión posterior de usuarios exige sesión administrativa y usa operaciones SQLite específicas', () => {
+  assert.match(pos, /authSaveUser\(authSession\.authToken/);
+  assert.match(pos, /authDeleteUser\(authSession\.authToken/);
+  assert.match(electron, /requireAuthSession\(token, true\)/);
+  assert.match(electron, /authSessions\.set\(sessionToken, \{ user:\{username,name,role,cashbox\}/);
+});
 
 test('el ejecutable implementa un servidor LAN con puerto configurable', () => {
   assert.match(electron, /https\.createServer/);
@@ -135,7 +158,7 @@ test('el cobro solo exige aprobación real para CASHEA', () => {
   assert.ok(pos.includes("const refPrompts={cashea:"));
   assert.ok(!pos.includes("const refPrompts={zelle:"));
   assert.ok(pos.includes("Aprobación CASHEA"));
-  assert.ok(pos.includes("finalize(last,enteredAmts,isCred,cDays,enteredRefs,el)"));
+  assert.ok(pos.includes("finalize(last,enteredAmts,isCred,cDays,enteredRefs,el,$('#payDocumentMode',el)?$('#payDocumentMode',el).value:'')"));
 });
 
 test('el asistente Cashea vuelve al modal de pago y conserva el plan aplicado', () => {

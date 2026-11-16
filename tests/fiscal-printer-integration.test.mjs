@@ -1,3 +1,10 @@
+test('LAN fiscal submissions require a central authenticated user session and assigned cashbox', () => {
+  assert.match(electronMain, /url\.pathname === '\/api\/auth\/login'/);
+  assert.match(electronMain, /url\.pathname === '\/api\/auth\/session'/);
+  assert.match(electronMain, /userSessionToken/);
+  assert.match(electronMain, /El cajero de origen no coincide con el usuario autenticado/);
+  assert.match(electronMain, /no está asignado a la caja indicada/);
+});
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -6,6 +13,16 @@ const main = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8')
 const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
 const electronMain = readFileSync(new URL('../electron/main.cjs', import.meta.url), 'utf8');
 
+test('thermal printer settings are per cashbox and persist only after SQLite confirms save', () => {
+  assert.match(main, /function thermalPrinterConfigDlg\(\)/);
+  assert.match(main, /S\.cfg\.thermalPrinters\[box\]=p/);
+  assert.match(main, /printerList\(\)/);
+  assert.match(main, /printerTest\(p\.printerName,\{columns:p\.columns\}\)/);
+  assert.match(main, /SQLite no confirmó la configuración térmica/);
+});
+test('fiscal settings dialog is asynchronous before LAN role checks', () => {
+  assert.match(main, /async function fiscalPrinterConfigDlg\(\)/);
+});
 test('la configuración fiscal se guarda por caja dentro del estado SQLite', () => {
   assert.match(main, /fiscalPrinters\[box\]=p/);
   assert.match(main, /fiscalPrinterJobs:S\.fiscalPrinterJobs/);
@@ -13,7 +30,7 @@ test('la configuración fiscal se guarda por caja dentro del estado SQLite', () 
 });
 
 test('la modalidad máquina fiscal falla de forma segura si no hay adaptador listo', () => {
-  assert.match(main, /const fiscalMode=printMode==='FISCAL_PRINTER'\|\|\(printMode==='LEGACY'&&S\.cfg\.fiscalTipo==='MAQUINA_FISCAL'\)/);
+  assert.match(main, /const fiscalMode=dualMode\?documentChoice==='FISCAL':\(printMode==='FISCAL_PRINTER'\|\|\(printMode==='LEGACY'&&S\.cfg\.fiscalTipo==='MAQUINA_FISCAL'\)\)/);
   assert.match(main, /if\(!diagnostic\.ready\)/);
   assert.match(main, /fiscalPrinterTestBridge\(fiscalProfile\)/);
   assert.match(main, /unresolvedFiscalJobs\.length/);
@@ -57,7 +74,7 @@ test('el asistente ofrece modo fiscal, ticket interno no fiscal y operación sin
 });
 
 test('los tickets internos no reservan número de control fiscal ni generan emisión fiscal', () => {
-  assert.match(main, /const internalTicketMode=printMode==='INTERNAL_THERMAL'\|\|printMode==='NO_PRINTER'/);
+  assert.match(main, /const internalTicketMode=dualMode\?documentChoice==='TICKET':\(printMode==='INTERNAL_THERMAL'\|\|printMode==='NO_PRINTER'\)/);
   assert.match(main, /const ctrlNext=internalTicketMode\?null:await nextCajaSequence\('control',currentCaja\(\)\)/);
   assert.match(main, /docType:internalTicketMode\?'TICKET-INTERNO':'01-FACTURA'/);
   assert.match(main, /concept:\(internalTicketMode\?'Ticket de venta':'Factura de venta'\)/);
@@ -92,7 +109,7 @@ test('los tickets internos quedan fuera de libros fiscales y del débito mensual
 
 test('el modo interno deja explícita la modalidad sin emisión fiscal', () => {
   assert.match(main, /value="NO_FISCAL_INTERNAL"/);
-  assert.match(main, /S\.cfg\.fiscalTipo=choice==='FISCAL_PRINTER'\?'MAQUINA_FISCAL':'NO_FISCAL_INTERNAL'/);
+  assert.match(main, /S\.cfg\.fiscalTipo=\(choice==='FISCAL_PRINTER'\|\|choice==='DUAL_PRINTER'\)\?'MAQUINA_FISCAL':'NO_FISCAL_INTERNAL'/);
   assert.match(main, /if\(S\.cfg\.printMode==='INTERNAL_THERMAL'\|\|S\.cfg\.printMode==='NO_PRINTER'\)S\.cfg\.fiscalTipo='NO_FISCAL_INTERNAL'/);
 });
 

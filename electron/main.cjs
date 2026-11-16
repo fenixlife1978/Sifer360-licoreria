@@ -17,6 +17,10 @@ const { getCashboxSequenceMinimum } = require('./cashbox-sequence-minimum.cjs');
 const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
 const { createPasswordHash, verifyPassword, normalizeLegacyUser, publicUser } = require('./auth-credentials.cjs');
 const FiscalPrinterManager = require('./fiscal-printer-manager.cjs');
+const PrinterManager = require('./printer-manager.cjs');
+const { createFiscalNetworkQueue } = require('./fiscal-network-queue.cjs');
+let fiscalNetworkQueue = null;
+let fiscalNetworkQueueRecovered = false;
 const authSessions = new Map();
 const initSqlJs = require('sql.js');
 
@@ -285,6 +289,25 @@ function initializeSchema() {
       last_seq INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_received_operations_device_seq ON network_received_operations(device_id, device_seq);
+    CREATE TABLE IF NOT EXISTS fiscal_network_jobs (
+      id TEXT PRIMARY KEY,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      source_device_id TEXT NOT NULL,
+      source_cashbox TEXT NOT NULL,
+      source_cashier TEXT NOT NULL,
+      source_station TEXT NOT NULL,
+      sale_id TEXT NOT NULL,
+      invoice_json TEXT NOT NULL,
+      invoice_hash TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending','processing','issued','rejected','uncertain')),
+      created_at TEXT NOT NULL,
+      started_at TEXT,
+      finished_at TEXT,
+      result_json TEXT,
+      error TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_fiscal_network_jobs_status_created
+      ON fiscal_network_jobs(status, created_at);
   `);
   persistDb();
 }
@@ -309,9 +332,75 @@ async function setMode(mode) {
   databaseMode = 'sqlite';
   return { mode: 'sqlite', databasePath: userDbPath() };
 }
+function createFiscalNetworkQueueStore() {
+  return {
+    getByKey: key => one('SELECT * FROM fiscal_network_jobs WHERE idempotency_key=?', [String(key)]),
+    getById: id => one('SELECT * FROM fiscal_network_jobs WHERE id=?', [String(id)]),
+    insertPending(job) {
+      const id = crypto.randomUUID();
+      persistMutation(() => run(
+        'INSERT INTO fiscal_network_jobs(id,idempotency_key,source_device_id,source_cashbox,source_cashier,source_station,sale_id,invoice_json,invoice_hash,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+        [id,job.idempotencyKey,job.sourceDeviceId,job.cashbox,job.cashier,job.station,job.saleId,job.invoiceJson,job.invoiceHash,'pending',job.createdAt]
+      ));
+      return one('SELECT * FROM fiscal_network_jobs WHERE id=?', [id]);
+    },
+    nextPending: () => one("SELECT * FROM fiscal_network_jobs WHERE status='pending' ORDER BY created_at,id LIMIT 1"),
+    markProcessing(id, at) {
+      persistMutation(() => run("UPDATE fiscal_network_jobs SET status='processing',started_at=?,error='' WHERE id=? AND status='pending'", [at,id]));
+    },
+    markIssued(id, result, at) {
+      persistMutation(() => run("UPDATE fiscal_network_jobs SET status='issued',result_json=?,finished_at=?,error='' WHERE id=? AND status='processing'", [JSON.stringify(result),at,id]));
+    },
+    markUncertain(id, error, at) {
+      persistMutation(() => run("UPDATE fiscal_network_jobs SET status='uncertain',error=?,finished_at=? WHERE id=? AND status='processing'", [String(error).slice(0,1000),at,id]));
+    },
+    markRejected(id, error, at) {
+      persistMutation(() => run("UPDATE fiscal_network_jobs SET status='rejected',error=?,finished_at=? WHERE id=? AND status='processing'", [String(error).slice(0,1000),at,id]));
+    },
+    markReconciledIssued(id, result, at) {
+      persistMutation(() => run("UPDATE fiscal_network_jobs SET status='issued',result_json=?,finished_at=?,error='Conciliación manual: emisión verificada físicamente.' WHERE id=? AND status='uncertain'", [JSON.stringify(result),at,id]));
+    },
+    markReconciledNotIssued(id, note, at) {
+      persistMutation(() => run("UPDATE fiscal_network_jobs SET status='rejected',error=?,finished_at=? WHERE id=? AND status='uncertain'", ['Conciliación manual: '+String(note).slice(0,800),at,id]));
+    },
+    hasUncertain: () => !!one("SELECT id FROM fiscal_network_jobs WHERE status='uncertain' LIMIT 1"),
+    recoverProcessing(at) {
+      const rows=all("SELECT id FROM fiscal_network_jobs WHERE status='processing'");
+      if(rows.length) persistMutation(() => run("UPDATE fiscal_network_jobs SET status='uncertain',error='El servidor se reinició durante el envío; requiere conciliación manual.',finished_at=? WHERE status='processing'", [at]));
+      return rows;
+    },
+    list(limit) { return all('SELECT id,idempotency_key,source_device_id,source_cashbox,source_cashier,source_station,sale_id,status,created_at,started_at,finished_at,result_json,error FROM fiscal_network_jobs ORDER BY created_at DESC LIMIT ?', [limit]); }
+  };
+}
+function ensureFiscalNetworkQueue() {
+  if (fiscalNetworkQueue) return fiscalNetworkQueue;
+  fiscalNetworkQueueRecovered = false;
+  fiscalNetworkQueue = createFiscalNetworkQueue({
+    store: createFiscalNetworkQueueStore(),
+    resolveProfile: async cashbox => {
+      const row=one('SELECT payload FROM app_state WHERE id=1');
+      const state=row?JSON.parse(row.payload||'{}'):{};
+      const profile=state&&state.cfg&&state.cfg.fiscalPrinters&&state.cfg.fiscalPrinters[String(cashbox)];
+      return profile?{...profile}:null;
+    },
+    emitInvoice: (profile,invoice) => FiscalPrinterManager.emitInvoice(profile,invoice)
+  });
+  return fiscalNetworkQueue;
+}
+function publicFiscalNetworkJob(job) {
+  if(!job)return null;
+  let result=null;
+  try{result=job.result_json?JSON.parse(job.result_json):null;}catch{}
+  return {id:job.id,idempotencyKey:job.idempotency_key,status:job.status,cashbox:job.source_cashbox,cashier:job.source_cashier,station:job.source_station,sourceDeviceId:job.source_device_id,saleId:job.sale_id,createdAt:job.created_at,startedAt:job.started_at,finishedAt:job.finished_at,result,error:job.error||''};
+}
 async function startLanServer(requestedPort) {
+  if (fiscalNetworkQueue && fiscalNetworkQueue.isBusy()) throw new Error('No se puede reiniciar el servidor LAN mientras se transmite una factura fiscal. Espere a que termine el comando o consulte el estado de la impresora.');
   if (networkConfig.role === 'client' || networkConfig.serverPromotionBlocked) throw new Error('Este equipo ya fue cliente LAN y su SQLite local no se considera autoridad. No puede convertirse en servidor automáticamente; restaure o migre la base central mediante un procedimiento explícito antes de promoverlo.');
   if (!db) await initializeDatabase();
+  const fiscalQueue = ensureFiscalNetworkQueue();
+  const fiscalRecovery = await fiscalQueue.recover();
+  fiscalNetworkQueueRecovered = true;
+  if (!fiscalRecovery.blocked) fiscalQueue.pump().catch(() => {});
   const port = normalizeLanPort(requestedPort || networkConfig.port || 38760);
   if (networkServer) {
     const previousServer = networkServer;
@@ -330,6 +419,71 @@ async function startLanServer(requestedPort) {
     if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Headers': 'content-type,authorization', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); return res.end(); }
     if (!hasValidBearerToken(req.headers.authorization, networkConfig.token)) return sendJson(res, 401, { error: 'No autorizado' });
     if (url.pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { ok: true, deviceId: networkConfig.deviceId, role: 'server', protocol: 1 });
+    if (url.pathname === '/api/auth/session' && req.method === 'POST') {
+      const body=await readBody(req),session=authSessions.get(String(body.token||''));
+      if(!session||session.expiresAt<=Date.now())return sendJson(res,200,{user:null,valid:false});
+      return sendJson(res,200,{user:session.user,valid:true});
+    }
+    if (url.pathname === '/api/auth/logout' && req.method === 'POST') {
+      const body=await readBody(req);authSessions.delete(String(body.token||''));return sendJson(res,200,{ok:true});
+    }
+    if (url.pathname === '/api/auth/login' && req.method === 'POST') {
+      try {
+        const credentials=await readBody(req);
+        const username=String(credentials.username||'').trim();
+        const password=typeof credentials.password==='string'?credentials.password:'';
+        if(!username||!password||username.length>64||password.length>1024)return sendJson(res,400,{error:'Usuario o contraseña incorrectos.'});
+        const user=one('SELECT username,name,role,cashbox,password_hash FROM app_users WHERE username=? COLLATE NOCASE AND active=1',[username]);
+        if(!user||!(await verifyPassword(password,user.password_hash)))return sendJson(res,401,{error:'Usuario o contraseña incorrectos.'});
+        const token=crypto.randomBytes(32).toString('hex');
+        const safeUser=publicUser(user);
+        const expiresAt=Date.now()+12*60*60*1000;
+        authSessions.set(token,{user:safeUser,expiresAt});
+        return sendJson(res,200,{token,user:safeUser,expiresAt});
+      }catch(error){return sendJson(res,400,{error:error.message||'No se pudo autenticar el usuario.'});}
+    }
+    if (url.pathname === '/api/fiscal/queue' && req.method === 'POST') {
+      try {
+        const body=await readBody(req);
+        const userSession=authSessions.get(String(body.userSessionToken||''));
+        if(!userSession||userSession.expiresAt<=Date.now())return sendJson(res,401,{error:'La sesión del cajero expiró. Inicie sesión nuevamente.'});
+        const authenticatedUser=userSession.user;
+        if(!['admin','cajero'].includes(authenticatedUser.role))return sendJson(res,403,{error:'El rol de usuario no puede emitir documentos fiscales desde el POS.'});
+        const cashbox=String(body.cashbox||'').trim();
+        const cashier=String(body.cashier||'').trim();
+        const station=String(body.station||'').trim();
+        const sourceDeviceId=String(body.sourceDeviceId||'').trim();
+        if(!cashbox||!cashier||!station||!sourceDeviceId||!body.saleId||!body.idempotencyKey||!body.invoice) return sendJson(res,400,{error:'Faltan datos de origen o factura para la cola fiscal.'});
+        if(String(cashier)!==String(authenticatedUser.name))return sendJson(res,403,{error:'El cajero de origen no coincide con el usuario autenticado.'});
+        if(authenticatedUser.role==='cajero'&&String(authenticatedUser.cashbox)!==cashbox)return sendJson(res,403,{error:'El usuario autenticado no está asignado a la caja indicada.'});
+        if(!/^[A-Za-z0-9._:-]{8,180}$/.test(String(body.idempotencyKey))||! /^[A-Za-z0-9._:-]{8,80}$/.test(sourceDeviceId)) return sendJson(res,400,{error:'Identificador de trabajo o dispositivo inválido.'});
+        if(body.invoice.idempotencyKey!==body.idempotencyKey) return sendJson(res,400,{error:'La clave idempotente de la factura no coincide.'});
+        const invoice={...body.invoice,origin:{...(body.invoice.origin||{}),cashbox,cashier,terminal:station,deviceId:sourceDeviceId},footerLines:['CAJA: '+cashbox,'CAJERO: '+cashier,'TERMINAL: '+station].map(x=>String(x).slice(0,40))};
+        const queue=ensureFiscalNetworkQueue();
+        const accepted=queue.enqueue({idempotencyKey:body.idempotencyKey,cashbox,cashier,station,sourceDeviceId,saleId:body.saleId,invoice});
+        return sendJson(res,202,{ok:true,duplicate:accepted.duplicate,job:publicFiscalNetworkJob(accepted.job)});
+      } catch(error) { return sendJson(res,400,{error:error.message||'No se pudo registrar el trabajo fiscal.'}); }
+    }
+    if (url.pathname.startsWith('/api/fiscal/queue/') && req.method === 'POST' && url.pathname.endsWith('/reconcile')) {
+      try {
+        const key=decodeURIComponent(url.pathname.slice('/api/fiscal/queue/'.length,-'/reconcile'.length));
+        const body=await readBody(req);
+        const username=String(body.adminUsername||'').trim();
+        const admin=one("SELECT username,role,password_hash FROM app_users WHERE username=? COLLATE NOCASE AND active=1",[username]);
+        if(!admin||admin.role!=='admin'||!(await verifyPassword(String(body.password||''),admin.password_hash))) return sendJson(res,403,{error:'Credenciales de administrador incorrectas.'});
+        const job=await ensureFiscalNetworkQueue().reconcile(key,body.decision,body.details||{});
+        return sendJson(res,200,{ok:true,job:publicFiscalNetworkJob(job)});
+      } catch(error) { return sendJson(res,400,{error:error.message||'No se pudo conciliar el trabajo fiscal.'}); }
+    }
+    if (url.pathname === '/api/fiscal/queue' && req.method === 'GET') {
+      const jobs=ensureFiscalNetworkQueue().list(200).map(publicFiscalNetworkJob);
+      return sendJson(res,200,{ok:true,jobs});
+    }
+    if (url.pathname.startsWith('/api/fiscal/queue/') && req.method === 'GET') {
+      const key=decodeURIComponent(url.pathname.slice('/api/fiscal/queue/'.length));
+      const job=ensureFiscalNetworkQueue().get(key);
+      return sendJson(res,job?200:404,job?{ok:true,job:publicFiscalNetworkJob(job)}:{error:'Trabajo fiscal no encontrado.'});
+    }
     if (url.pathname === '/api/documents' && req.method === 'GET') {
       const type = url.searchParams.get('transactionType');
       const transactionId = url.searchParams.get('transactionId');
@@ -460,7 +614,11 @@ function requestPinnedJson(route, options = {}) {
         agent.destroy();
         let result = {};
         try { result = JSON.parse(raw || '{}'); } catch { return reject(new Error('El servidor LAN devolvió una respuesta JSON inválida.')); }
-        if (response.statusCode < 200 || response.statusCode >= 300 || result.ok === false) return reject(new Error((response.statusCode === 409 ? 'Conflicto de concurrencia: ' : '') + (result.error || 'El servidor LAN no confirmó la operación (' + response.statusCode + ').')));
+        if (response.statusCode < 200 || response.statusCode >= 300 || result.ok === false) {
+          const error=new Error((response.statusCode === 409 ? 'Conflicto de concurrencia: ' : '') + (result.error || 'El servidor LAN no confirmó la operación (' + response.statusCode + ').'));
+          error.statusCode=response.statusCode;
+          return reject(error);
+        }
         resolve(result);
       });
     });
@@ -498,6 +656,61 @@ async function flushClientOutbox() {
   return { pending: clientOutbox.status().pending, accepted, conflicts };
 }
 function registerNetworkIpc() {
+  ipcMain.handle('fiscal-network:submit', async (_e,input={}) => {
+    const payload={...input,sourceDeviceId:networkConfig.deviceId,station:String(input.station||os.hostname())};
+    if(networkConfig.role==='server'){
+      const session=authSessions.get(String(input.userSessionToken||''));
+      if(!session||session.expiresAt<=Date.now())throw new Error('La sesión del cajero expiró. Inicie sesión nuevamente.');
+      if(!['admin','cajero'].includes(session.user.role))throw new Error('El rol de usuario no puede emitir documentos fiscales desde el POS.');
+      if(String(input.cashier)!==String(session.user.name))throw new Error('El cajero no coincide con la sesión autenticada.');
+      if(session.user.role==='cajero'&&String(input.cashbox)!==String(session.user.cashbox))throw new Error('El usuario no está asignado a la caja indicada.');
+      if(payload.invoice&&typeof payload.invoice==='object')payload.invoice={...payload.invoice,origin:{...(payload.invoice.origin||{}),cashbox:String(input.cashbox),cashier:session.user.name,terminal:os.hostname(),deviceId:networkConfig.deviceId},footerLines:['CAJA: '+String(input.cashbox),'CAJERO: '+session.user.name,'TERMINAL: '+os.hostname()].map(x=>String(x).slice(0,40))};
+    }
+    if(networkConfig.role!=='server'&&payload.invoice&&typeof payload.invoice==='object')payload.invoice={...payload.invoice,origin:{...(payload.invoice.origin||{}),cashbox:payload.cashbox,cashier:payload.cashier,terminal:payload.station,deviceId:payload.sourceDeviceId}};
+    if(networkConfig.role==='client') return clientApi('/api/fiscal/queue',{method:'POST',body:JSON.stringify(payload),timeoutMs:15000});
+    if(networkConfig.role==='server'){
+      const queue=ensureFiscalNetworkQueue();
+      if(!fiscalNetworkQueueRecovered){const recovery=await queue.recover();fiscalNetworkQueueRecovered=true;if(!recovery.blocked)queue.pump().catch(()=>{});}
+      const accepted=queue.enqueue(payload);
+      return {ok:true,duplicate:accepted.duplicate,job:publicFiscalNetworkJob(accepted.job)};
+    }
+    throw new Error('La impresora fiscal compartida requiere que este equipo esté conectado como cliente o servidor LAN activo.');
+  });
+  ipcMain.handle('fiscal-network:status', async (_e,key) => {
+    if(networkConfig.role==='client') {
+      try{
+        const result=await clientApi('/api/fiscal/queue/'+encodeURIComponent(String(key)),{timeoutMs:10000});
+        return result.job;
+      }catch(error){if(error.statusCode===404)return {status:'missing'};throw error;}
+    }
+    const queue=ensureFiscalNetworkQueue();
+    if(!fiscalNetworkQueueRecovered){await queue.recover();fiscalNetworkQueueRecovered=true;}
+    return publicFiscalNetworkJob(queue.get(String(key)))||{status:'missing'};
+  });
+  ipcMain.handle('fiscal-network:list', async () => {
+    if(networkConfig.role==='client') {
+      const result=await clientApi('/api/fiscal/queue',{timeoutMs:10000});
+      return result.jobs||[];
+    }
+    const queue=ensureFiscalNetworkQueue();
+    if(!fiscalNetworkQueueRecovered){await queue.recover();fiscalNetworkQueueRecovered=true;}
+    return queue.list(200).map(publicFiscalNetworkJob);
+  });
+  ipcMain.handle('fiscal-network:reconcile', async (_e,input={}) => {
+    const username=String(input.adminUsername||'').trim();
+    if(networkConfig.role==='client') {
+      const key=String(input.idempotencyKey||'');
+      const result=await clientApi('/api/fiscal/queue/'+encodeURIComponent(key)+'/reconcile',{method:'POST',body:JSON.stringify({adminUsername:username,password:String(input.password||''),decision:input.decision,details:input.details||{}}),timeoutMs:15000});
+      return result.job;
+    }
+    const admin=one("SELECT username,role,password_hash FROM app_users WHERE username=? COLLATE NOCASE AND active=1",[username]);
+    if(!admin||admin.role!=='admin'||!(await verifyPassword(String(input.password||''),admin.password_hash))) throw new Error('Credenciales de administrador incorrectas.');
+    if(networkConfig.role!=='server') throw new Error('La conciliación de la cola fiscal debe realizarse en el equipo servidor.');
+    const queue=ensureFiscalNetworkQueue();
+    if(!fiscalNetworkQueueRecovered){await queue.recover();fiscalNetworkQueueRecovered=true;}
+    const job=await queue.reconcile(String(input.idempotencyKey||''),input.decision,input.details||{});
+    return publicFiscalNetworkJob(job);
+  });
   ipcMain.handle('network:status', () => ({ ...networkConfig, running: !!networkServer, addresses: localAddresses() }));
   ipcMain.handle('network:flush-outbox', async () => {
     if (networkConfig.role !== 'client') return { pending: 0, accepted: [], conflicts: [] };
@@ -588,6 +801,7 @@ function registerNetworkIpc() {
   ipcMain.handle('network:discover', () => discoverLanServers());
   ipcMain.handle('network:configure-server', (_e, opts = {}) => startLanServer(opts.port));
   ipcMain.handle('network:stop-server', async () => {
+    if (fiscalNetworkQueue && fiscalNetworkQueue.isBusy()) throw new Error('No se puede detener el servidor LAN mientras la impresora fiscal está ejecutando un comando. Espere la confirmación o consulte la máquina.');
     if (networkServer) await new Promise(resolve => networkServer.close(resolve));
     networkServer = null;
     stopDiscoveryServer();
@@ -661,9 +875,12 @@ function registerIpc() {
   }
   ipcMain.handle('auth:initialize-legacy', async (_event, legacyUsers) => {
     if (networkConfig.role === 'client') throw new Error('La gestión de usuarios debe realizarse en el servidor LAN.');
-    const count = one('SELECT COUNT(*) AS total FROM app_users');
-    if (Number(count && count.total) > 0) return { migrated: false, count: Number(count.total), users: all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username') };
-    if (!Array.isArray(legacyUsers) || legacyUsers.length < 1 || legacyUsers.length > 500) throw new Error('No se recibió una lista válida de usuarios para la migración inicial.');
+    const before = Number(one('SELECT COUNT(*) AS total FROM app_users').total || 0);
+    if (before > 0) {
+      const existing = all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username');
+      return { migrated:false, synchronized:false, count:existing.length, users:existing, reason:'bootstrap-already-completed' };
+    }
+    if (!Array.isArray(legacyUsers) || legacyUsers.length < 1 || legacyUsers.length > 500) throw new Error('No se recibió una lista válida de usuarios para la sincronización inicial.');
     const normalized = legacyUsers.map(normalizeLegacyUser);
     const seen = new Set();
     for (const user of normalized) {
@@ -673,19 +890,30 @@ function registerIpc() {
     }
     const prepared = [];
     for (const user of normalized) prepared.push({ ...user, password_hash: await createPasswordHash(user.password) });
+    if (Number(one('SELECT COUNT(*) AS total FROM app_users').total || 0) > 0) {
+      const existing = all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username');
+      return { migrated:false, synchronized:false, count:existing.length, users:existing, reason:'bootstrap-already-completed' };
+    }
     persistMutation(() => {
       db.run('BEGIN IMMEDIATE');
       try {
-        for (const user of prepared) run('INSERT INTO app_users(username,name,role,cashbox,password_hash,active) VALUES(?,?,?,?,?,1)', [user.username,user.name,user.role,user.cashbox,user.password_hash]);
+        for (const user of prepared) run(
+          'INSERT INTO app_users(username,name,role,cashbox,password_hash,active) VALUES(?,?,?,?,?,1)',
+          [user.username,user.name,user.role,user.cashbox,user.password_hash]
+        );
         run("INSERT OR REPLACE INTO schema_migrations(migration_key) VALUES('auth-users-scrypt-v1')");
         db.run('COMMIT');
       } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
     });
     const migrated = all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username');
-    if (migrated.length !== prepared.length) throw new Error('La verificación posterior a la migración de usuarios no coincide; conserve los datos heredados.');
-    return { migrated: true, count: migrated.length, users: migrated };
+    if (migrated.length !== prepared.length) throw new Error('La inicialización de usuarios en SQLite no coincide; conserve los datos heredados.');
+    return { migrated:true, synchronized:true, count:migrated.length, users:migrated };
   });
   ipcMain.handle('auth:login', async (_event, credentials = {}) => {
+    if(networkConfig.role==='client'){
+      const result=await clientApi('/api/auth/login',{method:'POST',body:JSON.stringify({username:String(credentials.username||''),password:String(credentials.password||'')}),timeoutMs:12000});
+      return result;
+    }
     const username = String(credentials.username || '').trim();
     const password = typeof credentials.password === 'string' ? credentials.password : '';
     if (!username || !password || username.length > 64 || password.length > 1024) throw new Error('Usuario o contraseña incorrectos.');
@@ -697,10 +925,18 @@ function registerIpc() {
     return { token, user: safeUser, expiresAt: Date.now() + 12 * 60 * 60 * 1000 };
   });
   ipcMain.handle('auth:verify-session', (_event, token) => {
+    if(networkConfig.role==='client'){
+      return clientApi('/api/auth/session',{method:'POST',body:JSON.stringify({token:String(token||'')}),timeoutMs:10000}).catch(()=>({user:null,valid:false}));
+    }
     try { return { user: requireAuthSession(token), valid: true }; }
     catch { return { user: null, valid: false }; }
   });
-  ipcMain.handle('auth:logout', (_event, token) => { authSessions.delete(String(token || '')); return { ok: true }; });
+  ipcMain.handle('auth:logout', async (_event, token) => {
+    if(networkConfig.role==='client'){
+      try{return await clientApi('/api/auth/logout',{method:'POST',body:JSON.stringify({token:String(token||'')}),timeoutMs:8000});}catch{return {ok:false};}
+    }
+    authSessions.delete(String(token || '')); return { ok: true };
+  });
   ipcMain.handle('auth:list-users', (_event, token) => {
     requireAuthSession(token, true);
     return all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username');
@@ -723,7 +959,10 @@ function registerIpc() {
       [username,name,role,cashbox,passwordHash]
     ));
     for (const [sessionToken, session] of authSessions) {
-      if (session.user.username.toLowerCase() === username.toLowerCase()) authSessions.delete(sessionToken);
+      if (session.user.username.toLowerCase() === username.toLowerCase()) {
+        if (sessionToken === String(token)) authSessions.set(sessionToken, { user:{username,name,role,cashbox}, expiresAt:session.expiresAt });
+        else authSessions.delete(sessionToken);
+      }
     }
     return { ok: true, user: { username,name,role,cashbox } };
   });
@@ -829,6 +1068,9 @@ function registerIpc() {
     await shell.openExternal(url);
     return { ok: true };
   });
+  ipcMain.handle('printer:list', async () => PrinterManager.listPrinters());
+  ipcMain.handle('printer:print-ticket', async (_e, printerName, text, options = {}) => PrinterManager.printTicket(printerName, text, options));
+  ipcMain.handle('printer:test', async (_e, printerName, options = {}) => PrinterManager.printTicket(printerName, 'SIFER360 LICORERIA\nPRUEBA DE IMPRESION\nTicket no fiscal\n\n', { columns: Number(options.columns)||42 }));
   ipcMain.handle('fiscal-printer:list-ports', async () => FiscalPrinterManager.listSerialPorts());
   ipcMain.handle('fiscal-printer:select-file', async (_e, kind = 'sdk') => {
     const filters = kind === 'bridge'

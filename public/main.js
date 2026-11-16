@@ -4546,7 +4546,7 @@ function payDlg(draft){
       '<label class="chk"><input type="checkbox" id="payCreditChk"> Enviar saldo pendiente a <b>Cuentas por Cobrar (CxC)</b></label>'+
       '<span id="payCreditDaysWrap" class="row" style="margin-left:auto" hidden><label for="payCreditDays">Plazo crédito (días):</label><input class="fld r" id="payCreditDays" value="15" style="width:64px" inputmode="numeric"></span>'+
     '</div>'+
-    '<div class="gridwrap paywrap"><table class="grid"><thead><tr><th>Forma de pago</th><th class="c">Moneda</th><th class="r">Monto recibido</th><th></th><th>Aprobación CASHEA</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div><p class="hint">Solo CASHEA exige un token o aprobación real verificable. Los demás medios de pago no requieren referencia para confirmar la venta. Los pagos en divisas (efectivo US$ y Zelle) generan IGTF de 3 %; valide la aplicación fiscal según la operación real.</p></div>');
+    ''+(S.cfg.printMode==='DUAL_PRINTER'?'<div class="invbar" style="background:var(--alt);padding:7px 8px;border:1px solid var(--lo);margin:7px 0"><label for="payDocumentMode"><b>Documento de esta venta</b></label><select class="fld" id="payDocumentMode"><option value="TICKET" '+((S.cfg.thermalPrinters&&S.cfg.thermalPrinters[currentCaja()]&&S.cfg.thermalPrinters[currentCaja()].enabled&&S.cfg.thermalPrinters[currentCaja()].printerName)?'':'disabled')+'>Ticket / Nota de venta · No fiscal</option><option value="FISCAL" '+((S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[currentCaja()]&&S.cfg.fiscalPrinters[currentCaja()].enabled)?'':'disabled')+'>Factura fiscal · SENIAT</option></select><p class="hint">Elija el documento antes de confirmar el cobro. La factura fiscal solo se emite por la máquina fiscal configurada para esta caja.</p></div>':'')+'<div class="gridwrap paywrap"><table class="grid"><thead><tr><th>Forma de pago</th><th class="c">Moneda</th><th class="r">Monto recibido</th><th></th><th>Aprobación CASHEA</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div><p class="hint">Solo CASHEA exige un token o aprobación real verificable. Los demás medios de pago no requieren referencia para confirmar la venta. Los pagos en divisas (efectivo US$ y Zelle) generan IGTF de 3 %; valide la aplicación fiscal según la operación real.</p></div>');
   const amts=()=>{const o={};METHODS.forEach(m=>{o[m.id]=pn($('#pm-'+m.id,el).value);});return o;};
   const refs=()=>{const o={};METHODS.forEach(m=>{const inp=$('#pref-'+m.id,el);o[m.id]=inp?inp.value.trim():'';});return o;};
   let last=null;
@@ -4610,7 +4610,7 @@ function payDlg(draft){
         return false;
       }
       const cDays=Math.max(1,Math.round(pn($('#payCreditDays',el).value)||15));
-      try{await finalize(last,enteredAmts,isCred,cDays,enteredRefs,el);}catch(error){msg('No se pudo reservar o confirmar la numeración de la venta: '+error.message,'bad');}return false;
+      try{await finalize(last,enteredAmts,isCred,cDays,enteredRefs,el,$('#payDocumentMode',el)?$('#payDocumentMode',el).value:'');}catch(error){msg('No se pudo reservar o confirmar la numeración de la venta: '+error.message,'bad');}return false;
     }}],
     onOpen:()=>{upd();$('#pm-efUSD',el).focus();}});
 }
@@ -4633,16 +4633,29 @@ function showSaleCompletion(sale){
   ],onOpen:()=>{const node=$('.sale-completion',body);if(node)node.setAttribute('tabindex','-1');}});
 }
 
-async function finalize(st,amts,isCred,cDays,refs,payEl){
+async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   const ctx=cajaContext();if(ctx.role==='cajero'&&ctx.status!=='abierta'){msg('La caja no está abierta. Solicite al administrador una nueva apertura antes de facturar.','bad');return;}
   const printMode=S.cfg.printMode||'LEGACY';
   if(printMode==='NOT_CONFIGURED'){msg('Complete el asistente de impresoras antes de registrar ventas. Puede elegir impresora fiscal, ticket interno o trabajar sin impresora.','bad');return;}
-  const internalTicketMode=printMode==='INTERNAL_THERMAL'||printMode==='NO_PRINTER';
-  const fiscalMode=printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL');
-  const fiscalProfile=fiscalMode&&S.cfg.fiscalPrinters?S.cfg.fiscalPrinters[currentCaja()]:null;
+  const dualMode=printMode==='DUAL_PRINTER';
+  const thermalProfile=S.cfg.thermalPrinters&&S.cfg.thermalPrinters[currentCaja()]||null;
+  const configuredFiscalProfile=S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[currentCaja()]||null;
+  if(dualMode&&!['TICKET','FISCAL'].includes(documentChoice)){msg('Seleccione si desea emitir un ticket no fiscal o una factura fiscal.','bad');return;}
+  if(dualMode&&documentChoice==='TICKET'&&(!thermalProfile||thermalProfile.enabled!==true||!thermalProfile.printerName)){msg('La impresora térmica no fiscal no está configurada para esta caja. Configure el dispositivo antes de cobrar.','bad');return;}
+  if(dualMode&&documentChoice==='FISCAL'&&(!configuredFiscalProfile||configuredFiscalProfile.enabled!==true)){msg('La impresora fiscal no está configurada para esta caja. Configure el dispositivo antes de emitir una factura.','bad');return;}
+  const internalTicketMode=dualMode?documentChoice==='TICKET':(printMode==='INTERNAL_THERMAL'||printMode==='NO_PRINTER');
+  const fiscalMode=dualMode?documentChoice==='FISCAL':(printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL'));
+  const fiscalProfile=fiscalMode?configuredFiscalProfile:null;
+  let fiscalNetworkInfo={role:'standalone',running:false};
+  if(fiscalMode&&window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
+    try{fiscalNetworkInfo=await window.posDesktop.networkStatus()||fiscalNetworkInfo;}catch{}
+  }
+  const useSharedFiscal=fiscalMode&&(fiscalNetworkInfo.role==='client'||fiscalNetworkInfo.role==='server');
+  if(fiscalMode&&(!fiscalProfile||fiscalProfile.enabled!==true)){msg('La impresora fiscal no está habilitada para esta caja en la configuración compartida. Configure el dispositivo en el servidor fiscal.','bad');return;}
+  if(useSharedFiscal&&(!window.posDesktop||typeof window.posDesktop.fiscalNetworkSubmit!=='function'||typeof window.posDesktop.fiscalNetworkStatus!=='function')){msg('La cola fiscal compartida no está disponible en esta versión. No se registró la venta.','bad');return;}
   const unresolvedFiscalJobs=(S.fiscalPrinterJobs||[]).filter(job=>String(job.cashbox)===String(currentCaja())&&['pending','uncertain'].includes(job.status));
   if(fiscalMode&&unresolvedFiscalJobs.length){msg('Esta caja tiene una emisión fiscal pendiente o incierta ('+unresolvedFiscalJobs.map(job=>job.id).join(', ')+'). Consulte la impresora y reconcilie esa operación antes de facturar otra venta.','bad');return;}
-  if(fiscalMode){
+  if(fiscalMode&&!useSharedFiscal){
     if(!fiscalProfile||fiscalProfile.enabled!==true){msg('La modalidad está configurada como Máquina Fiscal, pero esta caja no tiene una impresora fiscal habilitada. Configure el dispositivo antes de cobrar.','bad');return;}
     if(!window.posDesktop||typeof window.posDesktop.fiscalPrinterStatus!=='function'||typeof window.posDesktop.fiscalPrinterEmitInvoice!=='function'){msg('La emisión fiscal requiere la aplicación Electron de escritorio. No se registró la venta.','bad');return;}
     try{
@@ -4757,6 +4770,8 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
     if(!journal||!journal.ok){restoreStateSnapshotIfNeeded(journal,rollbackState);msg('SQLite no confirmó la intención de emisión fiscal. La impresora no recibió comandos y la venta no se registró.','bad');return;}
     const fiscalInvoice={
       idempotencyKey,
+      origin:{cashbox:currentCaja(),cashier:currentCajero(),terminal:String(fiscalNetworkInfo.deviceId||'LOCAL')},
+      footerLines:['CAJA: '+currentCaja(),'CAJERO: '+currentCajero(),'TERMINAL: '+String(fiscalNetworkInfo.deviceId||'LOCAL')],
       documentType:'invoice',
       cashbox:currentCaja(),
       cashier:currentCajero(),
@@ -4772,19 +4787,44 @@ async function finalize(st,amts,isCred,cDays,refs,payEl){
       displayCurrency:'USD'
     };
     try{
-      const issued=await window.posDesktop.fiscalPrinterEmitInvoice(fiscalProfile,fiscalInvoice);
+      let issued;
+      if(useSharedFiscal){
+        const accepted=await window.posDesktop.fiscalNetworkSubmit({
+          idempotencyKey,cashbox:currentCaja(),cashier:currentCajero(),userSessionToken:String((activeUser()||{}).authToken||''),
+          saleId:sale.accountingSourceId,invoice:fiscalInvoice
+        });
+        let remoteJob=accepted&&accepted.job;
+        for(let attempt=0;attempt<120;attempt++){
+          if(!remoteJob||!remoteJob.status)throw new Error('El servidor no devolvió el estado del trabajo fiscal. No se volverá a enviar la factura.');
+          if(['issued','uncertain','rejected'].includes(remoteJob.status))break;
+          await new Promise(resolve=>setTimeout(resolve,500));
+          remoteJob=await window.posDesktop.fiscalNetworkStatus(idempotencyKey);
+        }
+        if(remoteJob.status==='issued'&&remoteJob.result){issued=remoteJob.result;}
+        else if(remoteJob.status==='rejected'){
+          fiscalJob.status='rejected';
+          throw new Error('El servidor rechazó la emisión antes de imprimir: '+(remoteJob.error||'revise la configuración fiscal del servidor.'));
+        }else if(remoteJob.status==='uncertain'){
+          fiscalJob.status='uncertain';
+          throw new Error('La impresora fiscal compartida no confirmó el resultado. Trabajo '+remoteJob.id+'. Consulte el último documento de la máquina; no se reintentará automáticamente.');
+        }else{
+          throw new Error('La solicitud fiscal permanece pendiente en el servidor (trabajo '+(remoteJob.id||'sin ID')+'). No repita el cobro; consulte el estado de la cola fiscal.');
+        }
+      }else{
+        issued=await window.posDesktop.fiscalPrinterEmitInvoice(fiscalProfile,fiscalInvoice);
+      }
       fiscalJob.status='issued';
       fiscalJob.fiscalDocumentNumber=issued.fiscalDocumentNumber;
       fiscalJob.fiscalSerial=issued.fiscalSerial;
       fiscalJob.issuedAt=Date.now();
-      fiscalProfile.serial=issued.fiscalSerial;
-      sale.fiscal={provider:fiscalProfile.provider,model:fiscalProfile.model,documentNumber:issued.fiscalDocumentNumber,serial:issued.fiscalSerial,authorization:issued.authorization||'',status:'issued'};
+      if(fiscalProfile)fiscalProfile.serial=issued.fiscalSerial;
+      sale.fiscal={provider:(fiscalProfile&&fiscalProfile.provider)||issued.provider||'shared',model:(fiscalProfile&&fiscalProfile.model)||issued.model||'Impresora fiscal compartida',documentNumber:issued.fiscalDocumentNumber,serial:issued.fiscalSerial,authorization:issued.authorization||'',status:'issued'};
     }catch(error){
-      fiscalJob.status='uncertain';
+      if(fiscalJob.status!=='rejected')fiscalJob.status=(error.statusCode===401||/sesión.*expiró|no autorizado|cajero.*autenticado|usuario.*asignado/i.test(String(error.message||error))||/cola fiscal está bloqueada/i.test(String(error.message||error)))?'rejected':'uncertain';
       fiscalJob.lastError=String(error.message||error).slice(0,1000);
       fiscalJob.lastAttemptAt=Date.now();
       const journalResult=await save();
-      msg('La impresora no confirmó el resultado de la emisión. Consulte el último documento en la máquina antes de reintentar. La venta quedó sin confirmar en el POS.'+(journalResult&&journalResult.ok?' Incidencia guardada en SQLite.':' No se pudo actualizar la incidencia; permanece la intención previa en SQLite.'),'bad');
+      msg((fiscalJob.status==='rejected'?'El servidor rechazó la solicitud fiscal antes de emitirla. ':'La impresora no confirmó el resultado de la emisión. Consulte el último documento en la máquina antes de reintentar. ')+(fiscalJob.status==='rejected'?'La venta no fue registrada.':'La venta quedó sin confirmar en el POS.')+(journalResult&&journalResult.ok?' Incidencia guardada en SQLite.':' No se pudo actualizar la incidencia; permanece la intención previa en SQLite.'),'bad');
       return;
     }
   }
@@ -4842,10 +4882,10 @@ function applyTicketStyle(pre){
   pre.style.lineHeight=fId==='sans'?'1.32':'1.36';
 }
 function ticketText(s){
-  const Wd=40,ln='-'.repeat(Wd),dln='='.repeat(Wd);
-  const ctr=t=>' '.repeat(Math.max(0,Math.floor((Wd-t.length)/2)))+t;
-  const row=(a,b)=>{a=String(a);b=String(b);return a+' '.repeat(Math.max(1,Wd-a.length-b.length))+b;};
-  const cut=(t,n)=>t.length>n?t.slice(0,n-1)+'…':t;
+  const Wd=Math.max(24,Math.min(48,Number(arguments[1])||40)),ln='-'.repeat(Wd),dln='='.repeat(Wd);
+  const cut=(t,n)=>{t=String(t);return t.length>n?t.slice(0,Math.max(0,n-1))+'…':t;};
+  const ctr=t=>{t=cut(t,Wd);return ' '.repeat(Math.max(0,Math.floor((Wd-t.length)/2)))+t;};
+  const row=(a,b)=>{a=String(a);b=String(b);if(b.length>=Wd)return cut(b,Wd);const left=cut(a,Math.max(0,Wd-b.length-1));return left+' '.repeat(Math.max(1,Wd-left.length-b.length))+b;};
   const L=[];
   const internalTicket=s.documentMode==='INTERNAL_THERMAL'||s.documentMode==='NO_PRINTER'||s.docType==='TICKET-INTERNO';
   if(s.void)L.push(dln,ctr('*** VENTA ANULADA ***'),dln);
@@ -4930,8 +4970,14 @@ function showTicket(s){
 
   const noPrinter=s.documentMode==='NO_PRINTER';
   openWin({title:(noPrinter?'Comprobante interno — Nº ':'Ticket de Venta — Nº ')+pad(s.no),w:500,body:el,foot:[
-    {label:noPrinter?'Sin impresora configurada':'Imprimir 80mm',left:true,fn:()=>{
+    {label:noPrinter?'Sin impresora configurada':'Imprimir 80mm',left:true,fn:async()=>{
       if(noPrinter){msg('Esta instalación está configurada sin impresora. El comprobante queda guardado en SQLite y puede imprimirse después de configurar un dispositivo.');return false;}
+      const thermal=S.cfg.thermalPrinters&&S.cfg.thermalPrinters[s.cashbox];
+      if(thermal&&thermal.enabled===true&&thermal.printerName&&window.posDesktop&&window.posDesktop.printerPrintTicket){
+        try{const result=await window.posDesktop.printerPrintTicket(thermal.printerName,ticketText(s,thermal.columns||42),{columns:thermal.columns||42});msg(result.message+' · '+thermal.printerName);}
+        catch(error){msg('No se pudo confirmar el envío del ticket: '+error.message,'bad');}
+        return false;
+      }
       document.body.classList.add('printing-ticket-80mm');
       window.print();
       setTimeout(()=>document.body.classList.remove('printing-ticket-80mm'),500);
@@ -5371,9 +5417,178 @@ function newRetencionIvaDlg(onDone){
 }
 
 
-function fiscalPrinterConfigDlg(){
+function thermalPrinterConfigDlg(){
+  const user=activeUser();
+  if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras térmicas.','bad');return;}
+  const boxes=cashboxList().filter(x=>x.active!==false);
+  let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
+  const savedFor=id=>Object.assign({printerName:'',enabled:false,columns:42},(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[id])||{});
+  let draft=savedFor(box);
+  const options=boxes.map(x=>'<option value="'+esc(x.id)+'" '+(String(x.id)===box?'selected':'')+'>'+esc(x.id)+' — '+esc(x.name||('Caja '+x.id))+'</option>').join('');
+  const el=h('<div class="form"><div class="hint"><b>Impresora térmica no fiscal.</b> Se utiliza la cola instalada en Windows y se envían bytes ESC/POS RAW (texto, avance y corte). Esta configuración no habilita facturación fiscal.</div><div class="f"><label for="tpCashbox">Caja</label><select class="fld" id="tpCashbox">'+options+'</select></div><div class="f"><label for="tpPrinter">Impresora Windows</label><select class="fld" id="tpPrinter"><option value="">Consultar impresoras…</option></select></div><div class="f"><label for="tpColumns">Ancho de caracteres</label><select class="fld" id="tpColumns"><option value="32">32 columnas · rollo 58 mm</option><option value="42">42 columnas · rollo 80 mm</option><option value="48">48 columnas · rollo 80 mm ancho</option></select></div><label class="chk"><input type="checkbox" id="tpEnabled" '+(draft.enabled?'checked':'')+'> Habilitar impresión térmica para esta caja</label><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" id="tpRefresh" type="button">Actualizar impresoras</button><button class="btn" id="tpTest" type="button">Imprimir prueba</button></div><div id="tpStatus" class="hint" role="status" aria-live="polite">Pendiente de consulta.</div><div class="group"><b>Importante</b><p class="hint">El resultado confirma que Windows recibió el trabajo en la cola, no que el papel haya salido físicamente. Verifique la impresión de prueba y el corte en el dispositivo real. Las impresoras configuradas en esta pantalla son exclusivamente para tickets y comprobantes no fiscales.</p></div></div>');
+  const printer=$('#tpPrinter',el),status=$('#tpStatus',el);
+  const load=async()=>{
+    status.textContent='Consultando impresoras instaladas en Windows…';
+    try{
+      const result=await window.posDesktop.printerList();
+      printer.innerHTML='<option value="">Seleccione una impresora…</option>'+(result.printers||[]).map(p=>'<option value="'+esc(p.name)+'">'+esc(p.name)+' · '+esc(p.driverName||'Controlador')+' · '+esc(p.portName||'Puerto')+'</option>').join('');
+      if(draft.printerName&&(result.printers||[]).some(p=>p.name===draft.printerName))printer.value=draft.printerName;
+      status.textContent=result.printers&&result.printers.length?'Impresoras detectadas: '+result.printers.length+'. Seleccione la cola que corresponde a la térmica.':(result.message||'No se detectaron impresoras.');
+    }catch(error){status.textContent='No se pudieron consultar las impresoras: '+error.message;}
+  };
+  $('#tpColumns',el).value=String(draft.columns||42);
+  $('#tpCashbox',el).addEventListener('change',()=>{
+    box=String($('#tpCashbox',el).value);draft=savedFor(box);
+    $('#tpColumns',el).value=String(draft.columns||42);$('#tpEnabled',el).checked=draft.enabled;
+    load();
+  });
+  $('#tpRefresh',el).addEventListener('click',load);
+  $('#tpTest',el).addEventListener('click',async()=>{
+    const name=printer.value;if(!name){status.textContent='Seleccione primero una impresora.';return;}
+    status.textContent='Enviando ticket de prueba ESC/POS…';
+    try{const result=await window.posDesktop.printerTest(name);status.textContent=result.message+' Verifique papel, ancho y corte en la impresora.';}
+    catch(error){status.textContent='La prueba no fue confirmada: '+error.message;}
+  });
+  openWin({title:'Printer Manager · Térmica no fiscal',w:620,body:el,foot:[{label:'Cancelar'},{label:'Guardar configuración',primary:true,fn:async()=>{
+    const name=printer.value,enabled=$('#tpEnabled',el).checked;
+    if(enabled&&!name){msg('Seleccione una impresora Windows antes de habilitarla.','bad');return false;}
+    if(!S.cfg.thermalPrinters)S.cfg.thermalPrinters={};
+    const previous=JSON.parse(JSON.stringify(S.cfg.thermalPrinters[box]||{}));
+    S.cfg.thermalPrinters[box]={printerName:name,enabled,columns:Number($('#tpColumns',el).value)||42};
+    const persisted=await save();
+    if(!persisted||!persisted.ok){S.cfg.thermalPrinters[box]=previous;msg('SQLite no confirmó la configuración térmica. No se aplicaron los cambios.','bad');return false;}
+    msg(enabled?'Impresora térmica guardada para la Caja '+box+'.':'Impresora térmica deshabilitada para la Caja '+box+'.');
+    closeWin();return false;
+  }}]});
+  load();
+}
+
+function fiscalNetworkQueueDlg(){
+  const user=activeUser();
+  if(!user||user.role!=='admin'){msg('Solo el administrador puede consultar la cola fiscal compartida.','bad');return;}
+  const el=h('<div class="form"><div class="hint">Cola fiscal del equipo servidor. Todos los puntos de venta envían aquí sus facturas; el servidor transmite un solo trabajo a la vez. Los trabajos inciertos bloquean nuevas emisiones hasta conciliarlos físicamente.</div><div id="fnqStatus" class="hint" role="status" aria-live="polite">Consultando servidor…</div><div class="gridwrap"><table class="grid"><thead><tr><th>Estado</th><th>Caja / Cajero</th><th>Terminal</th><th>Trabajo</th><th>Resultado / incidencia</th><th>Conciliación</th></tr></thead><tbody id="fnqRows"></tbody></table></div></div>');
+  const status=$('#fnqStatus',el),rows=$('#fnqRows',el);
+  el.addEventListener('click',async event=>{
+    const issue=event.target.closest('[data-fnq-issued]');
+    const noIssue=event.target.closest('[data-fnq-not-issued]');
+    if(!issue&&!noIssue)return;
+    const key=(issue||noIssue).dataset.fnqIssued||(issue||noIssue).dataset.fnqNotIssued;
+    const adminUsername=prompt('Usuario administrador del servidor fiscal:',user.username);
+    if(!adminUsername)return;
+    const password=prompt('Contraseña del administrador del servidor fiscal:');
+    if(!password)return;
+    let details={},decision='not-issued';
+    if(issue){
+      const documentNumber=prompt('Número exacto de documento fiscal que aparece en la impresora:');
+      if(!documentNumber)return;
+      const serial=prompt('Serial fiscal exacto de la máquina:');
+      if(!serial)return;
+      if(!confirm('¿Verificó físicamente que ese documento corresponde a esta venta?'))return;
+      decision='issued';details={fiscalDocumentNumber:documentNumber.trim(),fiscalSerial:serial.trim()};
+    }else{
+      if(!confirm('Confirme que consultó la impresora y verificó que NO existe documento emitido para esta operación. Solo entonces se liberará la cola.'))return;
+      details={note:'Administrador verificó físicamente que no existe documento emitido.'};
+    }
+    try{
+      const result=await window.posDesktop.fiscalNetworkReconcile({adminUsername:adminUsername.trim(),password,idempotencyKey:key,decision,details});
+      const local=(S.fiscalPrinterJobs||[]).find(job=>job.idempotencyKey===key);
+      if(local){
+        if(decision==='issued'){
+          local.status='uncertain';local.fiscalDocumentNumber=details.fiscalDocumentNumber;local.fiscalSerial=details.fiscalSerial;
+          local.lastError='Emisión confirmada en la cola del servidor. Complete la conciliación de la venta local desde la configuración fiscal.';
+        }else{
+          local.status='not-issued';local.reconciledAt=Date.now();local.reconciliation='confirmed-not-issued-by-admin';
+        }
+        const saved=await save();
+        if(!saved||!saved.ok)throw new Error('El servidor resolvió la cola, pero SQLite no confirmó la actualización local. No repita la operación; revise la venta pendiente.');
+      }
+      msg(decision==='issued'?'Emisión fiscal verificada en servidor. Si esta terminal conserva una intención pendiente, abra la configuración fiscal y confirme la reconstrucción de la venta.':'La impresora fue verificada sin documento emitido. La cola quedó liberada; puede registrar una nueva operación.');
+      await refresh();
+    }catch(error){msg('No se pudo conciliar la cola fiscal: '+error.message,'bad');}
+  });
+  const refresh=async()=>{
+    status.textContent='Actualizando cola fiscal…';
+    try{
+      const net=await window.posDesktop.networkStatus();
+      if(net.role==='standalone'){status.textContent='Esta PC no está conectada a un servidor LAN. Inicie o empareje el equipo servidor.';rows.innerHTML='';return;}
+      const serverStopped=net.role==='server'&&net.running!==true;
+      const jobs=await window.posDesktop.fiscalNetworkList();
+      rows.innerHTML=jobs.length?jobs.map(job=>{
+        const result=job.result||{};
+        const detail=job.status==='issued'?'Doc. '+esc(result.fiscalDocumentNumber||'—')+' · Serial '+esc(result.fiscalSerial||'—'):esc(job.error||'En espera de procesamiento');
+        const state=job.status==='issued'?'Emitida':job.status==='uncertain'?'INCIERTA':job.status==='rejected'?'Rechazada':job.status==='processing'?'Procesando':'Pendiente';
+        const actions=job.status==='uncertain'?'<button class="btn mini2 primary" data-fnq-issued="'+esc(job.idempotencyKey)+'">Confirmar emitida</button> <button class="btn mini2" data-fnq-not-issued="'+esc(job.idempotencyKey)+'">Confirmar no emitida</button>':'—';
+        return '<tr><td><b>'+state+'</b></td><td>'+esc(job.cashbox)+' / '+esc(job.cashier)+'</td><td>'+esc(job.station)+'</td><td><span class="mono">'+esc(job.idempotencyKey)+'</span><br><span class="hint">'+esc(job.createdAt||'')+'</span></td><td>'+detail+'</td><td>'+actions+'</td></tr>';
+      }).join(''):'<tr><td colspan="5" class="hint">No hay trabajos fiscales registrados.</td></tr>';
+      const uncertain=jobs.filter(x=>x.status==='uncertain').length;
+      status.textContent=(serverStopped?'Servidor LAN detenido; cola local consultable · ':'Conexión LAN activa · ')+jobs.length+' trabajos · '+uncertain+' inciertos. '+(uncertain?'La cola permanece bloqueada; no se reenvían automáticamente.':'');
+    }catch(error){status.textContent='No se pudo consultar la cola fiscal: '+error.message;}
+  };
+  openWin({title:'Cola fiscal compartida · LAN',w:900,body:el,foot:[{label:'Cerrar'},{label:'Actualizar',primary:true,fn:()=>{refresh();return false;}}]});
+  refresh();
+}
+
+async function thermalPrinterConfigDlg(){
+  const user=activeUser();
+  if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras térmicas.','bad');return;}
+  if(!window.posDesktop||typeof window.posDesktop.printerList!=='function'){msg('La configuración de impresoras térmicas requiere SIFER360 de escritorio en Windows.','bad');return;}
+  const boxes=cashboxList().filter(x=>x.active!==false);
+  let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
+  const savedFor=id=>(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[id])||{};
+  let draft={...savedFor(box)};
+  const options=boxes.map(x=>'<option value="'+esc(x.id)+'" '+(String(x.id)===box?'selected':'')+'>'+esc(x.id)+' — '+esc(x.name||('Caja '+x.id))+'</option>').join('');
+  const el=h('<div class="form"><div class="hint">Configure una impresora térmica para tickets y notas de venta no fiscales. Cada caja conserva su propia impresora. La prueba envía un ticket de prueba al spooler de Windows; no confirma físicamente la salida del papel.</div><div class="f"><label for="tpCashbox">Caja</label><select class="fld" id="tpCashbox">'+options+'</select></div><div class="f"><label for="tpPrinter">Impresora Windows</label><select class="fld" id="tpPrinter"><option value="">Seleccione impresora…</option></select></div><div class="f"><label for="tpWidth">Papel</label><select class="fld" id="tpWidth"><option value="32">58 mm · 32 columnas</option><option value="42">80 mm · 42 columnas</option><option value="48">80 mm · 48 columnas</option></select></div><label class="chk"><input type="checkbox" id="tpEnabled"> Habilitar tickets en esta caja</label><div class="hint" id="tpStatus" role="status" aria-live="polite">Consultando impresoras de Windows…</div></div>');
+  const status=$('#tpStatus',el),printer=$('#tpPrinter',el),width=$('#tpWidth',el),enabled=$('#tpEnabled',el);
+  const apply=()=>{
+    printer.value=draft.printerName||'';
+    width.value=String(draft.columns||42);
+    enabled.checked=draft.enabled===true;
+  };
+  const read=()=>({printerName:printer.value,columns:Number(width.value),enabled:enabled.checked});
+  const detect=async()=>{
+    status.textContent='Buscando impresoras instaladas en Windows…';
+    try{
+      const found=await window.posDesktop.printerList();
+      const names=(Array.isArray(found)?found:(found.printers||[])).map(x=>typeof x==='string'?x:(x.name||x.printerName)).filter(Boolean);
+      const previous=printer.value||draft.printerName||'';
+      printer.innerHTML='<option value="">Seleccione impresora…</option>'+names.map(name=>'<option value="'+esc(name)+'">'+esc(name)+'</option>').join('');
+      if(names.includes(previous))printer.value=previous;
+      status.textContent=names.length?names.length+' impresora(s) detectada(s). Seleccione la que corresponde a esta caja.':'Windows no reportó impresoras instaladas. Instale el controlador y vuelva a detectar.';
+    }catch(error){status.textContent='No se pudieron enumerar impresoras: '+error.message;}
+  };
+  el.addEventListener('change',async e=>{
+    if(e.target.id==='tpCashbox'){
+      const current=read();S.cfg.thermalPrinters=S.cfg.thermalPrinters||{};S.cfg.thermalPrinters[box]=current;
+      box=String(e.target.value);draft={...savedFor(box)};await detect();apply();
+    }
+  });
+  const saveThermal={label:'Guardar configuración',primary:true,fn:async()=>{
+    const p=read();
+    if(p.enabled&&!p.printerName){msg('Seleccione una impresora antes de habilitar los tickets.','bad');return false;}
+    if(![32,42,48].includes(p.columns)){msg('Ancho de papel no válido.','bad');return false;}
+    if(!S.cfg.thermalPrinters)S.cfg.thermalPrinters={};
+    S.cfg.thermalPrinters[box]=p;
+    const persisted=await save();
+    if(!persisted||!persisted.ok){msg('SQLite no confirmó la configuración térmica.','bad');return false;}
+    msg('Impresora térmica guardada para Caja '+box+'.');
+    return true;
+  }};
+  openWin({title:'Impresora térmica no fiscal · Caja '+esc(box),w:620,body:el,foot:[{label:'Cerrar'},{label:'Actualizar impresoras',fn:async()=>{await detect();return false;}},{label:'Imprimir prueba',fn:async()=>{
+    const p=read();if(!p.printerName){msg('Seleccione una impresora para la prueba.','bad');return false;}
+    try{const result=await window.posDesktop.printerTest(p.printerName,{columns:p.columns});status.textContent=result.message+' Windows aceptó el trabajo; verifique físicamente el papel.';msg('Prueba enviada a '+p.printerName+'. Compruebe la salida física.');}
+    catch(error){status.textContent='Falló el envío de prueba: '+error.message;msg('No se pudo enviar la prueba: '+error.message,'bad');}
+    return false;
+  }},saveThermal],onOpen:async()=>{apply();await detect();apply();}});
+}
+
+async function fiscalPrinterConfigDlg(){
   const user=activeUser();
   if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras fiscales de las cajas.','bad');return;}
+  let isLanClient=false,isSharedLan=false;
+  if(window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
+    try{const net=await window.posDesktop.networkStatus();isLanClient=!!(net&&net.role==='client');isSharedLan=isLanClient||!!(net&&net.role==='server');}
+    catch(error){msg('No se pudo verificar el rol LAN: '+error.message,'bad');return;}
+  }
   const boxes=cashboxList().filter(x=>x.active!==false);
   let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
   const providerCatalog={
@@ -5389,7 +5604,7 @@ function fiscalPrinterConfigDlg(){
   let draft=readSavedDraft(box);
   const drafts={[box]:draft};
   const boxOptions=boxes.map(x=>'<option value="'+esc(x.id)+'" '+(String(x.id)===box?'selected':'')+'>'+esc(x.id)+' — '+esc(x.name||('Caja '+x.id))+'</option>').join('');
-  const el=h('<div class="form"><div class="hint"><b>Configuración de impresoras fiscales</b>. Los parámetros se guardan en SQLite y quedan asociados a cada caja. La conexión física se prueba en este equipo.</div><div class="f"><label for="fpCashbox">Caja a configurar</label><select class="fld" id="fpCashbox">'+boxOptions+'</select></div><div class="newgrid">'+
+  const el=h('<div class="form"><div class="hint"><b>Configuración de impresoras fiscales</b>. Los parámetros se guardan en SQLite y quedan asociados a cada caja. La impresora física y el SDK/puerto COM deben configurarse en el equipo servidor que la tiene conectada. Las cajas cliente envían las facturas por la cola fiscal LAN autenticada.</div><div class="f"><label for="fpCashbox">Caja a configurar</label><select class="fld" id="fpCashbox">'+boxOptions+'</select></div><div class="newgrid">'+
     '<div class="f"><label for="fpProvider">Fabricante / ecosistema</label><select class="fld" id="fpProvider">'+Object.keys(providerCatalog).map(k=>'<option value="'+k+'" '+(draft.provider===k?'selected':'')+'>'+providerCatalog[k].label+'</option>').join('')+'</select></div>'+
     '<div class="f"><label for="fpModel">Modelo exacto</label><input class="fld" id="fpModel" maxlength="120" value="'+esc(draft.model)+'" placeholder="Ej. HKA80, MP-4000 TH FI"></div>'+
     '<div class="f"><label for="fpPort">Puerto USB-Serial / COM</label><input class="fld mono" id="fpPort" list="fpPortList" value="'+esc(draft.port)+'" placeholder="COM4"><datalist id="fpPortList"></datalist></div>'+
@@ -5413,7 +5628,7 @@ function fiscalPrinterConfigDlg(){
     const jobs=(S.fiscalPrinterJobs||[]).filter(job=>String(job.cashbox)===String(box)&&['pending','uncertain'].includes(job.status));
     const node=$('#fpPendingJobs',el);if(!node)return;
     node.hidden=!jobs.length;
-    node.innerHTML=jobs.length?'<div class="gtitle">Emisiones que requieren conciliación</div>'+jobs.map(job=>'<div class="group" style="margin:6px 0"><b>'+esc(job.id)+'</b> · Estado: '+esc(job.status)+' · Factura POS '+esc(pad(job.saleNo))+' · '+esc(job.lastError||'Consultar el último documento de la máquina antes de reintentar.')+'<div class="newgrid"><div class="f"><label>Número fiscal confirmado en la máquina</label><input class="fld mono" data-fiscal-doc="'+esc(job.id)+'" placeholder="Número exacto impreso"></div><div class="f"><label>Serial de máquina</label><input class="fld mono" data-fiscal-serial="'+esc(job.id)+'" value="'+esc(job.fiscalSerial||'')+'" placeholder="Serial fiscal"></div></div><div class="row" style="flex-wrap:wrap"><button class="btn mini2 primary" data-fiscal-reconcile="'+esc(job.id)+'">Confirmar emisión verificada</button><button class="btn mini2" data-fiscal-not-issued="'+esc(job.id)+'">Confirmar que no se emitió</button></div></div>').join('')+'<p class="hint">Solo use estas acciones después de consultar físicamente el último documento de la máquina. La primera reconstruye la venta y el inventario en SQLite; la segunda libera la caja para reintentar como una operación nueva.</p>':'';
+    node.innerHTML=jobs.length?'<div class="gtitle">Emisiones que requieren conciliación</div>'+jobs.map(job=>'<div class="group" style="margin:6px 0"><b>'+esc(job.id)+'</b> · Estado: '+esc(job.status)+' · Factura POS '+esc(pad(job.saleNo))+' · '+esc(job.lastError||'Consultar el último documento de la máquina antes de reintentar.')+'<div class="newgrid"><div class="f"><label>Número fiscal confirmado en la máquina</label><input class="fld mono" data-fiscal-doc="'+esc(job.id)+'" value="'+esc(job.fiscalDocumentNumber||'')+'" placeholder="Número exacto impreso"></div><div class="f"><label>Serial de máquina</label><input class="fld mono" data-fiscal-serial="'+esc(job.id)+'" value="'+esc(job.fiscalSerial||'')+'" placeholder="Serial fiscal"></div></div><div class="row" style="flex-wrap:wrap"><button class="btn mini2 primary" data-fiscal-reconcile="'+esc(job.id)+'">Confirmar emisión verificada</button><button class="btn mini2" data-fiscal-not-issued="'+esc(job.id)+'" '+(isLanClient?'disabled title="Conciliar primero en la cola fiscal LAN"':'')+'>Confirmar que no se emitió</button></div></div>').join('')+'<p class="hint">Solo use estas acciones después de consultar físicamente el último documento de la máquina. La primera reconstruye la venta y el inventario en SQLite; la segunda libera la caja para reintentar como una operación nueva.</p>':'';
   };
   const drawSdk=()=>{
     const p=profile(),files=providerCatalog[p.provider].files;
@@ -5468,12 +5683,14 @@ function fiscalPrinterConfigDlg(){
       draft=drafts[box]||readSavedDraft(box);
       drafts[box]=draft;
       applyDraft();
+      drawPendingJobs();
       status();
       return;
     }
     if(e.target.id==='fpProvider'){draft.provider=e.target.value;drafts[box]=draft;drawSdk();status();}
   });
   el.addEventListener('click',async e=>{
+    if(isLanClient&&(e.target.closest('[data-sdk-file]')||['fpDetect','fpTestPnp','fpTestPort','fpChooseBridge','fpTestBridge'].includes(e.target.id))){msg('La comunicación física y el SDK se administran exclusivamente en el servidor fiscal. En esta terminal solo puede conciliar emisiones pendientes.','bad');return;}
     const sdk=e.target.closest('[data-sdk-file]');
     if(sdk){
       try{const file=await window.posDesktop.fiscalPrinterSelectFile('sdk');if(file){draft.sdkPaths[sdk.dataset.sdkFile]=file;drawSdk();await status();}}
@@ -5488,6 +5705,24 @@ function fiscalPrinterConfigDlg(){
       const serial=$('[data-fiscal-serial="'+job.id+'"]',el).value.trim();
       if(!doc||!serial){msg('Indique el número fiscal y serial exactos que aparecen en la máquina.','bad');return;}
       if(!confirm('Confirma que consultó la impresora física y verificó que la factura '+pad(job.saleNo)+' fue emitida con el número '+doc+' y serial '+serial+'?'))return;
+      if(isSharedLan){
+        try{
+          const remote=await window.posDesktop.fiscalNetworkStatus(job.idempotencyKey);
+          if(remote.status==='uncertain'){
+            const adminUsername=prompt('Usuario administrador del servidor fiscal:',user.username);
+            if(!adminUsername)return;
+            const password=prompt('Contraseña del administrador del servidor fiscal:');
+            if(!password)return;
+            await window.posDesktop.fiscalNetworkReconcile({adminUsername:adminUsername.trim(),password,idempotencyKey:job.idempotencyKey,decision:'issued',details:{fiscalDocumentNumber:doc,fiscalSerial:serial}});
+          }else if(remote.status==='issued'){
+            if(String(remote.result&&remote.result.fiscalDocumentNumber)!==doc||String(remote.result&&remote.result.fiscalSerial)!==serial)throw new Error('El documento o serial no coincide con el resultado confirmado por la cola fiscal del servidor.');
+          }else if(remote.status==='missing'){
+            throw new Error('El servidor no tiene un trabajo fiscal con esta clave; no se puede confirmar una emisión compartida que no quedó registrada.');
+          }else{
+            throw new Error('La cola fiscal compartida aún no está conciliada o el servidor rechazó el trabajo. Resuelva primero el estado del servidor.');
+          }
+        }catch(error){msg('No se pudo conciliar la cola fiscal compartida: '+error.message,'bad');return;}
+      }
       const snapshot=JSON.parse(JSON.stringify(S));
       try{
         const sale=JSON.parse(JSON.stringify(job.saleSnapshot||{}));
@@ -5523,6 +5758,20 @@ function fiscalPrinterConfigDlg(){
       const job=(S.fiscalPrinterJobs||[]).find(x=>x.id===notIssued.dataset.fiscalNotIssued&&String(x.cashbox)===String(box));
       if(!job)return;
       if(!confirm('Confirma que consultó la impresora física y verificó que NO existe documento fiscal emitido para esta operación?'))return;
+      if(isSharedLan){
+        try{
+          const remote=await window.posDesktop.fiscalNetworkStatus(job.idempotencyKey);
+          if(remote.status==='uncertain'){
+            const adminUsername=prompt('Usuario administrador del servidor fiscal:',user.username);
+            if(!adminUsername)return;
+            const password=prompt('Contraseña del administrador del servidor fiscal:');
+            if(!password)return;
+            await window.posDesktop.fiscalNetworkReconcile({adminUsername:adminUsername.trim(),password,idempotencyKey:job.idempotencyKey,decision:'not-issued',details:{note:'Administrador verificó físicamente que no existe documento fiscal emitido.'}});
+          }else if(!['rejected','missing'].includes(remote.status)){
+            throw new Error('El trabajo compartido no está en estado incierto ni rechazado. No se puede marcar localmente como no emitido.');
+          }
+        }catch(error){msg('No se pudo conciliar la cola fiscal compartida: '+error.message,'bad');return;}
+      }
       const snapshot=JSON.parse(JSON.stringify(S));
       job.status='not-issued';job.reconciledAt=Date.now();job.reconciliation='confirmed-not-issued-by-admin';
       const saved=await save();
@@ -5557,20 +5806,25 @@ function fiscalPrinterConfigDlg(){
       catch(err){$('#fpStatus',el).textContent='Adaptador no validado: '+err.message;}
     }
   });
-  openWin({title:'Impresora fiscal · Caja '+esc(box),w:760,body:el,foot:[
-    {label:'Cerrar'},
-    {label:'Guardar configuración',primary:true,fn:async()=>{
-      const p=profile();
-      drafts[box]=p;
-      if(!p.model){msg('Indique el modelo exacto de la impresora fiscal.','bad');return false;}
-      if(!S.cfg.fiscalPrinters)S.cfg.fiscalPrinters={};
-      S.cfg.fiscalPrinters[box]=p;
-      const persisted=await save();
-      if(!persisted||!persisted.ok){msg('SQLite no confirmó la configuración de la impresora fiscal.','bad');return false;}
-      msg('Configuración fiscal guardada para Caja '+box+'.');
-      return true;
-    }}
-  ],onOpen:()=>{applyDraft();status();}});
+  const saveFiscalConfig={label:'Guardar configuración',primary:true,fn:async()=>{
+    const p=profile();
+    drafts[box]=p;
+    if(!p.model){msg('Indique el modelo exacto de la impresora fiscal.','bad');return false;}
+    if(!S.cfg.fiscalPrinters)S.cfg.fiscalPrinters={};
+    S.cfg.fiscalPrinters[box]=p;
+    const persisted=await save();
+    if(!persisted||!persisted.ok){msg('SQLite no confirmó la configuración de la impresora fiscal.','bad');return false;}
+    msg('Configuración fiscal guardada para Caja '+box+'.');
+    return true;
+  }};
+  openWin({title:'Impresora fiscal · Caja '+esc(box),w:760,body:el,foot:isLanClient?[{label:'Cerrar'}]:[{label:'Cerrar'},saveFiscalConfig],onOpen:()=>{
+    applyDraft();
+    drawPendingJobs();
+    if(isLanClient){
+      el.querySelectorAll('input,select,button').forEach(node=>{if(!node.closest('#fpPendingJobs'))node.disabled=true;});
+      const node=$('#fpStatus',el);if(node)node.textContent='Terminal cliente: la configuración física y el SDK están en el servidor. Esta pantalla permite conciliar la intención fiscal local y reconstruir la venta.';
+    }else status();
+  }});
 }
 
 
@@ -5581,6 +5835,7 @@ function printerSetupWizardDlg(){
   const current=S.cfg.printMode||'NOT_CONFIGURED';
   const el=h('<div class="form" style="gap:12px"><div class="hint"><b>Bienvenido a SIFER360-LICORERIA.</b> Seleccione cómo desea trabajar. Puede cambiar esta opción posteriormente desde Parámetros Fiscales. La base de datos y toda la configuración se guardan localmente en SQLite.</div>'+
     '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="FISCAL_PRINTER" '+(current==='FISCAL_PRINTER'?'checked':'')+'> <b>Impresora fiscal homologada</b><p class="hint">Vincular una máquina fiscal por marca, modelo, puerto y adaptador oficial. La emisión fiscal solo se habilitará cuando el protocolo del equipo esté validado.</p></label>'+
+    '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="DUAL_PRINTER" '+(current==='DUAL_PRINTER'?'checked':'')+'> <b>Sistema dual</b><p class="hint">En cada cobro podrá elegir entre ticket no fiscal por impresora térmica genérica o factura fiscal por máquina homologada. Configure ambos dispositivos por separado y por caja.</p></label>'+
     '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="INTERNAL_THERMAL" '+(current==='INTERNAL_THERMAL'?'checked':'')+'> <b>Impresora térmica genérica</b><p class="hint">Imprimir tickets de control interno mediante el diálogo de impresión de Windows. Cada documento indicará: “Ticket de Venta - No válido como factura fiscal”.</p></label>'+
     '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="NO_PRINTER" '+(current==='NO_PRINTER'||current==='NOT_CONFIGURED'?'checked':'')+'> <b>Instalar sin impresora</b><p class="hint">El POS funcionará normalmente y guardará las ventas en SQLite. No intentará imprimir ni comunicarse con una máquina fiscal. Podrá configurar una impresora más adelante.</p></label>'+
     '<div class="group"><b>Detección de dispositivos</b><p class="hint">En Windows se pueden enumerar los puertos COM. La identificación fiscal automática requiere una respuesta válida del protocolo de cada fabricante; no se confundirá un puerto abierto con una impresora fiscal reconocida.</p><button class="btn" type="button" id="printerWizardDetect">Buscar dispositivos conectados</button><div class="hint" id="printerWizardStatus" role="status" aria-live="polite">La búsqueda no enviará comandos fiscales de emisión ni de cierre.</div></div></div>');
@@ -5591,12 +5846,13 @@ function printerSetupWizardDlg(){
   });
   openWin({title:'Asistente inicial · Impresoras y tickets',w:620,body:el,foot:[{label:'Configurar y continuar',primary:true,fn:async()=>{
     const choice=$('input[name="printerSetupMode"]:checked',el)?.value;
-    if(!['FISCAL_PRINTER','INTERNAL_THERMAL','NO_PRINTER'].includes(choice)){msg('Seleccione una modalidad para continuar.','bad');return false;}
+    if(!['FISCAL_PRINTER','DUAL_PRINTER','INTERNAL_THERMAL','NO_PRINTER'].includes(choice)){msg('Seleccione una modalidad para continuar.','bad');return false;}
     S.cfg.printMode=choice;S.cfg.printSetupCompleted=true;
-    S.cfg.fiscalTipo=choice==='FISCAL_PRINTER'?'MAQUINA_FISCAL':'NO_FISCAL_INTERNAL';
+    S.cfg.fiscalTipo=(choice==='FISCAL_PRINTER'||choice==='DUAL_PRINTER')?'MAQUINA_FISCAL':'NO_FISCAL_INTERNAL';
     const persisted=await save();if(!persisted||!persisted.ok){msg('SQLite no confirmó la modalidad de impresión. No se aplicaron los cambios.','bad');return false;}
     closeWin();
     if(choice==='FISCAL_PRINTER')setTimeout(()=>fiscalPrinterConfigDlg(),150);
+    else if(choice==='DUAL_PRINTER'){msg('Modo dual activado. Configure la impresora térmica y la impresora fiscal de cada caja desde Parámetros Fiscales antes de cobrar.');setTimeout(()=>thermalPrinterConfigDlg(),150);}
     else msg(choice==='INTERNAL_THERMAL'?'Modo ticket interno activado. Los comprobantes no son facturas fiscales.':'Instalación sin impresora activada. Las ventas se guardarán en SQLite sin impresión automática.');
     return false;
   }}]});
@@ -6081,8 +6337,8 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="fRif">RIF de la Empresa</label><input class="fld" id="fRif" value="'+esc(c.rif)+'"></div>'+
       '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
       '<div class="f"><label for="fTipo">Modalidad de Facturación Fiscal</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option><option value="NO_FISCAL_INTERNAL" '+(c.fiscalTipo==='NO_FISCAL_INTERNAL'?'selected':'')+'>Sin emisión fiscal · Ticket interno no fiscal</option></select></div>'+
-      '<div class="f wide"><label for="fPrintMode">Modo de impresión del POS</label><select class="fld" id="fPrintMode"><option value="FISCAL_PRINTER" '+((c.printMode||'LEGACY')==='FISCAL_PRINTER'?'selected':'')+'>Impresora fiscal homologada</option><option value="INTERNAL_THERMAL" '+(c.printMode==='INTERNAL_THERMAL'?'selected':'')+'>Impresora térmica genérica · Ticket interno</option><option value="NO_PRINTER" '+(c.printMode==='NO_PRINTER'?'selected':'')+'>Sin impresora · Solo registro en SQLite</option><option value="LEGACY" '+((c.printMode||'LEGACY')==='LEGACY'?'selected':'')+'>Conservar configuración anterior</option></select><p class="hint">Los modos de ticket interno no emiten documentos fiscales. Cada comprobante llevará la leyenda “Ticket de Venta - No válido como factura fiscal”.</p><button class="btn" type="button" id="btnPrinterSetupWizard">Abrir asistente de instalación de impresoras</button></div>'+
-      '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button></div>'+
+      '<div class="f wide"><label for="fPrintMode">Modo de impresión del POS</label><select class="fld" id="fPrintMode"><option value="FISCAL_PRINTER" '+((c.printMode||'LEGACY')==='FISCAL_PRINTER'?'selected':'')+'>Impresora fiscal homologada</option><option value="INTERNAL_THERMAL" '+(c.printMode==='INTERNAL_THERMAL'?'selected':'')+'>Impresora térmica genérica · Ticket interno</option><option value="NO_PRINTER" '+(c.printMode==='NO_PRINTER'?'selected':'')+'>Sin impresora · Solo registro en SQLite</option><option value="DUAL_PRINTER" '+(c.printMode==='DUAL_PRINTER'?'selected':'')+'>Sistema dual · Elegir ticket térmico o factura fiscal en cada cobro</option><option value="LEGACY" '+((c.printMode||'LEGACY')==='LEGACY'?'selected':'')+'>Conservar configuración anterior</option></select><p class="hint">Los modos de ticket interno no emiten documentos fiscales. Cada comprobante llevará la leyenda “Ticket de Venta - No válido como factura fiscal”.</p><button class="btn" type="button" id="btnPrinterSetupWizard">Abrir asistente de instalación de impresoras</button></div>'+
+      '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" type="button" id="btnThermalPrinterManager">Configurar impresora térmica no fiscal</button><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button><button class="btn" type="button" id="btnFiscalNetworkQueue">Ver cola fiscal compartida LAN</button></div></div>'+
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
       '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
       '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
@@ -6146,7 +6402,9 @@ function seniatSudebanDlg(initialTab){
   };
 
   el.addEventListener('click',async e=>{
+    if(e.target.id==='btnThermalPrinterManager'){thermalPrinterConfigDlg();return;}
     if(e.target.id==='btnFiscalPrinterManager'){fiscalPrinterConfigDlg();return;}
+    if(e.target.id==='btnFiscalNetworkQueue'){fiscalNetworkQueueDlg();return;}
     const inventoryViewBtn=e.target.closest('[data-inv-view]');
     if(inventoryViewBtn){inventoryBookView=inventoryViewBtn.dataset.invView;renderTabContent();return;}
     const tabBtn=e.target.closest('.tab[data-tab]');
@@ -6462,9 +6720,9 @@ function usersManagementDlg(editUsername){
   const clear=()=>{editing='';$('#uaOriginal',el).value='';$('#uaName',el).value='';$('#uaUsername',el).value='';$('#uaUsername',el).disabled=false;$('#uaCode',el).value='';$('#uaCode',el).placeholder='Obligatorio para usuario nuevo';$('#uaRole',el).value='cajero';$('#uaBox',el).value=boxes.find(b=>b.active!==false)?.id||'';$('#uaMsg',el).textContent='';};
   const draw=()=>{users=window.SIFERAccess.getUsers();$('#uaRows',el).innerHTML=users.map(u=>'<tr><td><b>'+esc(u.name)+'</b><div class="sub">'+esc(u.username)+'</div></td><td>'+esc((roleOptions.find(r=>r[0]===u.role)||[u.role,u.role])[1])+'</td><td>'+esc(u.cashbox||'—')+'</td><td><button class="btn mini2" data-ua-edit="'+esc(u.username)+'">Editar</button> <button class="btn mini2" data-ua-delete="'+esc(u.username)+'" '+(u.username===activeUser().username||users.filter(x=>x.role==='admin').length<=1&&u.role==='admin'?'disabled':'')+'>Desactivar/eliminar</button></td></tr>').join('');};
   const edit=u=>{editing=u.username;$('#uaOriginal',el).value=u.username;$('#uaName',el).value=u.name||'';$('#uaUsername',el).value=u.username;$('#uaUsername',el).disabled=true;$('#uaCode',el).value='';$('#uaCode',el).placeholder='Vacío = conservar contraseña actual';$('#uaRole',el).value=u.role;$('#uaBox',el).value=u.cashbox&&u.cashbox!=='Todas'?u.cashbox:'';$('#uaMsg',el).textContent='Editando '+u.username;};
-  $('#uaSave',el).addEventListener('click',()=>{const name=$('#uaName',el).value.trim(),username=$('#uaUsername',el).value.trim(),code=$('#uaCode',el).value,role=$('#uaRole',el).value,cashbox=$('#uaBox',el).value||'—';if(!name||!username){$('#uaMsg',el).textContent='Nombre y usuario son obligatorios.';return;}users=window.SIFERAccess.getUsers();const idx=users.findIndex(u=>u.username===editing);if(idx<0&&!code){$('#uaMsg',el).textContent='La contraseña/código es obligatorio para crear el usuario.';return;}if(idx<0&&users.some(u=>u.username.toLowerCase()===username.toLowerCase())){$('#uaMsg',el).textContent='Ese nombre de usuario ya existe.';return;}if(role==='cajero'&&cashbox==='—'){$('#uaMsg',el).textContent='Asigne una caja a todo cajero.';return;}if(cashbox!=='—'&&users.some(u=>u.username!==editing&&String(u.cashbox)===String(cashbox))){$('#uaMsg',el).textContent='La caja '+cashbox+' ya está asignada a otro usuario. Cree otra caja o reasigne la existente.';return;}if(idx>=0){users[idx]=Object.assign({},users[idx],{name,role,cashbox});if(code)users[idx].code=code;}else users.push({username,code,name,role,cashbox});if(!window.SIFERAccess.setUsers(users)){$('#uaMsg',el).textContent='No se pudo guardar la lista de usuarios.';return;}if(activeUser().username===username){const sess=Object.assign({},activeUser(),{name,role,cashbox});sessionStorage.setItem('sifer360_session_v1',JSON.stringify(sess));if(role==='admin'&&!cashbox||cashbox==='—'){sessionStorage.removeItem('sifer360_active_box');localStorage.removeItem('sifer360_active_box');}else{const ctx=Object.assign({},JSON.parse(localStorage.getItem('sifer360_active_box')||'{}'),{username,name,role,cashbox});sessionStorage.setItem('sifer360_active_box',JSON.stringify(ctx));localStorage.setItem('sifer360_active_box',JSON.stringify(ctx));}}$('#uaMsg',el).textContent='Usuario guardado correctamente.';clear();draw();showDashboardScreen();});
+  $('#uaSave',el).addEventListener('click',async()=>{const name=$('#uaName',el).value.trim(),username=$('#uaUsername',el).value.trim(),code=$('#uaCode',el).value,role=$('#uaRole',el).value,cashbox=$('#uaBox',el).value||'—';if(!name||!username){$('#uaMsg',el).textContent='Nombre y usuario son obligatorios.';return;}users=window.SIFERAccess.getUsers();const originalUsers=JSON.parse(JSON.stringify(users));const idx=users.findIndex(u=>u.username===editing);if(idx<0&&!code){$('#uaMsg',el).textContent='La contraseña/código es obligatorio para crear el usuario.';return;}if(idx<0&&users.some(u=>u.username.toLowerCase()===username.toLowerCase())){$('#uaMsg',el).textContent='Ese nombre de usuario ya existe.';return;}if(role==='cajero'&&cashbox==='—'){$('#uaMsg',el).textContent='Asigne una caja a todo cajero.';return;}if(cashbox!=='—'&&users.some(u=>u.username!==editing&&String(u.cashbox)===String(cashbox))){$('#uaMsg',el).textContent='La caja '+cashbox+' ya está asignada a otro usuario. Cree otra caja o reasigne la existente.';return;}if(idx>=0){users[idx]=Object.assign({},users[idx],{name,role,cashbox});if(code)users[idx].code=code;}else users.push({username,code,name,role,cashbox});if(!window.SIFERAccess.setUsers(users)){$('#uaMsg',el).textContent='No se pudo guardar la lista de usuarios.';return;}try{if(window.posDesktop&&typeof window.posDesktop.authSaveUser==='function'){const net=await window.posDesktop.networkStatus();if(net&&net.role==='client')throw new Error('La gestión de usuarios debe realizarse desde la PC servidor.');const authSession=JSON.parse(sessionStorage.getItem('sifer360_session_v1')||'null');if(!authSession||!authSession.authToken)throw new Error('La sesión de administrador no está disponible. Vuelva a iniciar sesión.');await window.posDesktop.authSaveUser(authSession.authToken,{username,name,role,cashbox,password:code});}}catch(error){window.SIFERAccess.setUsers(originalUsers);users=originalUsers;draw();$('#uaMsg',el).textContent='SQLite no confirmó el cambio de usuario: '+error.message;return;}if(activeUser().username===username){const sess=Object.assign({},activeUser(),{name,role,cashbox});sessionStorage.setItem('sifer360_session_v1',JSON.stringify(sess));if(role==='admin'&&!cashbox||cashbox==='—'){sessionStorage.removeItem('sifer360_active_box');localStorage.removeItem('sifer360_active_box');}else{const ctx=Object.assign({},JSON.parse(localStorage.getItem('sifer360_active_box')||'{}'),{username,name,role,cashbox});sessionStorage.setItem('sifer360_active_box',JSON.stringify(ctx));localStorage.setItem('sifer360_active_box',JSON.stringify(ctx));}}$('#uaMsg',el).textContent='Usuario guardado correctamente.';clear();draw();showDashboardScreen();});
   $('#uaClear',el).addEventListener('click',clear);
-  el.addEventListener('click',e=>{const eb=e.target.closest('[data-ua-edit]'),db=e.target.closest('[data-ua-delete]');if(eb){const u=window.SIFERAccess.getUsers().find(x=>x.username===eb.dataset.uaEdit);if(u)edit(u);}if(db){const u=db.dataset.uaDelete;if(u===activeUser().username){$('#uaMsg',el).textContent='No puedes eliminar el usuario de la sesión actual.';return;}if(!confirm('¿Eliminar el usuario '+u+'?'))return;users=window.SIFERAccess.getUsers();if(users.filter(x=>x.role==='admin').length===1&&users.find(x=>x.username===u)?.role==='admin'){msg('Debe conservarse al menos un administrador.','bad');return;}window.SIFERAccess.setUsers(users.filter(x=>x.username!==u));draw();}});
+  el.addEventListener('click',async e=>{const eb=e.target.closest('[data-ua-edit]'),db=e.target.closest('[data-ua-delete]');if(eb){const u=window.SIFERAccess.getUsers().find(x=>x.username===eb.dataset.uaEdit);if(u)edit(u);}if(db){const u=db.dataset.uaDelete;if(u===activeUser().username){$('#uaMsg',el).textContent='No puedes eliminar el usuario de la sesión actual.';return;}if(!confirm('¿Eliminar el usuario '+u+'?'))return;users=window.SIFERAccess.getUsers();if(users.filter(x=>x.role==='admin').length===1&&users.find(x=>x.username===u)?.role==='admin'){msg('Debe conservarse al menos un administrador.','bad');return;}const originalUsers=JSON.parse(JSON.stringify(users));const nextUsers=users.filter(x=>x.username!==u);if(!window.SIFERAccess.setUsers(nextUsers))return;try{if(window.posDesktop&&typeof window.posDesktop.authDeleteUser==='function'){const net=await window.posDesktop.networkStatus();if(net&&net.role==='client')throw new Error('La gestión de usuarios debe realizarse desde la PC servidor.');const authSession=JSON.parse(sessionStorage.getItem('sifer360_session_v1')||'null');if(!authSession||!authSession.authToken)throw new Error('La sesión de administrador no está disponible. Vuelva a iniciar sesión.');await window.posDesktop.authDeleteUser(authSession.authToken,u);}}catch(error){window.SIFERAccess.setUsers(originalUsers);$('#uaMsg',el).textContent='SQLite no confirmó la desactivación del usuario: '+error.message;return;}draw();}});
   clear();draw();
   openWin({title:'Gestión de Usuarios',w:820,body:el,foot:[{label:'Cerrar',primary:true}],onOpen:()=>{if(editing){const u=users.find(x=>x.username===editing);if(u)edit(u);}}});
 }
