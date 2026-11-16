@@ -26,8 +26,8 @@ test('el respaldo cifrado rechaza alteraciones o clave incorrecta', () => {
 test('el archivo de tarea programa diariamente a las 20:00 UTC-04:00', () => {
   const xml = createDailyTaskXml('C:\\Program Files\\SIFER360\\SIFER.exe', '--sifer-google-drive-backup', new Date('2026-11-16T15:00:00Z'));
   assert.match(xml, /T20:00:00-04:00/);
-  assert.match(xml, /<DaysInterval>1<\\/DaysInterval>/);
-  assert.match(xml, /<StartWhenAvailable>true<\\/StartWhenAvailable>/);
+  assert.ok(xml.includes('<DaysInterval>1</DaysInterval>'));
+  assert.ok(xml.includes('<StartWhenAvailable>true</StartWhenAvailable>'));
   assert.match(xml, /--sifer-google-drive-backup/);
   assert.match(xml, /InteractiveToken/);
 });
