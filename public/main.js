@@ -4882,9 +4882,9 @@ function applyTicketStyle(pre){
 }
 function ticketText(s){
   const Wd=Math.max(24,Math.min(48,Number(arguments[1])||40)),ln='-'.repeat(Wd),dln='='.repeat(Wd);
-  const ctr=t=>' '.repeat(Math.max(0,Math.floor((Wd-t.length)/2)))+t;
-  const row=(a,b)=>{a=String(a);b=String(b);return a+' '.repeat(Math.max(1,Wd-a.length-b.length))+b;};
-  const cut=(t,n)=>t.length>n?t.slice(0,n-1)+'…':t;
+  const cut=(t,n)=>{t=String(t);return t.length>n?t.slice(0,Math.max(0,n-1))+'…':t;};
+  const ctr=t=>{t=cut(t,Wd);return ' '.repeat(Math.max(0,Math.floor((Wd-t.length)/2)))+t;};
+  const row=(a,b)=>{a=String(a);b=String(b);if(b.length>=Wd)return cut(b,Wd);const left=cut(a,Math.max(0,Wd-b.length-1));return left+' '.repeat(Math.max(1,Wd-left.length-b.length))+b;};
   const L=[];
   const internalTicket=s.documentMode==='INTERNAL_THERMAL'||s.documentMode==='NO_PRINTER'||s.docType==='TICKET-INTERNO';
   if(s.void)L.push(dln,ctr('*** VENTA ANULADA ***'),dln);
