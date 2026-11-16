@@ -12,6 +12,14 @@ const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url)
 const ui = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
 const pos = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
 
+test('el servidor inicializa usuarios LAN heredados en SQLite con contraseñas hash', () => {
+  const access = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
+  assert.match(access, /authInitializeLegacyUsers\(payload\)/);
+  assert.match(access, /code:user\.code/);
+  assert.match(electron, /normalizeLegacyUser/);
+  assert.match(electron, /INSERT INTO app_users\(username,name,role,cashbox,password_hash,active\)/);
+});
+
 test('el ejecutable implementa un servidor LAN con puerto configurable', () => {
   assert.match(electron, /https\.createServer/);
   assert.match(electron, /network:configure-server/);
