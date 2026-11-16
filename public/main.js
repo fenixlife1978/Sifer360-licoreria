@@ -4646,9 +4646,15 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   const internalTicketMode=dualMode?documentChoice==='TICKET':(printMode==='INTERNAL_THERMAL'||printMode==='NO_PRINTER');
   const fiscalMode=dualMode?documentChoice==='FISCAL':(printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL'));
   const fiscalProfile=fiscalMode?configuredFiscalProfile:null;
+  let fiscalNetworkInfo={role:'standalone',running:false};
+  if(fiscalMode&&window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
+    try{fiscalNetworkInfo=await window.posDesktop.networkStatus()||fiscalNetworkInfo;}catch{}
+  }
+  const useSharedFiscal=fiscalMode&&(fiscalNetworkInfo.role==='client'||(fiscalNetworkInfo.role==='server'&&fiscalNetworkInfo.running===true));
+  if(useSharedFiscal&&(!window.posDesktop||typeof window.posDesktop.fiscalNetworkSubmit!=='function'||typeof window.posDesktop.fiscalNetworkStatus!=='function')){msg('La cola fiscal compartida no está disponible en esta versión. No se registró la venta.','bad');return;}
   const unresolvedFiscalJobs=(S.fiscalPrinterJobs||[]).filter(job=>String(job.cashbox)===String(currentCaja())&&['pending','uncertain'].includes(job.status));
   if(fiscalMode&&unresolvedFiscalJobs.length){msg('Esta caja tiene una emisión fiscal pendiente o incierta ('+unresolvedFiscalJobs.map(job=>job.id).join(', ')+'). Consulte la impresora y reconcilie esa operación antes de facturar otra venta.','bad');return;}
-  if(fiscalMode){
+  if(fiscalMode&&!useSharedFiscal){
     if(!fiscalProfile||fiscalProfile.enabled!==true){msg('La modalidad está configurada como Máquina Fiscal, pero esta caja no tiene una impresora fiscal habilitada. Configure el dispositivo antes de cobrar.','bad');return;}
     if(!window.posDesktop||typeof window.posDesktop.fiscalPrinterStatus!=='function'||typeof window.posDesktop.fiscalPrinterEmitInvoice!=='function'){msg('La emisión fiscal requiere la aplicación Electron de escritorio. No se registró la venta.','bad');return;}
     try{
@@ -4778,7 +4784,33 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       displayCurrency:'USD'
     };
     try{
-      const issued=await window.posDesktop.fiscalPrinterEmitInvoice(fiscalProfile,fiscalInvoice);
+      let issued;
+      if(useSharedFiscal){
+        const accepted=await window.posDesktop.fiscalNetworkSubmit({
+          idempotencyKey,cashbox:currentCaja(),cashier:currentCajero(),
+          saleId:sale.accountingSourceId,invoice:fiscalInvoice,
+          station:String(fiscalNetworkInfo.deviceId||'POS')
+        });
+        let remoteJob=accepted&&accepted.job;
+        for(let attempt=0;attempt<120;attempt++){
+          if(!remoteJob||!remoteJob.status)throw new Error('El servidor no devolvió el estado del trabajo fiscal. No se volverá a enviar la factura.');
+          if(['issued','uncertain','rejected'].includes(remoteJob.status))break;
+          await new Promise(resolve=>setTimeout(resolve,500));
+          remoteJob=await window.posDesktop.fiscalNetworkStatus(idempotencyKey);
+        }
+        if(remoteJob.status==='issued'&&remoteJob.result){issued=remoteJob.result;}
+        else if(remoteJob.status==='rejected'){
+          fiscalJob.status='rejected';
+          throw new Error('El servidor rechazó la emisión antes de imprimir: '+(remoteJob.error||'revise la configuración fiscal del servidor.'));
+        }else if(remoteJob.status==='uncertain'){
+          fiscalJob.status='uncertain';
+          throw new Error('La impresora fiscal compartida no confirmó el resultado. Trabajo '+remoteJob.id+'. Consulte el último documento de la máquina; no se reintentará automáticamente.');
+        }else{
+          throw new Error('La solicitud fiscal permanece pendiente en el servidor (trabajo '+(remoteJob.id||'sin ID')+'). No repita el cobro; consulte el estado de la cola fiscal.');
+        }
+      }else{
+        issued=await window.posDesktop.fiscalPrinterEmitInvoice(fiscalProfile,fiscalInvoice);
+      }
       fiscalJob.status='issued';
       fiscalJob.fiscalDocumentNumber=issued.fiscalDocumentNumber;
       fiscalJob.fiscalSerial=issued.fiscalSerial;
@@ -4786,7 +4818,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       fiscalProfile.serial=issued.fiscalSerial;
       sale.fiscal={provider:fiscalProfile.provider,model:fiscalProfile.model,documentNumber:issued.fiscalDocumentNumber,serial:issued.fiscalSerial,authorization:issued.authorization||'',status:'issued'};
     }catch(error){
-      fiscalJob.status='uncertain';
+      if(fiscalJob.status!=='rejected')fiscalJob.status='uncertain';
       fiscalJob.lastError=String(error.message||error).slice(0,1000);
       fiscalJob.lastAttemptAt=Date.now();
       const journalResult=await save();
@@ -5447,7 +5479,7 @@ function fiscalPrinterConfigDlg(){
   let draft=readSavedDraft(box);
   const drafts={[box]:draft};
   const boxOptions=boxes.map(x=>'<option value="'+esc(x.id)+'" '+(String(x.id)===box?'selected':'')+'>'+esc(x.id)+' — '+esc(x.name||('Caja '+x.id))+'</option>').join('');
-  const el=h('<div class="form"><div class="hint"><b>Configuración de impresoras fiscales</b>. Los parámetros se guardan en SQLite y quedan asociados a cada caja. La conexión física se prueba en este equipo.</div><div class="f"><label for="fpCashbox">Caja a configurar</label><select class="fld" id="fpCashbox">'+boxOptions+'</select></div><div class="newgrid">'+
+  const el=h('<div class="form"><div class="hint"><b>Configuración de impresoras fiscales</b>. Los parámetros se guardan en SQLite y quedan asociados a cada caja. La impresora física y el SDK/puerto COM deben configurarse en el equipo servidor que la tiene conectada. Las cajas cliente envían las facturas por la cola fiscal LAN autenticada.</div><div class="f"><label for="fpCashbox">Caja a configurar</label><select class="fld" id="fpCashbox">'+boxOptions+'</select></div><div class="newgrid">'+
     '<div class="f"><label for="fpProvider">Fabricante / ecosistema</label><select class="fld" id="fpProvider">'+Object.keys(providerCatalog).map(k=>'<option value="'+k+'" '+(draft.provider===k?'selected':'')+'>'+providerCatalog[k].label+'</option>').join('')+'</select></div>'+
     '<div class="f"><label for="fpModel">Modelo exacto</label><input class="fld" id="fpModel" maxlength="120" value="'+esc(draft.model)+'" placeholder="Ej. HKA80, MP-4000 TH FI"></div>'+
     '<div class="f"><label for="fpPort">Puerto USB-Serial / COM</label><input class="fld mono" id="fpPort" list="fpPortList" value="'+esc(draft.port)+'" placeholder="COM4"><datalist id="fpPortList"></datalist></div>'+
