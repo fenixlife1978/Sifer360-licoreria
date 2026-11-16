@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('posDesktop', {
   fiscalNetworkSubmit: input => ipcRenderer.invoke('fiscal-network:submit', input),
   fiscalNetworkStatus: key => ipcRenderer.invoke('fiscal-network:status', key),
   fiscalNetworkList: () => ipcRenderer.invoke('fiscal-network:list'),
+  fiscalNetworkReconcile: input => ipcRenderer.invoke('fiscal-network:reconcile', input),
   fiscalPrinterOpenDownload: key => ipcRenderer.invoke('fiscal-printer:open-download', key),
   fiscalPrinterListPorts: () => ipcRenderer.invoke('fiscal-printer:list-ports'),
   fiscalPrinterSelectFile: kind => ipcRenderer.invoke('fiscal-printer:select-file', kind),
