@@ -35,5 +35,11 @@ contextBridge.exposeInMainWorld('posDesktop', {
   fiscalPrinterTestPnp: profile => ipcRenderer.invoke('fiscal-printer:test-pnp', profile),
   fiscalPrinterReadiness: profile => ipcRenderer.invoke('fiscal-printer:readiness', profile),
   fiscalPrinterTestBridge: profile => ipcRenderer.invoke('fiscal-printer:test-bridge', profile),
-  fiscalPrinterEmitInvoice: (profile, invoice) => ipcRenderer.invoke('fiscal-printer:emit-invoice', profile, invoice)
+  fiscalPrinterEmitInvoice: (profile, invoice) => ipcRenderer.invoke('fiscal-printer:emit-invoice', profile, invoice),
+  backupStatus: () => ipcRenderer.invoke('backup:status'),
+  backupConnectGoogle: email => ipcRenderer.invoke('backup:connect-google', email),
+  backupEnableDaily: () => ipcRenderer.invoke('backup:enable-daily'),
+  backupDisableDaily: () => ipcRenderer.invoke('backup:disable-daily'),
+  backupRunNow: () => ipcRenderer.invoke('backup:run-now'),
+  backupExportRecoveryKey: () => ipcRenderer.invoke('backup:export-recovery-key')
 });
