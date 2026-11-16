@@ -16,7 +16,8 @@ La selección del documento se hace en el cobro cuando el modo dual está activo
 3. Instalar en ese servidor el controlador, runtime, SDK y archivos del fabricante compatibles con la arquitectura de Windows/Electron.
 4. Iniciar SIFER360 en modo servidor LAN y completar el emparejamiento seguro de cada terminal cliente usando la clave LAN y la huella TLS del servidor.
 5. En el servidor, abrir Configuración fiscal y asociar el modelo, puerto y archivos SDK a cada caja que vaya a emitir documentos.
-6. En cada terminal, elegir Factura fiscal al cobrar. El cliente envía la factura al servidor por HTTPS con TLS fijado y autenticación Bearer de la sesión LAN.
+6. Los usuarios inician sesión con sus credenciales. En modo cliente, la autenticación se valida contra los usuarios SQLite del servidor y se obtiene una sesión temporal de 12 horas. Las sesiones caducadas o reiniciadas se deben volver a autenticar.
+7. En cada terminal, elegir Factura fiscal al cobrar. El cliente envía la factura por HTTPS con TLS fijado, token de terminal emparejado y sesión de usuario central validada. El servidor verifica que el nombre de cajero coincide con la sesión y que un cajero solo facture en su caja asignada.
 
 No se debe configurar la misma impresora fiscal como dispositivo local en cada terminal cliente. La comunicación física y el SDK se ejecutan exclusivamente en el servidor.
 
@@ -39,6 +40,7 @@ Si se confirma que la factura sí fue emitida, la terminal que conserva la inten
 ## Seguridad y límites
 
 - La API de cola solo está disponible en el servidor LAN, protegida por el control de acceso de red, TLS y el token Bearer de emparejamiento.
+- Cada envío fiscal requiere una sesión de usuario central vigente; los roles contador no pueden emitir. El servidor valida nombre y asignación de caja del cajero.
 - La conciliación requiere volver a introducir credenciales de un usuario administrador; el servidor valida el hash de contraseña.
 - El token Bearer autentica el terminal emparejado; caja, cajero, terminal y venta se registran como metadatos de origen enviados por el POS. La administración local de usuarios y cajas sigue aplicando sus controles en cada terminal.
 - La cola conserva terminal, caja, cajero y venta de origen como datos de auditoría. Los usuarios del servidor se sincronizan con SQLite para volver a validar las credenciales de administrador durante la conciliación.
