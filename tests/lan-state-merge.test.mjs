@@ -78,12 +78,13 @@ test('una venta anulada elimina su CxC asociada al fusionar snapshots LAN sin af
   assert.deepEqual(merged.cxc.map(item => item.id), ['CXC-02-41']);
 });
 
-test('las eliminaciones de borradores y documentos se respetan en el snapshot autoritativo', () => {
+test('las eliminaciones de borradores y documentos se respetan mediante tombstones', () => {
   const merged = mergeStateRecords(
-    { held:[{id:'HELD-1'}], documents:[{id:'DOC-1'}] },
-    { held:[], documents:[] }
+    { held:[{id:'HELD-1',cashbox:'01'}], heldDeletedIds:[], documents:[{id:'DOC-1'}] },
+    { held:[], heldDeletedIds:[{id:'HELD-1',cashbox:'01',ts:200}], documents:[] }
   );
   assert.deepEqual(merged.held, []);
+  assert.deepEqual(merged.heldDeletedIds, [{id:'HELD-1',cashbox:'01',ts:200}]);
   assert.deepEqual(merged.documents, []);
 });
 
