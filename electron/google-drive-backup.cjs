@@ -53,6 +53,10 @@ function encryptBackup(bytes, key, cryptoImpl = crypto) {
   const tag = cipher.getAuthTag();
   return Buffer.concat([Buffer.from('SIFER360GDR1'), iv, tag, encrypted]);
 }
+function buildAccountConfig(current, email, encryptedRefreshToken, folderId) {
+  return { ...current, email, encryptedRefreshToken, folderId, enabled: !!current.enabled };
+}
+
 function decryptBackup(payload, key, cryptoImpl = crypto) {
   const bytes = Buffer.from(payload);
   const magic = Buffer.from('SIFER360GDR1');
@@ -224,12 +228,15 @@ function createGoogleDriveBackup(options = {}) {
       const profile = await request('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: 'Bearer ' + token.access_token } });
       const actualEmail = String(profile.body.email || '').toLowerCase();
       if (actualEmail !== email) throw new Error('La cuenta autorizada (' + actualEmail + ') no coincide con el correo indicado (' + email + ').');
-      const config = readConfig();
-      config.email = actualEmail;
-      config.encryptedRefreshToken = protect(token.refresh_token);
-      getBackupKey(config, true);
-      config.enabled = true;
-      writeConfig(config);
+      // Validate the new account's Drive access and create/find its own folder
+      // before replacing the currently active credentials. A failed switch leaves
+      // the previous account and scheduled task untouched.
+      const currentConfig = readConfig();
+      const candidate = { ...currentConfig, folderId: '' };
+      const folderId = await ensureFolder(token.access_token, candidate, false);
+      const nextConfig = buildAccountConfig(currentConfig, actualEmail, protect(token.refresh_token), folderId);
+      getBackupKey(nextConfig, true);
+      writeConfig(nextConfig);
       return status();
     } finally {
       try { server.close(); } catch {}
@@ -245,18 +252,18 @@ function createGoogleDriveBackup(options = {}) {
     const headers = { Authorization: 'Bearer ' + token, ...(opts.headers || {}) };
     return request(url, { method: opts.method || 'GET', headers, body: opts.body, timeout: opts.timeout || 120000 });
   }
-  async function ensureFolder(token, config) {
+  async function ensureFolder(token, config, persist = true) {
     if (config.folderId) return config.folderId;
     const q = encodeURIComponent("name='SIFER360 Respaldos' and mimeType='application/vnd.google-apps.folder' and trashed=false");
     const found = await driveRequest(DRIVE_API + '/files?q=' + q + '&fields=files(id,name)&spaces=drive', token);
     const existing = found.body.files && found.body.files[0];
-    if (existing) { config.folderId = existing.id; writeConfig(config); return existing.id; }
+    if (existing) { config.folderId = existing.id; if (persist) writeConfig(config); return existing.id; }
     const created = await driveRequest(DRIVE_API + '/files?fields=id', token, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'SIFER360 Respaldos', mimeType: 'application/vnd.google-apps.folder' })
     });
     config.folderId = created.body.id;
-    writeConfig(config);
+    if (persist) writeConfig(config);
     return config.folderId;
   }
   async function uploadBackup(bytes, token, config, filename, metadata) {
@@ -366,4 +373,4 @@ function createGoogleDriveBackup(options = {}) {
   return { status, connect, enable, disable, runBackup, exportRecoveryKey, verifyBackup, getBackupKey, readConfig };
 }
 
-module.exports = { createGoogleDriveBackup, createWindowsBackupScheduler, createDailyTaskXml, encryptBackup, decryptBackup };
+module.exports = { createGoogleDriveBackup, createWindowsBackupScheduler, createDailyTaskXml, encryptBackup, decryptBackup, buildAccountConfig };
