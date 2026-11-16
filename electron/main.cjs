@@ -640,13 +640,13 @@ function registerNetworkIpc() {
   });
   ipcMain.handle('fiscal-network:reconcile', async (_e,input={}) => {
     const username=String(input.adminUsername||'').trim();
-    const admin=one("SELECT username,role,password_hash FROM app_users WHERE username=? COLLATE NOCASE AND active=1",[username]);
-    if(!admin||admin.role!=='admin'||!(await verifyPassword(String(input.password||''),admin.password_hash))) throw new Error('Credenciales de administrador incorrectas.');
     if(networkConfig.role==='client') {
       const key=String(input.idempotencyKey||'');
       const result=await clientApi('/api/fiscal/queue/'+encodeURIComponent(key)+'/reconcile',{method:'POST',body:JSON.stringify({adminUsername:username,password:String(input.password||''),decision:input.decision,details:input.details||{}}),timeoutMs:15000});
       return result.job;
     }
+    const admin=one("SELECT username,role,password_hash FROM app_users WHERE username=? COLLATE NOCASE AND active=1",[username]);
+    if(!admin||admin.role!=='admin'||!(await verifyPassword(String(input.password||''),admin.password_hash))) throw new Error('Credenciales de administrador incorrectas.');
     if(networkConfig.role!=='server'||!networkServer) throw new Error('Inicie el servidor LAN para conciliar la cola fiscal compartida.');
     const job=await ensureFiscalNetworkQueue().reconcile(String(input.idempotencyKey||''),input.decision,input.details||{});
     return publicFiscalNetworkJob(job);
