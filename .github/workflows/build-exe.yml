@@ -34,7 +34,8 @@ jobs:
       - name: Inyectar OAuth Client ID público de Google Drive
         env:
           SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
-        run: node -e "require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId: process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || ''}, null, 2))"
+        run: |
+          node -e "require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({ clientId: process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || '' }, null, 2))"
 
       - name: Ejecutar pruebas de regresión
         run: npm test
