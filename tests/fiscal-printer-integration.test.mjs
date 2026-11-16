@@ -13,7 +13,7 @@ test('la configuración fiscal se guarda por caja dentro del estado SQLite', () 
 });
 
 test('la modalidad máquina fiscal falla de forma segura si no hay adaptador listo', () => {
-  assert.match(main, /const fiscalMode=printMode==='FISCAL_PRINTER'\|\|\(printMode==='LEGACY'&&S\.cfg\.fiscalTipo==='MAQUINA_FISCAL'\)/);
+  assert.match(main, /const fiscalMode=dualMode\\?documentChoice==='FISCAL':\\(printMode==='FISCAL_PRINTER'\\|\\|\\(printMode==='LEGACY'&&S\\.cfg\\.fiscalTipo==='MAQUINA_FISCAL'\\)\\)/);
   assert.match(main, /if\(!diagnostic\.ready\)/);
   assert.match(main, /fiscalPrinterTestBridge\(fiscalProfile\)/);
   assert.match(main, /unresolvedFiscalJobs\.length/);
@@ -57,7 +57,7 @@ test('el asistente ofrece modo fiscal, ticket interno no fiscal y operación sin
 });
 
 test('los tickets internos no reservan número de control fiscal ni generan emisión fiscal', () => {
-  assert.match(main, /const internalTicketMode=printMode==='INTERNAL_THERMAL'\|\|printMode==='NO_PRINTER'/);
+  assert.match(main, /const internalTicketMode=dualMode\\?documentChoice==='TICKET':\\(printMode==='INTERNAL_THERMAL'\\|\\|printMode==='NO_PRINTER'\\)/);
   assert.match(main, /const ctrlNext=internalTicketMode\?null:await nextCajaSequence\('control',currentCaja\(\)\)/);
   assert.match(main, /docType:internalTicketMode\?'TICKET-INTERNO':'01-FACTURA'/);
   assert.match(main, /concept:\(internalTicketMode\?'Ticket de venta':'Factura de venta'\)/);
@@ -92,7 +92,7 @@ test('los tickets internos quedan fuera de libros fiscales y del débito mensual
 
 test('el modo interno deja explícita la modalidad sin emisión fiscal', () => {
   assert.match(main, /value="NO_FISCAL_INTERNAL"/);
-  assert.match(main, /S\.cfg\.fiscalTipo=choice==='FISCAL_PRINTER'\?'MAQUINA_FISCAL':'NO_FISCAL_INTERNAL'/);
+  assert.match(main, /S\\.cfg\\.fiscalTipo=\\(choice==='FISCAL_PRINTER'\\|\\|choice==='DUAL_PRINTER'\\)\\?'MAQUINA_FISCAL':'NO_FISCAL_INTERNAL'/);
   assert.match(main, /if\(S\.cfg\.printMode==='INTERNAL_THERMAL'\|\|S\.cfg\.printMode==='NO_PRINTER'\)S\.cfg\.fiscalTipo='NO_FISCAL_INTERNAL'/);
 });
 
