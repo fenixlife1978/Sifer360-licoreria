@@ -18,6 +18,8 @@ const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migrati
 const { createPasswordHash, verifyPassword, normalizeLegacyUser, publicUser } = require('./auth-credentials.cjs');
 const FiscalPrinterManager = require('./fiscal-printer-manager.cjs');
 const PrinterManager = require('./printer-manager.cjs');
+const { createFiscalNetworkQueue } = require('./fiscal-network-queue.cjs');
+let fiscalNetworkQueue = null;
 const authSessions = new Map();
 const initSqlJs = require('sql.js');
 
@@ -286,6 +288,25 @@ function initializeSchema() {
       last_seq INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_received_operations_device_seq ON network_received_operations(device_id, device_seq);
+    CREATE TABLE IF NOT EXISTS fiscal_network_jobs (
+      id TEXT PRIMARY KEY,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      source_device_id TEXT NOT NULL,
+      source_cashbox TEXT NOT NULL,
+      source_cashier TEXT NOT NULL,
+      source_station TEXT NOT NULL,
+      sale_id TEXT NOT NULL,
+      invoice_json TEXT NOT NULL,
+      invoice_hash TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending','processing','issued','rejected','uncertain')),
+      created_at TEXT NOT NULL,
+      started_at TEXT,
+      finished_at TEXT,
+      result_json TEXT,
+      error TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_fiscal_network_jobs_status_created
+      ON fiscal_network_jobs(status, created_at);
   `);
   persistDb();
 }
@@ -310,9 +331,65 @@ async function setMode(mode) {
   databaseMode = 'sqlite';
   return { mode: 'sqlite', databasePath: userDbPath() };
 }
-async function startLanServer(requestedPort) {
+function createFiscalNetworkQueueStore() {
+  return {
+    getByKey: key => one('SELECT * FROM fiscal_network_jobs WHERE idempotency_key=?', [String(key)]),
+    getById: id => one('SELECT * FROM fiscal_network_jobs WHERE id=?', [String(id)]),
+    insertPending(job) {
+      const id = crypto.randomUUID();
+      persistMutation(() => run(
+        'INSERT INTO fiscal_network_jobs(id,idempotency_key,source_device_id,source_cashbox,source_cashier,source_station,sale_id,invoice_json,invoice_hash,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+        [id,job.idempotencyKey,job.sourceDeviceId,job.cashbox,job.cashier,job.station,job.saleId,job.invoiceJson,job.invoiceHash,'pending',job.createdAt]
+      ));
+      return one('SELECT * FROM fiscal_network_jobs WHERE id=?', [id]);
+    },
+    nextPending: () => one("SELECT * FROM fiscal_network_jobs WHERE status='pending' ORDER BY created_at,id LIMIT 1"),
+    markProcessing(id, at) {
+      persistMutation(() => run("UPDATE fiscal_network_jobs SET status='processing',started_at=?,error='' WHERE id=? AND status='pending'", [at,id]));
+    },
+    markIssued(id, result, at) {
+      persistMutation(() => run("UPDATE fiscal_network_jobs SET status='issued',result_json=?,finished_at=?,error='' WHERE id=? AND status='processing'", [JSON.stringify(result),at,id]));
+    },
+    markUncertain(id, error, at) {
+      persistMutation(() => run("UPDATE fiscal_network_jobs SET status='uncertain',error=?,finished_at=? WHERE id=? AND status='processing'", [String(error).slice(0,1000),at,id]));
+    },
+    markRejected(id, error, at) {
+      persistMutation(() => run("UPDATE fiscal_network_jobs SET status='rejected',error=?,finished_at=? WHERE id=? AND status='processing'", [String(error).slice(0,1000),at,id]));
+    },
+    recoverProcessing(at) {
+      const rows=all("SELECT id FROM fiscal_network_jobs WHERE status='processing'");
+      if(rows.length) persistMutation(() => run("UPDATE fiscal_network_jobs SET status='uncertain',error='El servidor se reinició durante el envío; requiere conciliación manual.',finished_at=? WHERE status='processing'", [at]));
+      return rows;
+    },
+    list(limit) { return all('SELECT id,idempotency_key,source_device_id,source_cashbox,source_cashier,source_station,sale_id,status,created_at,started_at,finished_at,result_json,error FROM fiscal_network_jobs ORDER BY created_at DESC LIMIT ?', [limit]); }
+  };
+}
+function ensureFiscalNetworkQueue() {
+  if (fiscalNetworkQueue) return fiscalNetworkQueue;
+  fiscalNetworkQueue = createFiscalNetworkQueue({
+    store: createFiscalNetworkQueueStore(),
+    resolveProfile: async cashbox => {
+      const row=one('SELECT payload FROM app_state WHERE id=1');
+      const state=row?JSON.parse(row.payload||'{}'):{};
+      const profile=state&&state.cfg&&state.cfg.fiscalPrinters&&state.cfg.fiscalPrinters[String(cashbox)];
+      return profile?{...profile}:null;
+    },
+    emitInvoice: (profile,invoice) => FiscalPrinterManager.emitInvoice(profile,invoice)
+  });
+  return fiscalNetworkQueue;
+}
+function publicFiscalNetworkJob(job) {
+  if(!job)return null;
+  let result=null;
+  try{result=job.result_json?JSON.parse(job.result_json):null;}catch{}
+  return {id:job.id,idempotencyKey:job.idempotency_key,status:job.status,cashbox:job.source_cashbox,cashier:job.source_cashier,station:job.source_station,sourceDeviceId:job.source_device_id,saleId:job.sale_id,createdAt:job.created_at,startedAt:job.started_at,finishedAt:job.finished_at,result,error:job.error||''};
+}
+async function startLanServer(requestedPort) {async function startLanServer(requestedPort) {
   if (networkConfig.role === 'client' || networkConfig.serverPromotionBlocked) throw new Error('Este equipo ya fue cliente LAN y su SQLite local no se considera autoridad. No puede convertirse en servidor automáticamente; restaure o migre la base central mediante un procedimiento explícito antes de promoverlo.');
   if (!db) await initializeDatabase();
+  const fiscalQueue = ensureFiscalNetworkQueue();
+  const fiscalRecovery = await fiscalQueue.recover();
+  if (!fiscalRecovery.blocked) fiscalQueue.pump().catch(() => {});
   const port = normalizeLanPort(requestedPort || networkConfig.port || 38760);
   if (networkServer) {
     const previousServer = networkServer;
@@ -331,6 +408,29 @@ async function startLanServer(requestedPort) {
     if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Headers': 'content-type,authorization', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); return res.end(); }
     if (!hasValidBearerToken(req.headers.authorization, networkConfig.token)) return sendJson(res, 401, { error: 'No autorizado' });
     if (url.pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { ok: true, deviceId: networkConfig.deviceId, role: 'server', protocol: 1 });
+    if (url.pathname === '/api/fiscal/queue' && req.method === 'POST') {
+      try {
+        const body=await readBody(req);
+        const cashbox=String(body.cashbox||'').trim();
+        const cashier=String(body.cashier||'').trim();
+        const station=String(body.station||'').trim();
+        const sourceDeviceId=String(body.sourceDeviceId||'').trim();
+        if(!cashbox||!cashier||!station||!sourceDeviceId||!body.saleId||!body.idempotencyKey||!body.invoice) return sendJson(res,400,{error:'Faltan datos de origen o factura para la cola fiscal.'});
+        if(!/^[A-Za-z0-9._:-]{8,180}$/.test(String(body.idempotencyKey))||! /^[A-Za-z0-9._:-]{8,80}$/.test(sourceDeviceId)) return sendJson(res,400,{error:'Identificador de trabajo o dispositivo inválido.'});
+        const user=one('SELECT username,name,role,cashbox FROM app_users WHERE active=1 AND (username=? COLLATE NOCASE OR name=? COLLATE NOCASE)',[cashier,cashier]);
+        if(!user) return sendJson(res,403,{error:'El cajero indicado no existe o está inactivo en el servidor.'});
+        if(user.role==='cajero'&&String(user.cashbox)!==cashbox) return sendJson(res,403,{error:'El cajero no tiene asignada la caja de origen indicada.'});
+        if(body.invoice.idempotencyKey!==body.idempotencyKey) return sendJson(res,400,{error:'La clave idempotente de la factura no coincide.'});
+        const queue=ensureFiscalNetworkQueue();
+        const accepted=queue.enqueue({idempotencyKey:body.idempotencyKey,cashbox,cashier,station,sourceDeviceId,saleId:body.saleId,invoice:body.invoice});
+        return sendJson(res,202,{ok:true,duplicate:accepted.duplicate,job:publicFiscalNetworkJob(accepted.job)});
+      } catch(error) { return sendJson(res,400,{error:error.message||'No se pudo registrar el trabajo fiscal.'}); }
+    }
+    if (url.pathname.startsWith('/api/fiscal/queue/') && req.method === 'GET') {
+      const key=decodeURIComponent(url.pathname.slice('/api/fiscal/queue/'.length));
+      const job=ensureFiscalNetworkQueue().get(key);
+      return sendJson(res,job?200:404,job?{ok:true,job:publicFiscalNetworkJob(job)}:{error:'Trabajo fiscal no encontrado.'});
+    }
     if (url.pathname === '/api/documents' && req.method === 'GET') {
       const type = url.searchParams.get('transactionType');
       const transactionId = url.searchParams.get('transactionId');
@@ -499,6 +599,27 @@ async function flushClientOutbox() {
   return { pending: clientOutbox.status().pending, accepted, conflicts };
 }
 function registerNetworkIpc() {
+  ipcMain.handle('fiscal-network:submit', async (_e,input={}) => {
+    const payload={...input,sourceDeviceId:networkConfig.deviceId,station:String(input.station||os.hostname())};
+    if(networkConfig.role==='client') return clientApi('/api/fiscal/queue',{method:'POST',body:JSON.stringify(payload),timeoutMs:15000});
+    if(networkConfig.role==='server'&&networkServer){
+      const accepted=ensureFiscalNetworkQueue().enqueue(payload);
+      return {ok:true,duplicate:accepted.duplicate,job:publicFiscalNetworkJob(accepted.job)};
+    }
+    throw new Error('La impresora fiscal compartida requiere que este equipo esté conectado como cliente o servidor LAN activo.');
+  });
+  ipcMain.handle('fiscal-network:status', async (_e,key) => {
+    if(networkConfig.role==='client') {
+      const result=await clientApi('/api/fiscal/queue/'+encodeURIComponent(String(key)),{timeoutMs:10000});
+      return result.job;
+    }
+    const queue=ensureFiscalNetworkQueue();
+    return publicFiscalNetworkJob(queue.get(String(key)));
+  });
+  ipcMain.handle('fiscal-network:list', async () => {
+    if(networkConfig.role==='client') throw new Error('La consulta general de la cola fiscal se realiza en el equipo servidor.');
+    return ensureFiscalNetworkQueue().list(200).map(publicFiscalNetworkJob);
+  });
   ipcMain.handle('network:status', () => ({ ...networkConfig, running: !!networkServer, addresses: localAddresses() }));
   ipcMain.handle('network:flush-outbox', async () => {
     if (networkConfig.role !== 'client') return { pending: 0, accepted: [], conflicts: [] };
