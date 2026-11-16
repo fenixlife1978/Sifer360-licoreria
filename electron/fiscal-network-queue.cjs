@@ -106,7 +106,8 @@ function createFiscalNetworkQueue({ store, emitInvoice, resolveProfile, now = ()
     return store.list(Math.max(1, Math.min(500, Number(limit) || 100)));
   }
   function isBlocked() { return halted; }
+  function isBusy() { return pumping; }
   function close() { closed = true; }
-  return { recover, enqueue, pump, get, list, reconcile, isBlocked, close };
+  return { recover, enqueue, pump, get, list, reconcile, isBlocked, isBusy, close };
 }
 module.exports = { createFiscalNetworkQueue, stableHash };
