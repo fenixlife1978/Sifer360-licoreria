@@ -18,7 +18,7 @@ test('genera flujo ESC/POS con inicialización, texto y corte', () => {
   assert.match(payload.toString('ascii'), /Total: 10,00/);
 });
 test('limita ancho y elimina caracteres no representables sin romper el flujo', () => {
-  const payload = manager.buildEscPosPayload('A'.repeat(80) + '\nCafé');
+  const payload = manager.buildEscPosPayload('A'.repeat(80) + '\nCafé',{columns:48});
   assert.match(payload.toString('ascii'), /A{48}/);
   assert.match(payload.toString('ascii'), /Cafe/);
 });
