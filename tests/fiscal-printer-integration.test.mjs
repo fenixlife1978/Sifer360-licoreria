@@ -1,3 +1,10 @@
+test('LAN fiscal submissions require a central authenticated user session and assigned cashbox', () => {
+  assert.match(main, /url\.pathname === '\/api\/auth\/login'/);
+  assert.match(main, /url\.pathname === '\/api\/auth\/session'/);
+  assert.match(main, /userSessionToken/);
+  assert.match(main, /El cajero de origen no coincide con el usuario autenticado/);
+  assert.match(main, /no está asignado a la caja indicada/);
+});
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
