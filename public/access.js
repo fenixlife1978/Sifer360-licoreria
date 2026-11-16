@@ -185,7 +185,6 @@ function renderLogin(error=''){
       try{serverAuth=await window.posDesktop.authLogin({username,password:code});}
       catch(error){$('#sa-error').textContent='Usuario o contraseña incorrectos: '+error.message;$('#sa-code').focus();return;}
       if(!serverAuth||!serverAuth.token||!serverAuth.user){$('#sa-error').textContent='El servidor no emitió una sesión válida. No se inició el POS.';return;}
-      const local=users.find(x=>x.username.toLowerCase()===String(serverAuth.user.username).toLowerCase());
       u={...serverAuth.user,code};
       users=users.filter(x=>x.username.toLowerCase()!==String(u.username).toLowerCase());
       users.push(u);
