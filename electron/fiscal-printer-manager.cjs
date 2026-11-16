@@ -121,6 +121,15 @@ function runBridge(profile,action,payload={},options={}){
 }
 function mapInvoiceToPnp(invoice) {
   const customer = invoice.customer || {};
+  const origin = invoice.origin || {};
+  const cashbox = String(origin.cashbox || invoice.cashbox || '').replace(/\\s+/g,' ').trim();
+  const cashier = String(origin.cashier || invoice.cashier || '').replace(/\\s+/g,' ').trim();
+  const terminal = String(origin.terminal || '').replace(/\\s+/g,' ').trim();
+  const footerLines = [
+    cashbox ? 'CAJA: '+cashbox : '',
+    cashier ? 'CAJERO: '+cashier : '',
+    terminal ? 'TERMINAL: '+terminal : ''
+  ].filter(Boolean).map(value=>value.slice(0,40));
   const lines = Array.isArray(invoice.lines) ? invoice.lines : [];
   if (!lines.length) throw new Error('La factura no contiene renglones para la impresora PNP.');
   const items = lines.map((line,index) => {
@@ -170,7 +179,7 @@ function mapInvoiceToPnp(invoice) {
     idempotencyKey:invoice.idempotencyKey,
     customerName:customer.name || customer.razonSocial || 'Consumidor final',
     customerRif:customer.rif || '',
-    items, expectedBase, expectedTotal,
+    items, expectedBase, expectedTotal, footerLines,
     closeMode:igtfVes > 0.01 ? 'U' : 'T',
     foreignCurrencyAmount:foreignCurrencyAmount.toFixed(2)
   };
