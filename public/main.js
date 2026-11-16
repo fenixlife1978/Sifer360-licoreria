@@ -7419,11 +7419,16 @@ function restoreWorkspaceAfterReload(){
 window.addEventListener('sifer:authenticated',event=>{
   if(event.detail&&event.detail.role==='admin'&&S&&S.cfg&&S.cfg.printSetupCompleted!==true&&S.cfg.printMode==='NOT_CONFIGURED')setTimeout(()=>printerSetupWizardDlg(),900);
 });
-prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la base de datos:',e)).finally(async()=>{
-  if(window.__POS_BOOT_ERROR){
-    document.body.innerHTML='<main style="max-width:720px;margin:10vh auto;padding:32px;font:16px Segoe UI,Arial,sans-serif;color:#18324b"><h1>SIFER360 Licorería requiere la aplicación de escritorio</h1><p>'+String(window.__POS_BOOT_ERROR).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))+'</p><p>Los datos operativos se guardan exclusivamente en SQLite local. Abra el programa instalado; no utilice la versión del navegador.</p></main>';
-    return;
-  }
+function showStartupFailure(error){
+  const detail=error&&error.stack?error.stack:(error&&error.message?error.message:String(error));
+  console.error('SIFER360: error fatal al iniciar la interfaz',error);
+  const safe=String(detail).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  document.body.innerHTML='<main style="box-sizing:border-box;max-width:900px;margin:6vh auto;padding:32px;font:16px Segoe UI,Arial,sans-serif;color:#18324b;background:#fff;border:1px solid #c9d2d7;border-radius:10px"><h1 style="color:#a3261c">SIFER360 Licorería no pudo iniciar</h1><p>La aplicación abrió, pero ocurrió un error al preparar la interfaz. No se han habilitado operaciones ni se ha usado almacenamiento alternativo.</p><h2>Detalle técnico</h2><pre style="white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f5f6;padding:16px;border-radius:6px">'+safe+'</pre><p>Conserve esta información para soporte. Sus datos SQLite no se borran por este mensaje.</p></main>';
+}
+window.addEventListener('error',event=>console.error('SIFER360 renderer error:',event.error||event.message));
+window.addEventListener('unhandledrejection',event=>console.error('SIFER360 unhandled rejection:',event.reason));
+prepareDatabaseBeforeStartup().then(async()=>{
+  if(window.__POS_BOOT_ERROR)throw new Error('No se pudo cargar la base SQLite: '+window.__POS_BOOT_ERROR);
   init();
   await migrateLegacyOpenings();
   buildChrome();
@@ -7435,7 +7440,6 @@ prepareDatabaseBeforeStartup().catch(e=>console.error('No se pudo inicializar la
   window.__SIFER_READY = true;
   try{window.dispatchEvent(new Event('sifer:ready'));}catch(e){}
   restoreWorkspaceAfterReload();
-  if(window.__POS_BOOT_ERROR)msg('No se pudo cargar la base de datos. No se utilizará una copia local alternativa ni se confirmarán operaciones: '+window.__POS_BOOT_ERROR,'bad');
-  else msg(saved?'Base de datos SQLite de SIFER 360 Licorería cargada con éxito. Sistema listo para operar.':'Base de datos SQLite de SIFER 360 Licorería inicializada. Listo para operar.');
-});
+  msg(saved?'Base de datos SQLite de SIFER 360 Licorería cargada con éxito. Sistema listo para operar.':'Base de datos SQLite de SIFER 360 Licorería inicializada. Listo para operar.');
+}).catch(showStartupFailure);
 })();
