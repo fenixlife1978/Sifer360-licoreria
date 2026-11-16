@@ -56,6 +56,20 @@ test('al reiniciar convierte processing en uncertain y bloquea reenvíos', async
   assert.throws(()=>queue.enqueue(input('SIFER360-NEW00001')),/bloqueada/);
 });
 
+test('la conciliación manual de emisión verificada desbloquea la cola sin volver a imprimirla', async () => {
+  const store=makeStore(); let calls=0;
+  const queue=createFiscalNetworkQueue({store,resolveProfile:async()=>({enabled:true}),emitInvoice:async()=>{calls++;throw new Error('timeout');}});
+  queue.enqueue(input()); await new Promise(r=>setTimeout(r,25));
+  const result=await queue.reconcile('job-1','issued',{fiscalDocumentNumber:'F-99',fiscalSerial:'SER-01'});
+  assert.equal(result.status,'issued'); assert.equal(calls,1); assert.equal(queue.isBlocked(),false);
+});
+test('la conciliación que confirma no emitida marca rechazado y libera la cola para otra operación', async () => {
+  const store=makeStore(); let calls=0;
+  const queue=createFiscalNetworkQueue({store,resolveProfile:async()=>({enabled:true}),emitInvoice:async()=>{calls++;throw new Error('timeout');}});
+  queue.enqueue(input()); await new Promise(r=>setTimeout(r,25));
+  const result=await queue.reconcile('job-1','not-issued',{note:'Verificado en el contador fiscal'});
+  assert.equal(result.status,'rejected'); assert.equal(calls,1); assert.equal(queue.isBlocked(),false);
+});
 test('rechaza una misma clave idempotente con factura distinta', () => {
   const store=makeStore(); const queue=createFiscalNetworkQueue({store,resolveProfile:async()=>({enabled:true}),emitInvoice:async()=>({})});
   queue.enqueue(input());
