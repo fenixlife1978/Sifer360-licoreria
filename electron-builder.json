@@ -27,7 +27,7 @@
     "icon": "public/favicon.ico"
   },
   "portable": {
-    "artifactName": "sifer360-licoreria-portable.exe"
+    "artifactName": "SIFER360-1.0.4-Portable.exe"
   },
   "nsis": {
     "oneClick": false,
@@ -37,6 +37,7 @@
     "shortcutName": "SIFER360 Licorería",
     "installerIcon": "public/favicon.ico",
     "uninstallerIcon": "public/favicon.ico",
-    "installerHeaderIcon": "public/favicon.ico"
+    "installerHeaderIcon": "public/favicon.ico",
+    "artifactName": "SIFER360-1.0.4-Instalador.exe"
   }
 }
