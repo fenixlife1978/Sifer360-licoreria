@@ -448,6 +448,7 @@ async function startLanServer(requestedPort) {
         const userSession=authSessions.get(String(body.userSessionToken||''));
         if(!userSession||userSession.expiresAt<=Date.now())return sendJson(res,401,{error:'La sesión del cajero expiró. Inicie sesión nuevamente.'});
         const authenticatedUser=userSession.user;
+        if(!['admin','cajero'].includes(authenticatedUser.role))return sendJson(res,403,{error:'El rol de usuario no puede emitir documentos fiscales desde el POS.'});
         const cashbox=String(body.cashbox||'').trim();
         const cashier=String(body.cashier||'').trim();
         const station=String(body.station||'').trim();
@@ -660,6 +661,7 @@ function registerNetworkIpc() {
     if(networkConfig.role==='server'){
       const session=authSessions.get(String(input.userSessionToken||''));
       if(!session||session.expiresAt<=Date.now())throw new Error('La sesión del cajero expiró. Inicie sesión nuevamente.');
+      if(!['admin','cajero'].includes(session.user.role))throw new Error('El rol de usuario no puede emitir documentos fiscales desde el POS.');
       if(String(input.cashier)!==String(session.user.name))throw new Error('El cajero no coincide con la sesión autenticada.');
       if(session.user.role==='cajero'&&String(input.cashbox)!==String(session.user.cashbox))throw new Error('El usuario no está asignado a la caja indicada.');
     }
