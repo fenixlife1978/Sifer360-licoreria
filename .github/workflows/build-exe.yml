@@ -31,13 +31,18 @@ jobs:
       - name: Instalar dependencias
         run: npm install --legacy-peer-deps
 
+      - name: Inyectar OAuth Client ID público de Google Drive
+        env:
+          SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
+        run: node -e "require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId: process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || ''}, null, 2))"
+
       - name: Ejecutar pruebas de regresión
         run: npm test
 
       - name: Compilar aplicación web (Vite)
         run: npm run build
 
-      - name: Construir ejecutable portátil de Windows (.exe)
+      - name: Construir instalador y portable de Windows (.exe)
         run: npx --yes electron-builder --win --config electron-builder.json --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
