@@ -4937,6 +4937,12 @@ function showTicket(s){
   openWin({title:(noPrinter?'Comprobante interno — Nº ':'Ticket de Venta — Nº ')+pad(s.no),w:500,body:el,foot:[
     {label:noPrinter?'Sin impresora configurada':'Imprimir 80mm',left:true,fn:()=>{
       if(noPrinter){msg('Esta instalación está configurada sin impresora. El comprobante queda guardado en SQLite y puede imprimirse después de configurar un dispositivo.');return false;}
+      const thermal=S.cfg.thermalPrinters&&S.cfg.thermalPrinters[s.cashbox];
+      if(thermal&&thermal.enabled===true&&thermal.printerName&&window.posDesktop&&window.posDesktop.printerPrintTicket){
+        try{const result=await window.posDesktop.printerPrintTicket(thermal.printerName,ticketText(s),{columns:thermal.columns||42});msg(result.message+' · '+thermal.printerName);}
+        catch(error){msg('No se pudo confirmar el envío del ticket: '+error.message,'bad');}
+        return false;
+      }
       document.body.classList.add('printing-ticket-80mm');
       window.print();
       setTimeout(()=>document.body.classList.remove('printing-ticket-80mm'),500);
