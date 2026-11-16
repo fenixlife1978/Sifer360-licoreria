@@ -216,7 +216,8 @@ function createGoogleDriveBackup(options = {}) {
           resolve(code);
         });
       });
-      callback.catch(() => {});\n      await shell.openExternal(authUrl.toString());
+      callback.catch(() => {});
+      await shell.openExternal(authUrl.toString());
       const code = await callback;
       const token = await exchangeToken({ code, client_id: clientId, redirect_uri: redirectUri, grant_type: 'authorization_code', code_verifier: verifier });
       if (!token.refresh_token) throw new Error('Google no entregó un token de renovación. Revoca el acceso de SIFER360 en tu cuenta Google y vuelve a conectar.');
