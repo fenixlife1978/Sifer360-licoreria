@@ -31,11 +31,11 @@ jobs:
       - name: Instalar dependencias
         run: npm install --legacy-peer-deps
 
-      - name: Inyectar OAuth Client ID público de Google Drive
+      - name: Validar e inyectar OAuth Client ID público de Google Drive
         env:
           SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
         run: |
-          node -e "require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({ clientId: process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || '' }, null, 2))"
+          node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(!id || !id.endsWith('.apps.googleusercontent.com')) throw new Error('Falta SIFER360_GOOGLE_OAUTH_CLIENT_ID o no tiene formato de Client ID de Google.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId:id}, null, 2)); console.log('Google OAuth Client ID configurado (valor oculto).')"
 
       - name: Ejecutar pruebas de regresión
         run: npm test
