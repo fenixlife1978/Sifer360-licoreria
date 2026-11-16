@@ -4815,14 +4815,14 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       fiscalJob.fiscalDocumentNumber=issued.fiscalDocumentNumber;
       fiscalJob.fiscalSerial=issued.fiscalSerial;
       fiscalJob.issuedAt=Date.now();
-      fiscalProfile.serial=issued.fiscalSerial;
-      sale.fiscal={provider:fiscalProfile.provider,model:fiscalProfile.model,documentNumber:issued.fiscalDocumentNumber,serial:issued.fiscalSerial,authorization:issued.authorization||'',status:'issued'};
+      if(fiscalProfile)fiscalProfile.serial=issued.fiscalSerial;
+      sale.fiscal={provider:(fiscalProfile&&fiscalProfile.provider)||issued.provider||'shared',model:(fiscalProfile&&fiscalProfile.model)||issued.model||'Impresora fiscal compartida',documentNumber:issued.fiscalDocumentNumber,serial:issued.fiscalSerial,authorization:issued.authorization||'',status:'issued'};
     }catch(error){
       if(fiscalJob.status!=='rejected')fiscalJob.status='uncertain';
       fiscalJob.lastError=String(error.message||error).slice(0,1000);
       fiscalJob.lastAttemptAt=Date.now();
       const journalResult=await save();
-      msg('La impresora no confirmó el resultado de la emisión. Consulte el último documento en la máquina antes de reintentar. La venta quedó sin confirmar en el POS.'+(journalResult&&journalResult.ok?' Incidencia guardada en SQLite.':' No se pudo actualizar la incidencia; permanece la intención previa en SQLite.'),'bad');
+      msg((fiscalJob.status==='rejected'?'El servidor rechazó la solicitud fiscal antes de emitirla. ':'La impresora no confirmó el resultado de la emisión. Consulte el último documento en la máquina antes de reintentar. ')+(fiscalJob.status==='rejected'?'La venta no fue registrada.':'La venta quedó sin confirmar en el POS.')+(journalResult&&journalResult.ok?' Incidencia guardada en SQLite.':' No se pudo actualizar la incidencia; permanece la intención previa en SQLite.'),'bad');
       return;
     }
   }
