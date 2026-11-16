@@ -800,6 +800,7 @@ function registerNetworkIpc() {
   ipcMain.handle('network:discover', () => discoverLanServers());
   ipcMain.handle('network:configure-server', (_e, opts = {}) => startLanServer(opts.port));
   ipcMain.handle('network:stop-server', async () => {
+    if (fiscalNetworkQueue && fiscalNetworkQueue.isBusy()) throw new Error('No se puede detener el servidor LAN mientras la impresora fiscal está ejecutando un comando. Espere la confirmación o consulte la máquina.');
     if (networkServer) await new Promise(resolve => networkServer.close(resolve));
     networkServer = null;
     stopDiscoveryServer();
