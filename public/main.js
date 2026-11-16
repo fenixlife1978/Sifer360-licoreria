@@ -4847,8 +4847,8 @@ function applyTicketStyle(pre){
   pre.style.fontWeight=bold?'700':'500';
   pre.style.lineHeight=fId==='sans'?'1.32':'1.36';
 }
-function ticketText(s,columns){
-  const Wd=Math.max(24,Math.min(48,Number(columns)||40)),ln='-'.repeat(Wd),dln='='.repeat(Wd);
+function ticketText(s){
+  const Wd=Math.max(24,Math.min(48,Number(arguments[1])||40)),ln='-'.repeat(Wd),dln='='.repeat(Wd);
   const ctr=t=>' '.repeat(Math.max(0,Math.floor((Wd-t.length)/2)))+t;
   const row=(a,b)=>{a=String(a);b=String(b);return a+' '.repeat(Math.max(1,Wd-a.length-b.length))+b;};
   const cut=(t,n)=>t.length>n?t.slice(0,n-1)+'…':t;
@@ -5640,7 +5640,7 @@ function printerSetupWizardDlg(){
   const el=h('<div class="form" style="gap:12px"><div class="hint"><b>Bienvenido a SIFER360-LICORERIA.</b> Seleccione cómo desea trabajar. Puede cambiar esta opción posteriormente desde Parámetros Fiscales. La base de datos y toda la configuración se guardan localmente en SQLite.</div>'+
     '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="FISCAL_PRINTER" '+(current==='FISCAL_PRINTER'?'checked':'')+'> <b>Impresora fiscal homologada</b><p class="hint">Vincular una máquina fiscal por marca, modelo, puerto y adaptador oficial. La emisión fiscal solo se habilitará cuando el protocolo del equipo esté validado.</p></label>'+
     '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="DUAL_PRINTER" '+(current==='DUAL_PRINTER'?'checked':'')+'> <b>Sistema dual</b><p class="hint">En cada cobro podrá elegir entre ticket no fiscal por impresora térmica genérica o factura fiscal por máquina homologada. Configure ambos dispositivos por separado y por caja.</p></label>'+
-    <label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="INTERNAL_THERMAL" '+(current==='INTERNAL_THERMAL'?'checked':'')+'> <b>Impresora térmica genérica</b><p class="hint">Imprimir tickets de control interno mediante el diálogo de impresión de Windows. Cada documento indicará: “Ticket de Venta - No válido como factura fiscal”.</p></label>'+
+    '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="INTERNAL_THERMAL" '+(current==='INTERNAL_THERMAL'?'checked':'')+'> <b>Impresora térmica genérica</b><p class="hint">Imprimir tickets de control interno mediante el diálogo de impresión de Windows. Cada documento indicará: “Ticket de Venta - No válido como factura fiscal”.</p></label>'+
     '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="NO_PRINTER" '+(current==='NO_PRINTER'||current==='NOT_CONFIGURED'?'checked':'')+'> <b>Instalar sin impresora</b><p class="hint">El POS funcionará normalmente y guardará las ventas en SQLite. No intentará imprimir ni comunicarse con una máquina fiscal. Podrá configurar una impresora más adelante.</p></label>'+
     '<div class="group"><b>Detección de dispositivos</b><p class="hint">En Windows se pueden enumerar los puertos COM. La identificación fiscal automática requiere una respuesta válida del protocolo de cada fabricante; no se confundirá un puerto abierto con una impresora fiscal reconocida.</p><button class="btn" type="button" id="printerWizardDetect">Buscar dispositivos conectados</button><div class="hint" id="printerWizardStatus" role="status" aria-live="polite">La búsqueda no enviará comandos fiscales de emisión ni de cierre.</div></div></div>');
   $('#printerWizardDetect',el).addEventListener('click',async()=>{
