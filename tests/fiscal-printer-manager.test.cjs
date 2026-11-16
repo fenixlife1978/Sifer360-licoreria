@@ -234,3 +234,12 @@ test('el cierre PNP con IGTF usa solo pagos efectivos en efectivo USD/Zelle y va
 test('bloquea la emisión PNP cuando el IGTF del POS no coincide con el pago en divisas',async()=>{
  await assert.rejects(()=>manager.emitInvoice({provider:'pnp',port:'COM4',enabled:true},{idempotencyKey:'sale-igtf-bad',customer:{name:'Cliente'},exchangeRate:10,lines:[{quantity:1,unitPriceVes:100,netVes:100,taxRate:0}],totals:{taxableBaseVes:100,totalVes:100,totalUsd:10,igtfVes:1},payments:[{id:'efUSD',cur:'USD',amount:10}]},{platform:'win32',execFileAsync:async()=>{throw new Error('No debe abrir COM');}}),/IGTF calculado por el POS no coincide/);
 });
+test('maps authenticated caja, cashier and terminal to PNP fiscal footer lines', () => {
+ const mapped=manager.mapInvoiceToPnp({
+  idempotencyKey:'sale-origin-02',customer:{name:'Cliente',rif:'J-12345678-9'},
+  origin:{cashbox:'02',cashier:'Cajero 02',terminal:'POS-02'},
+  lines:[{description:'Producto',quantity:1,unitPriceVes:116,netVes:100,taxRate:16}],
+  totals:{taxableBaseVes:100,totalVes:116,igtfVes:0}
+ });
+ assert.deepEqual(mapped.footerLines,['CAJA: 02','CAJERO: Cajero 02','TERMINAL: POS-02']);
+});
