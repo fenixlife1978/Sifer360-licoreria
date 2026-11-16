@@ -323,9 +323,17 @@ function createGoogleDriveBackup(options = {}) {
     const config = readConfig();
     if (!config.encryptedRefreshToken) throw new Error('Primero conecta una cuenta Google Drive.');
     if (!config.recoveryKeyExported) throw new Error('Antes de activar el respaldo diario, guarda la clave de recuperación fuera de este equipo.');
-    config.enabled = true;
-    config.schedule = scheduler.configure(executable);
-    writeConfig(config);
+    try {
+      config.schedule = scheduler.configure(executable);
+      config.enabled = true;
+      writeConfig(config);
+    } catch (error) {
+      try { scheduler.remove(); } catch {}
+      config.enabled = false;
+      config.schedule = null;
+      try { writeConfig(config); } catch {}
+      throw error;
+    }
     return status();
   }
   function disable() {
