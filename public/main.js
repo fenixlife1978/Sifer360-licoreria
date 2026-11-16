@@ -5524,9 +5524,12 @@ function fiscalNetworkQueueDlg(){
   refresh();
 }
 
-function fiscalPrinterConfigDlg(){
+async function fiscalPrinterConfigDlg(){
   const user=activeUser();
   if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras fiscales de las cajas.','bad');return;}
+  if(window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
+    try{const net=await window.posDesktop.networkStatus();if(net&&net.role==='client'){msg('La impresora fiscal compartida se configura únicamente en el equipo servidor que tiene conectado el dispositivo y el SDK. Abra esta pantalla en el servidor fiscal.','bad');return;}}catch(error){msg('No se pudo verificar el rol LAN antes de configurar la impresora fiscal: '+error.message,'bad');return;}
+  }
   const boxes=cashboxList().filter(x=>x.active!==false);
   let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
   const providerCatalog={
