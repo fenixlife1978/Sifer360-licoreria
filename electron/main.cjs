@@ -444,6 +444,10 @@ async function startLanServer(requestedPort) {
         return sendJson(res,200,{ok:true,job:publicFiscalNetworkJob(job)});
       } catch(error) { return sendJson(res,400,{error:error.message||'No se pudo conciliar el trabajo fiscal.'}); }
     }
+    if (url.pathname === '/api/fiscal/queue' && req.method === 'GET') {
+      const jobs=ensureFiscalNetworkQueue().list(200).map(publicFiscalNetworkJob);
+      return sendJson(res,200,{ok:true,jobs});
+    }
     if (url.pathname.startsWith('/api/fiscal/queue/') && req.method === 'GET') {
       const key=decodeURIComponent(url.pathname.slice('/api/fiscal/queue/'.length));
       const job=ensureFiscalNetworkQueue().get(key);
@@ -635,7 +639,10 @@ function registerNetworkIpc() {
     return publicFiscalNetworkJob(queue.get(String(key)));
   });
   ipcMain.handle('fiscal-network:list', async () => {
-    if(networkConfig.role==='client') throw new Error('La consulta general de la cola fiscal se realiza en el equipo servidor.');
+    if(networkConfig.role==='client') {
+      const result=await clientApi('/api/fiscal/queue',{timeoutMs:10000});
+      return result.jobs||[];
+    }
     return ensureFiscalNetworkQueue().list(200).map(publicFiscalNetworkJob);
   });
   ipcMain.handle('fiscal-network:reconcile', async (_e,input={}) => {
