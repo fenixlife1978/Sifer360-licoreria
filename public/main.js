@@ -4771,6 +4771,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     const fiscalInvoice={
       idempotencyKey,
       origin:{cashbox:currentCaja(),cashier:currentCajero(),terminal:String(fiscalNetworkInfo.deviceId||'LOCAL')},
+      footerLines:['CAJA: '+currentCaja(),'CAJERO: '+currentCajero(),'TERMINAL: '+String(fiscalNetworkInfo.deviceId||'LOCAL')],
       documentType:'invoice',
       cashbox:currentCaja(),
       cashier:currentCajero(),
