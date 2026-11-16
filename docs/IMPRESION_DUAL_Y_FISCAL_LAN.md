@@ -43,7 +43,8 @@ Si se confirma que la factura sí fue emitida, la terminal que conserva la inten
 - Cada envío fiscal requiere una sesión de usuario central vigente; los roles contador no pueden emitir. El servidor valida nombre y asignación de caja del cajero.
 - La conciliación requiere volver a introducir credenciales de un usuario administrador; el servidor valida el hash de contraseña.
 - El token Bearer autentica el terminal emparejado; caja, cajero, terminal y venta se registran como metadatos de origen enviados por el POS. La administración local de usuarios y cajas sigue aplicando sus controles en cada terminal.
-- La cola conserva terminal, caja, cajero y venta de origen como datos de auditoría. Los usuarios del servidor se sincronizan con SQLite para volver a validar las credenciales de administrador durante la conciliación.
+- La cola conserva terminal, caja, cajero y venta de origen como datos de auditoría. El servidor vuelve a construir las líneas de origen a partir de la sesión autenticada, sin confiar en el texto enviado por el cliente.
+- En el adaptador PNP v5.4, las líneas `CAJA`, `CAJERO` y `TERMINAL` se envían mediante el comando de texto fiscal documentado (0x41), después del subtotal y antes del cierre. Los demás puentes reciben `footerLines`; deben implementar su impresión con los comandos admitidos por el fabricante. Los usuarios del servidor se sincronizan con SQLite para volver a validar las credenciales de administrador durante la conciliación.
 - No se debe exponer el puerto LAN a Internet ni reenviarlo desde el router.
 - El envío ESC/POS solo confirma que Windows recibió los bytes en su cola; no prueba que el papel haya salido.
-- La emisión fiscal real requiere el modelo exacto, SDK y hardware del fabricante. Los tests simulados no sustituyen la certificación ni una prueba física.
+- La emisión fiscal real requiere el modelo exacto, SDK y hardware del fabricante. Los tests simulados no sustituyen la certificación ni una prueba física. La posición y disponibilidad del texto de origen en otros fabricantes depende de que su SDK admita líneas de texto dentro del documento.
