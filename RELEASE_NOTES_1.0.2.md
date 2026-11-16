@@ -13,3 +13,10 @@
 ## Validación
 - Se ejecutan POS checks, Desktop verification y compilación Windows sobre esta revisión.
 - La causa exacta del fallo original solo podrá confirmarse si el equipo registra el error al reproducirlo; esta versión evita ocultarlo y aporta diagnóstico persistente.
+
+## Correcciones de operación y tesorería
+- Se elimina el bloqueo global `inert` del contenedor POS en el ciclo de diálogos; la ventana modal mantiene el fondo cubierto y el cierre restaura siempre la interacción.
+- Un fallo al preparar una ventana se informa en el estado del POS y no deja controles globales deshabilitados.
+- El alta de bancos admite saldo inicial opcional con fecha, tasa y contrapartida contable.
+- El saldo inicial genera un asiento de apertura cuadrado en USD y Bs., ligado al auxiliar bancario y persistido atómicamente con el alta del banco.
+- Si SQLite no confirma la operación, se revierte el alta completa y se permite corregir y reintentar.
