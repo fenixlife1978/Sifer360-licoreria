@@ -832,7 +832,7 @@ function registerIpc() {
   });
   ipcMain.handle('printer:list', async () => PrinterManager.listPrinters());
   ipcMain.handle('printer:print-ticket', async (_e, printerName, text, options = {}) => PrinterManager.printTicket(printerName, text, options));
-  ipcMain.handle('printer:test', async (_e, printerName) => PrinterManager.printTicket(printerName, 'SIFER360 LICORERIA\\nPRUEBA DE IMPRESION\\nTicket no fiscal\\n\\n', { columns: 42 }));
+  ipcMain.handle('printer:test', async (_e, printerName) => PrinterManager.printTicket(printerName, 'SIFER360 LICORERIA\nPRUEBA DE IMPRESION\nTicket no fiscal\n\n', { columns: 42 }));
   ipcMain.handle('fiscal-printer:list-ports', async () => FiscalPrinterManager.listSerialPorts());
   ipcMain.handle('fiscal-printer:select-file', async (_e, kind = 'sdk') => {
     const filters = kind === 'bridge'
