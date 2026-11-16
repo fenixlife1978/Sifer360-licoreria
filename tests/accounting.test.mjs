@@ -147,3 +147,10 @@ test('un error de diálogo no deja el POS globalmente inerte y closeWin siempre 
   assert.match(pos, /function closeWin\(silent\)\{[\s\S]*?const appRoot=\$\('#win'\);[\s\S]*?if\(appRoot\)appRoot\.inert=false/);
   assert.match(pos, /try\{if\(o\.onOpen\)o\.onOpen\(bd\);\}[\s\S]*?catch\(error\)/);
 });
+
+test('las notas 1.0.2 documentan la corrección de campos bloqueados y saldos iniciales', () => {
+  const notes = readFileSync(new URL('../RELEASE_NOTES_1.0.2.md', import.meta.url), 'utf8');
+  assert.match(notes, /bloqueo global/);
+  assert.match(notes, /saldo inicial opcional/);
+  assert.match(notes, /asiento de apertura cuadrado/);
+});
