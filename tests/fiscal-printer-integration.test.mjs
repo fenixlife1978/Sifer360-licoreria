@@ -17,7 +17,7 @@ test('thermal printer settings are per cashbox and persist only after SQLite con
   assert.match(main, /async function thermalPrinterConfigDlg\(\)/);
   assert.match(main, /S\.cfg\.thermalPrinters\[box\]=p/);
   assert.match(main, /printerList\(\)/);
-  assert.match(main, /printerTest\(p\.printerName\)/);
+  assert.match(main, /printerTest\\(p\\.printerName,\\{columns:p\\.columns\\}\\)/);
   assert.match(main, /SQLite no confirmó la configuración térmica/);
 });
 test('fiscal settings dialog is asynchronous before LAN role checks', () => {
