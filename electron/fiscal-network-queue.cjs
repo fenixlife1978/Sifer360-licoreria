@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 
 function safeText(value, max = 160) {
   const text = String(value == null ? '' : value).trim();
-  if (!text || text.length > max || /[\\u0000-\\u001f\\u007f]/.test(text)) throw new Error('Metadato fiscal de origen inválido.');
+  if (!text || text.length > max || /[\u0000-\u001f\u007f]/.test(text)) throw new Error('Metadato fiscal de origen inválido.');
   return text;
 }
 function stableHash(value) {
