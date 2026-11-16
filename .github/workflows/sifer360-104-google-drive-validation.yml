@@ -35,7 +35,7 @@ jobs:
         env:
           SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
         run: |
-          node -e "require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({ clientId: process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || '' }, null, 2))"
+          node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(!id || !id.endsWith('.apps.googleusercontent.com')) throw new Error('Falta SIFER360_GOOGLE_OAUTH_CLIENT_ID válido.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({ clientId:id }, null, 2))"
       - name: Run complete automated tests
         run: npm test
       - name: Validate desktop JavaScript syntax
@@ -68,7 +68,7 @@ jobs:
         env:
           SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
         run: |
-          node -e "require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({ clientId: process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || '' }, null, 2))"
+          node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(!id || !id.endsWith('.apps.googleusercontent.com')) throw new Error('Falta SIFER360_GOOGLE_OAUTH_CLIENT_ID válido.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({ clientId:id }, null, 2))"
       - name: Run complete automated tests
         run: npm test
       - name: Build Windows installer and portable executable
