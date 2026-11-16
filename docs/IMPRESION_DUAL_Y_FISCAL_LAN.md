@@ -40,8 +40,8 @@ Si se confirma que la factura sí fue emitida, la terminal que conserva la inten
 
 - La API de cola solo está disponible en el servidor LAN, protegida por el control de acceso de red, TLS y el token Bearer de emparejamiento.
 - La conciliación requiere volver a introducir credenciales de un usuario administrador; el servidor valida el hash de contraseña.
-- El servidor valida que el cajero esté activo y que, para el rol cajero, la caja coincida con la asignada en la base central.
-- La cola conserva terminal, caja, cajero y venta de origen como datos de auditoría.
+- El token Bearer autentica el terminal emparejado; caja, cajero, terminal y venta se registran como metadatos de origen enviados por el POS. La administración local de usuarios y cajas sigue aplicando sus controles en cada terminal.
+- La cola conserva terminal, caja, cajero y venta de origen como datos de auditoría. Los usuarios del servidor se sincronizan con SQLite para volver a validar las credenciales de administrador durante la conciliación.
 - No se debe exponer el puerto LAN a Internet ni reenviarlo desde el router.
 - El envío ESC/POS solo confirma que Windows recibió los bytes en su cola; no prueba que el papel haya salido.
 - La emisión fiscal real requiere el modelo exacto, SDK y hardware del fabricante. Los tests simulados no sustituyen la certificación ni una prueba física.
