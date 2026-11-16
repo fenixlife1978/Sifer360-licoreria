@@ -5626,6 +5626,7 @@ async function fiscalPrinterConfigDlg(){
       draft=drafts[box]||readSavedDraft(box);
       drafts[box]=draft;
       applyDraft();
+      drawPendingJobs();
       status();
       return;
     }
@@ -5729,6 +5730,7 @@ async function fiscalPrinterConfigDlg(){
   }};
   openWin({title:'Impresora fiscal · Caja '+esc(box),w:760,body:el,foot:isLanClient?[{label:'Cerrar'}]:[{label:'Cerrar'},saveFiscalConfig],onOpen:()=>{
     applyDraft();
+    drawPendingJobs();
     if(isLanClient){
       el.querySelectorAll('input,select,button').forEach(node=>{if(!node.closest('#fpPendingJobs'))node.disabled=true;});
       const node=$('#fpStatus',el);if(node)node.textContent='Terminal cliente: la configuración física y el SDK están en el servidor. Esta pantalla permite conciliar la intención fiscal local y reconstruir la venta.';
