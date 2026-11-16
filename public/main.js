@@ -4651,6 +4651,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     try{fiscalNetworkInfo=await window.posDesktop.networkStatus()||fiscalNetworkInfo;}catch{}
   }
   const useSharedFiscal=fiscalMode&&(fiscalNetworkInfo.role==='client'||(fiscalNetworkInfo.role==='server'&&fiscalNetworkInfo.running===true));
+  if(fiscalMode&&(!fiscalProfile||fiscalProfile.enabled!==true)){msg('La impresora fiscal no está habilitada para esta caja en la configuración compartida. Configure el dispositivo en el servidor fiscal.','bad');return;}
   if(useSharedFiscal&&(!window.posDesktop||typeof window.posDesktop.fiscalNetworkSubmit!=='function'||typeof window.posDesktop.fiscalNetworkStatus!=='function')){msg('La cola fiscal compartida no está disponible en esta versión. No se registró la venta.','bad');return;}
   const unresolvedFiscalJobs=(S.fiscalPrinterJobs||[]).filter(job=>String(job.cashbox)===String(currentCaja())&&['pending','uncertain'].includes(job.status));
   if(fiscalMode&&unresolvedFiscalJobs.length){msg('Esta caja tiene una emisión fiscal pendiente o incierta ('+unresolvedFiscalJobs.map(job=>job.id).join(', ')+'). Consulte la impresora y reconcilie esa operación antes de facturar otra venta.','bad');return;}
@@ -4817,7 +4818,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       if(fiscalProfile)fiscalProfile.serial=issued.fiscalSerial;
       sale.fiscal={provider:(fiscalProfile&&fiscalProfile.provider)||issued.provider||'shared',model:(fiscalProfile&&fiscalProfile.model)||issued.model||'Impresora fiscal compartida',documentNumber:issued.fiscalDocumentNumber,serial:issued.fiscalSerial,authorization:issued.authorization||'',status:'issued'};
     }catch(error){
-      if(fiscalJob.status!=='rejected')fiscalJob.status='uncertain';
+      if(fiscalJob.status!=='rejected')fiscalJob.status=/cola fiscal está bloqueada/i.test(String(error.message||error))?'rejected':'uncertain';
       fiscalJob.lastError=String(error.message||error).slice(0,1000);
       fiscalJob.lastAttemptAt=Date.now();
       const journalResult=await save();
