@@ -1,5 +1,6 @@
-test('POS login obtains and validates central LAN user session before restoring an authenticated session', () => {
-  assert.match(ui, /authLogin\(\{username:u\.username,password:u\.code\}\)/);
+test('POS login authenticates against SQLite central before trusting local user cache', () => {
+  assert.match(ui, /authLogin\(\{username,password:code\}\)/);
+  assert.match(ui, /authoritativeUser=verified\.user/);
   assert.match(ui, /authToken:serverAuth&&serverAuth\.token/);
   assert.match(ui, /authVerifySession\(saved\.authToken\)/);
 });
@@ -17,12 +18,21 @@ const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url)
 const ui = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
 const pos = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
 
-test('el servidor inicializa usuarios LAN heredados en SQLite con contraseñas hash', () => {
+test('la migración de usuarios heredados solo se ejecuta como bootstrap y no sobrescribe SQLite', () => {
   const access = readFileSync(new URL('../public/access.js', import.meta.url), 'utf8');
+  const bootstrap = electron.slice(electron.indexOf("ipcMain.handle('auth:initialize-legacy'"), electron.indexOf("ipcMain.handle('auth:login'"));
   assert.match(access, /authInitializeLegacyUsers\(payload\)/);
   assert.match(access, /code:user\.code/);
-  assert.match(electron, /normalizeLegacyUser/);
-  assert.match(electron, /INSERT INTO app_users\(username,name,role,cashbox,password_hash,active\)/);
+  assert.match(bootstrap, /if \(before > 0\)/);
+  assert.doesNotMatch(bootstrap, /UPDATE app_users SET active=0/);
+  assert.match(bootstrap, /INSERT INTO app_users\(username,name,role,cashbox,password_hash,active\)/);
+});
+
+test('la gestión posterior de usuarios exige sesión administrativa y usa operaciones SQLite específicas', () => {
+  assert.match(pos, /authSaveUser\(authSession\.authToken/);
+  assert.match(pos, /authDeleteUser\(authSession\.authToken/);
+  assert.match(electron, /requireAuthSession\(token, true\)/);
+  assert.match(electron, /authSessions\.set\(sessionToken, \{ user:\{username,name,role,cashbox\}/);
 });
 
 test('el ejecutable implementa un servidor LAN con puerto configurable', () => {
