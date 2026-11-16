@@ -425,9 +425,6 @@ async function startLanServer(requestedPort) {
         const sourceDeviceId=String(body.sourceDeviceId||'').trim();
         if(!cashbox||!cashier||!station||!sourceDeviceId||!body.saleId||!body.idempotencyKey||!body.invoice) return sendJson(res,400,{error:'Faltan datos de origen o factura para la cola fiscal.'});
         if(!/^[A-Za-z0-9._:-]{8,180}$/.test(String(body.idempotencyKey))||! /^[A-Za-z0-9._:-]{8,80}$/.test(sourceDeviceId)) return sendJson(res,400,{error:'Identificador de trabajo o dispositivo inválido.'});
-        const user=one('SELECT username,name,role,cashbox FROM app_users WHERE active=1 AND (username=? COLLATE NOCASE OR name=? COLLATE NOCASE)',[cashier,cashier]);
-        if(!user) return sendJson(res,403,{error:'El cajero indicado no existe o está inactivo en el servidor.'});
-        if(user.role==='cajero'&&String(user.cashbox)!==cashbox) return sendJson(res,403,{error:'El cajero no tiene asignada la caja de origen indicada.'});
         if(body.invoice.idempotencyKey!==body.idempotencyKey) return sendJson(res,400,{error:'La clave idempotente de la factura no coincide.'});
         const invoice={...body.invoice,origin:{...(body.invoice.origin||{}),cashbox,cashier,terminal:station,deviceId:sourceDeviceId}};
         const queue=ensureFiscalNetworkQueue();
