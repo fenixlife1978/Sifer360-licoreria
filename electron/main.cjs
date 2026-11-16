@@ -664,8 +664,9 @@ function registerNetworkIpc() {
       if(!['admin','cajero'].includes(session.user.role))throw new Error('El rol de usuario no puede emitir documentos fiscales desde el POS.');
       if(String(input.cashier)!==String(session.user.name))throw new Error('El cajero no coincide con la sesión autenticada.');
       if(session.user.role==='cajero'&&String(input.cashbox)!==String(session.user.cashbox))throw new Error('El usuario no está asignado a la caja indicada.');
+      if(payload.invoice&&typeof payload.invoice==='object')payload.invoice={...payload.invoice,origin:{...(payload.invoice.origin||{}),cashbox:String(input.cashbox),cashier:session.user.name,terminal:os.hostname(),deviceId:networkConfig.deviceId},footerLines:['CAJA: '+String(input.cashbox),'CAJERO: '+session.user.name,'TERMINAL: '+os.hostname()].map(x=>String(x).slice(0,40))};
     }
-    if(payload.invoice&&typeof payload.invoice==='object')payload.invoice={...payload.invoice,origin:{...(payload.invoice.origin||{}),cashbox:payload.cashbox,cashier:payload.cashier,terminal:payload.station,deviceId:payload.sourceDeviceId}};
+    if(networkConfig.role!=='server'&&payload.invoice&&typeof payload.invoice==='object')payload.invoice={...payload.invoice,origin:{...(payload.invoice.origin||{}),cashbox:payload.cashbox,cashier:payload.cashier,terminal:payload.station,deviceId:payload.sourceDeviceId}};
     if(networkConfig.role==='client') return clientApi('/api/fiscal/queue',{method:'POST',body:JSON.stringify(payload),timeoutMs:15000});
     if(networkConfig.role==='server'){
       const queue=ensureFiscalNetworkQueue();
