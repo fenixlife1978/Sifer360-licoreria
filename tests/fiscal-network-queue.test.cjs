@@ -18,6 +18,9 @@ function makeStore(seed = []) {
     markIssued(id, result, at) { const x=jobs.find(j=>j.id===id); x.status='issued'; x.result_json=JSON.stringify(result); x.finished_at=at; },
     markUncertain(id, error, at) { const x=jobs.find(j=>j.id===id); x.status='uncertain'; x.error=error; x.finished_at=at; },
     markRejected(id, error, at) { const x=jobs.find(j=>j.id===id); x.status='rejected'; x.error=error; x.finished_at=at; },
+    markReconciledIssued(id, result, at) { const x=jobs.find(j=>j.id===id); x.status='issued'; x.result_json=JSON.stringify(result); x.finished_at=at; },
+    markReconciledNotIssued(id, note, at) { const x=jobs.find(j=>j.id===id); x.status='rejected'; x.error=note; x.finished_at=at; },
+    hasUncertain() { return jobs.some(x=>x.status==='uncertain'); },
     recoverProcessing(at) { const rows=jobs.filter(x=>x.status==='processing'); for(const x of rows){x.status='uncertain';x.error='Proceso interrumpido; requiere conciliación.';x.finished_at=at;} return rows; },
     list() { return jobs; }
   };
