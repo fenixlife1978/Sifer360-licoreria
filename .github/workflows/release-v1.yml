@@ -1,10 +1,10 @@
-name: Publicar SIFER360 LICORERÍA 1.0.0
+name: Publicar SIFER360 LICORERÍA 1.0.1
 
 on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: "Publicar o actualizar la Release oficial v1.0.0"
+        description: "Publicar o actualizar la Release oficial v1.0.1"
         required: true
         type: boolean
         default: false
@@ -15,26 +15,26 @@ permissions:
 jobs:
   release:
     if: ${{ inputs.publish_release == true }}
-    name: Alinear tag y notas de la Release 1.0.0
+    name: Alinear tag y notas de la Release 1.0.1
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Alinear el tag v1.0.0 con el commit integrado
+      - name: Alinear el tag v1.0.1 con el commit integrado
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag --force v1.0.0 "$GITHUB_SHA"
-          git push origin refs/tags/v1.0.0 --force
+          git tag --force v1.0.1 "$GITHUB_SHA"
+          git push origin refs/tags/v1.0.1 --force
 
-      - name: Actualizar Release oficial v1.0.0
+      - name: Actualizar Release oficial v1.0.1
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
+          tag_name: v1.0.1
           target_commitish: ${{ github.sha }}
-          name: SIFER360 LICORERÍA v1.0.0
-          body_path: RELEASE_NOTES.md
+          name: SIFER360 LICORERÍA v1.0.1
+          body_path: RELEASE_NOTES_1.0.1.md
           draft: false
           prerelease: false
           make_latest: true
