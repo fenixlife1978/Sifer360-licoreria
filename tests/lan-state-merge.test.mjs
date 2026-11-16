@@ -86,3 +86,32 @@ test('las eliminaciones de borradores y documentos se respetan en el snapshot au
   assert.deepEqual(merged.held, []);
   assert.deepEqual(merged.documents, []);
 });
+
+
+test('las eliminaciones de ventas suspendidas se propagan mediante tombstones sin borrar ventas de otras cajas', () => {
+  const merged = mergeStateRecords(
+    { held:[{id:'HELD-1',cashbox:'01'},{id:'HELD-2',cashbox:'02'}], heldDeletedIds:[], documents:[{id:'DOC-1'}] },
+    { held:[], heldDeletedIds:[{id:'HELD-1',cashbox:'01',ts:200}], documents:[] }
+  );
+  assert.deepEqual(merged.held, [{id:'HELD-2',cashbox:'02'}]);
+  assert.deepEqual(merged.heldDeletedIds, [{id:'HELD-1',cashbox:'01',ts:200}]);
+  assert.deepEqual(merged.documents, []);
+});
+
+test('merge conserva Kardex y lotes con IDs locales repetidos mediante eventId', () => {
+  const merged = mergeStateRecords(
+    { kardex:[{id:1,eventId:'kdx-a',code:'A'}], lotesSudeban:[{id:'LOT-1',eventId:'lot-a'}], rateAudit:[{id:1,eventId:'rate-a'}] },
+    { kardex:[{id:1,eventId:'kdx-b',code:'B'}], lotesSudeban:[{id:'LOT-1',eventId:'lot-b'}], rateAudit:[{id:1,eventId:'rate-b'}] }
+  );
+  assert.equal(merged.kardex.length,2);
+  assert.equal(merged.lotesSudeban.length,2);
+  assert.equal(merged.rateAudit.length,2);
+});
+
+test('un tombstone elimina también una venta suspendida heredada sin id usando caja y timestamp', () => {
+  const merged = mergeStateRecords(
+    { held:[{cashbox:'01',ts:100,cart:[]}], heldDeletedIds:[] },
+    { held:[], heldDeletedIds:[{id:'HOLD-LEGACY-100',cashbox:'01',ts:200}] }
+  );
+  assert.deepEqual(merged.held, []);
+});
