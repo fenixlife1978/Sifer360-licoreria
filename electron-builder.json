@@ -16,11 +16,27 @@
         "arch": [
           "x64"
         ]
+      },
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
       }
     ],
     "icon": "public/favicon.ico"
   },
   "portable": {
     "artifactName": "sifer360-licoreria-portable.exe"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "SIFER360 Licorería",
+    "installerIcon": "public/favicon.ico",
+    "uninstallerIcon": "public/favicon.ico",
+    "installerHeaderIcon": "public/favicon.ico"
   }
 }
