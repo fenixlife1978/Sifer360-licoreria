@@ -275,19 +275,30 @@ function createGoogleDriveBackup(options = {}) {
       body
     });
   }
-  async function backup(snapshotBytes, { manual = false } = {}) {
+  async function backup(snapshotBytes, { manual = false, jsonBytes = null } = {}) {
     const config = readConfig();
     if (!config.enabled || !config.encryptedRefreshToken) throw new Error('El respaldo automático en Google Drive no está activado o la cuenta no está conectada.');
     if (!snapshotBytes || !Buffer.from(snapshotBytes).length) throw new Error('La instantánea SQLite está vacía; no se enviará ningún archivo.');
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Caracas', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const key = getBackupKey(config);
     const filename = 'SIFER360-' + day + '.sqlite.siferenc';
-    const encrypted = encryptBackup(snapshotBytes, getBackupKey(config), cryptoImpl);
+    const encrypted = encryptBackup(snapshotBytes, key, cryptoImpl);
     const sha256 = cryptoImpl.createHash('sha256').update(snapshotBytes).digest('hex');
     const token = await accessToken(config);
     const uploaded = await uploadBackup(encrypted, token, config, filename, {
-      description: 'Respaldo SIFER360 cifrado AES-256-GCM; SHA-256 SQLite ' + sha256 + '; fecha ' + day + '; hora Venezuela.'
+      description: 'Respaldo SQLite cifrado AES-256-GCM; SHA-256 ' + sha256 + '; fecha ' + day + '; hora Venezuela.'
     });
-    const result = { ok: true, fileId: uploaded.body.id, fileName: uploaded.body.name, size: Number(uploaded.body.size || encrypted.length), sha256, date: day, manual };
+    let jsonResult = null;
+    if (jsonBytes && Buffer.from(jsonBytes).length) {
+      const jsonName = 'SIFER360-' + day + '.json.siferenc';
+      const encryptedJson = encryptBackup(jsonBytes, key, cryptoImpl);
+      const jsonSha256 = cryptoImpl.createHash('sha256').update(jsonBytes).digest('hex');
+      const uploadedJson = await uploadBackup(encryptedJson, token, config, jsonName, {
+        description: 'Exportación completa JSON de las tablas SQLite, cifrada AES-256-GCM; SHA-256 JSON ' + jsonSha256 + '; fecha ' + day + '.'
+      });
+      jsonResult = { fileId: uploadedJson.body.id, fileName: uploadedJson.body.name, size: Number(uploadedJson.body.size || encryptedJson.length), sha256: jsonSha256 };
+    }
+    const result = { ok: true, fileId: uploaded.body.id, fileName: uploaded.body.name, size: Number(uploaded.body.size || encrypted.length), sha256, json: jsonResult, date: day, manual };
     config.lastBackupAt = new Date().toISOString();
     config.lastBackupStatus = 'success';
     config.lastBackupError = '';
