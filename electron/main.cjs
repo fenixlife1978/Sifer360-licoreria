@@ -857,12 +857,28 @@ function createWindow() {
   });
   win.maximize();
   Menu.setApplicationMenu(null);
-  if (app.isPackaged) win.loadFile(path.join(__dirname, '../dist/index.html'));
-  else {
-    const distPath = path.join(__dirname, '../dist/index.html');
-    if (fs.existsSync(distPath)) win.loadFile(distPath);
-    else win.loadURL('http://localhost:3000');
-  }
+  const rendererLog = path.join(app.getPath('userData'), 'renderer-startup.log');
+  const logRenderer = (label, details) => {
+    try { fs.appendFileSync(rendererLog, '[' + new Date().toISOString() + '] ' + label + ' ' + JSON.stringify(details || {}) + '\\n', 'utf8'); } catch {}
+  };
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (level >= 2) logRenderer('console-error', { level, message, line, sourceId });
+  });
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    logRenderer('did-fail-load', { errorCode, errorDescription, validatedURL, isMainFrame });
+    if (isMainFrame) dialog.showErrorBox('SIFER360: no se pudo cargar la interfaz', errorDescription + '\\nCódigo: ' + errorCode + '\\nRegistro: ' + rendererLog);
+  });
+  win.webContents.on('render-process-gone', (_event, details) => {
+    logRenderer('render-process-gone', details);
+    dialog.showErrorBox('SIFER360: falló el proceso de interfaz', JSON.stringify(details) + '\\nRegistro: ' + rendererLog);
+  });
+  win.webContents.on('unresponsive', () => logRenderer('renderer-unresponsive'));
+  const entry = path.join(__dirname, '../dist/index.html');
+  const loading = app.isPackaged || fs.existsSync(entry) ? win.loadFile(entry) : win.loadURL('http://localhost:3000');
+  loading.catch(error => {
+    logRenderer('load-promise-rejected', { message: error && error.message ? error.message : String(error), entry });
+    dialog.showErrorBox('SIFER360: error de carga', (error && error.message ? error.message : String(error)) + '\\nRegistro: ' + rendererLog);
+  });
   return win;
 }
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
