@@ -310,6 +310,7 @@ function createGoogleDriveBackup(options = {}) {
   async function enable(executable) {
     const config = readConfig();
     if (!config.encryptedRefreshToken) throw new Error('Primero conecta una cuenta Google Drive.');
+    if (!config.recoveryKeyExported) throw new Error('Antes de activar el respaldo diario, guarda la clave de recuperación fuera de este equipo.');
     config.enabled = true;
     config.schedule = scheduler.configure(executable);
     writeConfig(config);
@@ -333,6 +334,8 @@ function createGoogleDriveBackup(options = {}) {
     });
     if (result.canceled || !result.filePath) return { saved: false };
     fsImpl.writeFileSync(result.filePath, 'SIFER360-LICORERIA - CLAVE DE RECUPERACIÓN DE RESPALDOS\nGuarde este archivo fuera del equipo. Sin esta clave no podrá descifrar los respaldos en otra PC.\n\n' + key.toString('base64') + '\n', { mode: 0o600, flag: 'wx' });
+    config.recoveryKeyExported = true;
+    writeConfig(config);
     return { saved: true, filePath: result.filePath };
   }
   function verifyBackup(payload, recoveryKey) {
