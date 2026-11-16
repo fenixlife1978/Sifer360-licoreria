@@ -8,6 +8,7 @@ on:
       - integration/sqlite-lan-stage-2-hardening
       - feature/fiscal-printer-auto-assistant
       - feature/fiscal-sdk-architecture-validation
+      - feature/google-drive-automatic-backups
   pull_request:
     branches:
       - main
