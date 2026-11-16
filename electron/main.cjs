@@ -419,6 +419,14 @@ async function startLanServer(requestedPort) {
     if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Headers': 'content-type,authorization', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); return res.end(); }
     if (!hasValidBearerToken(req.headers.authorization, networkConfig.token)) return sendJson(res, 401, { error: 'No autorizado' });
     if (url.pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { ok: true, deviceId: networkConfig.deviceId, role: 'server', protocol: 1 });
+    if (url.pathname === '/api/auth/session' && req.method === 'POST') {
+      const body=await readBody(req),session=authSessions.get(String(body.token||''));
+      if(!session||session.expiresAt<=Date.now())return sendJson(res,200,{user:null,valid:false});
+      return sendJson(res,200,{user:session.user,valid:true});
+    }
+    if (url.pathname === '/api/auth/logout' && req.method === 'POST') {
+      const body=await readBody(req);authSessions.delete(String(body.token||''));return sendJson(res,200,{ok:true});
+    }
     if (url.pathname === '/api/auth/login' && req.method === 'POST') {
       try {
         const credentials=await readBody(req);
@@ -907,10 +915,18 @@ function registerIpc() {
     return { token, user: safeUser, expiresAt: Date.now() + 12 * 60 * 60 * 1000 };
   });
   ipcMain.handle('auth:verify-session', (_event, token) => {
+    if(networkConfig.role==='client'){
+      return clientApi('/api/auth/session',{method:'POST',body:JSON.stringify({token:String(token||'')}),timeoutMs:10000}).catch(()=>({user:null,valid:false}));
+    }
     try { return { user: requireAuthSession(token), valid: true }; }
     catch { return { user: null, valid: false }; }
   });
-  ipcMain.handle('auth:logout', (_event, token) => { authSessions.delete(String(token || '')); return { ok: true }; });
+  ipcMain.handle('auth:logout', async (_event, token) => {
+    if(networkConfig.role==='client'){
+      try{return await clientApi('/api/auth/logout',{method:'POST',body:JSON.stringify({token:String(token||'')}),timeoutMs:8000});}catch{return {ok:false};}
+    }
+    authSessions.delete(String(token || '')); return { ok: true };
+  });
   ipcMain.handle('auth:list-users', (_event, token) => {
     requireAuthSession(token, true);
     return all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username');
