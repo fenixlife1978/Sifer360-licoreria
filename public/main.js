@@ -5745,7 +5745,7 @@ function printerSetupWizardDlg(){
   });
   openWin({title:'Asistente inicial · Impresoras y tickets',w:620,body:el,foot:[{label:'Configurar y continuar',primary:true,fn:async()=>{
     const choice=$('input[name="printerSetupMode"]:checked',el)?.value;
-    if(!['FISCAL_PRINTER','INTERNAL_THERMAL','NO_PRINTER'].includes(choice)){msg('Seleccione una modalidad para continuar.','bad');return false;}
+    if(!['FISCAL_PRINTER','DUAL_PRINTER','INTERNAL_THERMAL','NO_PRINTER'].includes(choice)){msg('Seleccione una modalidad para continuar.','bad');return false;}
     S.cfg.printMode=choice;S.cfg.printSetupCompleted=true;
     S.cfg.fiscalTipo=(choice==='FISCAL_PRINTER'||choice==='DUAL_PRINTER')?'MAQUINA_FISCAL':'NO_FISCAL_INTERNAL';
     const persisted=await save();if(!persisted||!persisted.ok){msg('SQLite no confirmó la modalidad de impresión. No se aplicaron los cambios.','bad');return false;}
