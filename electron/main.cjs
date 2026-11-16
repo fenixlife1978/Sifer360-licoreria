@@ -458,7 +458,7 @@ async function startLanServer(requestedPort) {
         if(authenticatedUser.role==='cajero'&&String(authenticatedUser.cashbox)!==cashbox)return sendJson(res,403,{error:'El usuario autenticado no está asignado a la caja indicada.'});
         if(!/^[A-Za-z0-9._:-]{8,180}$/.test(String(body.idempotencyKey))||! /^[A-Za-z0-9._:-]{8,80}$/.test(sourceDeviceId)) return sendJson(res,400,{error:'Identificador de trabajo o dispositivo inválido.'});
         if(body.invoice.idempotencyKey!==body.idempotencyKey) return sendJson(res,400,{error:'La clave idempotente de la factura no coincide.'});
-        const invoice={...body.invoice,origin:{...(body.invoice.origin||{}),cashbox,cashier,terminal:station,deviceId:sourceDeviceId}};
+        const invoice={...body.invoice,origin:{...(body.invoice.origin||{}),cashbox,cashier,terminal:station,deviceId:sourceDeviceId},footerLines:['CAJA: '+cashbox,'CAJERO: '+cashier,'TERMINAL: '+station].map(x=>String(x).slice(0,40))};
         const queue=ensureFiscalNetworkQueue();
         const accepted=queue.enqueue({idempotencyKey:body.idempotencyKey,cashbox,cashier,station,sourceDeviceId,saleId:body.saleId,invoice});
         return sendJson(res,202,{ok:true,duplicate:accepted.duplicate,job:publicFiscalNetworkJob(accepted.job)});
