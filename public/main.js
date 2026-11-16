@@ -4788,8 +4788,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       if(useSharedFiscal){
         const accepted=await window.posDesktop.fiscalNetworkSubmit({
           idempotencyKey,cashbox:currentCaja(),cashier:currentCajero(),
-          saleId:sale.accountingSourceId,invoice:fiscalInvoice,
-          station:String(fiscalNetworkInfo.deviceId||'POS')
+          saleId:sale.accountingSourceId,invoice:fiscalInvoice
         });
         let remoteJob=accepted&&accepted.job;
         for(let attempt=0;attempt<120;attempt++){
@@ -5459,6 +5458,32 @@ function thermalPrinterConfigDlg(){
     closeWin();return false;
   }}]});
   load();
+}
+
+function fiscalNetworkQueueDlg(){
+  const user=activeUser();
+  if(!user||user.role!=='admin'){msg('Solo el administrador puede consultar la cola fiscal compartida.','bad');return;}
+  const el=h('<div class="form"><div class="hint">Cola fiscal del equipo servidor. Todos los puntos de venta envían aquí sus facturas; el servidor transmite un solo trabajo a la vez. Los trabajos inciertos bloquean nuevas emisiones hasta conciliarlos físicamente.</div><div id="fnqStatus" class="hint" role="status" aria-live="polite">Consultando servidor…</div><div class="gridwrap"><table class="grid"><thead><tr><th>Estado</th><th>Caja / Cajero</th><th>Terminal</th><th>Trabajo</th><th>Resultado / incidencia</th></tr></thead><tbody id="fnqRows"></tbody></table></div></div>');
+  const status=$('#fnqStatus',el),rows=$('#fnqRows',el);
+  const refresh=async()=>{
+    status.textContent='Actualizando cola fiscal…';
+    try{
+      const net=await window.posDesktop.networkStatus();
+      if(net.role==='client'){status.textContent='Esta PC es cliente. Consulte la cola desde el equipo servidor que tiene conectada la impresora fiscal.';rows.innerHTML='';return;}
+      if(net.role!=='server'||net.running!==true){status.textContent='El servidor LAN no está iniciado. Active el modo servidor en el equipo conectado a la impresora fiscal.';rows.innerHTML='';return;}
+      const jobs=await window.posDesktop.fiscalNetworkList();
+      rows.innerHTML=jobs.length?jobs.map(job=>{
+        const result=job.result||{};
+        const detail=job.status==='issued'?'Doc. '+esc(result.fiscalDocumentNumber||'—')+' · Serial '+esc(result.fiscalSerial||'—'):esc(job.error||'En espera de procesamiento');
+        const state=job.status==='issued'?'Emitida':job.status==='uncertain'?'INCIERTA':job.status==='rejected'?'Rechazada':job.status==='processing'?'Procesando':'Pendiente';
+        return '<tr><td><b>'+state+'</b></td><td>'+esc(job.cashbox)+' / '+esc(job.cashier)+'</td><td>'+esc(job.station)+'</td><td><span class="mono">'+esc(job.idempotencyKey)+'</span><br><span class="hint">'+esc(job.createdAt||'')+'</span></td><td>'+detail+'</td></tr>';
+      }).join(''):'<tr><td colspan="5" class="hint">No hay trabajos fiscales registrados.</td></tr>';
+      const uncertain=jobs.filter(x=>x.status==='uncertain').length;
+      status.textContent='Servidor activo · '+jobs.length+' trabajos · '+uncertain+' inciertos. '+(uncertain?'La cola permanece bloqueada; no se reenvían automáticamente.':'');
+    }catch(error){status.textContent='No se pudo consultar la cola fiscal: '+error.message;}
+  };
+  openWin({title:'Cola fiscal compartida · LAN',w:900,body:el,foot:[{label:'Cerrar'},{label:'Actualizar',primary:true,fn:()=>{refresh();return false;}}]});
+  refresh();
 }
 
 function fiscalPrinterConfigDlg(){
@@ -6175,7 +6200,7 @@ function seniatSudebanDlg(initialTab){
       '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
       '<div class="f"><label for="fTipo">Modalidad de Facturación Fiscal</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option><option value="NO_FISCAL_INTERNAL" '+(c.fiscalTipo==='NO_FISCAL_INTERNAL'?'selected':'')+'>Sin emisión fiscal · Ticket interno no fiscal</option></select></div>'+
       '<div class="f wide"><label for="fPrintMode">Modo de impresión del POS</label><select class="fld" id="fPrintMode"><option value="FISCAL_PRINTER" '+((c.printMode||'LEGACY')==='FISCAL_PRINTER'?'selected':'')+'>Impresora fiscal homologada</option><option value="INTERNAL_THERMAL" '+(c.printMode==='INTERNAL_THERMAL'?'selected':'')+'>Impresora térmica genérica · Ticket interno</option><option value="NO_PRINTER" '+(c.printMode==='NO_PRINTER'?'selected':'')+'>Sin impresora · Solo registro en SQLite</option><option value="DUAL_PRINTER" '+(c.printMode==='DUAL_PRINTER'?'selected':'')+'>Sistema dual · Elegir ticket térmico o factura fiscal en cada cobro</option><option value="LEGACY" '+((c.printMode||'LEGACY')==='LEGACY'?'selected':'')+'>Conservar configuración anterior</option></select><p class="hint">Los modos de ticket interno no emiten documentos fiscales. Cada comprobante llevará la leyenda “Ticket de Venta - No válido como factura fiscal”.</p><button class="btn" type="button" id="btnPrinterSetupWizard">Abrir asistente de instalación de impresoras</button></div>'+
-      '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" type="button" id="btnThermalPrinterManager">Configurar impresora térmica no fiscal</button><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button></div></div>'+
+      '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" type="button" id="btnThermalPrinterManager">Configurar impresora térmica no fiscal</button><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button><button class="btn" type="button" id="btnFiscalNetworkQueue">Ver cola fiscal compartida LAN</button></div></div>'+
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
       '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
       '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
@@ -6241,6 +6266,7 @@ function seniatSudebanDlg(initialTab){
   el.addEventListener('click',async e=>{
     if(e.target.id==='btnThermalPrinterManager'){thermalPrinterConfigDlg();return;}
     if(e.target.id==='btnFiscalPrinterManager'){fiscalPrinterConfigDlg();return;}
+    if(e.target.id==='btnFiscalNetworkQueue'){fiscalNetworkQueueDlg();return;}
     const inventoryViewBtn=e.target.closest('[data-inv-view]');
     if(inventoryViewBtn){inventoryBookView=inventoryViewBtn.dataset.invView;renderTabContent();return;}
     const tabBtn=e.target.closest('.tab[data-tab]');
