@@ -23,7 +23,7 @@ Windows Task Scheduler ejecuta el binario de SIFER360 con `--sifer-google-drive-
 
 Si SIFER360 ya está abierto, la instancia programada entrega el trabajo a la instancia existente mediante el mecanismo de instancia única. Si está cerrado, se inicia en modo oculto, carga la SQLite, valida, respalda y se cierra sin abrir la ventana POS.
 
-Cada fecha de Venezuela tiene un archivo `SIFER360-AAAA-MM-DD.sqlite.siferenc` dentro de `SIFER360 Respaldos`. Un reintento del mismo día reemplaza esa copia diaria, evitando duplicados por reintentos. Los errores se registran localmente; nunca se informa éxito antes de que Google confirme la carga.
+Cada fecha de Venezuela tiene dos archivos dentro de `SIFER360 Respaldos`: `SIFER360-AAAA-MM-DD.sqlite.siferenc` (copia íntegra restaurable) y `SIFER360-AAAA-MM-DD.json.siferenc` (exportación estructurada de todas las tablas). Ambos están cifrados y comparten la clave de recuperación. Un reintento del mismo día reemplaza esa copia diaria, evitando duplicados por reintentos. Los errores se registran localmente; nunca se informa éxito antes de que Google confirme la carga.
 
 ## Activación desde SIFER360
 
