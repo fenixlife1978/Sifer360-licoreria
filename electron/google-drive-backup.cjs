@@ -285,7 +285,7 @@ function createGoogleDriveBackup(options = {}) {
   }
   async function backup(snapshotBytes, { manual = false, jsonBytes = null } = {}) {
     const config = readConfig();
-    if (!config.enabled || !config.encryptedRefreshToken) throw new Error('El respaldo automático en Google Drive no está activado o la cuenta no está conectada.');
+    if ((!manual && !config.enabled) || !config.encryptedRefreshToken) throw new Error(manual ? 'Primero conecta una cuenta Google Drive.' : 'El respaldo automático en Google Drive no está activado o la cuenta no está conectada.');
     if (!snapshotBytes || !Buffer.from(snapshotBytes).length) throw new Error('La instantánea SQLite está vacía; no se enviará ningún archivo.');
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Caracas', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const key = getBackupKey(config);
