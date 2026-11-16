@@ -7332,7 +7332,7 @@ async function databaseSettingsDlg(){
       '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn" id="gdriveConnect" type="button">Conectar Google Drive</button><button class="btn" id="gdriveEnable" type="button">Activar respaldo diario 8:00 p. m.</button><button class="btn" id="gdriveDisable" type="button">Desactivar</button></div>' +
       '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn primary" id="gdriveNow" type="button">Realizar respaldo ahora</button><button class="btn" id="gdriveRecovery" type="button">Guardar clave de recuperación</button></div>' +
       '<div id="gdriveStatus" class="hint" role="status" aria-live="polite" style="margin:0;min-height:28px">Consultando configuración de Google Drive…</div>' +
-      '<div class="hint" style="margin:0;color:#FDE68A">Importante: conserva la clave de recuperación fuera de este equipo. Sin ella no podrás descifrar los respaldos si cambias de PC o Windows.</div>' +
+      '<div class="hint" style="margin:0;color:#FDE68A">Importante: conserva la clave de recuperación fuera de este equipo. Sin ella no podrás descifrar los respaldos si cambias de PC o Windows. Puedes cambiar de cuenta Google cuando quieras; los respaldos anteriores permanecerán en la cuenta antigua y los nuevos irán a la cuenta nueva.</div>' +
     '</div>' +
   '</div>');
 
@@ -7399,6 +7399,7 @@ async function databaseSettingsDlg(){
     $('#gdriveEnable', el).disabled = !s.configured || !s.oauthReady;
     $('#gdriveNow', el).disabled = !s.configured || !s.oauthReady;
     if (s.email) gdriveEmail.value = s.email;
+    $('#gdriveConnect', el).textContent = s.configured ? 'Cambiar cuenta de Google' : 'Conectar Google Drive';
     const history = (s.history || []).map(x => (x.ok ? '✓ ' : '✕ ') + (x.at || '')).join(' · ');
     gdriveStatus.textContent = (s.configured ? 'Cuenta conectada: ' + s.email : 'Google Drive no conectado.') +
       (s.enabled ? ' · Respaldo diario activo: 8:00 p. m. hora Venezuela.' : ' · Programación desactivada.') +
@@ -7420,8 +7421,8 @@ async function databaseSettingsDlg(){
   $('#gdriveConnect', el).addEventListener('click', async () => {
     const email = gdriveEmail.value.trim();
     if (!email) { gdriveStatus.textContent = 'Escribe el correo de Google que quieres conectar.'; return; }
-    gdriveStatus.textContent = 'Abriendo autorización segura de Google…';
-    try { showDriveStatus(await window.posDesktop.backupConnectGoogle(email)); gdriveStatus.textContent += ' Guarda ahora la clave de recuperación antes de activar la programación.'; }
+    gdriveStatus.textContent = 'Validando la nueva cuenta de Google. La cuenta actual seguirá activa si la autorización falla…';
+    try { const previousEmail = gdriveEmail.value.trim(); const result = await window.posDesktop.backupConnectGoogle(email); showDriveStatus(result); gdriveStatus.textContent += (previousEmail && previousEmail.toLowerCase() !== email.toLowerCase() ? ' Cuenta cambiada correctamente. Los respaldos anteriores permanecen en la cuenta anterior; los siguientes se guardarán aquí.' : ' Guarda ahora la clave de recuperación antes de activar la programación.'); }
     catch (e) { gdriveStatus.textContent = 'No se pudo conectar Google Drive: ' + e.message; }
   });
   $('#gdriveEnable', el).addEventListener('click', async () => {
