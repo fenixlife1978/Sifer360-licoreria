@@ -4546,7 +4546,7 @@ function payDlg(draft){
       '<label class="chk"><input type="checkbox" id="payCreditChk"> Enviar saldo pendiente a <b>Cuentas por Cobrar (CxC)</b></label>'+
       '<span id="payCreditDaysWrap" class="row" style="margin-left:auto" hidden><label for="payCreditDays">Plazo crédito (días):</label><input class="fld r" id="payCreditDays" value="15" style="width:64px" inputmode="numeric"></span>'+
     '</div>'+
-    '<div class="gridwrap paywrap"><table class="grid"><thead><tr><th>Forma de pago</th><th class="c">Moneda</th><th class="r">Monto recibido</th><th></th><th>Aprobación CASHEA</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div><p class="hint">Solo CASHEA exige un token o aprobación real verificable. Los demás medios de pago no requieren referencia para confirmar la venta. Los pagos en divisas (efectivo US$ y Zelle) generan IGTF de 3 %; valide la aplicación fiscal según la operación real.</p></div>');
+    ''+(S.cfg.printMode==='DUAL_PRINTER'?'<div class="invbar" style="background:var(--alt);padding:7px 8px;border:1px solid var(--lo);margin:7px 0"><label for="payDocumentMode"><b>Documento de esta venta</b></label><select class="fld" id="payDocumentMode"><option value="TICKET">Ticket / Nota de venta · No fiscal</option><option value="FISCAL">Factura fiscal · SENIAT</option></select><p class="hint">Elija el documento antes de confirmar el cobro. La factura fiscal solo se emite por la máquina fiscal configurada para esta caja.</p></div>':'')+'<div class="gridwrap paywrap"><table class="grid"><thead><tr><th>Forma de pago</th><th class="c">Moneda</th><th class="r">Monto recibido</th><th></th><th>Aprobación CASHEA</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div><p class="hint">Solo CASHEA exige un token o aprobación real verificable. Los demás medios de pago no requieren referencia para confirmar la venta. Los pagos en divisas (efectivo US$ y Zelle) generan IGTF de 3 %; valide la aplicación fiscal según la operación real.</p></div>');
   const amts=()=>{const o={};METHODS.forEach(m=>{o[m.id]=pn($('#pm-'+m.id,el).value);});return o;};
   const refs=()=>{const o={};METHODS.forEach(m=>{const inp=$('#pref-'+m.id,el);o[m.id]=inp?inp.value.trim():'';});return o;};
   let last=null;
@@ -4610,7 +4610,7 @@ function payDlg(draft){
         return false;
       }
       const cDays=Math.max(1,Math.round(pn($('#payCreditDays',el).value)||15));
-      try{await finalize(last,enteredAmts,isCred,cDays,enteredRefs,el);}catch(error){msg('No se pudo reservar o confirmar la numeración de la venta: '+error.message,'bad');}return false;
+      try{await finalize(last,enteredAmts,isCred,cDays,enteredRefs,el,$('#payDocumentMode',el)?$('#payDocumentMode',el).value:'');}catch(error){msg('No se pudo reservar o confirmar la numeración de la venta: '+error.message,'bad');}return false;
     }}],
     onOpen:()=>{upd();$('#pm-efUSD',el).focus();}});
 }
@@ -4633,13 +4633,18 @@ function showSaleCompletion(sale){
   ],onOpen:()=>{const node=$('.sale-completion',body);if(node)node.setAttribute('tabindex','-1');}});
 }
 
-async function finalize(st,amts,isCred,cDays,refs,payEl){
+async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   const ctx=cajaContext();if(ctx.role==='cajero'&&ctx.status!=='abierta'){msg('La caja no está abierta. Solicite al administrador una nueva apertura antes de facturar.','bad');return;}
   const printMode=S.cfg.printMode||'LEGACY';
   if(printMode==='NOT_CONFIGURED'){msg('Complete el asistente de impresoras antes de registrar ventas. Puede elegir impresora fiscal, ticket interno o trabajar sin impresora.','bad');return;}
-  const internalTicketMode=printMode==='INTERNAL_THERMAL'||printMode==='NO_PRINTER';
-  const fiscalMode=printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL');
-  const fiscalProfile=fiscalMode&&S.cfg.fiscalPrinters?S.cfg.fiscalPrinters[currentCaja()]:null;
+  const dualMode=printMode==='DUAL_PRINTER';
+  const thermalProfile=S.cfg.thermalPrinters&&S.cfg.thermalPrinters[currentCaja()]||null;
+  const configuredFiscalProfile=S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[currentCaja()]||null;
+  if(dualMode&&(!thermalProfile||thermalProfile.enabled!==true||!thermalProfile.printerName||!configuredFiscalProfile||configuredFiscalProfile.enabled!==true)){msg('El modo dual requiere una impresora térmica y una impresora fiscal habilitadas para esta caja. Configure ambos dispositivos antes de cobrar.','bad');return;}
+  if(dualMode&&!['TICKET','FISCAL'].includes(documentChoice)){msg('Seleccione si desea emitir un ticket no fiscal o una factura fiscal.','bad');return;}
+  const internalTicketMode=dualMode?documentChoice==='TICKET':(printMode==='INTERNAL_THERMAL'||printMode==='NO_PRINTER');
+  const fiscalMode=dualMode?documentChoice==='FISCAL':(printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL'));
+  const fiscalProfile=fiscalMode?configuredFiscalProfile:null;
   const unresolvedFiscalJobs=(S.fiscalPrinterJobs||[]).filter(job=>String(job.cashbox)===String(currentCaja())&&['pending','uncertain'].includes(job.status));
   if(fiscalMode&&unresolvedFiscalJobs.length){msg('Esta caja tiene una emisión fiscal pendiente o incierta ('+unresolvedFiscalJobs.map(job=>job.id).join(', ')+'). Consulte la impresora y reconcilie esa operación antes de facturar otra venta.','bad');return;}
   if(fiscalMode){
