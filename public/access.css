@@ -717,3 +717,40 @@ body.sa-locked .statusbar {
     gap: 6px;
   }
 }
+
+
+/* SIFER360 1.0.3 — acceso minimalista con ondas doradas */
+#sifer-access { background:#050711 url("./login-waves-yellow.svg") center center / cover no-repeat !important; color:#fff; }
+#sifer-access .sa-windowbar,
+#sifer-access .sa-statusbar,
+#sifer-access .sa-brand { display:none !important; }
+#sifer-access .sa-shell { display:flex !important; align-items:center; justify-content:center; min-height:100vh; height:100vh; background:transparent !important; }
+#sifer-access .sa-panel { width:100%; height:100%; padding:32px 22px; background:transparent !important; overflow:auto; }
+#sifer-access .sa-content { width:min(100%,480px); }
+#sifer-access .sa-card.sa-login-card { width:100%; max-width:480px; padding:34px 38px 38px; background:rgba(5,8,20,.72); border:1px solid rgba(255,204,55,.42); border-radius:18px; box-shadow:0 22px 80px rgba(0,0,0,.42),0 0 38px rgba(255,190,0,.10); backdrop-filter:blur(14px); }
+#sifer-access .sa-brand-logo { width:100%; display:flex; justify-content:center; align-items:center; margin:0 auto 34px; }
+#sifer-access .sa-brand-logo img { display:block; width:min(100%,390px); max-height:116px; object-fit:contain; }
+#sifer-access .sa-login-title,
+#sifer-access .sa-card-divider,
+#sifer-access .sa-login-meta,
+#sifer-access .sa-remember { display:none !important; }
+#sifer-access #sa-login { padding:0; gap:20px; }
+#sifer-access .sa-field { margin:0; }
+#sifer-access .sa-field label { color:#ffe08a; font-size:13px; font-weight:800; letter-spacing:.08em; margin:0 0 9px; }
+#sifer-access .sa-field:nth-of-type(3) { display:none !important; }
+#sifer-access .sa-control { height:54px; border:1px solid rgba(255,211,77,.55); border-radius:9px; background:rgba(255,255,255,.96); }
+#sifer-access .sa-control:focus-within { border-color:#ffd12e; box-shadow:0 0 0 3px rgba(255,195,0,.20); }
+#sifer-access .sa-control-icon { background:#fff4c7; border-color:#e8c75c; color:#765000; }
+#sifer-access .sa-control input { color:#191919; font-size:15px; }
+#sifer-access .sa-control input::placeholder { color:#777; }
+#sifer-access .sa-eye { color:#795400; }
+#sifer-access .sa-error { color:#ffcf67; min-height:18px; margin:0; text-align:center; }
+#sifer-access .sa-btn { height:56px; margin-top:2px; border-radius:9px; background:linear-gradient(100deg,#d88a00,#ffc928 55%,#ffe78a); color:#211600; font-size:16px; font-weight:900; letter-spacing:.06em; box-shadow:0 8px 24px rgba(235,166,0,.25); }
+#sifer-access .sa-btn:hover { background:linear-gradient(100deg,#f0a000,#ffdb4d 55%,#fff0a8); }
+#sifer-access .sa-btn-icon { stroke:#211600; }
+@media(max-width:600px) {
+ #sifer-access .sa-panel { padding:20px 16px; }
+ #sifer-access .sa-card.sa-login-card { padding:28px 22px 30px; }
+ #sifer-access .sa-brand-logo { margin-bottom:28px; }
+ #sifer-access .sa-brand-logo img { max-height:90px; }
+}
