@@ -3,6 +3,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { encryptBackup, decryptBackup, createDailyTaskXml } = require('../electron/google-drive-backup.cjs');
+const initSqlJs = require('sql.js');
+const { sqliteDatabaseToJson } = require('../electron/sqlite-json-export.cjs');
 
 test('el respaldo cifrado AES-256-GCM conserva los bytes SQLite', () => {
   const key = crypto.randomBytes(32);
@@ -33,4 +35,20 @@ test('el archivo de tarea programa diariamente a las 20:00 UTC-04:00', () => {
 test('el formato de archivo cifrado tiene cabecera versionada', () => {
   const encrypted = encryptBackup(Buffer.from('x'), crypto.randomBytes(32));
   assert.equal(encrypted.subarray(0, 12).toString(), 'SIFER360GDR1');
+});
+
+test('la exportación JSON contiene todas las tablas y supera integrity_check', async () => {
+  const SQL = await initSqlJs();
+  const db = new SQL.Database();
+  db.run('CREATE TABLE app_state(id INTEGER PRIMARY KEY, payload TEXT)');
+  db.run('INSERT INTO app_state(id,payload) VALUES(1,?)', ['{"sales":[1,2]}']);
+  const json = JSON.parse(sqliteDatabaseToJson(db, '2026-11-16T20:00:00-04:00').toString('utf8'));
+  assert.equal(json.format, 'SIFER360_SQLITE_JSON_BACKUP_V1');
+  assert.equal(json.databaseIntegrity, 'ok');
+  assert.deepEqual(json.tables.app_state.rows[0], [1, '{"sales":[1,2]}']);
+  db.close();
+});
+
+test('la exportación JSON rechaza una base inválida', () => {
+  assert.throws(() => sqliteDatabaseToJson(null), /base SQLite válida/);
 });
