@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/google-drive-automatic-backups
+      - integration/google-drive-1.0.4
   pull_request:
     branches:
       - release/v1.0.0
