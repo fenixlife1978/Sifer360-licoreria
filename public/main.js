@@ -4770,6 +4770,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     if(!journal||!journal.ok){restoreStateSnapshotIfNeeded(journal,rollbackState);msg('SQLite no confirmó la intención de emisión fiscal. La impresora no recibió comandos y la venta no se registró.','bad');return;}
     const fiscalInvoice={
       idempotencyKey,
+      origin:{cashbox:currentCaja(),cashier:currentCajero(),terminal:String(fiscalNetworkInfo.deviceId||'LOCAL')},
       documentType:'invoice',
       cashbox:currentCaja(),
       cashier:currentCajero(),
