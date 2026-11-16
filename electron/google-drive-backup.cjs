@@ -13,6 +13,8 @@ const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const TASK_NAME = 'SIFER360-GoogleDrive-Backup';
 const VENEZUELA_OFFSET = '-04:00';
+let bundledClientId = '';
+try { bundledClientId = JSON.parse(fs.readFileSync(path.join(__dirname, 'google-drive-oauth.json'), 'utf8')).clientId || ''; } catch {}
 
 function requestJson(url, options = {}) {
   return new Promise((resolve, reject) => {
@@ -65,7 +67,7 @@ function decryptBackup(payload, key, cryptoImpl = crypto) {
 function createDailyTaskXml(executable, args, startDate = new Date()) {
   const pad = n => String(n).padStart(2, '0');
   const now = new Date(startDate);
-  const date = now.getUTCFullYear() + '-' + pad(now.getUTCMonth() + 1) + '-' + pad(now.getUTCDate());
+  const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Caracas', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
   const boundary = date + 'T20:00:00' + VENEZUELA_OFFSET;
   const command = String(executable).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const argText = String(args || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -84,7 +86,8 @@ function createWindowsBackupScheduler({ fsImpl = fs, pathImpl = path, execFile =
     if (platform !== 'win32') throw new Error('La programación automática requiere Windows.');
     const xml = createDailyTaskXml(executable, '--sifer-google-drive-backup');
     const temp = pathImpl.join(require('node:os').tmpdir(), 'sifer360-google-drive-task-' + process.pid + '.xml');
-    fsImpl.writeFileSync(temp, Buffer.from(xml, 'utf16le'));
+    const encoded = Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from(xml, 'utf16le')]);
+    fsImpl.writeFileSync(temp, encoded);
     try {
       execFile('schtasks.exe', ['/Create', '/TN', TASK_NAME, '/XML', temp, '/F'], { windowsHide: true, stdio: 'pipe' });
     } finally { try { fsImpl.unlinkSync(temp); } catch {} }
@@ -109,7 +112,7 @@ function createGoogleDriveBackup(options = {}) {
   const dialog = options.dialog;
   const httpsImpl = options.https;
   const request = options.requestJson || requestJson;
-  const clientId = String(options.clientId || process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || '').trim();
+  const clientId = String(options.clientId || process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || bundledClientId || '').trim();
   const directory = pathImpl.join(app.getPath('userData'), 'google-drive-backup');
   const configFile = pathImpl.join(directory, 'config.json');
   const historyFile = pathImpl.join(directory, 'history.json');
