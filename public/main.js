@@ -4846,8 +4846,8 @@ function applyTicketStyle(pre){
   pre.style.fontWeight=bold?'700':'500';
   pre.style.lineHeight=fId==='sans'?'1.32':'1.36';
 }
-function ticketText(s){
-  const Wd=40,ln='-'.repeat(Wd),dln='='.repeat(Wd);
+function ticketText(s,columns){
+  const Wd=Math.max(24,Math.min(48,Number(columns)||40)),ln='-'.repeat(Wd),dln='='.repeat(Wd);
   const ctr=t=>' '.repeat(Math.max(0,Math.floor((Wd-t.length)/2)))+t;
   const row=(a,b)=>{a=String(a);b=String(b);return a+' '.repeat(Math.max(1,Wd-a.length-b.length))+b;};
   const cut=(t,n)=>t.length>n?t.slice(0,n-1)+'…':t;
@@ -4939,7 +4939,7 @@ function showTicket(s){
       if(noPrinter){msg('Esta instalación está configurada sin impresora. El comprobante queda guardado en SQLite y puede imprimirse después de configurar un dispositivo.');return false;}
       const thermal=S.cfg.thermalPrinters&&S.cfg.thermalPrinters[s.cashbox];
       if(thermal&&thermal.enabled===true&&thermal.printerName&&window.posDesktop&&window.posDesktop.printerPrintTicket){
-        try{const result=await window.posDesktop.printerPrintTicket(thermal.printerName,ticketText(s),{columns:thermal.columns||42});msg(result.message+' · '+thermal.printerName);}
+        try{const result=await window.posDesktop.printerPrintTicket(thermal.printerName,ticketText(s,thermal.columns||42),{columns:thermal.columns||42});msg(result.message+' · '+thermal.printerName);}
         catch(error){msg('No se pudo confirmar el envío del ticket: '+error.message,'bad');}
         return false;
       }
