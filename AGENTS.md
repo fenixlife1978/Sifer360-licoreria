@@ -14,8 +14,8 @@ Antes de actuar, confirmar repositorio, rama, entorno y alcance solicitado. No a
 - El servidor LAN no es una base remota ni un servicio externo: permanece dentro de la red local y puede operar sin Internet. Si un cliente pierde conexión con el servidor, no debe confirmar ni registrar localmente operaciones como si fueran definitivas; debe informar que la operación no fue confirmada y permitir reconectar/recargar.
 - No almacenar la autoridad operativa de datos en cada cliente ni habilitar sincronización diferida que pueda mezclar o sobrescribir operaciones concurrentes.
 - No convertir LocalStorage, IndexedDB, cachés ni archivos temporales en una segunda fuente de verdad. Solo pueden apoyar persistencia local, recuperación y funcionamiento offline según la arquitectura existente.
-- Los respaldos y restauraciones son locales y quedan bajo control del cliente: pendrives, discos externos u otros medios que el cliente administre.
-- No proponer ni implementar copias de seguridad en nube o remotas.
+- Se conservan los respaldos y restauraciones locales. Como excepción autorizada, el administrador puede activar respaldos SQLite y JSON cifrados en su propia cuenta Google Drive. La nube es solo destino de copias, no réplica ni base de datos operativa.
+- Nunca activar respaldo en nube sin OAuth explícito por instalación; nunca subir SQLite sin cifrar ni enviar respaldos desde equipos clientes LAN. Solo el servidor LAN o equipo independiente que conserva la SQLite central puede generarlos.
 - Proteger los datos existentes. Nunca reinicializar, borrar, sustituir o migrar destructivamente información sin autorización expresa, respaldo verificable y plan de reversión.
 - Mantener compatibilidad con instalaciones y datos existentes; toda migración debe ser incremental, idempotente y comprobable.
 
