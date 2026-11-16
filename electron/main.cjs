@@ -936,7 +936,11 @@ if (!hasSingleInstanceLock) {
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   }).catch(error => {
-    dialog.showErrorBox('No se pudo iniciar SIFER 360', error && error.message ? error.message : String(error));
+    if (process.argv.includes('--sifer-google-drive-backup')) {
+      try { fs.appendFileSync(path.join(app.getPath('userData'), 'google-drive-backup', 'backup-errors.log'), '[' + new Date().toISOString() + '] ' + (error && error.stack ? error.stack : String(error)) + '\\n', 'utf8'); } catch {}
+    } else {
+      dialog.showErrorBox('No se pudo iniciar SIFER 360', error && error.message ? error.message : String(error));
+    }
     app.quit();
   });
 }
