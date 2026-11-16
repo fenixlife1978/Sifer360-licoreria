@@ -5649,16 +5649,18 @@ async function fiscalPrinterConfigDlg(){
       if(!doc||!serial){msg('Indique el número fiscal y serial exactos que aparecen en la máquina.','bad');return;}
       if(!confirm('Confirma que consultó la impresora física y verificó que la factura '+pad(job.saleNo)+' fue emitida con el número '+doc+' y serial '+serial+'?'))return;
       if(isSharedLan){
-        const remote=await window.posDesktop.fiscalNetworkStatus(job.idempotencyKey);
-        if(remote.status==='uncertain'){
-          const password=prompt('Confirme su contraseña de administrador para conciliar también la cola fiscal del servidor:');
-          if(!password)return;
-          await window.posDesktop.fiscalNetworkReconcile({adminUsername:user.username,password,idempotencyKey:job.idempotencyKey,decision:'issued',details:{fiscalDocumentNumber:doc,fiscalSerial:serial}});
-        }else if(remote.status==='issued'){
-          if(String(remote.result&&remote.result.fiscalDocumentNumber)!==doc||String(remote.result&&remote.result.fiscalSerial)!==serial)throw new Error('El documento o serial no coincide con el resultado confirmado por la cola fiscal del servidor.');
-        }else{
-          throw new Error('La cola fiscal compartida aún no está conciliada o el servidor rechazó el trabajo. Resuelva primero el estado del servidor.');
-        }
+        try{
+          const remote=await window.posDesktop.fiscalNetworkStatus(job.idempotencyKey);
+          if(remote.status==='uncertain'){
+            const password=prompt('Confirme su contraseña de administrador para conciliar también la cola fiscal del servidor:');
+            if(!password)return;
+            await window.posDesktop.fiscalNetworkReconcile({adminUsername:user.username,password,idempotencyKey:job.idempotencyKey,decision:'issued',details:{fiscalDocumentNumber:doc,fiscalSerial:serial}});
+          }else if(remote.status==='issued'){
+            if(String(remote.result&&remote.result.fiscalDocumentNumber)!==doc||String(remote.result&&remote.result.fiscalSerial)!==serial)throw new Error('El documento o serial no coincide con el resultado confirmado por la cola fiscal del servidor.');
+          }else{
+            throw new Error('La cola fiscal compartida aún no está conciliada o el servidor rechazó el trabajo. Resuelva primero el estado del servidor.');
+          }
+        }catch(error){msg('No se pudo conciliar la cola fiscal compartida: '+error.message,'bad');return;}
       }
       const snapshot=JSON.parse(JSON.stringify(S));
       try{
@@ -5696,14 +5698,16 @@ async function fiscalPrinterConfigDlg(){
       if(!job)return;
       if(!confirm('Confirma que consultó la impresora física y verificó que NO existe documento fiscal emitido para esta operación?'))return;
       if(isSharedLan){
-        const remote=await window.posDesktop.fiscalNetworkStatus(job.idempotencyKey);
-        if(remote.status==='uncertain'){
-          const password=prompt('Confirme su contraseña de administrador para liberar también la cola fiscal del servidor:');
-          if(!password)return;
-          await window.posDesktop.fiscalNetworkReconcile({adminUsername:user.username,password,idempotencyKey:job.idempotencyKey,decision:'not-issued',details:{note:'Administrador verificó físicamente que no existe documento fiscal emitido.'}});
-        }else if(remote.status!=='rejected'){
-          throw new Error('El trabajo compartido no está en estado incierto ni rechazado. No se puede marcar localmente como no emitido.');
-        }
+        try{
+          const remote=await window.posDesktop.fiscalNetworkStatus(job.idempotencyKey);
+          if(remote.status==='uncertain'){
+            const password=prompt('Confirme su contraseña de administrador para liberar también la cola fiscal del servidor:');
+            if(!password)return;
+            await window.posDesktop.fiscalNetworkReconcile({adminUsername:user.username,password,idempotencyKey:job.idempotencyKey,decision:'not-issued',details:{note:'Administrador verificó físicamente que no existe documento fiscal emitido.'}});
+          }else if(remote.status!=='rejected'){
+            throw new Error('El trabajo compartido no está en estado incierto ni rechazado. No se puede marcar localmente como no emitido.');
+          }
+        }catch(error){msg('No se pudo conciliar la cola fiscal compartida: '+error.message,'bad');return;}
       }
       const snapshot=JSON.parse(JSON.stringify(S));
       job.status='not-issued';job.reconciledAt=Date.now();job.reconciliation='confirmed-not-issued-by-admin';
