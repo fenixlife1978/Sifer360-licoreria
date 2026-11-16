@@ -1,0 +1,79 @@
+name: SIFER360 1.0.4 Google Drive validation
+
+on:
+  push:
+    branches:
+      - feature/google-drive-automatic-backups
+  pull_request:
+    branches:
+      - release/v1.0.0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sifer360-104-google-drive-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-validation:
+    name: Desktop and SQLite backup validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@v4
+      - name: Configure Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Inject public Google OAuth Desktop Client ID
+        env:
+          SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
+        run: node -e "require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId: process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || ''}, null, 2))"
+      - name: Run complete automated tests
+        run: npm test
+      - name: Validate desktop JavaScript syntax
+        run: |
+          node --check electron/main.cjs
+          node --check electron/preload.cjs
+          node --check electron/google-drive-backup.cjs
+          node --check electron/sqlite-json-export.cjs
+          node --check electron/binary-architecture.cjs
+          node --check public/main.js
+          node --check public/access.js
+      - name: Build production web assets
+        run: npm run build
+
+  windows-installer:
+    name: Build Windows installer and portable executable
+    needs: desktop-validation
+    runs-on: windows-latest
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@v4
+      - name: Configure Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Inject public Google OAuth Desktop Client ID
+        env:
+          SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
+        run: node -e "require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId: process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || ''}, null, 2))"
+      - name: Run complete automated tests
+        run: npm test
+      - name: Build Windows installer and portable executable
+        run: npm run build:exe
+      - name: Upload SIFER360 1.0.4 Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SIFER360-1.0.4-Google-Drive-Windows
+          path: dist-exe/*.exe
+          if-no-files-found: error
+          retention-days: 30
