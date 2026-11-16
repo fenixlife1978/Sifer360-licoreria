@@ -59,6 +59,13 @@ test('al reiniciar convierte processing en uncertain y bloquea reenvíos', async
   assert.throws(()=>queue.enqueue(input('SIFER360-NEW00001')),/bloqueada/);
 });
 
+test('un trabajo uncertain ya persistido mantiene bloqueada la cola después de reiniciar', async () => {
+  const store=makeStore([{id:'job-uncertain',idempotency_key:'SIFER360-UNCERTAIN01',invoice_hash:'x',status:'uncertain'}]);
+  const queue=createFiscalNetworkQueue({store,resolveProfile:async()=>({enabled:true}),emitInvoice:async()=>{throw new Error('no debe ejecutarse');}});
+  const recovery=await queue.recover();
+  assert.equal(recovery.blocked,true);
+  assert.throws(()=>queue.enqueue(input('SIFER360-NEW00002')),/bloqueada/);
+});
 test('la conciliación manual de emisión verificada desbloquea la cola sin volver a imprimirla', async () => {
   const store=makeStore(); let calls=0;
   const queue=createFiscalNetworkQueue({store,resolveProfile:async()=>({enabled:true}),emitInvoice:async()=>{calls++;throw new Error('timeout');}});
