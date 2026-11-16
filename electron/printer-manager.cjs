@@ -108,7 +108,8 @@ try {
   try {
     const { stdout } = await exec('powershell.exe', ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script,name64,data64], { windowsHide:true, timeout:20000, maxBuffer:65536 });
     const result = String(stdout || '').trim();
-    if (!/^OK:\d+$/.test(result)) throw new Error('Windows no confirmó la recepción completa del trabajo RAW.');
+    const confirmation = result.match(/^OK:(\d+)$/);
+    if (!confirmation || Number(confirmation[1]) !== bytes.length) throw new Error('Windows no confirmó la recepción completa del trabajo RAW.');
     return { ok:true, printer:name, bytes:bytes.length, message:'Trabajo ESC/POS enviado a la cola de Windows.' };
   } catch (error) {
     throw new Error('No se pudo enviar el ticket a "' + name + '": ' + clean(error.message,500));
