@@ -122,9 +122,9 @@ function runBridge(profile,action,payload={},options={}){
 function mapInvoiceToPnp(invoice) {
   const customer = invoice.customer || {};
   const origin = invoice.origin || {};
-  const cashbox = String(origin.cashbox || invoice.cashbox || '').replace(/\\s+/g,' ').trim();
-  const cashier = String(origin.cashier || invoice.cashier || '').replace(/\\s+/g,' ').trim();
-  const terminal = String(origin.terminal || '').replace(/\\s+/g,' ').trim();
+  const cashbox = String(origin.cashbox || invoice.cashbox || '').replace(/\s+/g,' ').trim();
+  const cashier = String(origin.cashier || invoice.cashier || '').replace(/\s+/g,' ').trim();
+  const terminal = String(origin.terminal || '').replace(/\s+/g,' ').trim();
   const footerLines = [
     cashbox ? 'CAJA: '+cashbox : '',
     cashier ? 'CAJERO: '+cashier : '',
