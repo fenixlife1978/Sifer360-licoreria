@@ -356,6 +356,13 @@ function createFiscalNetworkQueueStore() {
     markRejected(id, error, at) {
       persistMutation(() => run("UPDATE fiscal_network_jobs SET status='rejected',error=?,finished_at=? WHERE id=? AND status='processing'", [String(error).slice(0,1000),at,id]));
     },
+    markReconciledIssued(id, result, at) {
+      persistMutation(() => run("UPDATE fiscal_network_jobs SET status='issued',result_json=?,finished_at=?,error='Conciliación manual: emisión verificada físicamente.' WHERE id=? AND status='uncertain'", [JSON.stringify(result),at,id]));
+    },
+    markReconciledNotIssued(id, note, at) {
+      persistMutation(() => run("UPDATE fiscal_network_jobs SET status='rejected',error=?,finished_at=? WHERE id=? AND status='uncertain'", ['Conciliación manual: '+String(note).slice(0,800),at,id]));
+    },
+    hasUncertain: () => !!one("SELECT id FROM fiscal_network_jobs WHERE status='uncertain' LIMIT 1"),
     recoverProcessing(at) {
       const rows=all("SELECT id FROM fiscal_network_jobs WHERE status='processing'");
       if(rows.length) persistMutation(() => run("UPDATE fiscal_network_jobs SET status='uncertain',error='El servidor se reinició durante el envío; requiere conciliación manual.',finished_at=? WHERE status='processing'", [at]));
@@ -425,6 +432,17 @@ async function startLanServer(requestedPort) {
         const accepted=queue.enqueue({idempotencyKey:body.idempotencyKey,cashbox,cashier,station,sourceDeviceId,saleId:body.saleId,invoice:body.invoice});
         return sendJson(res,202,{ok:true,duplicate:accepted.duplicate,job:publicFiscalNetworkJob(accepted.job)});
       } catch(error) { return sendJson(res,400,{error:error.message||'No se pudo registrar el trabajo fiscal.'}); }
+    }
+    if (url.pathname.startsWith('/api/fiscal/queue/') && req.method === 'POST' && url.pathname.endsWith('/reconcile')) {
+      try {
+        const key=decodeURIComponent(url.pathname.slice('/api/fiscal/queue/'.length,-'/reconcile'.length));
+        const body=await readBody(req);
+        const username=String(body.adminUsername||'').trim();
+        const admin=one("SELECT username,role,password_hash FROM app_users WHERE username=? COLLATE NOCASE AND active=1",[username]);
+        if(!admin||admin.role!=='admin'||!(await verifyPassword(String(body.password||''),admin.password_hash))) return sendJson(res,403,{error:'Credenciales de administrador incorrectas.'});
+        const job=await ensureFiscalNetworkQueue().reconcile(key,body.decision,body.details||{});
+        return sendJson(res,200,{ok:true,job:publicFiscalNetworkJob(job)});
+      } catch(error) { return sendJson(res,400,{error:error.message||'No se pudo conciliar el trabajo fiscal.'}); }
     }
     if (url.pathname.startsWith('/api/fiscal/queue/') && req.method === 'GET') {
       const key=decodeURIComponent(url.pathname.slice('/api/fiscal/queue/'.length));
@@ -619,6 +637,19 @@ function registerNetworkIpc() {
   ipcMain.handle('fiscal-network:list', async () => {
     if(networkConfig.role==='client') throw new Error('La consulta general de la cola fiscal se realiza en el equipo servidor.');
     return ensureFiscalNetworkQueue().list(200).map(publicFiscalNetworkJob);
+  });
+  ipcMain.handle('fiscal-network:reconcile', async (_e,input={}) => {
+    const username=String(input.adminUsername||'').trim();
+    const admin=one("SELECT username,role,password_hash FROM app_users WHERE username=? COLLATE NOCASE AND active=1",[username]);
+    if(!admin||admin.role!=='admin'||!(await verifyPassword(String(input.password||''),admin.password_hash))) throw new Error('Credenciales de administrador incorrectas.');
+    if(networkConfig.role==='client') {
+      const key=String(input.idempotencyKey||'');
+      const result=await clientApi('/api/fiscal/queue/'+encodeURIComponent(key)+'/reconcile',{method:'POST',body:JSON.stringify({adminUsername:username,password:String(input.password||''),decision:input.decision,details:input.details||{}}),timeoutMs:15000});
+      return result.job;
+    }
+    if(networkConfig.role!=='server'||!networkServer) throw new Error('Inicie el servidor LAN para conciliar la cola fiscal compartida.');
+    const job=await ensureFiscalNetworkQueue().reconcile(String(input.idempotencyKey||''),input.decision,input.details||{});
+    return publicFiscalNetworkJob(job);
   });
   ipcMain.handle('network:status', () => ({ ...networkConfig, running: !!networkServer, addresses: localAddresses() }));
   ipcMain.handle('network:flush-outbox', async () => {
