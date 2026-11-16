@@ -7325,6 +7325,15 @@ async function databaseSettingsDlg(){
       '</div>' +
       '<div id="dbMsg" class="hint" style="margin-top:10px;min-height:18px"></div>' +
     '</div>' +
+    '<div style="background:#131C2E;border:1px solid #7C5B16;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:9px">' +
+      '<div style="display:flex;align-items:center;gap:8px"><b style="color:#FDE68A;font-size:13px">Respaldo cifrado automático en Google Drive</b><span style="background:#713F12;color:#FDE68A;padding:2px 7px;border-radius:4px;font-size:10px">OPCIONAL</span></div>' +
+      '<div class="hint" style="margin:0">SQLite continúa siendo la única base operativa. Solo el equipo independiente o servidor LAN puede generar copias. El archivo se cifra localmente antes de subirlo a una carpeta privada de tu Google Drive.</div>' +
+      '<div class="f"><label for="gdriveEmail">Correo de la cuenta Google Drive</label><input class="fld" id="gdriveEmail" type="email" autocomplete="email" placeholder="tu-correo@gmail.com" style="width:100%"></div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn" id="gdriveConnect" type="button">Conectar Google Drive</button><button class="btn" id="gdriveEnable" type="button">Activar respaldo diario 8:00 p. m.</button><button class="btn" id="gdriveDisable" type="button">Desactivar</button></div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn primary" id="gdriveNow" type="button">Realizar respaldo ahora</button><button class="btn" id="gdriveRecovery" type="button">Guardar clave de recuperación</button></div>' +
+      '<div id="gdriveStatus" class="hint" role="status" aria-live="polite" style="margin:0;min-height:28px">Consultando configuración de Google Drive…</div>' +
+      '<div class="hint" style="margin:0;color:#FDE68A">Importante: conserva la clave de recuperación fuera de este equipo. Sin ella no podrás descifrar los respaldos si cambias de PC o Windows.</div>' +
+    '</div>' +
   '</div>');
 
   const note = $('#dbMsg', el);
@@ -7381,6 +7390,56 @@ async function databaseSettingsDlg(){
       note.textContent = 'Error al exportar: ' + e.message;
     }
   });
+
+  const gdriveStatus = $('#gdriveStatus', el);
+  const gdriveEmail = $('#gdriveEmail', el);
+  const showDriveStatus = s => {
+    if (!isDesktop) { gdriveStatus.textContent = 'Esta función requiere la aplicación de escritorio Windows.'; return; }
+    if (s.email) gdriveEmail.value = s.email;
+    const history = (s.history || []).map(x => (x.ok ? '✓ ' : '✕ ') + (x.at || '')).join(' · ');
+    gdriveStatus.textContent = (s.configured ? 'Cuenta conectada: ' + s.email : 'Google Drive no conectado.') +
+      (s.enabled ? ' · Respaldo diario activo: 8:00 p. m. hora Venezuela.' : ' · Programación desactivada.') +
+      (s.lastBackupAt ? ' · Último intento: ' + s.lastBackupAt + ' (' + (s.lastBackupStatus || 'sin estado') + ')' : '') +
+      (s.lastBackupError ? ' · Error: ' + s.lastBackupError : '') +
+      (history ? ' · Historial: ' + history : '') +
+      (!s.oauthReady ? ' · Falta registrar/configurar el OAuth Client ID de SIFER360 en Google Cloud; la conexión se habilitará al incorporar esa credencial pública.' : '');
+  };
+  const refreshDriveStatus = async () => {
+    if (!isDesktop || !window.posDesktop.backupStatus) { showDriveStatus({}); return; }
+    try { showDriveStatus(await window.posDesktop.backupStatus()); }
+    catch (e) { gdriveStatus.textContent = 'No se pudo consultar Google Drive: ' + e.message; }
+  };
+  $('#gdriveConnect', el).disabled = !isDesktop;
+  $('#gdriveEnable', el).disabled = !isDesktop;
+  $('#gdriveDisable', el).disabled = !isDesktop;
+  $('#gdriveNow', el).disabled = !isDesktop;
+  $('#gdriveRecovery', el).disabled = !isDesktop;
+  $('#gdriveConnect', el).addEventListener('click', async () => {
+    const email = gdriveEmail.value.trim();
+    if (!email) { gdriveStatus.textContent = 'Escribe el correo de Google que quieres conectar.'; return; }
+    gdriveStatus.textContent = 'Abriendo autorización segura de Google…';
+    try { showDriveStatus(await window.posDesktop.backupConnectGoogle(email)); gdriveStatus.textContent += ' Guarda ahora la clave de recuperación antes de activar la programación.'; }
+    catch (e) { gdriveStatus.textContent = 'No se pudo conectar Google Drive: ' + e.message; }
+  });
+  $('#gdriveEnable', el).addEventListener('click', async () => {
+    gdriveStatus.textContent = 'Programando la tarea diaria de Windows…';
+    try { showDriveStatus(await window.posDesktop.backupEnableDaily()); }
+    catch (e) { gdriveStatus.textContent = 'No se pudo activar el respaldo diario: ' + e.message; }
+  });
+  $('#gdriveDisable', el).addEventListener('click', async () => {
+    try { showDriveStatus(await window.posDesktop.backupDisableDaily()); }
+    catch (e) { gdriveStatus.textContent = 'No se pudo desactivar: ' + e.message; }
+  });
+  $('#gdriveNow', el).addEventListener('click', async () => {
+    gdriveStatus.textContent = 'Verificando SQLite, cifrando y enviando el respaldo…';
+    try { const result = await window.posDesktop.backupRunNow(); gdriveStatus.textContent = 'Respaldo verificado y cargado: ' + result.fileName + ' · SHA-256 ' + result.sha256; await refreshDriveStatus(); }
+    catch (e) { gdriveStatus.textContent = 'No se completó el respaldo: ' + e.message; }
+  });
+  $('#gdriveRecovery', el).addEventListener('click', async () => {
+    try { const result = await window.posDesktop.backupExportRecoveryKey(); gdriveStatus.textContent = result.saved ? 'Clave de recuperación guardada. Guárdala en un medio seguro separado de esta PC.' : 'No se guardó la clave.'; }
+    catch (e) { gdriveStatus.textContent = 'No se pudo guardar la clave: ' + e.message; }
+  });
+  refreshDriveStatus();
 
   $('#dbResetAll', el).addEventListener('click', () => {
     resetAll();
