@@ -1,7 +1,7 @@
 test('POS login obtains and validates central LAN user session before restoring an authenticated session', () => {
-  assert.match(access, /authLogin\(\{username:u\.username,password:u\.code\}\)/);
-  assert.match(access, /authToken:serverAuth&&serverAuth\.token/);
-  assert.match(access, /authVerifySession\(saved\.authToken\)/);
+  assert.match(ui, /authLogin\(\{username:u\.username,password:u\.code\}\)/);
+  assert.match(ui, /authToken:serverAuth&&serverAuth\.token/);
+  assert.match(ui, /authVerifySession\(saved\.authToken\)/);
 });
 import test from 'node:test';
 import assert from 'node:assert/strict';
