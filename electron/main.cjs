@@ -875,6 +875,11 @@ function registerIpc() {
   }
   ipcMain.handle('auth:initialize-legacy', async (_event, legacyUsers) => {
     if (networkConfig.role === 'client') throw new Error('La gestión de usuarios debe realizarse en el servidor LAN.');
+    const before = Number(one('SELECT COUNT(*) AS total FROM app_users').total || 0);
+    if (before > 0) {
+      const existing = all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username');
+      return { migrated:false, synchronized:false, count:existing.length, users:existing, reason:'bootstrap-already-completed' };
+    }
     if (!Array.isArray(legacyUsers) || legacyUsers.length < 1 || legacyUsers.length > 500) throw new Error('No se recibió una lista válida de usuarios para la sincronización inicial.');
     const normalized = legacyUsers.map(normalizeLegacyUser);
     const seen = new Set();
@@ -885,23 +890,24 @@ function registerIpc() {
     }
     const prepared = [];
     for (const user of normalized) prepared.push({ ...user, password_hash: await createPasswordHash(user.password) });
-    const before = one('SELECT COUNT(*) AS total FROM app_users');
-    const placeholders=prepared.map(()=>'?').join(',');
+    if (Number(one('SELECT COUNT(*) AS total FROM app_users').total || 0) > 0) {
+      const existing = all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username');
+      return { migrated:false, synchronized:false, count:existing.length, users:existing, reason:'bootstrap-already-completed' };
+    }
     persistMutation(() => {
       db.run('BEGIN IMMEDIATE');
       try {
         for (const user of prepared) run(
-          'INSERT INTO app_users(username,name,role,cashbox,password_hash,active) VALUES(?,?,?,?,?,1) ON CONFLICT(username) DO UPDATE SET name=excluded.name,role=excluded.role,cashbox=excluded.cashbox,password_hash=excluded.password_hash,active=1,updated_at=CURRENT_TIMESTAMP',
+          'INSERT INTO app_users(username,name,role,cashbox,password_hash,active) VALUES(?,?,?,?,?,1)',
           [user.username,user.name,user.role,user.cashbox,user.password_hash]
         );
-        run('UPDATE app_users SET active=0,updated_at=CURRENT_TIMESTAMP WHERE username NOT IN ('+placeholders+')', prepared.map(user=>user.username));
         run("INSERT OR REPLACE INTO schema_migrations(migration_key) VALUES('auth-users-scrypt-v1')");
         db.run('COMMIT');
       } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
     });
     const migrated = all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username');
-    if (migrated.length !== prepared.length) throw new Error('La sincronización de usuarios en SQLite no coincide; conserve los datos heredados.');
-    return { migrated: Number(before&&before.total)===0, synchronized:true, count:migrated.length, users:migrated };
+    if (migrated.length !== prepared.length) throw new Error('La inicialización de usuarios en SQLite no coincide; conserve los datos heredados.');
+    return { migrated:true, synchronized:true, count:migrated.length, users:migrated };
   });
   ipcMain.handle('auth:login', async (_event, credentials = {}) => {
     if(networkConfig.role==='client'){
@@ -953,7 +959,10 @@ function registerIpc() {
       [username,name,role,cashbox,passwordHash]
     ));
     for (const [sessionToken, session] of authSessions) {
-      if (session.user.username.toLowerCase() === username.toLowerCase()) authSessions.delete(sessionToken);
+      if (session.user.username.toLowerCase() === username.toLowerCase()) {
+        if (sessionToken === String(token)) authSessions.set(sessionToken, { user:{username,name,role,cashbox}, expiresAt:session.expiresAt });
+        else authSessions.delete(sessionToken);
+      }
     }
     return { ok: true, user: { username,name,role,cashbox } };
   });
