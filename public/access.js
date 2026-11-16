@@ -262,7 +262,7 @@ async function migrateLegacyUsersToSqlite(users){
   try{
     const network=typeof window.posDesktop.networkStatus==='function'?await window.posDesktop.networkStatus():{role:'standalone'};
     if(network&&network.role==='client')return;
-    const payload=(users||initUsers()).map(user=>({username:user.username,password:user.code,name:user.name,role:user.role,cashbox:user.cashbox}));
+    const payload=(users||initUsers()).map(user=>({username:user.username,code:user.code,name:user.name,role:user.role,cashbox:user.cashbox}));
     await window.posDesktop.authInitializeLegacyUsers(payload);
   }catch(error){console.warn('[SIFER360 auth migration]',error&&error.message||error);}
 }
