@@ -5751,8 +5751,7 @@ function printerSetupWizardDlg(){
     const persisted=await save();if(!persisted||!persisted.ok){msg('SQLite no confirmó la modalidad de impresión. No se aplicaron los cambios.','bad');return false;}
     closeWin();
     if(choice==='FISCAL_PRINTER')setTimeout(()=>fiscalPrinterConfigDlg(),150);
-    else if(choice==='DUAL_PRINTER')setTimeout(()=>thermalPrinterConfigDlg(),150);
-    else if(choice==='DUAL_PRINTER')msg('Modo dual activado. Configure la impresora térmica y la impresora fiscal de cada caja desde Parámetros Fiscales antes de cobrar.');
+    else if(choice==='DUAL_PRINTER'){msg('Modo dual activado. Configure la impresora térmica y la impresora fiscal de cada caja desde Parámetros Fiscales antes de cobrar.');setTimeout(()=>thermalPrinterConfigDlg(),150);}
     else msg(choice==='INTERNAL_THERMAL'?'Modo ticket interno activado. Los comprobantes no son facturas fiscales.':'Instalación sin impresora activada. Las ventas se guardarán en SQLite sin impresión automática.');
     return false;
   }}]});
