@@ -582,7 +582,11 @@ function requestPinnedJson(route, options = {}) {
         agent.destroy();
         let result = {};
         try { result = JSON.parse(raw || '{}'); } catch { return reject(new Error('El servidor LAN devolvió una respuesta JSON inválida.')); }
-        if (response.statusCode < 200 || response.statusCode >= 300 || result.ok === false) return reject(new Error((response.statusCode === 409 ? 'Conflicto de concurrencia: ' : '') + (result.error || 'El servidor LAN no confirmó la operación (' + response.statusCode + ').')));
+        if (response.statusCode < 200 || response.statusCode >= 300 || result.ok === false) {
+          const error=new Error((response.statusCode === 409 ? 'Conflicto de concurrencia: ' : '') + (result.error || 'El servidor LAN no confirmó la operación (' + response.statusCode + ').'));
+          error.statusCode=response.statusCode;
+          return reject(error);
+        }
         resolve(result);
       });
     });
@@ -632,11 +636,13 @@ function registerNetworkIpc() {
   });
   ipcMain.handle('fiscal-network:status', async (_e,key) => {
     if(networkConfig.role==='client') {
-      const result=await clientApi('/api/fiscal/queue/'+encodeURIComponent(String(key)),{timeoutMs:10000});
-      return result.job;
+      try{
+        const result=await clientApi('/api/fiscal/queue/'+encodeURIComponent(String(key)),{timeoutMs:10000});
+        return result.job;
+      }catch(error){if(error.statusCode===404)return {status:'missing'};throw error;}
     }
     const queue=ensureFiscalNetworkQueue();
-    return publicFiscalNetworkJob(queue.get(String(key)));
+    return publicFiscalNetworkJob(queue.get(String(key)))||{status:'missing'};
   });
   ipcMain.handle('fiscal-network:list', async () => {
     if(networkConfig.role==='client') {
