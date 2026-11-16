@@ -24,10 +24,11 @@ jobs:
   test-and-web-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          package-manager-cache: false
       - run: npm install
       - name: Inyectar OAuth Client ID público de Google Drive
         env:
@@ -42,10 +43,11 @@ jobs:
     needs: test-and-web-build
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          package-manager-cache: false
       - run: npm install
       - name: Inyectar OAuth Client ID público de Google Drive
         env:
@@ -55,7 +57,7 @@ jobs:
       - run: npm test
       - run: node --check electron/main.cjs && node --check electron/preload.cjs && node --check electron/google-drive-backup.cjs && node --check public/main.js && node --check public/access.js && node --check electron/lan-outbox.cjs && node --check electron/lan-tls.cjs && node --check electron/lan-event-store.cjs && node --check electron/lan-state-merge.cjs && node --check electron/sqlite-recovery.cjs && node --check electron/lan-address.cjs && node --check electron/lan-auth.cjs && node --check electron/cashbox-sequence.cjs && node --check electron/cashbox-sequence-migration.cjs && node --check electron/binary-architecture.cjs
       - run: npm run build:exe
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: sifer360-licoreria-windows
           path: dist-exe/*.exe
