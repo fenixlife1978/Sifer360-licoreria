@@ -366,4 +366,4 @@ async function checkFiscalReadiness(profile,options={}){
   return{ready:false,message:'No se pudo validar la impresora fiscal: '+(error&&error.message?error.message:String(error))};
  }
 }
-module.exports={PROVIDERS,USB_SERIAL_DRIVERS,normalizeProfile,getSdkStatus,listSerialPorts,testSerialPort,exchangePnpFrame,testPnpFiscalStatus,getPnpFiscalIdentity,testBridge,interpretPnpStatus,runBridge,emitInvoice,checkFiscalReadiness};
+module.exports={PROVIDERS,USB_SERIAL_DRIVERS,normalizeProfile,getSdkStatus,listSerialPorts,testSerialPort,exchangePnpFrame,testPnpFiscalStatus,getPnpFiscalIdentity,testBridge,interpretPnpStatus,runBridge,emitInvoice,checkFiscalReadiness,mapInvoiceToPnp};
