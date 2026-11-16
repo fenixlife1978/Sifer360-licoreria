@@ -180,12 +180,19 @@ function renderLogin(error=''){
   $('#sa-login').onsubmit=async e=>{
     e.preventDefault();
     const username=$('#sa-user').value.trim(),code=$('#sa-code').value;let cashbox=$('#sa-cashbox').value;
-    const users=initUsers();
-    const u=users.find(x=>x.username===username&&x.code===code);
-    if(!u){
-      $('#sa-error').textContent='Usuario o contraseña incorrectos.';
-      $('#sa-code').focus();
-      return;
+    let users=initUsers(),u=null,serverAuth=null;
+    if(window.posDesktop&&typeof window.posDesktop.authLogin==='function'){
+      try{serverAuth=await window.posDesktop.authLogin({username,password:code});}
+      catch(error){$('#sa-error').textContent='Usuario o contraseña incorrectos: '+error.message;$('#sa-code').focus();return;}
+      if(!serverAuth||!serverAuth.token||!serverAuth.user){$('#sa-error').textContent='El servidor no emitió una sesión válida. No se inició el POS.';return;}
+      const local=users.find(x=>x.username.toLowerCase()===String(serverAuth.user.username).toLowerCase());
+      u={...serverAuth.user,code};
+      users=users.filter(x=>x.username.toLowerCase()!==String(u.username).toLowerCase());
+      users.push(u);
+      if(window.SIFERAccess&&typeof window.SIFERAccess.setUsers==='function')window.SIFERAccess.setUsers(users);
+    }else{
+      u=users.find(x=>x.username===username&&x.code===code);
+      if(!u){$('#sa-error').textContent='Usuario o contraseña incorrectos.';$('#sa-code').focus();return;}
     }
     if($('#sa-remember').checked)localStorage.setItem('sifer360_remember_user',username);
     else localStorage.removeItem('sifer360_remember_user');
@@ -197,12 +204,6 @@ function renderLogin(error=''){
       cashbox=String(u.cashbox);
     }
     u.cashbox=cashbox;
-    let serverAuth=null;
-    if(window.posDesktop&&typeof window.posDesktop.authLogin==='function'){
-      try{serverAuth=await window.posDesktop.authLogin({username:u.username,password:u.code});}
-      catch(error){$('#sa-error').textContent='No se pudo validar el usuario en la base central: '+error.message;return;}
-      if(!serverAuth||!serverAuth.token){$('#sa-error').textContent='El servidor no emitió una sesión válida. No se inició el POS.';return;}
-    }
     const active={username:u.username,name:u.name,role:u.role,cashbox,loginAt:Date.now(),authToken:serverAuth&&serverAuth.token||''};
     sessionStorage.setItem(SESSION,JSON.stringify(active));
     if(u.role!=='cajero'){
@@ -273,16 +274,28 @@ async function migrateLegacyUsersToSqlite(users){
   }catch(error){console.warn('[SIFER360 auth migration]',error&&error.message||error);}
 }
 document.addEventListener('DOMContentLoaded',async()=>{
-  const users=initUsers();
+  let users=initUsers();
   await migrateLegacyUsersToSqlite(users);
   let saved=(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION)||'null')}catch{return null}})();
+  let authoritativeUser=null;
   if(saved&&window.posDesktop&&typeof window.posDesktop.authVerifySession==='function'){
-    const verified=saved.authToken?await window.posDesktop.authVerifySession(saved.authToken):{valid:false};
-    if(!verified||!verified.valid){saved=null;sessionStorage.removeItem(SESSION);sessionStorage.removeItem('sifer360_active_box');}
+    const verified=saved.authToken?await window.posDesktop.authVerifySession(saved.authToken):{user:null,valid:false};
+    if(!verified||!verified.valid||!verified.user){
+      saved=null;
+      sessionStorage.removeItem(SESSION);
+      sessionStorage.removeItem('sifer360_active_box');
+    }else{
+      authoritativeUser=verified.user;
+      const local=users.find(x=>x.username.toLowerCase()===String(authoritativeUser.username).toLowerCase());
+      const synced={...authoritativeUser,code:local&&local.code||''};
+      users=users.filter(x=>x.username.toLowerCase()!==String(synced.username).toLowerCase());
+      users.push(synced);
+      if(window.SIFERAccess&&typeof window.SIFERAccess.setUsers==='function')window.SIFERAccess.setUsers(users);
+    }
   }
-  const user=saved&&users.find(x=>x.username===saved.username&&x.role===saved.role);
+  const user=saved&&(authoritativeUser||users.find(x=>x.username===saved.username&&x.role===saved.role));
   if(user){
-    const restored=Object.assign({},saved,{name:user.name,role:user.role,cashbox:user.role==='cajero'?user.cashbox:(saved.cashbox||user.cashbox||'—')});
+    const restored=Object.assign({},saved,{username:user.username,name:user.name,role:user.role,cashbox:user.role==='cajero'?user.cashbox:(saved.cashbox||user.cashbox||'—')});
     sessionStorage.setItem(SESSION,JSON.stringify(restored));
     shell();
     const content=$('#sa-content');
