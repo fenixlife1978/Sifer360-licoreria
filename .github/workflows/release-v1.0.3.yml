@@ -1,0 +1,81 @@
+name: Publicar SIFER360 LICORERÍA v1.0.3
+
+on:
+  push:
+    branches:
+      - release/v1.0.0
+    paths:
+      - '.release-trigger-v1.0.3'
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publicar Release oficial v1.0.3 y generar artefacto Windows"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  windows-build:
+    if: ${{ github.event_name == 'push' || inputs.publish_release == true }}
+    name: Construir instalador y portable Windows 1.0.3
+    runs-on: windows-latest
+    steps:
+      - name: Checkout del commit integrado
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm install --legacy-peer-deps
+
+      - name: Ejecutar pruebas
+        run: npm test
+
+      - name: Validar TypeScript
+        run: npm run lint
+
+      - name: Compilar interfaz
+        run: npm run build
+
+      - name: Construir instalador NSIS y portable
+        run: npx --yes electron-builder --win --config electron-builder.json --publish never
+
+      - name: Publicar artefacto descargable en Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: SIFER360-Licoreria-v1.0.3-Windows-Installer-and-Portable
+          path: |
+            dist-exe/*.exe
+          if-no-files-found: error
+          retention-days: 90
+
+  github-release:
+    if: ${{ github.event_name == 'push' || inputs.publish_release == true }}
+    needs: windows-build
+    name: Publicar Release v1.0.3 con instalador y portable
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar ejecutables generados
+        uses: actions/download-artifact@v4
+        with:
+          name: SIFER360-Licoreria-v1.0.3-Windows-Installer-and-Portable
+          path: release-assets
+
+      - name: Crear tag y Release oficial con los ejecutables adjuntos
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v1.0.3 release-assets/*.exe \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${GITHUB_SHA}" \
+            --title "SIFER360 LICORERÍA v1.0.3" \
+            --notes "Versión 1.0.3. Incluye identidad visual oficial, pantalla de acceso minimalista con fondo de ondas amarillas, instalador Windows NSIS con acceso directo al escritorio y menú Inicio, y ejecutable portable. Los archivos adjuntos fueron compilados y probados por GitHub Actions."
