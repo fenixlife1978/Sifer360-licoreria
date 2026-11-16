@@ -5472,7 +5472,9 @@ function fiscalNetworkQueueDlg(){
     const noIssue=event.target.closest('[data-fnq-not-issued]');
     if(!issue&&!noIssue)return;
     const key=(issue||noIssue).dataset.fnqIssued||(issue||noIssue).dataset.fnqNotIssued;
-    const password=prompt('Confirme su contraseña de administrador para conciliar esta emisión fiscal:');
+    const adminUsername=prompt('Usuario administrador del servidor fiscal:',user.username);
+    if(!adminUsername)return;
+    const password=prompt('Contraseña del administrador del servidor fiscal:');
     if(!password)return;
     let details={},decision='not-issued';
     if(issue){
@@ -5487,7 +5489,7 @@ function fiscalNetworkQueueDlg(){
       details={note:'Administrador verificó físicamente que no existe documento emitido.'};
     }
     try{
-      const result=await window.posDesktop.fiscalNetworkReconcile({adminUsername:user.username,password,idempotencyKey:key,decision,details});
+      const result=await window.posDesktop.fiscalNetworkReconcile({adminUsername:adminUsername.trim(),password,idempotencyKey:key,decision,details});
       const local=(S.fiscalPrinterJobs||[]).find(job=>job.idempotencyKey===key);
       if(local){
         if(decision==='issued'){
@@ -5653,9 +5655,11 @@ async function fiscalPrinterConfigDlg(){
         try{
           const remote=await window.posDesktop.fiscalNetworkStatus(job.idempotencyKey);
           if(remote.status==='uncertain'){
-            const password=prompt('Confirme su contraseña de administrador para conciliar también la cola fiscal del servidor:');
+            const adminUsername=prompt('Usuario administrador del servidor fiscal:',user.username);
+            if(!adminUsername)return;
+            const password=prompt('Contraseña del administrador del servidor fiscal:');
             if(!password)return;
-            await window.posDesktop.fiscalNetworkReconcile({adminUsername:user.username,password,idempotencyKey:job.idempotencyKey,decision:'issued',details:{fiscalDocumentNumber:doc,fiscalSerial:serial}});
+            await window.posDesktop.fiscalNetworkReconcile({adminUsername:adminUsername.trim(),password,idempotencyKey:job.idempotencyKey,decision:'issued',details:{fiscalDocumentNumber:doc,fiscalSerial:serial}});
           }else if(remote.status==='issued'){
             if(String(remote.result&&remote.result.fiscalDocumentNumber)!==doc||String(remote.result&&remote.result.fiscalSerial)!==serial)throw new Error('El documento o serial no coincide con el resultado confirmado por la cola fiscal del servidor.');
           }else{
@@ -5702,9 +5706,11 @@ async function fiscalPrinterConfigDlg(){
         try{
           const remote=await window.posDesktop.fiscalNetworkStatus(job.idempotencyKey);
           if(remote.status==='uncertain'){
-            const password=prompt('Confirme su contraseña de administrador para liberar también la cola fiscal del servidor:');
+            const adminUsername=prompt('Usuario administrador del servidor fiscal:',user.username);
+            if(!adminUsername)return;
+            const password=prompt('Contraseña del administrador del servidor fiscal:');
             if(!password)return;
-            await window.posDesktop.fiscalNetworkReconcile({adminUsername:user.username,password,idempotencyKey:job.idempotencyKey,decision:'not-issued',details:{note:'Administrador verificó físicamente que no existe documento fiscal emitido.'}});
+            await window.posDesktop.fiscalNetworkReconcile({adminUsername:adminUsername.trim(),password,idempotencyKey:job.idempotencyKey,decision:'not-issued',details:{note:'Administrador verificó físicamente que no existe documento fiscal emitido.'}});
           }else if(remote.status!=='rejected'){
             throw new Error('El trabajo compartido no está en estado incierto ni rechazado. No se puede marcar localmente como no emitido.');
           }
