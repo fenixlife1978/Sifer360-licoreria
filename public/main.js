@@ -5527,7 +5527,7 @@ function fiscalNetworkQueueDlg(){
   refresh();
 }
 
-async async async function thermalPrinterConfigDlg(){
+async function thermalPrinterConfigDlg(){
   const user=activeUser();
   if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras térmicas.','bad');return;}
   if(!window.posDesktop||typeof window.posDesktop.printerList!=='function'){msg('La configuración de impresoras térmicas requiere SIFER360 de escritorio en Windows.','bad');return;}
