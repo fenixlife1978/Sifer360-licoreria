@@ -80,7 +80,7 @@ function buildFiscalInvoiceCommands(invoice, initialSequence = 0x20) {
   total = invoice.expectedTotal == null ? money(total,'Total esperado') : money(invoice.expectedTotal,'Total esperado');
   commands.push({kind:'subtotal',frame:Protocol.createFiscalSubtotal(next()),expected:{base,total}});
   for (const footerLine of (Array.isArray(invoice.footerLines)?invoice.footerLines:[]).slice(0,4)) {
-    const text=String(footerLine||'').replace(/[\\u0000-\\u001f\\u007f]/g,' ').trim().slice(0,40);
+    const text=String(footerLine||'').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,40);
     if(text)commands.push({kind:'text',frame:Protocol.createFiscalText({text},next())});
   }
   const closeMode = String(invoice.closeMode || 'T');
