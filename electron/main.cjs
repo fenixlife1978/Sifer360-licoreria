@@ -649,6 +649,12 @@ async function flushClientOutbox() {
 function registerNetworkIpc() {
   ipcMain.handle('fiscal-network:submit', async (_e,input={}) => {
     const payload={...input,sourceDeviceId:networkConfig.deviceId,station:String(input.station||os.hostname())};
+    if(networkConfig.role==='server'){
+      const session=authSessions.get(String(input.userSessionToken||''));
+      if(!session||session.expiresAt<=Date.now())throw new Error('La sesión del cajero expiró. Inicie sesión nuevamente.');
+      if(String(input.cashier)!==String(session.user.name))throw new Error('El cajero no coincide con la sesión autenticada.');
+      if(session.user.role==='cajero'&&String(input.cashbox)!==String(session.user.cashbox))throw new Error('El usuario no está asignado a la caja indicada.');
+    }
     if(payload.invoice&&typeof payload.invoice==='object')payload.invoice={...payload.invoice,origin:{...(payload.invoice.origin||{}),cashbox:payload.cashbox,cashier:payload.cashier,terminal:payload.station,deviceId:payload.sourceDeviceId}};
     if(networkConfig.role==='client') return clientApi('/api/fiscal/queue',{method:'POST',body:JSON.stringify(payload),timeoutMs:15000});
     if(networkConfig.role==='server'){
