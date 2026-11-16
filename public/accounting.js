@@ -65,20 +65,48 @@ function nextBankAccountCode(parentCode,a=state()){
 }
 function showBankForm(){
  const a=state(),el=document.createElement('div');el.className='ac-modal';
- el.innerHTML='<div class="ac-modal-card"><div class="ac-modal-head"><b>Crear banco y cuenta auxiliar</b><button class="ac-small" id="acCloseBank">Cerrar</button></div><div class="ac-form-grid"><label>Nombre del banco<input class="ac-input" id="bkName" maxlength="100" placeholder="Ej. Banco de Venezuela" required></label><label>Moneda<select class="ac-input" id="bkCurrency"><option value="BS.">Bolívares (BS.)</option><option value="USD">Dólares (USD)</option></select></label><label>Tipo de cuenta<select class="ac-input" id="bkType"><option>Corriente</option><option>Ahorro</option><option>Otra</option></select></label><label>Número de cuenta<input class="ac-input" id="bkNumber" maxlength="40" inputmode="numeric" placeholder="Número de cuenta bancaria"></label><label>Titular<input class="ac-input" id="bkHolder" maxlength="120" placeholder="Titular de la cuenta"></label><label>Identificación del titular<input class="ac-input" id="bkTaxId" maxlength="30" placeholder="RIF / C.I. (opcional)"></label><label class="wide">Descripción / referencia<input class="ac-input" id="bkNotes" maxlength="180" placeholder="Uso o identificación interna"></label></div><p class="ac-note">El código auxiliar se asignará automáticamente. No se permiten euros ni movimientos directos en las cuentas agrupadoras.</p><div class="ac-form-foot"><button class="ac-primary" id="acSaveBank">Crear banco</button></div></div>';
+ const counterOptions=movementAccounts().filter(x=>!x.bankId).map(x=>'<option value="'+esc(x.code)+'">'+esc(x.code+' · '+x.name)+'</option>').join('');
+ el.innerHTML='<div class="ac-modal-card"><div class="ac-modal-head"><b>Crear banco y cuenta auxiliar</b><button type="button" class="ac-small" id="acCloseBank">Cerrar</button></div><div class="ac-form-grid"><label>Nombre del banco<input class="ac-input" id="bkName" maxlength="100" placeholder="Ej. Banco de Venezuela" required></label><label>Moneda<select class="ac-input" id="bkCurrency"><option value="BS.">Bolívares (BS.)</option><option value="USD">Dólares (USD)</option></select></label><label>Tipo de cuenta<select class="ac-input" id="bkType"><option>Corriente</option><option>Ahorro</option><option>Otra</option></select></label><label>Número de cuenta<input class="ac-input" id="bkNumber" maxlength="40" inputmode="numeric" placeholder="Número de cuenta bancaria"></label><label>Titular<input class="ac-input" id="bkHolder" maxlength="120" placeholder="Titular de la cuenta"></label><label>Identificación del titular<input class="ac-input" id="bkTaxId" maxlength="30" placeholder="RIF / C.I. (opcional)"></label><label class="wide">Descripción / referencia<input class="ac-input" id="bkNotes" maxlength="180" placeholder="Uso o identificación interna"></label><label>Saldo inicial (opcional)<input class="ac-input" id="bkOpeningAmount" type="text" inputmode="decimal" value="0" placeholder="0,00"></label><label>Fecha del saldo inicial<input class="ac-input" id="bkOpeningDate" type="date" value="'+today()+'"></label><label>Tasa Bs./US$ a la fecha<input class="ac-input" id="bkOpeningRate" type="text" inputmode="decimal" placeholder="Tasa BCV aplicable"></label><label class="wide">Contrapartida contable del saldo inicial<select class="ac-input" id="bkOpeningCounter"><option value="">Seleccione cuenta imputable…</option>'+counterOptions+'</select></label></div><p class="ac-note">Si registra saldo inicial, se crea en el mismo guardado un asiento de apertura cuadrado en USD y Bs. Debe indicar fecha, tasa y cuenta de contrapartida. El código auxiliar se asigna automáticamente; las cuentas agrupadoras no reciben movimientos.</p><div class="ac-form-foot"><button type="button" class="ac-primary" id="acSaveBank">Crear banco</button></div></div>';
  dialog.appendChild(el);$('#acCloseBank',el).onclick=()=>el.remove();
+ let saving=false;
  $('#acSaveBank',el).onclick=async()=>{
-  const bankName=$('#bkName',el).value.trim(),currency=$('#bkCurrency',el).value,accountType=$('#bkType',el).value,accountNumber=$('#bkNumber',el).value.replace(/\s+/g,''),holder=$('#bkHolder',el).value.trim(),taxId=$('#bkTaxId',el).value.trim(),notes=$('#bkNotes',el).value.trim();
-  if(!bankName){alert('Indique el nombre del banco.');return;}
+  if(saving)return;
+  const button=$('#acSaveBank',el),bankName=$('#bkName',el).value.trim(),currency=$('#bkCurrency',el).value,accountType=$('#bkType',el).value,accountNumber=$('#bkNumber',el).value.replace(/\s+/g,''),holder=$('#bkHolder',el).value.trim(),taxId=$('#bkTaxId',el).value.trim(),notes=$('#bkNotes',el).value.trim();
+  const openingAmount=parseAmount($('#bkOpeningAmount',el).value),openingDate=$('#bkOpeningDate',el).value,openingRate=parseAmount($('#bkOpeningRate',el).value),counterCode=$('#bkOpeningCounter',el).value;
+  if(!bankName){alert('Indique el nombre del banco.');$('#bkName',el).focus();return;}
+  if(!Number.isFinite(openingAmount)){alert('Indique un saldo inicial válido, igual o mayor que cero.');$('#bkOpeningAmount',el).focus();return;}
+  if(openingAmount>0&&(!openingDate||!Number.isFinite(openingRate)||openingRate<=0||!counterCode)){alert('Para registrar saldo inicial indique fecha, tasa válida y cuenta de contrapartida.');return;}
   const parentCode=currency==='USD'?'1.1.1.07':'1.1.1.06',parent=accountMap().get(parentCode);if(!parent||parent.isMovement){alert('No está disponible la cuenta padre compatible para esta moneda.');return;}
-  if(accountNumber&&a.banks.some(b=>b.currency===currency&&String(b.accountNumber||'').replace(/\s+/g,'')===accountNumber)){alert('Ya existe un banco registrado con ese número de cuenta y moneda.');return;}
+  if(accountNumber&&a.banks.some(b=>b.currency===currency&&String(b.accountNumber||'').replace(/\s+/g,'')===accountNumber)){alert('Ya existe un banco registrado con ese número de cuenta y moneda.');$('#bkNumber',el).focus();return;}
   const code=nextBankAccountCode(parentCode,a),id='BANK-'+String(a.nextBank||1).padStart(5,'0');
   if(a.accounts.some(x=>String(x.code)===code)){alert('El consecutivo auxiliar ya existe; actualice y vuelva a intentar.');return;}
-  const bank={id,bankName,currency,accountType,accountNumber,accountNumberMasked:accountNumber?('•••• '+accountNumber.slice(-4)):'',accountName:holder,taxId,notes,accountCode:code,parentCode,active:true,createdAt:new Date().toISOString()};
+  const bank={id,bankName,currency,accountType,accountNumber,accountNumberMasked:accountNumber?('•••• '+accountNumber.slice(-4)):'',accountName:holder,taxId,notes,accountCode:code,parentCode,active:true,createdAt:new Date().toISOString(),openingBalance:openingAmount,openingDate:openingAmount>0?openingDate:null,openingEntryId:null};
   const account={code,name:bankName+(holder?' · '+holder:''),type:'ACTIVO',level:5,isMovement:true,parentCode,bankId:id,currency,bankName};
+  const before={banks:a.banks.length,accounts:a.accounts.length,entries:a.entries.length,nextBank:a.nextBank,nextEntry:a.nextEntry};
   a.banks.push(bank);a.accounts.push(account);a.nextBank=Number(a.nextBank||1)+1;
-  const persisted=await save();if(!persisted||!persisted.ok){a.banks=a.banks.filter(x=>x.id!==id);a.accounts=a.accounts.filter(x=>x.code!==code);a.nextBank=Math.max(1,Number(a.nextBank)-1);alert('SQLite no confirmó el alta. No se dejó el banco registrado.');return;}
-  el.remove();render();
+  let entryId=null,sequence=null;
+  if(openingAmount>0){
+   const counter=accountMap().get(counterCode);
+   if(!counter||!counter.isMovement){a.banks.pop();a.accounts.pop();a.nextBank=before.nextBank;alert('La cuenta de contrapartida no admite movimientos.');return;}
+   sequence=nextEntrySequence(a);entryId='ACC-'+String(sequence).padStart(6,'0');
+   const amountUsd=currency==='USD'?Math.round(openingAmount*100)/100:Math.round(openingAmount/openingRate*100)/100;
+   const amountBs=currency==='USD'?Math.round(openingAmount*openingRate*100)/100:Math.round(openingAmount*100)/100;
+   const lines=[{accountCode:code,accountName:account.name,debitUsd:amountUsd,creditUsd:0,debitBs:amountBs,creditBs:0},{accountCode:counter.code,accountName:counter.name,debitUsd:0,creditUsd:amountUsd,debitBs:0,creditBs:amountBs}];
+   a.entries.push({id:entryId,number:entryId,sequence,date:openingDate,reference:'APERTURA '+id,description:'Saldo inicial de banco · '+bankName,rate:openingRate,lines,totalDebitUsd:amountUsd,totalCreditUsd:amountUsd,totalDebitBs:amountBs,totalCreditBs:amountBs,status:'posted',createdAt:new Date().toISOString(),createdBy:window.SIFERAccountingBridge.getState().cfg?.cajero||'Administrador',bankId:id,openingBalance:true});
+   a.nextEntry=sequence+1;bank.openingEntryId=entryId;
+  }
+  saving=true;button.disabled=true;button.textContent='Guardando…';
+  try{
+   const persisted=await save();
+   if(!persisted||!persisted.ok)throw new Error('SQLite no confirmó el alta del banco y su apertura.');
+   el.remove();render();
+  }catch(error){
+   a.banks.splice(before.banks);a.accounts.splice(before.accounts);a.entries.splice(before.entries);a.nextBank=before.nextBank;a.nextEntry=before.nextEntry;
+   alert('No se guardó el banco. Puede corregir los datos e intentarlo nuevamente. Detalle: '+String(error&&error.message||error));
+  }finally{
+   saving=false;
+   if(button.isConnected){button.disabled=false;button.textContent='Crear banco';}
+  }
  };
 }
 async function toggleBank(id){
