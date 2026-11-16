@@ -9,7 +9,7 @@ Antes de actuar, confirmar repositorio, rama, entorno y alcance solicitado. No a
 ## 1. Arquitectura obligatoria
 
 - La base operativa es **SQLite local exclusivamente**.
-- No incorporar nube, bases de datos remotas, servidores externos ni sincronización por Internet. La única comunicación entre equipos permitida es dentro de la red local (LAN) del establecimiento.
+- No incorporar bases de datos operativas en la nube, servidores remotos ni sincronización de operaciones por Internet. La única comunicación entre equipos permitida es dentro de la red local (LAN) del establecimiento. Se permite exclusivamente el respaldo cifrado, opcional y autorizado por el administrador a su propia cuenta Google Drive; nunca puede participar en las lecturas/escrituras del POS ni convertirse en fuente operativa.
 - En una instalación multi-PC, una computadora se designa como servidor y conserva la única SQLite operativa. Las demás son clientes y acceden a los datos exclusivamente mediante la API LAN autenticada del servidor; nunca abren ni modifican directamente el archivo SQLite.
 - El servidor LAN no es una base remota ni un servicio externo: permanece dentro de la red local y puede operar sin Internet. Si un cliente pierde conexión con el servidor, no debe confirmar ni registrar localmente operaciones como si fueran definitivas; debe informar que la operación no fue confirmada y permitir reconectar/recargar.
 - No almacenar la autoridad operativa de datos en cada cliente ni habilitar sincronización diferida que pueda mezclar o sobrescribir operaciones concurrentes.
