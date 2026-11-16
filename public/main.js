@@ -5574,7 +5574,7 @@ async async async function thermalPrinterConfigDlg(){
   }};
   openWin({title:'Impresora térmica no fiscal · Caja '+esc(box),w:620,body:el,foot:[{label:'Cerrar'},{label:'Actualizar impresoras',fn:async()=>{await detect();return false;}},{label:'Imprimir prueba',fn:async()=>{
     const p=read();if(!p.printerName){msg('Seleccione una impresora para la prueba.','bad');return false;}
-    try{const result=await window.posDesktop.printerTest(p.printerName);status.textContent=result.message+' Windows aceptó el trabajo; verifique físicamente el papel.';msg('Prueba enviada a '+p.printerName+'. Compruebe la salida física.');}
+    try{const result=await window.posDesktop.printerTest(p.printerName,{columns:p.columns});status.textContent=result.message+' Windows aceptó el trabajo; verifique físicamente el papel.';msg('Prueba enviada a '+p.printerName+'. Compruebe la salida física.');}
     catch(error){status.textContent='Falló el envío de prueba: '+error.message;msg('No se pudo enviar la prueba: '+error.message,'bad');}
     return false;
   }},saveThermal],onOpen:async()=>{apply();await detect();apply();}});
