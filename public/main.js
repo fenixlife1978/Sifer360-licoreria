@@ -5527,8 +5527,10 @@ function fiscalNetworkQueueDlg(){
 async function fiscalPrinterConfigDlg(){
   const user=activeUser();
   if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras fiscales de las cajas.','bad');return;}
+  let isLanClient=false;
   if(window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
-    try{const net=await window.posDesktop.networkStatus();if(net&&net.role==='client'){msg('La impresora fiscal compartida se configura únicamente en el equipo servidor que tiene conectado el dispositivo y el SDK. Abra esta pantalla en el servidor fiscal.','bad');return;}}catch(error){msg('No se pudo verificar el rol LAN antes de configurar la impresora fiscal: '+error.message,'bad');return;}
+    try{const net=await window.posDesktop.networkStatus();isLanClient=!!(net&&net.role==='client');}
+    catch(error){msg('No se pudo verificar el rol LAN: '+error.message,'bad');return;}
   }
   const boxes=cashboxList().filter(x=>x.active!==false);
   let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
@@ -5630,6 +5632,7 @@ async function fiscalPrinterConfigDlg(){
     if(e.target.id==='fpProvider'){draft.provider=e.target.value;drafts[box]=draft;drawSdk();status();}
   });
   el.addEventListener('click',async e=>{
+    if(isLanClient&&(e.target.closest('[data-sdk-file]')||['fpDetect','fpTestPnp','fpTestPort','fpChooseBridge','fpTestBridge'].includes(e.target.id))){msg('La comunicación física y el SDK se administran exclusivamente en el servidor fiscal. En esta terminal solo puede conciliar emisiones pendientes.','bad');return;}
     const sdk=e.target.closest('[data-sdk-file]');
     if(sdk){
       try{const file=await window.posDesktop.fiscalPrinterSelectFile('sdk');if(file){draft.sdkPaths[sdk.dataset.sdkFile]=file;drawSdk();await status();}}
@@ -5713,20 +5716,24 @@ async function fiscalPrinterConfigDlg(){
       catch(err){$('#fpStatus',el).textContent='Adaptador no validado: '+err.message;}
     }
   });
-  openWin({title:'Impresora fiscal · Caja '+esc(box),w:760,body:el,foot:[
-    {label:'Cerrar'},
-    {label:'Guardar configuración',primary:true,fn:async()=>{
-      const p=profile();
-      drafts[box]=p;
-      if(!p.model){msg('Indique el modelo exacto de la impresora fiscal.','bad');return false;}
-      if(!S.cfg.fiscalPrinters)S.cfg.fiscalPrinters={};
-      S.cfg.fiscalPrinters[box]=p;
-      const persisted=await save();
-      if(!persisted||!persisted.ok){msg('SQLite no confirmó la configuración de la impresora fiscal.','bad');return false;}
-      msg('Configuración fiscal guardada para Caja '+box+'.');
-      return true;
-    }}
-  ],onOpen:()=>{applyDraft();status();}});
+  const saveFiscalConfig={label:'Guardar configuración',primary:true,fn:async()=>{
+    const p=profile();
+    drafts[box]=p;
+    if(!p.model){msg('Indique el modelo exacto de la impresora fiscal.','bad');return false;}
+    if(!S.cfg.fiscalPrinters)S.cfg.fiscalPrinters={};
+    S.cfg.fiscalPrinters[box]=p;
+    const persisted=await save();
+    if(!persisted||!persisted.ok){msg('SQLite no confirmó la configuración de la impresora fiscal.','bad');return false;}
+    msg('Configuración fiscal guardada para Caja '+box+'.');
+    return true;
+  }};
+  openWin({title:'Impresora fiscal · Caja '+esc(box),w:760,body:el,foot:isLanClient?[{label:'Cerrar'}]:[{label:'Cerrar'},saveFiscalConfig],onOpen:()=>{
+    applyDraft();
+    if(isLanClient){
+      el.querySelectorAll('input,select,button').forEach(node=>{if(!node.closest('#fpPendingJobs'))node.disabled=true;});
+      const node=$('#fpStatus',el);if(node)node.textContent='Terminal cliente: la configuración física y el SDK están en el servidor. Esta pantalla permite conciliar la intención fiscal local y reconstruir la venta.';
+    }else status();
+  }});
 }
 
 
