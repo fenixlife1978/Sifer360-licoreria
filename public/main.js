@@ -7811,6 +7811,35 @@ function restoreWorkspaceAfterReload(){
 window.addEventListener('sifer:authenticated',event=>{
   if(event.detail&&event.detail.role==='admin'&&S&&S.cfg&&S.cfg.printSetupCompleted!==true&&S.cfg.printMode==='NOT_CONFIGURED')setTimeout(()=>printerSetupWizardDlg(),900);
 });
+let siferUpdatePromptOpen=false;
+function showDownloadedUpdatePrompt(version){
+  window.__SIFER_UPDATE_READY=true;
+  if(siferUpdatePromptOpen)return;
+  siferUpdatePromptOpen=true;
+  const body=h('<div class="form"><p>La actualización <b>v'+esc(version||'disponible')+'</b> se descargó y verificó correctamente en segundo plano.</p><p>Al instalar, SIFER360 cerrará la aplicación ordenadamente. La base SQLite y los datos del negocio permanecerán en su ubicación protegida.</p><p class="hint">Antes de instalar, termine cualquier venta abierta y resuelva las emisiones fiscales pendientes.</p></div>');
+  openWin({title:'Actualización lista para instalar',w:520,body,foot:[
+    {label:'Más tarde',fn:()=>{siferUpdatePromptOpen=false;msg('La actualización quedó descargada. Puede instalarla más tarde desde el aviso de actualización.');}},
+    {label:'Instalar ahora',primary:true,fn:async()=>{
+      const pending=(S&&S.fiscalPrinterJobs||[]).filter(job=>['pending','uncertain','processing'].includes(job.status));
+      if(S&&Array.isArray(S.cart)&&S.cart.length){msg('Termine o descarte la venta abierta antes de actualizar.','bad');return false;}
+      if(pending.length){msg('No se puede actualizar mientras existan emisiones fiscales pendientes o inciertas. Concilie primero la cola fiscal.','bad');return false;}
+      try{const result=await window.posDesktop.appUpdateInstall();if(!result||!result.ok)throw new Error('El sistema no confirmó la preparación de la instalación.');msg('Cerrando SIFER360 para instalar la actualización…');}
+      catch(error){msg('No se pudo iniciar la actualización: '+error.message,'bad');return false;}
+      return true;
+    }}
+  ],onClose:()=>{siferUpdatePromptOpen=false;}});
+}
+function connectSiferAutoUpdater(){
+  if(!window.posDesktop||typeof window.posDesktop.onAppUpdateStatus!=='function')return;
+  window.posDesktop.onAppUpdateStatus(payload=>{
+    if(!payload)return;
+    if(payload.status==='available'){msg('Nueva actualización v'+(payload.version||'disponible')+' detectada. Se está descargando en segundo plano.');}
+    else if(payload.status==='download-progress'){window.__SIFER_UPDATE_PROGRESS=payload.percent||0;}
+    else if(payload.status==='downloaded'){showDownloadedUpdatePrompt(payload.version);}
+    else if(payload.status==='error'){console.warn('SIFER360 updater:',payload.message||'Error de actualización');}
+  });
+  if(typeof window.posDesktop.appUpdateCheck==='function')window.posDesktop.appUpdateCheck().catch(error=>console.warn('No se pudo iniciar la comprobación de actualizaciones:',error));
+}
 function showStartupFailure(error){
   const detail=error&&error.stack?error.stack:(error&&error.message?error.message:String(error));
   console.error('SIFER360: error fatal al iniciar la interfaz',error);
@@ -7827,6 +7856,7 @@ prepareDatabaseBeforeStartup().then(async()=>{
   renderCatOptions();
   renderAll();
   wire();
+  connectSiferAutoUpdater();
   if(window.__POS_OPENING_MIGRATION_ERROR)msg(window.__POS_OPENING_MIGRATION_ERROR,'bad');
   primeOperationBaseline();
   window.__SIFER_READY = true;
