@@ -1,4 +1,4 @@
-name: SIFER360 1.0.4 Google Drive validation
+name: SIFER360 1.0.8 Desktop and SQLite validation
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sifer360-104-google-drive-${{ github.ref }}
+  group: sifer360-108-desktop-validation-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -73,10 +73,10 @@ jobs:
         run: npm test
       - name: Build Windows installer and portable executable
         run: npm run build:exe
-      - name: Upload SIFER360 1.0.4 Windows artifacts
+      - name: Upload SIFER360 1.0.8 Windows artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: SIFER360-1.0.4-Google-Drive-Windows
+          name: SIFER360-1.0.8-Desktop-SQLite-Windows
           path: dist-exe/*.exe
           if-no-files-found: error
           retention-days: 30
