@@ -63,6 +63,6 @@ jobs:
       - run: npm run build:exe
       - uses: actions/upload-artifact@v5
         with:
-          name: SIFER360-1.0.6-Windows-Desktop
+          name: SIFER360-1.0.8-Windows-Desktop
           path: dist-exe/*.exe
           if-no-files-found: error
