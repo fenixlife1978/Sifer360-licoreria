@@ -5551,10 +5551,10 @@ async function thermalPrinterConfigDlg(){
   if(!window.posDesktop||typeof window.posDesktop.printerList!=='function'){msg('La configuración de impresoras térmicas requiere SIFER360 de escritorio en Windows.','bad');return;}
   const boxes=cashboxList().filter(x=>x.active!==false);
   let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
-  let stationId='LOCAL';
-  try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'LOCAL');}catch{}
+  let stationId='LOCAL',stationRole='standalone';
+  try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'LOCAL');stationRole=String(net&&net.role||'standalone');}catch{}
   const profileKey=id=>thermalPrinterProfileKey(id,stationId);
-  const savedFor=id=>Object.assign({},(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[profileKey(id)])||(stationId==='LOCAL'&&S.cfg.thermalPrinters&&S.cfg.thermalPrinters[id])||{});
+  const savedFor=id=>Object.assign({},(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[profileKey(id)])||(stationRole==='standalone'&&S.cfg.thermalPrinters&&S.cfg.thermalPrinters[id])||{});
   let draft={...savedFor(box)};
   const options=boxes.map(x=>'<option value="'+esc(x.id)+'" '+(String(x.id)===box?'selected':'')+'>'+esc(x.id)+' — '+esc(x.name||('Caja '+x.id))+'</option>').join('');
   const el=h('<div class="form"><div class="hint">Configure una impresora térmica para esta estación y caja. Cada estación puede tener su propia cola Windows, independiente de la impresora fiscal compartida. La prueba envía un ticket de prueba al spooler de Windows; no confirma físicamente la salida del papel.</div><div class="f"><label for="tpCashbox">Caja</label><select class="fld" id="tpCashbox">'+options+'</select></div><div class="f"><label for="tpPrinter">Impresora Windows</label><select class="fld" id="tpPrinter"><option value="">Seleccione impresora…</option></select></div><div class="f"><label for="tpWidth">Papel</label><select class="fld" id="tpWidth"><option value="32">58 mm · 32 columnas</option><option value="42">80 mm · 42 columnas</option><option value="48">80 mm · 48 columnas</option></select></div><label class="chk"><input type="checkbox" id="tpEnabled"> Habilitar tickets en esta caja</label><div class="hint" id="tpStatus" role="status" aria-live="polite">Consultando impresoras de Windows…</div></div>');
