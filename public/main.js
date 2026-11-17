@@ -5321,7 +5321,7 @@ async function registerSaleReturn(s,refresh){
 /* ---------- ventas del día / cierre ---------- */
 function salesDlg(){
   let selNo=null,armed=0;
-  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>'+(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER'?'Ticket':'Documento / Ticket')+'</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver ticket</button><button class="btn" id="saReturn">Devolución / NC</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><div class="group" id="saReturns"></div><p class="hint" id="saNote"></p></div>');
+  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>'+(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER'?'Ticket':'Documento / Ticket')+'</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver documento</button><button class="btn" id="saViewHybridTicket">Ver ticket complementario</button><button class="btn" id="saReturn">Devolución / NC</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><div class="group" id="saReturns"></div><p class="hint" id="saNote"></p></div>');
   const todays=()=>S.sales.filter(s=>sameDay(s.ts)&&s.cashbox===currentCaja()).sort((a,b)=>b.no-a.no);
   const draw=()=>{
     const list=todays();
@@ -5339,8 +5339,9 @@ function salesDlg(){
     $('#saReturns',el).innerHTML=returnNotes.length?'<b>Notas de crédito / devoluciones del día</b><div class="gridwrap"><table class="grid"><thead><tr><th>Nota</th><th>Factura origen</th><th>Motivo</th><th class="r">Total</th><th class="r">CxC aplicado</th><th class="r">Reembolso</th></tr></thead><tbody>'+returnNotes.slice().sort((a,b)=>Number(b.ts)-Number(a.ts)).map(note=>'<tr><td class="mono">'+esc(note.id)+'</td><td>'+pad(note.saleNo)+'</td><td>'+esc(note.reason||'—')+'</td><td class="r">'+nf(note.total)+'</td><td class="r">'+nf(note.creditApplied)+'</td><td class="r">'+nf(note.refund)+'</td></tr>').join('')+'</tbody></table></div>':'';
     $('#saNote',el).textContent=list.some(s=>s.no<1043)&&!saved?'Las facturas 1038 a 1042 son ejemplos para mostrar el cierre.':'';
     const selectedSale=S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja());
-    $('#saView',el).disabled=!selNo||!!(selectedSale&&selectedSale.documentMode==='HYBRID'&&!selectedSale.ticketDocument);
-    $('#saView',el).textContent=selectedSale&&selectedSale.documentMode==='HYBRID'?'Ver ticket complementario':'Ver ticket';
+    $('#saView',el).disabled=!selNo;
+    $('#saView',el).textContent=selectedSale&&selectedSale.documentMode==='HYBRID'&&selectedSale.fiscal?'Ver factura fiscal':'Ver documento';
+    $('#saViewHybridTicket',el).disabled=!(selectedSale&&selectedSale.documentMode==='HYBRID'&&selectedSale.ticketDocument&&!selectedSale.void);
     $('#saReturn',el).disabled=!selNo||!!(selectedSale||{}).void;$('#saVoid',el).disabled=!selNo||!!(selectedSale||{}).void;
     $('#saVoid',el).textContent='Anular venta';
   };
@@ -5348,7 +5349,8 @@ function salesDlg(){
     const tr=e.target.closest('tr[data-no]');
     if(tr){selNo=+tr.dataset.no;armed=0;draw();return;}
     const s=S.sales.find(x=>x.no===selNo&&x.cashbox===currentCaja());
-    if(e.target.id==='saView'&&s){showTicket(s.documentMode==='HYBRID'&&s.ticketDocument?s.ticketDocument:s);}
+    if(e.target.id==='saView'&&s){showTicket(s.documentMode==='HYBRID'&&s.fiscal?fiscalSaleData(s):s.documentMode==='HYBRID'&&s.ticketDocument?s.ticketDocument:s);}
+    if(e.target.id==='saViewHybridTicket'&&s&&s.ticketDocument){showTicket(s.ticketDocument);}
     if(e.target.id==='saReturn'&&s&&!s.void){await registerSaleReturn(s,draw);}
     if(e.target.id==='saVoid'&&s&&!s.void&&s.fiscal){msg('Esta factura ya fue emitida por una máquina fiscal. No se permite anularla solo en el POS. Debe integrarse y ejecutarse la anulación/nota de crédito en la propia máquina.','bad');return;}
     if(e.target.id==='saVoid'&&s&&!s.void){
@@ -6482,7 +6484,7 @@ function seniatSudebanDlg(initialTab){
         '<td class="r">'+(iva31>0?nf(iva31*rate):'0,00')+'</td>'+
         '<td class="r">'+(igtfBs>0?'<span class="fiscal-tag warn">'+nf(igtfBs)+'</span>':'0,00')+'</td>'+
         '<td class="r">'+nf(rate)+'</td>'+
-        '<td class="c"><button class="btn mini2" data-show-sale="'+s.no+'">Ver Ticket</button></td>'+
+        '<td class="c"><button class="btn mini2" data-show-sale="'+s.no+'">Ver factura</button></td>'+
       '</tr>';
     }).join(''):'<tr class="empty"><td colspan="20">No se encontraron ventas para el período seleccionado.</td></tr>';
 
@@ -6642,7 +6644,7 @@ function seniatSudebanDlg(initialTab){
       return '<tr class="'+(s.void?'void':'')+'">'+
         '<td class="mono c"><b>'+pad(s.no)+'</b></td>'+
         '<td class="c">'+fmtDT(s.ts)+'</td>'+
-        '<td class="mono c">'+esc(s.ctrlNo||('00-'+pad(s.no,8)))+'</td>'+
+        '<td class="mono c">'+esc(s.ctrlNo||(s.docType==='TICKET-INTERNO'||(s.documentMode==='HYBRID'&&!s.fiscal)?'Ticket interno · sin control fiscal':'—'))+'</td>'+
         '<td><b>'+esc(s.client.name)+'</b> ('+esc(s.client.rif)+')</td>'+
         '<td class="r">'+nf(dueUsd)+'</td>'+
         '<td class="r" style="font-weight:700;color:#1842B8">'+nf(rate)+'</td>'+
@@ -6927,7 +6929,7 @@ function seniatSudebanDlg(initialTab){
     if(showSaleBtn){
       const no=+showSaleBtn.dataset.showSale;
       const s=(S.sales||[]).find(x=>x.no===no);
-      if(s)showTicket(s);
+      if(s)showTicket(s.documentMode==='HYBRID'?fiscalSaleData(s):s);
       return;
     }
   });
