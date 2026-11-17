@@ -1,0 +1,85 @@
+name: SIFER360 LICORERÍA v1.0.7 — Build y publicación controlada
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publicar la GitHub Release v1.0.7 después de validar el paquete"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  windows-build:
+    if: ${{ inputs.publish_release == true }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/v1.0.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Instalar dependencias
+        run: npm install --legacy-peer-deps
+      - name: Inyectar OAuth Client ID público de Google Drive
+        env:
+          SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
+        run: |
+          node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(!id || !id.endsWith('.apps.googleusercontent.com')) throw new Error('Falta SIFER360_GOOGLE_OAUTH_CLIENT_ID.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId:id}, null, 2));"
+      - name: Pruebas
+        run: npm test
+      - name: Compilar interfaz
+        run: npm run build
+      - name: Generar instalador, portable y metadatos del actualizador
+        run: npx --yes electron-builder --win --config electron-builder.json --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verificar artefactos requeridos
+        shell: pwsh
+        run: |
+          $required = @('SIFER360-1.0.7-Instalador.exe','SIFER360-1.0.7-Portable.exe','latest.yml')
+          foreach ($name in $required) {
+            $file = Get-ChildItem -Path dist-exe -Filter $name -File | Select-Object -First 1
+            if (-not $file -or $file.Length -lt 20) { throw "Falta artefacto requerido: $name" }
+            Write-Host "$name ($($file.Length) bytes)"
+          }
+      - uses: actions/upload-artifact@v5
+        with:
+          name: SIFER360-1.0.7-Windows-Update-Package
+          path: |
+            dist-exe/SIFER360-1.0.7-Instalador.exe
+            dist-exe/SIFER360-1.0.7-Portable.exe
+            dist-exe/*.blockmap
+            dist-exe/latest.yml
+          if-no-files-found: error
+          retention-days: 90
+
+  publish-release:
+    if: ${{ inputs.publish_release == true }}
+    needs: windows-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/v1.0.0
+      - uses: actions/download-artifact@v5
+        with:
+          name: SIFER360-1.0.7-Windows-Update-Package
+          path: release-assets
+      - name: Crear tag y publicar Release para autoactualizaciones
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          test -s release-assets/latest.yml
+          test -s release-assets/SIFER360-1.0.7-Instalador.exe
+          gh release create v1.0.7 release-assets/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${GITHUB_SHA}" \
+            --title "SIFER360 LICORERÍA v1.0.7" \
+            --notes-file RELEASE_NOTES_1.0.7.md \
+            --latest
