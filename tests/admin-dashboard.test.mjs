@@ -172,7 +172,7 @@ test('compras acepta y conserva hasta ocho decimales en costos, precios, subtota
   assert.match(compras, /const base=r8\(pLines\.reduce/);
   assert.match(compras, /const iva=docType==='FACTURA_FISCAL'\?r8\(pLines\.reduce/);
   assert.match(compras, /const tot=r8\(base\+iva\)/);
-  assert.match(compras, /if\(t\.dataset\.cpf==='cost'\)l\.cost=r8\(val\)/);
+  assert.match(compras, /if\(t\.dataset\.cpf==='cost'\)\{l\.cost=r8\(val\);l\.costEdited=true;\}/);
   assert.match(compras, /const nextCost=nextStock>0\?r8\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
   assert.match(main, /nf8\(p\.cost\)/);
 });
