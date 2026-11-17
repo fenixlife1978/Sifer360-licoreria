@@ -4796,7 +4796,8 @@ function showSaleCompletion(sale){
   const hybrid=sale.documentMode==='HYBRID',ticketDocument=sale.ticketDocument||null;
   const internalTicket=sale.documentMode==='INTERNAL_THERMAL'||sale.documentMode==='NO_PRINTER'||sale.documentMode==='HYBRID'||sale.docType==='TICKET-INTERNO';
   const noPrinter=sale.documentMode==='NO_PRINTER';
-  const completionNote=hybrid?'Venta híbrida vinculada. '+(sale.fiscal?'Factura fiscal emitida Nº '+esc(sale.fiscal.documentNumber)+'. ':'')+(ticketDocument?'Ticket no fiscal complementario listo para imprimir.':'No hubo renglones para ticket complementario.')+' El cobro se registró una sola vez.':(internalTicket?'El Ticket de Venta '+esc(pad(sale.no))+' quedó registrado en SQLite. No es válido como factura fiscal.':'La factura '+esc(pad(sale.no))+' fue registrada correctamente.')+' No hay vuelto pendiente.';
+  const ticketStatus=ticketDocument&&ticketDocument.printStatus;
+  const completionNote=hybrid?'Venta híbrida vinculada. '+(sale.fiscal?'Factura fiscal emitida Nº '+esc(sale.fiscal.documentNumber)+'. ':'')+(ticketDocument?(ticketStatus==='sent'?'Ticket no fiscal enviado a la impresora térmica.':ticketStatus==='uncertain'?'La impresora no confirmó el ticket; consulte el equipo antes de reimprimir.':'Ticket no fiscal complementario pendiente de impresión.'):'No hubo renglones para ticket complementario.')+' El cobro se registró una sola vez.':(internalTicket?'El Ticket de Venta '+esc(pad(sale.no))+' quedó registrado en SQLite. No es válido como factura fiscal.':'La factura '+esc(pad(sale.no))+' fue registrada correctamente.')+' No hay vuelto pendiente.';
   const body=h('<div class="sale-completion">'+
     '<div class="sale-completion-icon '+(hasChange?'change':'success')+'">'+(hasChange?'↩':'✓')+'</div>'+
     '<div class="sale-completion-label">'+(hasChange?'VUELTO A ENTREGAR':'VENTA FINALIZADA')+'</div>'+
@@ -4972,7 +4973,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     }else if(hybridHasTicket){
       ticketDocumentSale={...sale,lines:ticketSaleLines,documentMode:'HYBRID',docType:'TICKET-INTERNO'};
     }
-    if(ticketDocumentSale){ticketDocumentSale.ticketReference='TKT-'+pad(invNo);sale.ticketDocument=ticketDocumentSale;}
+    if(ticketDocumentSale){ticketDocumentSale.ticketReference='TKT-'+pad(invNo);ticketDocumentSale.printStatus='pending';sale.ticketDocument=ticketDocumentSale;}
     if(fiscalDocumentSale!==sale)sale.fiscalDocumentSnapshot=JSON.parse(JSON.stringify(fiscalDocumentSale));
   }
   let fiscalJob=null;
@@ -5096,8 +5097,22 @@ S.cart.forEach((l,lineIndex)=>{
   if(sale.ticketDocument&&sale.fiscal)sale.ticketDocument.fiscal=sale.fiscal;
   S.sales.push(sale);S.invoice=Math.max(S.invoice,invNo+1);S.cart=[];S.sel=-1;S.client=S.clients[0];
   const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);renderAll();msg(fiscalMode?'La impresora fiscal pudo haber emitido el documento, pero SQLite no confirmó la venta. NO reimprima ni repita el cobro; consulte la máquina y reconcilie la intención fiscal pendiente.':'SQLite no confirmó la venta; se mostró el último estado durable disponible y no se confirmó la factura.','bad');return;}
+  if(hybridMode&&sale.ticketDocument){
+    try{
+      const net=await window.posDesktop.networkStatus(),thermal=getThermalPrinterProfile(sale.cashbox,String(net&&net.deviceId||''),String(net&&net.role||'')==='standalone');
+      if(!thermal||thermal.enabled!==true||!thermal.printerName||typeof window.posDesktop.printerPrintTicket!=='function')throw new Error('No hay una impresora térmica configurada para esta caja.');
+      const columns=thermal.columns||42;
+      const result=await window.posDesktop.printerPrintTicket(thermal.printerName,ticketText(sale.ticketDocument,columns),{columns});
+      sale.ticketDocument.printStatus='sent';sale.ticketDocument.printedAt=Date.now();sale.ticketDocument.printMessage=String(result&&result.message||'Enviado a la impresora térmica.');
+      const printSaved=await save();
+      if(!printSaved||!printSaved.ok)msg('La factura fiscal y la venta quedaron guardadas; el ticket se envió, pero SQLite no confirmó el estado de impresión. No repita el cobro.','bad');
+    }catch(error){
+      sale.ticketDocument.printStatus='uncertain';sale.ticketDocument.printError=String(error&&error.message||error).slice(0,500);
+      await save();
+      msg('La factura fiscal y la venta quedaron guardadas, pero la impresora térmica no confirmó el ticket complementario. Consulte la impresora antes de reimprimir.','bad');
+    }
+  }
   renderAll();
-  if(sale.ticketDocument&&sale.fiscal)sale.ticketDocument.fiscal=sale.fiscal;
   msg((hybridMode?'Venta híbrida ':'')+(internalTicketMode?'Ticket de Venta ':'Factura ')+pad(sale.no)+' procesado por '+usd(r2(sale.total+sale.igtf))+(casheaAmt>0?' (Financiado Cashea: '+usd(casheaAmt)+')':'')+(creditAmt>0?' (Saldo a CxC: '+usd(creditAmt)+')':'')+'.');
   showSaleCompletion(sale);
 }
@@ -5305,7 +5320,7 @@ async function registerSaleReturn(s,refresh){
 /* ---------- ventas del día / cierre ---------- */
 function salesDlg(){
   let selNo=null,armed=0;
-  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>'+(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER'?'Ticket':'Documento')+'</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver ticket</button><button class="btn" id="saReturn">Devolución / NC</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><div class="group" id="saReturns"></div><p class="hint" id="saNote"></p></div>');
+  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>'+(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER'?'Ticket':'Documento / Ticket')+'</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver ticket</button><button class="btn" id="saReturn">Devolución / NC</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><div class="group" id="saReturns"></div><p class="hint" id="saNote"></p></div>');
   const todays=()=>S.sales.filter(s=>sameDay(s.ts)&&s.cashbox===currentCaja()).sort((a,b)=>b.no-a.no);
   const draw=()=>{
     const list=todays();
@@ -5322,18 +5337,21 @@ function salesDlg(){
     $('#saCierre',el).innerHTML='<table class="sumt"><thead><tr><th>Cierre por forma de pago</th><th>Ops.</th><th>Recibido</th></tr></thead><tbody>'+metRows+'</tbody></table><table class="sumt"><thead><tr><th>Totales del día</th><th>US$</th></tr></thead><tbody><tr><td>Ventas válidas</td><td>'+ok.length+'</td></tr><tr><td>Notas de crédito</td><td>'+returnNotes.length+'</td></tr><tr><td>Devoluciones</td><td>−'+nf(returnTotal)+'</td></tr><tr><td>Base imponible neta</td><td>'+nf(r2(sum(s=>s.base)-returnNotes.reduce((a,n)=>a+Number(n.base||0),0)))+'</td></tr><tr><td>IVA neto</td><td>'+nf(r2(sum(s=>s.iva)-returnIva))+'</td></tr><tr><td>IGTF 3 %</td><td>'+nf(sum(s=>s.igtf))+'</td></tr><tr class="tot"><td>Total neto facturado</td><td>'+nf(r2(sum(s=>s.total+s.igtf)-returnTotal))+'</td></tr><tr><td>Total neto en Bs. (a la tasa de cada venta)</td><td>'+nf(r2(sum(s=>(s.total+s.igtf)*s.rate)-returnNotes.reduce((a,n)=>a+Number(n.total||0)*Number(n.rate||S.cfg.rate||1),0)))+'</td></tr></tbody></table>';
     $('#saReturns',el).innerHTML=returnNotes.length?'<b>Notas de crédito / devoluciones del día</b><div class="gridwrap"><table class="grid"><thead><tr><th>Nota</th><th>Factura origen</th><th>Motivo</th><th class="r">Total</th><th class="r">CxC aplicado</th><th class="r">Reembolso</th></tr></thead><tbody>'+returnNotes.slice().sort((a,b)=>Number(b.ts)-Number(a.ts)).map(note=>'<tr><td class="mono">'+esc(note.id)+'</td><td>'+pad(note.saleNo)+'</td><td>'+esc(note.reason||'—')+'</td><td class="r">'+nf(note.total)+'</td><td class="r">'+nf(note.creditApplied)+'</td><td class="r">'+nf(note.refund)+'</td></tr>').join('')+'</tbody></table></div>':'';
     $('#saNote',el).textContent=list.some(s=>s.no<1043)&&!saved?'Las facturas 1038 a 1042 son ejemplos para mostrar el cierre.':'';
-    $('#saView',el).disabled=!selNo;$('#saReturn',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;$('#saVoid',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;
+    const selectedSale=S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja());
+    $('#saView',el).disabled=!selNo||!!(selectedSale&&selectedSale.documentMode==='HYBRID'&&!selectedSale.ticketDocument);
+    $('#saView',el).textContent=selectedSale&&selectedSale.documentMode==='HYBRID'?'Ver ticket complementario':'Ver ticket';
+    $('#saReturn',el).disabled=!selNo||!!(selectedSale||{}).void;$('#saVoid',el).disabled=!selNo||!!(selectedSale||{}).void;
     $('#saVoid',el).textContent='Anular venta';
   };
   el.addEventListener('click',async e=>{
     const tr=e.target.closest('tr[data-no]');
     if(tr){selNo=+tr.dataset.no;armed=0;draw();return;}
     const s=S.sales.find(x=>x.no===selNo&&x.cashbox===currentCaja());
-    if(e.target.id==='saView'&&s){showTicket(s);}
+    if(e.target.id==='saView'&&s){showTicket(s.documentMode==='HYBRID'&&s.ticketDocument?s.ticketDocument:s);}
     if(e.target.id==='saReturn'&&s&&!s.void){await registerSaleReturn(s,draw);}
     if(e.target.id==='saVoid'&&s&&!s.void&&s.fiscal){msg('Esta factura ya fue emitida por una máquina fiscal. No se permite anularla solo en el POS. Debe integrarse y ejecutarse la anulación/nota de crédito en la propia máquina.','bad');return;}
     if(e.target.id==='saVoid'&&s&&!s.void){
-      if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin((s.docType==='TICKET-INTERNO'?'Anular ticket ':'Anular factura ')+pad(s.no)))return;
+      if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin((s.docType==='TICKET-INTERNO'||(s.documentMode==='HYBRID'&&!s.fiscal)?'Anular ticket ':'Anular factura ')+pad(s.no)))return;
       // Until a documented refund/reversal workflow exists, never void a sale after
       // money or a third-party financing settlement has been collected.
       const saleCashbox=String(s.cashbox||currentCaja());
