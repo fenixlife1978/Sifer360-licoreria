@@ -45,3 +45,12 @@ test('purchase void prevalidates physical/fiscal balances and restores the SQLit
  assert.match(pos,/restoreStateSnapshotIfNeeded\(null,rollbackState\)/);
  assert.match(pos,/restoreStateSnapshotIfNeeded\(persisted,rollbackState\)/);
 });
+
+test('fiscal purchase and sale reversals target each original fiscal event and aggregate physical stock checks',()=>{
+ assert.match(pos,/const physicalRequired=new Map\(\)/);
+ assert.match(pos,/pLines\.map\(\(l,lineIndex\)=>/);
+ assert.match(pos,/PURCHASE-[\s\S]*?lineIndex,type:'COMPRA_FISCAL'/);
+ assert.match(pos,/sale\.accountingSourceId\+': '\+p\.code\+': '\+lineIndex/);
+ assert.match(pos,/movements\.filter\(m=>String\(m\.sourceId\|\|'\'\)===sourceId&&m\.type==='COMPRA_FISCAL'\)/);
+ assert.match(pos,/movements\.filter\(m=>String\(m\.sourceId\|\|'\'\)===sourceId&&m\.type==='VENTA_FISCAL'\)/);
+});
