@@ -48,5 +48,10 @@ contextBridge.exposeInMainWorld('posDesktop', {
   backupEnableDaily: () => ipcRenderer.invoke('backup:enable-daily'),
   backupDisableDaily: () => ipcRenderer.invoke('backup:disable-daily'),
   backupRunNow: () => ipcRenderer.invoke('backup:run-now'),
-  backupExportRecoveryKey: () => ipcRenderer.invoke('backup:export-recovery-key')
+  backupExportRecoveryKey: () => ipcRenderer.invoke('backup:export-recovery-key'),
+  licenseStatus: () => ipcRenderer.invoke('license:status'),
+  licenseRefresh: () => ipcRenderer.invoke('license:refresh'),
+  licenseActivate: licenseKey => ipcRenderer.invoke('license:activate', licenseKey),
+  licenseSetTelemetry: enabled => ipcRenderer.invoke('license:set-telemetry', enabled),
+  licenseOpenPlans: () => ipcRenderer.invoke('license:open-plans')
 });

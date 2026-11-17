@@ -21,9 +21,11 @@ const { createGoogleDriveBackup } = require('./google-drive-backup.cjs');
 const { sqliteDatabaseToJson } = require('./sqlite-json-export.cjs');
 const PrinterManager = require('./printer-manager.cjs');
 const { createFiscalNetworkQueue } = require('./fiscal-network-queue.cjs');
+const { createLicensing } = require('./licensing.cjs');
 let fiscalNetworkQueue = null;
 let fiscalNetworkQueueRecovered = false;
 let googleDriveBackup = null;
+let licensing = null;
 let scheduledBackupRunning = false;
 const authSessions = new Map();
 const initSqlJs = require('sql.js');
@@ -1002,6 +1004,11 @@ function registerIpc() {
     return googleDriveBackup.runBackup(Buffer.from(db.export()), { manual: true, jsonBytes: sqliteDatabaseToJson(db) });
   });
   ipcMain.handle('backup:export-recovery-key', () => googleDriveBackup.exportRecoveryKey());
+  ipcMain.handle('license:status', () => licensing.status());
+  ipcMain.handle('license:refresh', () => licensing.refresh(true));
+  ipcMain.handle('license:activate', async (_event, licenseKey) => licensing.activate(licenseKey));
+  ipcMain.handle('license:set-telemetry', (_event, enabled) => licensing.setTelemetryEnabled(enabled));
+  ipcMain.handle('license:open-plans', () => licensing.openPlans());
   ipcMain.handle('posdb:get-mode', () => ({ mode: 'sqlite', databasePath: networkConfig.role === 'client' ? null : userDbPath(), source: networkConfig.role === 'client' ? 'lan-server' : 'local' }));
   ipcMain.handle('posdb:set-mode', () => ({ mode: 'sqlite', databasePath: networkConfig.role === 'client' ? null : userDbPath(), source: networkConfig.role === 'client' ? 'lan-server' : 'local' }));
   ipcMain.handle('posdb:load-state', async () => {
@@ -1164,6 +1171,10 @@ if (!hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     readNetworkConfig();
     if (networkConfig.role !== 'client') await initializeDatabase();
+    if (!process.argv.includes('--sifer-google-drive-backup')) {
+      licensing = createLicensing({ app, safeStorage, shell });
+      await licensing.initialize();
+    }
     googleDriveBackup = createGoogleDriveBackup({ app, safeStorage, shell, dialog });
     if (process.argv.includes('--sifer-google-drive-backup')) {
       if (networkConfig.role === 'client') throw new Error('Los clientes LAN no generan respaldos: la única SQLite está en el servidor.');

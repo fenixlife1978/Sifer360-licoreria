@@ -6,7 +6,7 @@ concurrency:
 
 on:
   push:
-    branches: [ main, master, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-sdk-architecture-validation, feature/dual-printer-manager, feature/google-drive-automatic-backups, integration/google-drive-1.0.4 ]
+    branches: [ main, master, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-sdk-architecture-validation, feature/dual-printer-manager, feature/google-drive-automatic-backups, integration/google-drive-1.0.4, integration/crm-licensing-telemetry-1.0.5 ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, master, integration/sqlite-lan-stage-1, release/v1.0.0 ]
@@ -52,7 +52,7 @@ jobs:
       - name: Guardar ejecutable como artefacto privado de CI
         uses: actions/upload-artifact@v5
         with:
-          name: SIFER360-1.0.4-Windows-Installer-and-Portable
+          name: SIFER360-1.0.5-Windows-Installer-and-Portable
           path: dist-exe/*.exe
           if-no-files-found: error
           retention-days: 30

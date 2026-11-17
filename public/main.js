@@ -6611,7 +6611,7 @@ function helpDlg(){
   openWin({title:'Atajos de teclado',w:540,body:h('<div class="gridwrap" style="flex:none"><table class="grid"><thead><tr><th style="width:90px">Tecla</th><th>Acción</th></tr></thead><tbody>'+rows.map(r=>'<tr><td><b>'+esc(r[0])+'</b></td><td>'+esc(r[1])+'</td></tr>').join('')+'</tbody></table></div>'),foot:[{label:'Cerrar',primary:true}]});
 }
 function aboutDlg(){
-  openWin({title:'Acerca de SIFER 360 Licorería',w:480,body:h('<div class="form"><p style="margin:0"><b>SIFER 360 Licorería — Sistema Integral Administrativo y Punto de Venta</b></p><p class="hint">Punto de venta especializado en licorerías: bebidas alcohólicas y no alcohólicas, inventario por presentación, compras, ventas, caja y control fiscal. Incluye facturación multimoneda (US$ / Bs.), IVA 16 %, IGTF 3 %, Módulo de Control SENIAT/SUDEBAN (Libros de Ventas y Compras oficiales, Liquidación Forma 30 IVA, Percepción IGTF, Auditoría cambiaria BCV, Conciliación bancaria POS/Biopago y Generador de TXT de Retenciones), Compras a proveedores, Cuentas por Cobrar (CxC), Cuentas por Pagar (CxP), Ficha Kardex Profesional (CPP) y Conteo Físico de Inventario.</p><p class="hint">Los datos se guardan localmente en este navegador.</p></div>'),foot:[{label:'Cerrar',primary:true}]});
+  openWin({title:'Acerca de SIFER 360 Licorería',w:480,body:h('<div class="form"><p style="margin:0"><b>SIFER 360 Licorería — Sistema Integral Administrativo y Punto de Venta</b></p><p class="hint">Punto de venta especializado en licorerías: bebidas alcohólicas y no alcohólicas, inventario por presentación, compras, ventas, caja y control fiscal. Incluye facturación multimoneda (US$ / Bs.), IVA 16 %, IGTF 3 %, Módulo de Control SENIAT/SUDEBAN (Libros de Ventas y Compras oficiales, Liquidación Forma 30 IVA, Percepción IGTF, Auditoría cambiaria BCV, Conciliación bancaria POS/Biopago y Generador de TXT de Retenciones), Compras a proveedores, Cuentas por Cobrar (CxC), Cuentas por Pagar (CxP), Ficha Kardex Profesional (CPP) y Conteo Físico de Inventario.</p><p class="hint">Los datos operativos se guardan localmente en SQLite. La licencia se valida con CRM-SICOVEN y la telemetría opcional no contiene ventas, inventario, caja, clientes ni datos contables.</p></div>'),foot:[{label:'Cerrar',primary:true}]});
 }
 function resetAll(){
   ask('Vaciar datos operativos','Se borrarán ventas, compras, CxC, CxP, Kardex, inventario y configuración guardados en este dispositivo. La base quedará vacía para configurar la licorería.','Restablecer',()=>{
@@ -6835,7 +6835,7 @@ const MENUS={
  ],
  'Clientes':[['Seleccionar cliente…','F4',clientDlg],['Estado de cuentas por cobrar…','',()=>cxcDlg()]],
  'Configuración':[['Datos del negocio y tasa…','',()=>cfgDlg()],['Conexión de red local (LAN)…','',()=>networkSettingsDlg()]],
- 'Ayuda':[['Atajos de teclado…','',helpDlg],['Acerca del POS…','',aboutDlg]]
+ 'Ayuda':[['Licencia, prueba y planes…','',()=>window.SIFERLicensing&&window.SIFERLicensing.open()],['Atajos de teclado…','',helpDlg],['Acerca del POS…','',aboutDlg]]
 };
 let menuEl=null;
 function closeMenu(){if(menuEl){menuEl.remove();menuEl=null;}const b=$('#btnMenu');if(b){b.classList.remove('open');b.setAttribute('aria-expanded','false');}}
