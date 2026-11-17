@@ -103,3 +103,65 @@ test('resuelve el perfil fiscal de la caja de origen y mantiene un solo emisor e
   assert.equal(maxActive,1);
   assert.ok(store.jobs.every(job=>job.status==='issued'));
 });
+
+
+test('dos llamadas simultáneas a pump comparten un único emisor', async () => {
+  const store=makeStore(); let active=0,maxActive=0,calls=0,release;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const queue=createFiscalNetworkQueue({
+    store,
+    resolveProfile:async()=>({enabled:true}),
+    emitInvoice:async()=>{calls++;active++;maxActive=Math.max(maxActive,active);await gate;active--;return{fiscalDocumentNumber:String(calls),fiscalSerial:'SERIAL'};}
+  });
+  queue.enqueue(input('SIFER360-PUMP-0001'));
+  queue.enqueue(input('SIFER360-PUMP-0002'));
+  const first=queue.pump();
+  const second=queue.pump();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls,1);
+  assert.equal(maxActive,1);
+  release();
+  await Promise.all([first,second]);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls,2);
+  assert.ok(store.jobs.every(job=>job.status==='issued'));
+});
+
+test('al conciliar una emisión no realizada, continúa con el siguiente trabajo pendiente', async () => {
+  const store=makeStore(); let calls=0;
+  const queue=createFiscalNetworkQueue({
+    store,
+    resolveProfile:async()=>({enabled:true}),
+    emitInvoice:async(_profile,invoice)=>{
+      calls++;
+      if(invoice.idempotencyKey==='SIFER360-UNCERTAIN-01')throw new Error('respuesta perdida');
+      return{fiscalDocumentNumber:'F-'+calls,fiscalSerial:'SERIAL'};
+    }
+  });
+  queue.enqueue(input('SIFER360-UNCERTAIN-01'));
+  queue.enqueue(input('SIFER360-PENDING-02'));
+  await new Promise(resolve=>setTimeout(resolve,30));
+  assert.equal(store.jobs[0].status,'uncertain');
+  assert.equal(store.jobs[1].status,'pending');
+  await queue.reconcile('job-1','not-issued',{note:'Verificación física: no se emitió documento.'});
+  await new Promise(resolve=>setTimeout(resolve,30));
+  assert.equal(store.jobs[0].status,'rejected');
+  assert.equal(store.jobs[1].status,'issued');
+  assert.equal(calls,2);
+});
+
+test('una caja sin perfil fiscal queda rechazada y no impide procesar la siguiente caja', async () => {
+  const store=makeStore(); const emitted=[];
+  const queue=createFiscalNetworkQueue({
+    store,
+    resolveProfile:async cashbox=>cashbox==='01'?null:{enabled:true,port:'COM7'},
+    emitInvoice:async profile=>{emitted.push(profile.port);return{fiscalDocumentNumber:'F-2',fiscalSerial:'SERIAL'};}
+  });
+  const first=input('SIFER360-NOPROFILE-01'); first.cashbox='01';
+  const second=input('SIFER360-PROFILE-02'); second.cashbox='02';
+  queue.enqueue(first); queue.enqueue(second);
+  await new Promise(resolve=>setTimeout(resolve,50));
+  assert.equal(store.jobs[0].status,'rejected');
+  assert.equal(store.jobs[1].status,'issued');
+  assert.deepEqual(emitted,['COM7']);
+});
