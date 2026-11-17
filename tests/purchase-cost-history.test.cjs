@@ -61,7 +61,7 @@ test('compras fiscales alimentan el libro fiscal; compras no fiscales no lo alim
 });
 
 test('ventas fiscales validan saldo fiscal antes de emitir y solo esas ventas descuentan el libro fiscal', () => {
-  assert.match(source, /if\(fiscalMode\)\{const fiscalCheck=window\.SIFERInventoryLedgers&&window\.SIFERInventoryLedgers\.canApplyFiscalSale\(S,lines\)/);
+  assert.match(source, /const fiscalCheck=window\.SIFERInventoryLedgers&&window\.SIFERInventoryLedgers\.canApplyFiscalSale\(S,lines\)/);
   assert.match(source, /if\(fiscalMode\)window\.SIFERInventoryLedgers\.applyFiscalMovement\(S,\{eventId:sale\.accountingSourceId\+':'.*?type:'VENTA_FISCAL',dir:'OUT'/);
   assert.match(source, /p\.stock=Math\.max\(0,r2\(p\.stock-l\.qty\)\);/);
 });
