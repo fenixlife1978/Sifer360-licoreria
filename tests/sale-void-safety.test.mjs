@@ -11,7 +11,7 @@ test('sale void refuses collected payments and financing until refund workflow e
   const inventoryRestore = handler.indexOf("s.lines.forEach(l=>");
   assert.ok(guard > -1, 'collected-payment guard must exist');
   assert.ok(guard < inventoryRestore, 'guard must run before stock is restored');
-  assert.match(handler, /p\.id\|\|''\)\)!=='credito'/);
+  assert.ok(handler.includes("String(p.id||'')!=='credito'"), 'cash payments must be distinguished from credit entries');
   assert.match(handler, /linkedReceivables\.some/);
   assert.match(handler, /!!s\.cashea/);
   assert.match(handler, /reembolso\/reverso correspondiente/);
