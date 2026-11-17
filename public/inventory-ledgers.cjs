@@ -57,7 +57,8 @@ function applyFiscalMovement(state, event) {
       && String(duplicate.dir) === dir
       && Math.abs(Number(duplicate.qty) - qty) < 1e-9
       && Math.abs(Number(duplicate.cost) - requestedCost) < 1e-9
-      && String(duplicate.sourceId || duplicate.eventId) === String(event.sourceId || eventId);
+      && String(duplicate.sourceId || duplicate.eventId) === String(event.sourceId || eventId)
+      && String(duplicate.reason || '') === String(event.reason || '');
     if (!same) throw new Error('Conflicto de idempotencia: el identificador del movimiento ya existe con otros datos.');
     return { applied: false, duplicate: true };
   }
@@ -78,7 +79,7 @@ function applyFiscalMovement(state, event) {
     eventId, sourceId: String(event.sourceId || eventId), code, type: String(event.type || ''),
     dir, qty: Math.round(qty * 1e8) / 1e8, stockBefore: before,
     stockAfter: Math.round(after * 1e8) / 1e8, cost,
-    document: String(event.document || ''), timestamp: Number(event.timestamp) || Date.now(),
+    document: String(event.document || ''), reason: String(event.reason || ''), timestamp: Number(event.timestamp) || Date.now(),
     cashbox: String(event.cashbox || ''), user: String(event.user || '')
   });
   return { applied: true, stockBefore: before, stockAfter: after };
