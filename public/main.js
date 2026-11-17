@@ -5110,31 +5110,39 @@ function salesDlg(){
       }
       let voidNo;try{voidNo=await nextCajaSequence('void',currentCaja());}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
       const rollbackState=JSON.parse(JSON.stringify(S));
-      s.void=true;
-      s.transType='03-ANUL';
-      s.voidNo=voidNo;s.voidDoc='ANU-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(voidNo,6);
-      s.voidTs=Date.now();
-      s.lines.forEach(l=>{
-        const p=prod(l.code);
-        if(p){
-          p.stock=r2(p.stock+l.qty);
-          addKardex({
-            code:p.code,type:'ANULACIÓN',dir:'IN',doc:(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no),
-            party:'Reingreso por anulación de venta ('+s.client.name+')',
-            qty:l.qty,stockAfter:p.stock,cost:p.cost,user:S.cfg.cajero
-          });
+      try{
+        s.void=true;
+        s.transType='03-ANUL';
+        s.voidNo=voidNo;s.voidDoc='ANU-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(voidNo,6);
+        s.voidTs=Date.now();
+        s.lines.forEach(l=>{
+          const p=prod(l.code);
+          if(p){
+            p.stock=r2(p.stock+l.qty);
+            addKardex({
+              code:p.code,type:'ANULACIÓN',dir:'IN',doc:(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no),
+              party:'Reingreso por anulación de venta ('+s.client.name+')',
+              qty:l.qty,stockAfter:p.stock,cost:p.cost,user:S.cfg.cajero
+            });
+          }
+        });
+        if(isFiscalSale(s)){
+          const sourceId=s.accountingSourceId||('SALE-'+pad(s.no));
+          const fiscalMovements=window.SIFERInventoryLedgers.ensureFiscalInventory(S).movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='VENTA_FISCAL');
+          fiscalMovements.forEach(original=>window.SIFERInventoryLedgers.applyFiscalMovement(S,{
+            eventId:'VOID-SALE:'+original.eventId,type:'ANULACION_VENTA_FISCAL',dir:'IN',
+            code:original.code,qty:original.qty,cost:original.cost,document:'FAC-'+pad(s.no),
+            sourceId,timestamp:Date.now(),cashbox:s.cashbox||currentCaja(),user:currentCajero()
+          }));
         }
-      });
-      if(isFiscalSale(s)){
-        const sourceId=s.accountingSourceId||('SALE-'+pad(s.no));
-        const fiscalMovements=window.SIFERInventoryLedgers.ensureFiscalInventory(S).movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='VENTA_FISCAL');
-        fiscalMovements.forEach(original=>window.SIFERInventoryLedgers.applyFiscalMovement(S,{
-          eventId:'VOID-SALE:'+original.eventId,type:'ANULACION_VENTA_FISCAL',dir:'IN',
-          code:original.code,qty:original.qty,cost:original.cost,document:'FAC-'+pad(s.no),
-          sourceId,timestamp:Date.now(),cashbox:s.cashbox||currentCaja(),user:currentCajero()
-        }));
+        S.cxc=(S.cxc||[]).filter(x=>!(x.saleNo===s.no&&x.cashbox===currentCaja()));
+
+      }catch(error){
+        restoreStateSnapshotIfNeeded(null,rollbackState);
+        armed=0;renderCatalog();draw();
+        msg('No se pudo revertir la venta: '+error.message,'bad');
+        return;
       }
-      S.cxc=(S.cxc||[]).filter(x=>!(x.saleNo===s.no&&x.cashbox===currentCaja()));
       const persisted=await save();
       if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);armed=0;renderCatalog();draw();msg('SQLite/servidor no confirmó la anulación; se mostró el último estado durable disponible.','bad');return;}
       armed=0;renderCatalog();draw();msg((s.docType==='TICKET-INTERNO'?'Ticket de Venta ':'Factura ')+pad(s.no)+' anulado. Se devolvió la mercancía al inventario y Kardex.');
