@@ -35,6 +35,7 @@ function fixture(fetchImpl) {
   return {
     licensing,
     calls,
+    directory,
     setNow: value => { currentTime = value; },
     advance: value => { currentTime += value; },
     cleanup: () => fs.rmSync(directory, { recursive: true, force: true })
@@ -77,11 +78,10 @@ test('activates only the SIFER360 product and stores the key encrypted', async (
     const activation = f.calls.find(call => call.url && String(call.url).includes('/api/activations'));
     assert.equal(activation.body.productCode, 'SIFER360_LICORERIA');
     assert.ok(activation.body.installationId);
-    const stored = fs.readFileSync(path.join(f.licensing.constants ? '' : '', 'unused')).toString();
-    assert.equal(stored, '');
-  } catch (error) {
-    if (error && error.code === 'ENOENT') return;
-    throw error;
+    const stored = JSON.parse(fs.readFileSync(path.join(f.directory, 'sifer360-license-state.json'), 'utf8'));
+    assert.equal(stored.version, 1);
+    assert.ok(stored.encrypted);
+    assert.equal(JSON.stringify(stored).includes('SIC-ABCD1234-EF567890-12345678'), false);
   } finally { f.cleanup(); }
 });
 
