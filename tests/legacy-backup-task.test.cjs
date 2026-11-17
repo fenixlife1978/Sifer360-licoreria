@@ -32,6 +32,14 @@ test('ignora que la tarea heredada ya no exista', () => {
   assert.deepEqual(retirer.remove(), { scheduled: false });
 });
 
+test('ignora que la tarea heredada no exista en Windows en español', () => {
+  const retirer = createLegacyBackupTaskRetirer({
+    platform: 'win32',
+    execFile: () => { throw new Error('ERROR: El sistema no puede encontrar el archivo especificado'); }
+  });
+  assert.deepEqual(retirer.remove(), { scheduled: false });
+});
+
 test('propaga errores reales al retirar la tarea para que queden registrados', () => {
   const retirer = createLegacyBackupTaskRetirer({
     platform: 'win32',
