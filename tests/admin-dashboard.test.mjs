@@ -225,4 +225,7 @@ test('Corte Z consolida ventas por SKU/código y ajustes de inventario positivos
   assert.ok(main.includes("if(cxpPurchaseKeys.has(String(p.cashbox)+'|'+String(p.no)))return;"));
   assert.ok(main.includes("if(method&&method.id==='efUSD')out.cashOutUsd=r2(out.cashOutUsd+Number(p.paid||0))"));
   assert.ok(main.includes("if(method&&method.id==='efBs')out.cashOutBs=r2(out.cashOutBs+Number(p.paid||0)*Number(p.rate||S.cfg.rate||1))"));
+  assert.ok(main.includes("const inShift=ts=>Number(ts)>=openedAt&&Number(ts)<=Date.now()"));
+  assert.ok(main.includes("(p.cashbox&&String(p.cashbox)!==box)||!inShift(p.ts)"));
+  assert.ok(main.includes("p.void||!inShift(p.ts)||Number(p.paid||0)<=0"));
 });
