@@ -29,7 +29,7 @@ test('v1.0.9 remains local-only and cannot upload SQLite to cloud backup service
   const main = await read('../electron/main.cjs');
   const preload = await read('../electron/preload.cjs');
   const renderer = await read('../public/main.js');
-  assert.match(main, /legacyBackupTaskRetirer\.remove\\(\\)/);
+  assert.match(main, /legacyBackupTaskRetirer\.remove\(\)/);
   assert.doesNotMatch(main, /createGoogleDriveBackup|createWindowsBackupScheduler|backup:run-now|backup:connect-google|sqliteDatabaseToJson|google-drive-backup\.cjs|sqlite-json-export\.cjs/);
   assert.doesNotMatch(preload, /backupStatus|backupConnectGoogle|backupRunNow|backupEnableDaily/);
   assert.doesNotMatch(renderer, /Google Drive|gdrive|backupRunNow/);
