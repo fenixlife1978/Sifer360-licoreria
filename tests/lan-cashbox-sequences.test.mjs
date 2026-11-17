@@ -160,3 +160,7 @@ test('los mínimos de secuencia se derivan del estado central y nunca de localSt
   assert.match(sequenceMinimum, /operation === 'currency-exchange'/);
   assert.match(main, /getCashboxSequenceMinimum\(state, cashboxId, operationType\)/);
 });
+
+test('el mínimo de la secuencia ANU considera anulaciones previas de ventas y compras por caja', () => {
+  assert.match(sequenceMinimum, /operation === 'void'.*\[\.\.\.rows\('sales', true\), \.\.\.rows\('purchases'\)\]/);
+});
