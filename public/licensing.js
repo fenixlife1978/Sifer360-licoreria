@@ -223,4 +223,7 @@
   window.SIFERLicensing = { open, refresh: refreshStatus, status: () => current };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", refreshStatus, { once: true });
   else refreshStatus();
+  window.addEventListener("online", refreshStatus);
+  window.addEventListener("offline", async () => { try { showStatus(await api().licenseStatus()); } catch {} });
+  setInterval(async () => { try { showStatus(await api().licenseStatus()); } catch {} }, 60 * 1000);
 })();
