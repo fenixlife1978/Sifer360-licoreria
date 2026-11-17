@@ -2675,6 +2675,9 @@ function comprasDlg(initialTab){
       if(!b)return;
       const c=S.purchases.find(x=>x.no===+b.dataset.voidComp&&String(x.cashbox||currentCaja())===currentCaja());
       if(!c||c.void)return;
+      const linkedPayables=(S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()));
+      const hasRecordedPayments=Number(c.paid||0)>1e-8||linkedPayables.some(x=>Number(x.paid||0)>1e-8||(Array.isArray(x.payments)&&x.payments.length>0));
+      if(hasRecordedPayments){msg('No se puede anular la compra COM-'+pad(c.no)+': existen pagos o abonos al proveedor registrados. Primero debe reversarse y conciliarse cada pago; esta anulación no puede dejar dinero entregado sin tratamiento.','bad');return;}
       const rollbackState=JSON.parse(JSON.stringify(S));
       const purchaseSourceId='PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no);
       const fiscalMovements=(c.docType==='FACTURA_FISCAL'
