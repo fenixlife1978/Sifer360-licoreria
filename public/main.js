@@ -2675,11 +2675,21 @@ function comprasDlg(initialTab){
       if(!b)return;
       const c=S.purchases.find(x=>x.no===+b.dataset.voidComp&&String(x.cashbox||currentCaja())===currentCaja());
       if(!c||c.void)return;
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      const fiscalLines=(c.docType==='FACTURA_FISCAL'?c.lines.filter(l=>{
+        const sourceId='PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no);
+        return window.SIFERInventoryLedgers.ensureFiscalInventory(S).movements.some(m=>m.eventId===sourceId+':'+l.code);
+      }):[]);
+      const fiscalCheck=window.SIFERInventoryLedgers.canApplyFiscalSale(S,fiscalLines);
+      if(!fiscalCheck.ok){msg('No se puede anular la compra: la existencia fiscal disponible de '+fiscalCheck.code+' es '+fq(fiscalCheck.available)+', menor que la cantidad que debe revertirse ('+fq(fiscalCheck.required)+'). Registre y concilie una nota de crédito o ajuste documentado.','bad');return;}
+      const physicalShort=c.lines.find(l=>{const p=prod(l.code);return !p||Number(p.stock)+1e-9<Number(l.qty);});
+      if(physicalShort){msg('No se puede anular la compra: parte de la mercancía ya no está disponible físicamente ('+physicalShort.code+'). Registre la devolución o ajuste correspondiente.','bad');return;}
+      try{
       c.void=true;
       c.lines.forEach(l=>{
         const p=prod(l.code);
         if(p){
-          p.stock=Math.max(0,r2(p.stock-l.qty));
+          p.stock=r2(p.stock-l.qty);
           if(c.docType==='FACTURA_FISCAL'){const sourceId='PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no),originalEvent=sourceId+':'+p.code,ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);if(ledger.movements.some(m=>m.eventId===originalEvent))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'VOID-PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no)+':'+p.code,type:'ANULACION_COMPRA_FISCAL',dir:'OUT',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(c.no),sourceId,timestamp:Date.now(),cashbox:c.cashbox||currentCaja(),user:currentCajero()});}
           addKardex({
             code:p.code,type:'ANULACIÓN',dir:'OUT',doc:'COM-'+pad(c.no),
@@ -2690,7 +2700,8 @@ function comprasDlg(initialTab){
       (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja())).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
       (S.retencionesIva||[]).filter(x=>(Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||'')&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
       (S.retencionesIslr||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja())).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
-      const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la anulación de la compra; se restauró el estado durable anterior.','bad');return;}
+      }catch(error){restoreStateSnapshotIfNeeded(null,rollbackState);msg('No se pudo revertir la compra: '+error.message,'bad');return;}
+      const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);msg('El servidor no confirmó la anulación de la compra; se restauró el estado durable anterior.','bad');return;}
       renderAll();renderPurchaseHist(v);msg('Compra COM-'+pad(c.no)+' anulada. Se revirtió el ingreso en inventario y Kardex.');
     };
   };
