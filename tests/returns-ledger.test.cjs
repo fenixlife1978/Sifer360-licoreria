@@ -56,12 +56,12 @@ test('electronic refunds require a reference and do not alter cash drawer',()=>{
 
 test('same SKU in different sale lines is tracked by original line index',()=>{
   const {sale,state}=fixture();
-  const first=prepareReturn({state,sale,lines:[{lineIndex:0,qty:2}],reason:'Línea 1'});
-  applyReturn(state,first,{returnNo:4});
+  const first=prepareReturn({state,sale,lines:[{lineIndex:0,qty:2}],method:'efUSD',reason:'Línea 1'});
+  applyReturn(state,first,{returnNo:4,refundNo:3});
   assert.equal(returnedQuantity(state,sale,0),2);
   assert.equal(returnedQuantity(state,sale,1),0);
   assert.throws(()=>prepareReturn({state,sale,lines:[{lineIndex:0,qty:0.1}],reason:'Exceso'}),/supera lo vendido/);
-  const second=prepareReturn({state,sale,lines:[{lineIndex:1,qty:1}],reason:'Línea 2'});
+  const second=prepareReturn({state,sale,lines:[{lineIndex:1,qty:1}],method:'efUSD',reason:'Línea 2'});
   assert.equal(second.total,11.6);
 });
 
