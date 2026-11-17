@@ -86,3 +86,20 @@ test('rechaza una misma clave idempotente con factura distinta', () => {
   const changed=input(); changed.invoice.lines[0].quantity=2;
   assert.throws(()=>queue.enqueue(changed),/contenido diferente/);
 });
+
+test('resuelve el perfil fiscal de la caja de origen y mantiene un solo emisor entre cajas', async () => {
+  const store=makeStore(); const seen=[]; let active=0,maxActive=0;
+  const profiles={'01':{enabled:true,port:'COM3'},'02':{enabled:true,port:'COM7'}};
+  const queue=createFiscalNetworkQueue({
+    store,
+    resolveProfile:async cashbox=>profiles[cashbox],
+    emitInvoice:async profile=>{active++;maxActive=Math.max(maxActive,active);seen.push(profile.port);await new Promise(r=>setTimeout(r,15));active--;return{fiscalDocumentNumber:String(seen.length),fiscalSerial:'SERIAL-'+profile.port};}
+  });
+  const first=input('SIFER360-BOX01-0001'); first.cashbox='01';
+  const second=input('SIFER360-BOX02-0001'); second.cashbox='02';
+  queue.enqueue(first); queue.enqueue(second);
+  await new Promise(r=>setTimeout(r,80));
+  assert.deepEqual(seen,['COM3','COM7']);
+  assert.equal(maxActive,1);
+  assert.ok(store.jobs.every(job=>job.status==='issued'));
+});
