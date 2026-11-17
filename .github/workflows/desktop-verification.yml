@@ -11,6 +11,7 @@ on:
       - feature/dual-printer-manager
       - feature/google-drive-automatic-backups
       - integration/google-drive-1.0.4
+      - integration/crm-licensing-telemetry-1.0.5
   pull_request:
     branches:
       - main
@@ -38,7 +39,7 @@ jobs:
         run: |
           node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(!id || !id.endsWith('.apps.googleusercontent.com')) throw new Error('Falta SIFER360_GOOGLE_OAUTH_CLIENT_ID válido.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({ clientId:id }, null, 2))"
       - run: npm test
-      - run: node --check electron/main.cjs && node --check electron/preload.cjs && node --check electron/printer-manager.cjs && node --check electron/google-drive-backup.cjs && node --check electron/sqlite-json-export.cjs && node --check electron/binary-architecture.cjs && node --check public/main.js && node --check public/access.js
+      - run: node --check electron/main.cjs && node --check electron/licensing.cjs && node --check electron/preload.cjs && node --check electron/printer-manager.cjs && node --check electron/google-drive-backup.cjs && node --check electron/sqlite-json-export.cjs && node --check electron/binary-architecture.cjs && node --check public/main.js && node --check public/access.js && node --check public/licensing.js
       - run: npm run build
 
   windows-desktop-package:
@@ -61,6 +62,6 @@ jobs:
       - run: npm run build:exe
       - uses: actions/upload-artifact@v5
         with:
-          name: SIFER360-1.0.4-Windows-Desktop
+          name: SIFER360-1.0.5-Windows-Desktop
           path: dist-exe/*.exe
           if-no-files-found: error
