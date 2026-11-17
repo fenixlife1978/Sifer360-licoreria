@@ -203,7 +203,7 @@ test('el arqueo Z calcula cobros CxC, pagos CxP, compras al contado y movimiento
     Date
   };
   const result = runInNewContext(
-    helpers + '\\n' + expectedFn + '\\nresult = zExpectedByMethod(sales, opening);',
+    helpers + '\n' + expectedFn + '\\nresult = zExpectedByMethod(sales, opening);',
     Object.assign(sandbox, {
       sales: [{ cashbox: 'Caja 1', rate: 10, change: 10, pays: [
         { id: 'efUSD', amount: 30 },
