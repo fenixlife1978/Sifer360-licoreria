@@ -74,7 +74,7 @@ test('purchase void blocks recorded supplier payments before changing stock or f
  const guard=code.indexOf('const hasRecordedPayments=');
  const mutation=code.indexOf('c.void=true');
  assert.ok(guard>=0&&mutation>guard,'payment guard must run before purchase void mutation');
- assert.match(code,/Number\\(c\\.paid\\|\\|0\\)>1e-8/);
- assert.match(code,/Array\\.isArray\\(x\\.payments\\)&&x\\.payments\\.length>0/);
+ assert.match(code,/Number\(c\.paid\|\|0\)>1e-8/);
+ assert.match(code,/Array\.isArray\(x\.payments\)&&x\.payments\.length>0/);
  assert.match(code,/Primero debe reversarse y conciliarse cada pago/);
 });
