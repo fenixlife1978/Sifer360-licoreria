@@ -5410,8 +5410,8 @@ function exportSeniatTxt(periodo){
     const numComp=clean(r.id||r.retentionNumber),rate=money(r.rate||S.cfg.rate);
     const base=money(r.base),iva=money(r.iva);
     const retained=money(r.retainedBs!==undefined?r.retainedBs:(money(r.retainedUsd!==undefined?r.retainedUsd:iva*Number(r.pct||S.cfg.retIvaPct||75)/100)*rate));
-    const total=money(r.documentTotal!==undefined?r.documentTotal:base+iva);
     const exempt=money(r.exempt!==undefined?r.exempt:(r.montoExento||0));
+    const total=money(r.documentTotal!==undefined?r.documentTotal:base+exempt+iva);
     const aliquot=money(r.aliquot!==undefined?r.aliquot:(base>0?iva/base*100:NaN));
     const expediente=clean(r.expediente||'0')||'0',tipoOperacion=oper==='V'?'V':oper==='C'?'C':'';
     if(!validRif(rifProv))errors.push('Fila '+row+': RIF del proveedor inválido.');
