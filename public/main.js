@@ -4642,7 +4642,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   if((dualMode||printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL'))&&window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
     try{fiscalNetworkInfo=await window.posDesktop.networkStatus()||fiscalNetworkInfo;}catch{}
   }
-  const thermalProfile=getThermalPrinterProfile(currentCaja(),fiscalNetworkInfo.deviceId);
+  const thermalProfile=getThermalPrinterProfile(currentCaja(),fiscalNetworkInfo.deviceId,fiscalNetworkInfo.role==='standalone');
   const configuredFiscalProfile=S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[currentCaja()]||null;
   if(dualMode&&!['TICKET','FISCAL'].includes(documentChoice)){msg('Seleccione si desea emitir un ticket no fiscal o una factura fiscal.','bad');return;}
   if(dualMode&&documentChoice==='TICKET'&&(!thermalProfile||thermalProfile.enabled!==true||!thermalProfile.printerName)){msg('La impresora térmica no fiscal no está configurada para esta caja. Configure el dispositivo antes de cobrar.','bad');return;}
@@ -4977,8 +4977,8 @@ function showTicket(s){
   openWin({title:(noPrinter?'Comprobante interno — Nº ':'Ticket de Venta — Nº ')+pad(s.no),w:500,body:el,foot:[
     {label:noPrinter?'Sin impresora configurada':'Imprimir 80mm',left:true,fn:async()=>{
       if(noPrinter){msg('Esta instalación está configurada sin impresora. El comprobante queda guardado en SQLite y puede imprimirse después de configurar un dispositivo.');return false;}
-      let stationId='LOCAL';try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'LOCAL');}catch{}
-      const thermal=getThermalPrinterProfile(s.cashbox,stationId);
+      let stationId='LOCAL',stationRole='standalone';try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'LOCAL');stationRole=String(net&&net.role||'standalone');}catch{}
+      const thermal=getThermalPrinterProfile(s.cashbox,stationId,stationRole==='standalone');
       if(thermal&&thermal.enabled===true&&thermal.printerName&&window.posDesktop&&window.posDesktop.printerPrintTicket){
         try{const result=await window.posDesktop.printerPrintTicket(thermal.printerName,ticketText(s,thermal.columns||42),{columns:thermal.columns||42});msg(result.message+' · '+thermal.printerName);}
         catch(error){msg('No se pudo confirmar el envío del ticket: '+error.message,'bad');}
@@ -5538,9 +5538,11 @@ function thermalPrinterProfileKey(cashbox,deviceId){
   const station=String(deviceId||'LOCAL').replace(/[^A-Za-z0-9._:-]/g,'').slice(0,80)||'LOCAL';
   return 'station:'+station+':'+String(cashbox);
 }
-function getThermalPrinterProfile(cashbox,deviceId){
+function getThermalPrinterProfile(cashbox,deviceId,allowLegacy=true){
   const profiles=S.cfg.thermalPrinters||{};
-  return profiles[thermalPrinterProfileKey(cashbox,deviceId)]||profiles[String(cashbox)]||null;
+  const stationProfile=profiles[thermalPrinterProfileKey(cashbox,deviceId)];
+  if(stationProfile)return stationProfile;
+  return allowLegacy?(profiles[String(cashbox)]||null):null;
 }
 
 async function thermalPrinterConfigDlg(){
@@ -5552,7 +5554,7 @@ async function thermalPrinterConfigDlg(){
   let stationId='LOCAL';
   try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'LOCAL');}catch{}
   const profileKey=id=>thermalPrinterProfileKey(id,stationId);
-  const savedFor=id=>Object.assign({},(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[profileKey(id)])||(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[id])||{});
+  const savedFor=id=>Object.assign({},(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[profileKey(id)])||(stationId==='LOCAL'&&S.cfg.thermalPrinters&&S.cfg.thermalPrinters[id])||{});
   let draft={...savedFor(box)};
   const options=boxes.map(x=>'<option value="'+esc(x.id)+'" '+(String(x.id)===box?'selected':'')+'>'+esc(x.id)+' — '+esc(x.name||('Caja '+x.id))+'</option>').join('');
   const el=h('<div class="form"><div class="hint">Configure una impresora térmica para esta estación y caja. Cada estación puede tener su propia cola Windows, independiente de la impresora fiscal compartida. La prueba envía un ticket de prueba al spooler de Windows; no confirma físicamente la salida del papel.</div><div class="f"><label for="tpCashbox">Caja</label><select class="fld" id="tpCashbox">'+options+'</select></div><div class="f"><label for="tpPrinter">Impresora Windows</label><select class="fld" id="tpPrinter"><option value="">Seleccione impresora…</option></select></div><div class="f"><label for="tpWidth">Papel</label><select class="fld" id="tpWidth"><option value="32">58 mm · 32 columnas</option><option value="42">80 mm · 42 columnas</option><option value="48">80 mm · 48 columnas</option></select></div><label class="chk"><input type="checkbox" id="tpEnabled"> Habilitar tickets en esta caja</label><div class="hint" id="tpStatus" role="status" aria-live="polite">Consultando impresoras de Windows…</div></div>');
