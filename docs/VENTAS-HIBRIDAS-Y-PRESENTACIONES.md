@@ -1,7 +1,7 @@
 # Ventas híbridas, inventario dual y presentaciones del POS
 
-## Estado
-Especificación funcional y criterios de aceptación para la evolución 1.1.0. La implementación se integra únicamente en `release/v1.0.0` mediante una rama de trabajo; no modifica `main` ni publica una versión.
+## Estado de implementación
+Rama de trabajo de la evolución 1.1.0. La selección de presentaciones y la primera implementación de impresión híbrida están integradas y en validación automatizada. El importador universal y el asistente de inicialización fiscal siguen pendientes. No se modifica `main`, no se publica Release ni instalador.
 
 ## Principios obligatorios
 - SQLite local del servidor LAN sigue siendo la única fuente de verdad.
@@ -14,18 +14,18 @@ Especificación funcional y criterios de aceptación para la evolución 1.1.0. L
 ## Opciones del POS
 1. **Ticket no fiscal:** comprobante interno por impresora térmica genérica. No se presenta como factura fiscal.
 2. **Factura fiscal:** emisión por la máquina fiscal habilitada para la caja. Se valida la disponibilidad y trazabilidad fiscal de las cantidades.
-3. **Impresión híbrida:** una venta comercial padre con un identificador común y dos documentos hijos cuando existan renglones respaldados y no respaldados. La factura fiscal contiene únicamente renglones/cantidades que superen la validación de respaldo; el ticket térmico contiene el resto. Cada documento conserva sus importes, impuestos, referencias y relación con la venta padre. Si todos los renglones pertenecen a un solo grupo, solo se emite el documento que corresponda.
+3. **Impresión híbrida:** una venta comercial padre con un identificador común y dos documentos hijos cuando existan renglones respaldados y no respaldados. La factura fiscal contiene únicamente renglones cuya cantidad completa tenga respaldo fiscal suficiente; el ticket térmico contiene el resto. Los documentos conservan sus importes, impuestos, pagos distribuidos y relación con la venta padre. Si todos los renglones pertenecen a un solo grupo, solo se genera el documento que corresponda.
 
-La emisión fiscal debe finalizar antes de considerar confirmada la venta. Si la máquina fiscal queda en estado pendiente o incierto, la operación queda bloqueada para reintento hasta reconciliar el trabajo. Si la impresora térmica falla después de emitida la factura fiscal, la venta no se duplica: queda una tarea de impresión pendiente que puede reintentarse sin volver a emitir la factura.
+La primera implementación de modo híbrido no permite una venta mixta cuando se usa Cashea como medio de pago, porque falta una distribución contractual por documento. En ese caso el POS bloquea la confirmación y pide usar un solo tipo de comprobante o separar la operación. Los pagos restantes se distribuyen proporcionalmente entre documentos hijos y se reconcilian contra la venta padre.
 
-La distribución de pagos, IGTF, vuelto, crédito y Cashea entre documentos hijos debe ser explícita y conciliable. No se permite copiar el importe completo en ambos documentos ni duplicar un pago. Si una modalidad de pago no puede distribuirse sin ambigüedad, el modo híbrido debe advertir y bloquear esa combinación hasta implementar la conciliación.
+La emisión fiscal debe finalizar antes de considerar confirmada la venta. Si la máquina fiscal queda en estado pendiente o incierto, la operación queda bloqueada para reintento hasta reconciliar el trabajo. El ticket complementario se presenta después de guardar la venta y se imprime desde la pantalla de finalización; si la impresora térmica falla, no se repite el cobro ni la factura fiscal.
 
 ## Presentaciones de productos
 - Cada producto conserva una presentación base y puede registrar otras (botella, lata, six-pack, caja, etc.).
 - Cada presentación incluye nombre, unidad mostrada, factor de conversión a unidad base, código de barras opcional y precio de venta propio.
 - Cuando el cajero selecciona un producto con varias presentaciones, el POS ofrece elegir la presentación. Si escanea un código de barras único asociado a una presentación, se agrega directamente esa presentación.
 - El carrito conserva la cantidad de presentaciones y su factor; los importes se calculan con el precio de esa presentación.
-- Stock, Kardex, inventario fiscal, ventas y devoluciones se registran en unidades base. Los documentos pueden mostrar cantidad y unidad de presentación para que el cliente entienda qué compró.
+- Stock, Kardex, inventario fiscal, ventas y devoluciones se registran en unidades base. Los documentos muestran cantidad y unidad de presentación.
 - La validación de existencias agrega todas las presentaciones del mismo SKU; no permite vender cajas y unidades por encima de la existencia física.
 - Las presentaciones históricas de ventas no se recalculan si posteriormente cambia el precio o el factor del catálogo.
 
@@ -45,6 +45,3 @@ La distribución de pagos, IGTF, vuelto, crédito y Cashea entre documentos hijo
 - El stock operativo final coincide con las unidades base vendidas; los movimientos del libro fiscal coinciden con las cantidades asignadas y sustentadas.
 - Una venta con varias presentaciones descuenta el factor correcto y se refleja correctamente en Kardex, reportes, devoluciones y anulaciones.
 - Pruebas automatizadas y de integración con SQLite temporal, impresora simulada y LAN antes de generar el instalador.
-
-## Implementación en curso
-La primera parte del selector de presentaciones se incorporó al carrito: elección de presentación, lectura de su código de barras, precio por presentación y conversión a unidades base para las validaciones y el descuento físico. La integración de facturación híbrida, importador y auditoría de apertura fiscal sigue pendiente de completar y probar.
