@@ -17,10 +17,14 @@ const { getCashboxSequenceMinimum } = require('./cashbox-sequence-minimum.cjs');
 const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
 const { createPasswordHash, verifyPassword, normalizeLegacyUser, publicUser } = require('./auth-credentials.cjs');
 const FiscalPrinterManager = require('./fiscal-printer-manager.cjs');
+const { createGoogleDriveBackup } = require('./google-drive-backup.cjs');
+const { sqliteDatabaseToJson } = require('./sqlite-json-export.cjs');
 const PrinterManager = require('./printer-manager.cjs');
 const { createFiscalNetworkQueue } = require('./fiscal-network-queue.cjs');
 let fiscalNetworkQueue = null;
 let fiscalNetworkQueueRecovered = false;
+let googleDriveBackup = null;
+let scheduledBackupRunning = false;
 const authSessions = new Map();
 const initSqlJs = require('sql.js');
 
@@ -979,6 +983,25 @@ function registerIpc() {
     }
     return { ok: true, deleted: true };
   });
+  ipcMain.handle('backup:status', () => googleDriveBackup.status());
+  ipcMain.handle('backup:connect-google', async (_event, email) => {
+    if (networkConfig.role === 'client') throw new Error('El respaldo debe configurarse en el equipo servidor que conserva la única SQLite.');
+    return googleDriveBackup.connect(email);
+  });
+  ipcMain.handle('backup:enable-daily', async () => {
+    if (networkConfig.role === 'client') throw new Error('El respaldo automático solo puede ejecutarse en el equipo servidor o independiente.');
+    if (networkConfig.role === 'server' && !networkServer) throw new Error('El servidor LAN no está iniciado; no se activó el respaldo.');
+    return googleDriveBackup.enable(process.execPath);
+  });
+  ipcMain.handle('backup:disable-daily', () => googleDriveBackup.disable());
+  ipcMain.handle('backup:run-now', async () => {
+    if (networkConfig.role === 'client') throw new Error('El respaldo debe ejecutarse desde el equipo que conserva la SQLite central.');
+    if (!db) throw new Error('SQLite no está disponible.');
+    const integrity = databaseIntegrityStatus(db);
+    if (integrity !== 'ok') throw new Error('No se enviará el respaldo: PRAGMA integrity_check no devolvió ok (' + integrity + ').');
+    return googleDriveBackup.runBackup(Buffer.from(db.export()), { manual: true, jsonBytes: sqliteDatabaseToJson(db) });
+  });
+  ipcMain.handle('backup:export-recovery-key', () => googleDriveBackup.exportRecoveryKey());
   ipcMain.handle('posdb:get-mode', () => ({ mode: 'sqlite', databasePath: networkConfig.role === 'client' ? null : userDbPath(), source: networkConfig.role === 'client' ? 'lan-server' : 'local' }));
   ipcMain.handle('posdb:set-mode', () => ({ mode: 'sqlite', databasePath: networkConfig.role === 'client' ? null : userDbPath(), source: networkConfig.role === 'client' ? 'lan-server' : 'local' }));
   ipcMain.handle('posdb:load-state', async () => {
@@ -1127,23 +1150,40 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    const existing = BrowserWindow.getAllWindows()[0];
-    if (existing) {
-      if (existing.isMinimized()) existing.restore();
-      existing.focus();
+  app.on('second-instance', (_event, commandLine) => {
+    if (commandLine.includes('--sifer-google-drive-backup')) {
+      if (scheduledBackupRunning || !db || !googleDriveBackup || networkConfig.role === 'client') return;
+      scheduledBackupRunning = true;
+      const integrity = databaseIntegrityStatus(db);
+      if (integrity === 'ok') googleDriveBackup.runBackup(Buffer.from(db.export()), { manual: false, jsonBytes: sqliteDatabaseToJson(db) }).catch(error => console.error('SIFER360 respaldo programado:', error.message)).finally(() => { scheduledBackupRunning = false; });
+      return;
     }
+    const existing = BrowserWindow.getAllWindows()[0];
+    if (existing) { if (existing.isMinimized()) existing.restore(); existing.focus(); }
   });
   app.whenReady().then(async () => {
     readNetworkConfig();
     if (networkConfig.role !== 'client') await initializeDatabase();
+    googleDriveBackup = createGoogleDriveBackup({ app, safeStorage, shell, dialog });
+    if (process.argv.includes('--sifer-google-drive-backup')) {
+      if (networkConfig.role === 'client') throw new Error('Los clientes LAN no generan respaldos: la única SQLite está en el servidor.');
+      const integrity = databaseIntegrityStatus(db);
+      if (integrity !== 'ok') throw new Error('SQLite no superó integrity_check; no se enviará ningún respaldo.');
+      await googleDriveBackup.runBackup(Buffer.from(db.export()), { manual: false, jsonBytes: sqliteDatabaseToJson(db) });
+      app.quit();
+      return;
+    }
     registerIpc();
     registerNetworkIpc();
     if (networkConfig.role === 'server') { try { await startLanServer(networkConfig.port); } catch (error) { throw new Error('No se pudo reanudar el servidor LAN. SIFER no iniciará en modo local para evitar crear una base de datos paralela. ' + (error && error.message ? error.message : String(error))); } }
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   }).catch(error => {
-    dialog.showErrorBox('No se pudo iniciar SIFER 360', error && error.message ? error.message : String(error));
+    if (process.argv.includes('--sifer-google-drive-backup')) {
+      try { fs.appendFileSync(path.join(app.getPath('userData'), 'google-drive-backup', 'backup-errors.log'), '[' + new Date().toISOString() + '] ' + (error && error.stack ? error.stack : String(error)) + '\\n', 'utf8'); } catch {}
+    } else {
+      dialog.showErrorBox('No se pudo iniciar SIFER 360', error && error.message ? error.message : String(error));
+    }
     app.quit();
   });
 }
