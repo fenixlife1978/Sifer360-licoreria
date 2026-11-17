@@ -18,6 +18,8 @@ function prepareReturn({state,sale,lines,returnStock=true,method='',reference=''
     fail('La venta fue emitida por impresora fiscal. La nota de crédito debe emitirse mediante una operación fiscal autorizada; no se registrará una devolución interna.');
   if(sale.cashea||(sale.pays||[]).some(payment=>payment.id==='cashea'))
     fail('La venta tiene financiación Cashea. Debe conciliarse primero la reversión con Cashea.');
+  if(Number(sale.igtf||0)>0)
+    fail('La venta incluye IGTF. La devolución debe conciliar también ese impuesto; esta operación interna no lo ajustará automáticamente.');
   if(!Array.isArray(lines)||!lines.length)fail('Seleccione al menos un renglón para devolver.');
   if(!String(reason||'').trim())fail('Indique el motivo de la devolución.');
   const normalized=[];
@@ -28,6 +30,7 @@ function prepareReturn({state,sale,lines,returnStock=true,method='',reference=''
     if(seen.has(lineIndex))fail('No repita el mismo renglón en una nota; consolide su cantidad.');
     seen.add(lineIndex);
     const original=sale.lines[lineIndex];
+    if(!(Number(original.qty)>0))fail('El renglón original no tiene una cantidad válida.');
     if(!(qty>0)||!Number.isFinite(qty))fail('La cantidad a devolver debe ser positiva.');
     const already=returnedQuantity(state,sale,lineIndex);
     const available=Number(original.qty)-already;
@@ -35,6 +38,7 @@ function prepareReturn({state,sale,lines,returnStock=true,method='',reference=''
     const ratio=qty/Number(original.qty);
     const base=round2(Number(original.net||0)*ratio);
     const iva=round2(Number(original.iva||0)*ratio);
+    if(!Number.isFinite(base)||!Number.isFinite(iva)||base<0||iva<0)fail('El renglón original contiene importes inválidos.');
     normalized.push({lineIndex,code:String(original.code),desc:String(original.desc||''),qty,base,iva,total:round2(base+iva),unitCost:Number(original.unitCost||0)});
   }
   const total=round2(normalized.reduce((sum,line)=>sum+line.total,0));
@@ -83,6 +87,12 @@ function applyReturn(state,prepared,{returnNo,refundNo,now=Date.now(),user=''}={
     refundAmount:prepared.refundAmount,refundNo:prepared.refund>0?Number(refundNo||0):null
   };
   if(prepared.refund>0&&!refundNo)fail('Falta reservar el consecutivo independiente del reembolso.');
+  if(prepared.returnStock){
+    for(const line of prepared.lines){
+      if(!(state.products||[]).some(item=>String(item.code)===line.code))
+        fail('No se encontró el artículo '+line.code+' para reingresar la mercancía.');
+    }
+  }
   if(prepared.receivableId){
     const item=(state.cxc||[]).find(entry=>entry.id===prepared.receivableId);
     if(!item)fail('La CxC original ya no existe.');
@@ -96,7 +106,6 @@ function applyReturn(state,prepared,{returnNo,refundNo,now=Date.now(),user=''}={
   if(prepared.returnStock){
     for(const line of prepared.lines){
       const product=(state.products||[]).find(item=>String(item.code)===line.code);
-      if(!product)fail('No se encontró el artículo '+line.code+' para reingresar la mercancía.');
       product.stock=round2(Number(product.stock||0)+line.qty);
       if(!Array.isArray(state.kardex))state.kardex=[];
       state.kardex.push({
