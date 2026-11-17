@@ -1140,6 +1140,7 @@ function registerIpc() {
   });
   ipcMain.handle('app-update:install', async () => {
     if (!updateDownloaded) throw new Error('La actualización todavía no terminó de descargarse.');
+    if (networkConfig.role === 'server' && networkServer) throw new Error('Cierre todas las cajas cliente y detenga el servidor LAN antes de actualizar el equipo servidor.');
     if (networkConfig.role !== 'client' && db) {
       const integrity = databaseIntegrityStatus(db);
       if (integrity !== 'ok') throw new Error('SQLite no superó integrity_check; se canceló la instalación para proteger los datos.');
