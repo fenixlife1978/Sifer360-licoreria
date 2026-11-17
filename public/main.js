@@ -5131,7 +5131,12 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     const fiscalCheck=window.SIFERInventoryLedgers&&window.SIFERInventoryLedgers.canApplyFiscalSale(S,fiscalSaleLines);
     if(!fiscalCheck||!fiscalCheck.ok){const code=fiscalCheck&&fiscalCheck.code||'artículo';const p=prod(code);msg('Venta fiscal bloqueada: inventario fiscal insuficiente para '+(p?p.desc:code)+'. Disponible: '+fq(fiscalCheck&&fiscalCheck.available||0)+'. Registre/valide la existencia fiscal inicial o la compra fiscal antes de facturar.','bad');return;}
   }
-  const ticketFiscalOutByCode=ticketFiscalOutPlan(lines,ticketSaleLines,fiscalSaleLines);
+  const ticketFiscalOutByCode=ticketFiscalOutPlan(lines,ticketSaleLines,fiscalSaleLines),ticketFiscalRemainingByCode=new Map(ticketFiscalOutByCode),ticketFiscalOutLines=[];
+  S.cart.forEach((line,lineIndex)=>{
+    if(fiscalLineIndexes.has(lineIndex))return;
+    const code=String(line.code),out=Math.min(lineBaseQty(line),Number(ticketFiscalRemainingByCode.get(code)||0));
+    if(out>1e-9){ticketFiscalOutLines.push({lineIndex,code,qty:r8(out)});ticketFiscalRemainingByCode.set(code,Math.max(0,Number(ticketFiscalRemainingByCode.get(code)||0)-out));}
+  });
   const creditAmt=(isCred&&st.pending>=0.01)?r2(st.pending):0;
   const casheaAmt=r2(amts.cashea||0);
   let cxcNo=null,casheaNo=null;
@@ -5157,7 +5162,8 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     baseG16:t.baseG16,baseR8:t.baseR8,baseA31:t.baseA31,baseEx:t.baseEx,
     iva:t.iva,total:t.total,igtf:st.igtf,rate:S.cfg.rate,pays,
     change:r2(st.change),credit:creditAmt,void:false,
-    ticketFiscalOut:Array.from(ticketFiscalOutByCode.entries()).map(([code,qty])=>({code,qty}))
+    ticketFiscalOut:Array.from(ticketFiscalOutByCode.entries()).map(([code,qty])=>({code,qty})),
+    ticketFiscalOutLines:ticketFiscalOutLines.map(line=>({...line}))
   };
 
   if(casheaAmt>0){
@@ -5301,17 +5307,14 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     }
   }
 
-const ticketFiscalRemaining=new Map(ticketFiscalOutByCode);
+const ticketFiscalByLine=new Map(ticketFiscalOutLines.map(line=>[line.lineIndex,line.qty]));
 S.cart.forEach((l,lineIndex)=>{
     const p=prod(l.code);
     const baseQty=lineBaseQty(l);
     if(fiscalLineIndexes.has(lineIndex))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':'+p.code+':'+lineIndex,type:'VENTA_FISCAL',dir:'OUT',code:p.code,qty:baseQty,cost:p.cost,document:'FAC-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
     else{
-      const fiscalOut=Math.min(baseQty,Number(ticketFiscalRemaining.get(p.code)||0));
-      if(fiscalOut>1e-9){
-        window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':TICKET:'+p.code+':'+lineIndex,type:'SALIDA_TICKET_NO_FISCAL',dir:'OUT',code:p.code,qty:fiscalOut,cost:p.cost,document:'TKT-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
-        ticketFiscalRemaining.set(p.code,Math.max(0,Number(ticketFiscalRemaining.get(p.code)||0)-fiscalOut));
-      }
+      const fiscalOut=Number(ticketFiscalByLine.get(lineIndex)||0);
+      if(fiscalOut>1e-9)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':TICKET:'+p.code+':'+lineIndex,type:'SALIDA_TICKET_NO_FISCAL',dir:'OUT',code:p.code,qty:fiscalOut,cost:p.cost,document:'TKT-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
     }
     p.stock=Math.max(0,r2(p.stock-baseQty));
     addKardex({
@@ -5539,7 +5542,7 @@ async function registerSaleReturn(s,refresh){
   }catch(error){msg('No se pudo reservar la numeración de la devolución/reembolso: '+error.message,'bad');return false;}
   const rollbackState=JSON.parse(JSON.stringify(S));
   try{
-    const note=window.SIFERReturnsLedger.applyReturn(S,prepared,{returnNo,refundNo,now:Date.now(),user:currentCajero()});
+    const note=window.SIFERReturnsLedger.applyReturn(S,prepared,{returnNo,refundNo,now:Date.now(),user:currentCajero(),inventoryLedger:window.SIFERInventoryLedgers});
     const persisted=await save();
     if(!persisted||!persisted.ok){
       restoreStateSnapshotIfNeeded(persisted,rollbackState);
