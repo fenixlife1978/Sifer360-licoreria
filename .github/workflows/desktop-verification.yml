@@ -39,7 +39,7 @@ jobs:
         run: |
           node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(!id || !id.endsWith('.apps.googleusercontent.com')) throw new Error('Falta SIFER360_GOOGLE_OAUTH_CLIENT_ID válido.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({ clientId:id }, null, 2))"
       - run: npm test
-      - run: node --check electron/main.cjs && node --check electron/licensing.cjs && node --check electron/preload.cjs && node --check electron/printer-manager.cjs && node --check electron/google-drive-backup.cjs && node --check electron/sqlite-json-export.cjs && node --check electron/binary-architecture.cjs && node --check public/main.js && node --check public/access.js && node --check public/licensing.js
+      - run: node --check electron/main.cjs && node --check electron/licensing.cjs && node --check electron/preload.cjs && node --check electron/printer-manager.cjs && node --check electron/google-drive-backup.cjs && node --check electron/sqlite-json-export.cjs && node --check electron/binary-architecture.cjs && node --check public/main.js && node --check public/access.js && node --check public/licensing.js && node --check public/licensing.js
       - run: npm run build
 
   windows-desktop-package:
@@ -58,7 +58,7 @@ jobs:
         run: |
           node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(!id || !id.endsWith('.apps.googleusercontent.com')) throw new Error('Falta SIFER360_GOOGLE_OAUTH_CLIENT_ID válido.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({ clientId:id }, null, 2))"
       - run: npm test
-      - run: node --check electron/main.cjs && node --check electron/preload.cjs && node --check electron/printer-manager.cjs && node --check electron/google-drive-backup.cjs && node --check electron/sqlite-json-export.cjs && node --check public/main.js && node --check public/access.js && node --check electron/lan-outbox.cjs && node --check electron/lan-tls.cjs && node --check electron/lan-event-store.cjs && node --check electron/lan-state-merge.cjs && node --check electron/sqlite-recovery.cjs && node --check electron/lan-address.cjs && node --check electron/lan-auth.cjs && node --check electron/cashbox-sequence.cjs && node --check electron/cashbox-sequence-migration.cjs && node --check electron/binary-architecture.cjs
+      - run: node --check electron/main.cjs && node --check electron/licensing.cjs && node --check electron/preload.cjs && node --check electron/printer-manager.cjs && node --check electron/google-drive-backup.cjs && node --check electron/sqlite-json-export.cjs && node --check public/main.js && node --check public/access.js && node --check public/licensing.js && node --check electron/lan-outbox.cjs && node --check electron/lan-tls.cjs && node --check electron/lan-event-store.cjs && node --check electron/lan-state-merge.cjs && node --check electron/sqlite-recovery.cjs && node --check electron/lan-address.cjs && node --check electron/lan-auth.cjs && node --check electron/cashbox-sequence.cjs && node --check electron/cashbox-sequence-migration.cjs && node --check electron/binary-architecture.cjs
       - run: npm run build:exe
       - uses: actions/upload-artifact@v5
         with:
