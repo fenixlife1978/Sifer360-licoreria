@@ -5135,6 +5135,8 @@ function salesDlg(){
           &&Math.abs(Number(x.ts)-Number(s.ts))<1000
           &&sameSaleClient(x);
       });
+      const hasAmbiguousLegacyReceivable=(S.cxc||[]).some(x=>Number(x.saleNo)===Number(s.no)&&!(x.cashbox!==undefined&&x.cashbox!==null&&String(x.cashbox)!=='')&&!linkedReceivables.includes(x));
+      if(hasAmbiguousLegacyReceivable){msg('No se puede anular esta venta: existe una CxC heredada sin caja que no puede vincularse inequívocamente a esta factura. Revise y concilie manualmente esa cuenta antes de continuar.','bad');return;}
       const hasCollectedSalePayment=(Array.isArray(s.pays)&&s.pays.some(p=>String(p.id||'')!=='credito'&&Number(p.amount||0)>1e-8))
         ||linkedReceivables.some(x=>Number(x.paid||0)>1e-8||(Array.isArray(x.payments)&&x.payments.length>0))
         ||!!s.cashea;
