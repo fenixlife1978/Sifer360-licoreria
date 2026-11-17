@@ -1,4 +1,4 @@
-# Actualizador y doble inventario — SIFER360 v1.0.7
+# Actualizador y doble inventario — SIFER360 v1.0.8
 
 ## Actualizador de escritorio
 La distribución oficial utiliza electron-updater con proveedor GitHub Releases. electron-builder debe generar y publicar junto con el instalador NSIS los metadatos `latest.yml` y archivos `.blockmap`; adjuntar solo el EXE no activa el mecanismo de actualización.
@@ -6,6 +6,9 @@ La distribución oficial utiliza electron-updater con proveedor GitHub Releases.
 La aplicación consulta al iniciar y cada seis horas. La descarga se realiza en segundo plano. Al completarse, se presenta «Instalar ahora» o «Más tarde». La instalación requiere aceptación expresa, ausencia de venta en curso y ausencia de trabajos fiscales pendientes/inciertos. Si el equipo es servidor LAN, primero deben cerrarse las cajas cliente y detenerse el servidor de red; el proceso principal bloquea la instalación mientras el servidor siga activo. Antes de cerrar, el proceso principal verifica y persiste SQLite en el servidor; los clientes LAN no modifican la base central durante la actualización. El instalador debe mantener `app.getPath('userData')`, donde reside `sifer360-licoreria.sqlite`, configuración y estado de licencia.
 
 Las actualizaciones de esquema SQLite futuras deben usar migraciones versionadas y reversibles. No se deben borrar carpetas de usuario ni sobrescribir la base de datos con el paquete de instalación.
+
+## Persistencia y copias locales
+La base de datos operativa es SQLite local en el equipo servidor o independiente. No existe sincronización con nube ni envío de copias a Google Drive u otros servicios remotos. Las copias deben ser generadas y conservadas manualmente por el cliente en medios locales o externos bajo su responsabilidad. El instalador conserva la carpeta de datos del usuario y las copias locales de seguridad previas a actualización.
 
 ## Inventario operativo maestro
 El saldo operativo existente (`products[].stock`) es el inventario físico general y contiene mercancía comprada con o sin factura fiscal. Es la existencia que utiliza el POS para disponibilidad y reposición.
