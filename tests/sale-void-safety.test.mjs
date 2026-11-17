@@ -22,3 +22,15 @@ test('sale void refuses collected payments and financing until refund workflow e
   assert.match(handler, /!!s\.cashea/);
   assert.match(handler, /reembolso\/reverso correspondiente/);
 });
+
+test('purchase voids share the per-cashbox annulment sequence and retain a document number', async () => {
+  const source = await readFile(new URL('../public/main.js', import.meta.url), 'utf8');
+  const start = source.indexOf('const renderPurchaseHist');
+  const end = source.indexOf('const renderSuppliersTab', start);
+  assert.notEqual(start, -1, 'purchase history handler must exist');
+  assert.ok(end > start, 'purchase history handler must have a clear boundary');
+  const handler = source.slice(start, end);
+  assert.ok(handler.includes("const purchaseCashbox=String(c.cashbox||currentCaja())"), 'purchase void must use its originating cashbox');
+  assert.ok(handler.includes("nextCajaSequence('void',purchaseCashbox)"), 'purchase void must share the per-cashbox annulment sequence');
+  assert.ok(handler.includes("c.voidNo=voidNo;c.voidDoc='ANU-'"), 'purchase void must persist an auditable annulment document number');
+});
