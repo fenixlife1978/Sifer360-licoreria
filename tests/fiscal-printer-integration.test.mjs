@@ -30,7 +30,7 @@ test('la configuración fiscal se guarda por caja dentro del estado SQLite', () 
 });
 
 test('la modalidad máquina fiscal falla de forma segura si no hay adaptador listo', () => {
-  assert.match(main, /const fiscalMode=dualMode\?documentChoice==='FISCAL':\(printMode==='FISCAL_PRINTER'\|\|\(printMode==='LEGACY'&&S\.cfg\.fiscalTipo==='MAQUINA_FISCAL'\)\)/);
+  assert.match(main, /const fiscalMode=dualMode\?\(documentChoice==='FISCAL'\|\|\(hybridMode&&hybridHasFiscal\)\):\(printMode==='FISCAL_PRINTER'\|\|\(printMode==='LEGACY'&&S\.cfg\.fiscalTipo==='MAQUINA_FISCAL'\)\)/);
   assert.match(main, /if\(!diagnostic\.ready\)/);
   assert.match(main, /fiscalPrinterTestBridge\(fiscalProfile\)/);
   assert.match(main, /unresolvedFiscalJobs\.length/);
@@ -74,9 +74,9 @@ test('el asistente ofrece modo fiscal, ticket interno no fiscal y operación sin
 });
 
 test('los tickets internos no reservan número de control fiscal ni generan emisión fiscal', () => {
-  assert.match(main, /const internalTicketMode=dualMode\?documentChoice==='TICKET':\(printMode==='INTERNAL_THERMAL'\|\|printMode==='NO_PRINTER'\)/);
+  assert.match(main, /const internalTicketMode=dualMode\?\(documentChoice==='TICKET'\|\|\(hybridMode&&!hybridHasFiscal\)\):\(printMode==='INTERNAL_THERMAL'\|\|printMode==='NO_PRINTER'\)/);
   assert.match(main, /const ctrlNext=internalTicketMode\?null:await nextCajaSequence\('control',currentCaja\(\)\)/);
-  assert.match(main, /docType:internalTicketMode\?'TICKET-INTERNO':'01-FACTURA'/);
+  assert.match(main, /docType:hybridMode\?'VENTA-HIBRIDA':\(internalTicketMode\?'TICKET-INTERNO':'01-FACTURA'\)/);
   assert.match(main, /concept:\(internalTicketMode\?'Ticket de venta':'Factura de venta'\)/);
 });
 
