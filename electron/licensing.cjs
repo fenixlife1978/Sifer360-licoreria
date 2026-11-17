@@ -10,6 +10,7 @@ const ACTIVATION_URL = CRM_BASE_URL + '/api/activations';
 const TELEMETRY_URL = CRM_BASE_URL + '/api/analytics/events';
 const TRIAL_MS = 24 * 60 * 60 * 1000;
 const APP_VERSION = '1.0.5';
+const LICENSE_PUBLIC_KEY_PEM = '-----BEGIN PUBLIC KEY-----\\nMCowBQYDK2VwAyEAMK05zLaqyrSkJ/eti0YVq/NLGFmjTJc+T66yKYskEi8=\\n-----END PUBLIC KEY-----\\n';
 
 function createLicensing(options = {}) {
   const app = options.app;
@@ -18,6 +19,7 @@ function createLicensing(options = {}) {
   const fetchImpl = options.fetchImpl || global.fetch;
   const now = options.now || (() => Date.now());
   const appVersion = typeof app.getVersion === 'function' ? app.getVersion() : APP_VERSION;
+  const publicKey = options.publicKey || crypto.createPublicKey(LICENSE_PUBLIC_KEY_PEM);
   if (!app || !safeStorage || typeof fetchImpl !== 'function') throw new Error('La integración de licencias requiere Electron safeStorage y fetch.');
   const statePath = path.join(app.getPath('userData'), 'sifer360-license-state.json');
   let state = null;
@@ -92,6 +94,28 @@ function createLicensing(options = {}) {
     return { created: true };
   }
 
+  function verifyOfflineToken(token, expectedLicenseId) {
+    try {
+      if (typeof token !== 'string' || !token) return null;
+      const parts = token.split('.');
+      if (parts.length !== 2) return null;
+      const payloadBytes = Buffer.from(parts[0], 'base64url');
+      const signature = Buffer.from(parts[1], 'base64url');
+      if (!crypto.verify(null, payloadBytes, publicKey, signature)) return null;
+      const payload = JSON.parse(payloadBytes.toString('utf8'));
+      if (payload.v !== 1 || payload.productCode !== PRODUCT_CODE) return null;
+      if (payload.installationId !== state.installationId || payload.licenseId !== expectedLicenseId) return null;
+      const issuedAt = Date.parse(payload.issuedAt || '');
+      const offlineUntil = Date.parse(payload.offlineUntil || '');
+      const expiresAt = payload.expiresAt ? Date.parse(payload.expiresAt) : Infinity;
+      if (!Number.isFinite(issuedAt) || !Number.isFinite(offlineUntil) || !Number.isFinite(expiresAt) && expiresAt !== Infinity) return null;
+      if (issuedAt > now() + 5 * 60 * 1000 || now() > offlineUntil || now() > expiresAt) return null;
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
   function localStatus() {
     ensureState();
     const current = now();
@@ -103,10 +127,10 @@ function createLicensing(options = {}) {
     persist();
 
     if (state.licenseKey) {
-      const verified = Date.parse(state.lastVerifiedAt || '');
+      const claims = verifyOfflineToken(state.offlineToken, state.licenseId);
       const offlineDays = Math.max(1, Math.min(30, Number(state.offlineDays) || 7));
-      const offlineUntil = verified + offlineDays * 86400000;
-      if (Number.isFinite(verified) && current <= offlineUntil && state.licenseStatus !== 'revoked') {
+      if (claims && state.licenseStatus !== 'revoked') {
+        const offlineUntil = Date.parse(claims.offlineUntil);
         const offline = !lastRefreshAt || current - lastRefreshAt > 5 * 60 * 1000;
         return {
           state: offline ? 'licensed_offline' : 'licensed',
@@ -114,11 +138,12 @@ function createLicensing(options = {}) {
           licenseId: state.licenseId,
           offlineDays,
           lastVerifiedAt: state.lastVerifiedAt,
+          offlineUntil: claims.offlineUntil,
           offlineRemainingMs: Math.max(0, offlineUntil - current),
           telemetryEnabled: state.telemetryEnabled
         };
       }
-      return { state: state.licenseStatus === 'revoked' ? 'revoked' : 'license_expired', blocked: true, telemetryEnabled: state.telemetryEnabled, message: 'La licencia requiere validación en CRM-SICOVEN.' };
+      return { state: state.licenseStatus === 'revoked' ? 'revoked' : 'license_expired', blocked: true, telemetryEnabled: state.telemetryEnabled, message: 'El token de licencia firmado no es válido o superó su margen offline. Conéctate a CRM-SICOVEN para revalidar.' };
     }
 
     const started = Date.parse(state.trialStartedAt);
@@ -155,6 +180,7 @@ function createLicensing(options = {}) {
       throw error;
     }
     if (!body.ok || !body.license || body.license.productCode !== PRODUCT_CODE) throw new Error('CRM-SICOVEN no confirmó una licencia válida para SIFER360 LICORERÍA.');
+    if (!verifyOfflineToken(body.offlineToken, String(body.license.id))) throw new Error('CRM-SICOVEN no entregó un token offline firmado y válido para esta instalación.');
     return body;
   }
 
@@ -167,6 +193,7 @@ function createLicensing(options = {}) {
       try {
         const result = await postActivation();
         state.licenseId = result.license.id;
+        state.offlineToken = result.offlineToken;
         state.licenseStatus = 'active';
         state.offlineDays = Math.max(1, Math.min(30, Number(result.license.offlineDays) || 7));
         state.lastVerifiedAt = new Date(now()).toISOString();
@@ -198,11 +225,12 @@ function createLicensing(options = {}) {
     ensureState();
     const key = String(licenseKey || '').trim().toUpperCase();
     if (!key || key.length > 120 || !/^[A-Z0-9-]+$/.test(key)) throw new Error('Introduce una clave de licencia válida.');
-    const previous = state.licenseKey;
+    const previousState = { ...state };
     state.licenseKey = key;
     try {
       const result = await postActivation();
       state.licenseId = result.license.id;
+      state.offlineToken = result.offlineToken;
       state.licenseStatus = 'active';
       state.offlineDays = Math.max(1, Math.min(30, Number(result.license.offlineDays) || 7));
       state.lastVerifiedAt = new Date(now()).toISOString();
@@ -213,8 +241,7 @@ function createLicensing(options = {}) {
     } catch (error) {
       const status = Number(error && error.status);
       telemetry('app_error', { detail: 'activation_' + (status || 'connection') });
-      state.licenseKey = previous;
-      if (previous) state.licenseStatus = 'active';
+      state = previousState;
       persist();
       throw error;
     }
