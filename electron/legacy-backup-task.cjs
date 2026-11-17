@@ -17,7 +17,7 @@ function createLegacyBackupTaskRetirer({ execFile = execFileSync, platform = pro
       });
     } catch (error) {
       const message = String(error && error.message || error);
-      if (!/cannot find|cannot be found|not found|no se encuentra|no existe/i.test(message)) throw error;
+      if (!/cannot find|cannot be found|not found|no se encuentra|no existe|no puede encontrar/i.test(message)) throw error;
     }
     return { scheduled: false };
   }
