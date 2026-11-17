@@ -2665,7 +2665,7 @@ function comprasDlg(initialTab){
             '<td class="r">'+nf8(c.total)+'</td>'+
             '<td class="r">'+nf8(Number(c.retIva||0)+Number(c.retIslr||0))+'</td>'+
             '<td class="r">'+nf8(paidTotal)+'</td>'+
-            '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA':nf8(pend))+'</td>'+
+            '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA'+(c.voidDoc?' · '+esc(c.voidDoc):''):nf8(pend))+'</td>'+
             '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'">Anular</button>')+'</td>'+
           '</tr>';
         }).join(''):'<tr class="empty"><td colspan="11">Sin compras registradas.</td></tr>')+'</tbody>'+
@@ -2698,8 +2698,10 @@ function comprasDlg(initialTab){
       c.lines.forEach(l=>physicalRequired.set(String(l.code),(physicalRequired.get(String(l.code))||0)+Number(l.qty)));
       const physicalShort=Array.from(physicalRequired.entries()).find(([code,qty])=>{const p=prod(code);return !p||Number(p.stock)+1e-9<qty;});
       if(physicalShort){msg('No se puede anular la compra: existencia física insuficiente de '+physicalShort[0]+'. Disponible: '+fq(prod(physicalShort[0])?.stock||0)+', requerido: '+fq(physicalShort[1])+'. Registre la devolución o ajuste correspondiente.','bad');return;}
+      const purchaseCashbox=String(c.cashbox||currentCaja());
+      let voidNo;try{voidNo=await nextCajaSequence('void',purchaseCashbox);}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
       try{
-      c.void=true;
+      c.void=true;c.voidNo=voidNo;c.voidDoc='ANU-'+purchaseCashbox.replace(/\\W/g,'')+'-'+pad(voidNo,6);
       c.lines.forEach(l=>{
         const p=prod(l.code);
         if(p){
@@ -2713,7 +2715,7 @@ function comprasDlg(initialTab){
       fiscalMovements.forEach(original=>window.SIFERInventoryLedgers.applyFiscalMovement(S,{
         eventId:'VOID-PURCHASE:'+original.eventId,type:'ANULACION_COMPRA_FISCAL',dir:'OUT',
         code:original.code,qty:original.qty,cost:original.cost,document:'COM-'+pad(c.no),
-        sourceId:purchaseSourceId,timestamp:Date.now(),cashbox:c.cashbox||currentCaja(),user:currentCajero()
+        sourceId:purchaseSourceId,timestamp:Date.now(),cashbox:purchaseCashbox,user:currentCajero()
       }));
       (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja())).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
       (S.retencionesIva||[]).filter(x=>(Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||'')&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
