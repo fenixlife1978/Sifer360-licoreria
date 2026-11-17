@@ -55,3 +55,10 @@ test('fiscal purchase and sale reversals target each original fiscal event and a
  assert.ok(pos.includes("movements.filter(m=>String(m.sourceId||'')===purchaseSourceId&&m.type==='COMPRA_FISCAL')"));
  assert.ok(pos.includes("movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='VENTA_FISCAL')"));
 });
+
+test('fiscal purchase and sale voids stop when source-ledger quantities do not reconcile with document lines',()=>{
+ assert.match(pos,/const expected=new Map\(\),recorded=new Map\(\);[\s\S]*?c\.lines\.forEach\(l=>expected\.set/);
+ assert.match(pos,/No se puede anular la compra fiscal: el libro fiscal no coincide/);
+ assert.match(pos,/s\.lines\.forEach\(l=>expected\.set/);
+ assert.match(pos,/No se puede anular la venta fiscal: el libro fiscal no coincide/);
+});
