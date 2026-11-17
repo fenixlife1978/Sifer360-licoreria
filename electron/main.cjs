@@ -1191,13 +1191,13 @@ if (!hasSingleInstanceLock) {
   });
   app.whenReady().then(async () => {
     readNetworkConfig();
+    if (networkConfig.role !== 'client') await initializeDatabase();
     if (process.argv.includes('--sifer-google-drive-backup')) {
       try { legacyBackupTaskRetirer.remove(); } catch (error) { console.warn('No se pudo retirar la antigua tarea de respaldo:', error.message); }
       app.quit();
       return;
     }
     try { legacyBackupTaskRetirer.remove(); } catch (error) { console.warn('No se pudo retirar la antigua tarea de respaldo:', error.message); }
-    if (networkConfig.role !== 'client') await initializeDatabase();
     licensing = createLicensing({ app, safeStorage, shell });
     await licensing.initialize();
     registerIpc();
