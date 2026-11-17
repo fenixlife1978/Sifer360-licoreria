@@ -153,7 +153,7 @@ function addKardex(ev){
     type:ev.type,       /* 'INICIAL' | 'COMPRA' | 'VENTA' | 'CONTEO' | 'AJUSTE' | 'ANULACIÓN' */
     dir:ev.dir,         /* 'IN' | 'OUT' */
     doc:ev.doc||'-',
-    cashbox:ev.cashbox||'',
+    cashbox:ev.cashbox||currentCaja(),
     party:ev.party||'',
     qty:r2(ev.qty),
     stockAfter:r2(ev.stockAfter),
@@ -7087,7 +7087,7 @@ function zOperationalTotals(sales,start,end,box){
   const inPeriod=ts=>Number(ts)>=Number(start)&&Number(ts)<=Number(end);
   const out={cxcUsd:0,cxcBs:0,casheaUsd:0,creditSalesUsd:0,cashInUsd:0,cashOutUsd:0,cashInBs:0,cashOutBs:0,movementCount:0};
   (S.cxc||[]).forEach(item=>{
-    if(item.cashbox&&String(item.cashbox)!==String(box))return;
+    if(!item.cashbox||String(item.cashbox)!==String(box))return;
     (item.payments||[]).forEach(p=>{if(inPeriod(p.ts)){out.cxcUsd=r2(out.cxcUsd+Number(p.amountUsd||0));out.cxcBs=r2(out.cxcBs+Number(p.amountBs||0));}});
   });
   sales.filter(s=>!s.void).forEach(s=>(s.pays||[]).forEach(p=>{if(p.id==='credito')out.creditSalesUsd=r2(out.creditSalesUsd+Number(p.amount||0));}));
@@ -7198,7 +7198,7 @@ function zExpectedByMethod(sales,opening){
     }
   });
   (S.movimientosCaja||[]).forEach(m=>{
-    if(String(m.cashbox||opening.cashbox||'')!==String(opening.cashbox||m.cashbox||'')||Number(m.ts)<Number(opening.openedAt||0))return;
+    if(!opening.cashbox||String(m.cashbox||'')!==String(opening.cashbox)||Number(m.ts)<Number(opening.openedAt||0))return;
     const key=m.currency==='USD'?'efUSD':(m.currency==='BS'?'efBs':null);
     if(!key)return;
     const amount=Math.max(0,Number(m.amount||0));
@@ -7268,9 +7268,9 @@ function corteZDlg(){
     }));
     return [...map.values()].sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
   };
-  const getInventoryAdjustments=(start,end)=>(S.kardex||[]).filter(k=>{
+  const getInventoryAdjustments=(start,end,box)=>(S.kardex||[]).filter(k=>{
     const ts=Number(k.ts)||0;
-    return ts>=Number(start)&&ts<=Number(end)&&['CONTEO','AJUSTE'].includes(String(k.type||'').toUpperCase());
+    return String(k.cashbox||'')===String(box||'')&&ts>=Number(start)&&ts<=Number(end)&&['CONTEO','AJUSTE'].includes(String(k.type||'').toUpperCase());
   }).map(k=>({code:String(k.code||'SIN-CODIGO'),desc:String((prod(k.code)||{}).desc||k.party||'Producto sin nombre'),qty:Math.abs(Number(k.qty)||0),sign:k.dir==='IN'?1:-1,doc:String(k.doc||'—'),reason:String(k.party||'')})).sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true})||a.doc.localeCompare(b.doc));
   const getRows=()=>{
     const sales=getPeriodSales().filter(s=>!s.void);
@@ -7390,7 +7390,7 @@ function corteZDlg(){
       const all=getPeriodSales(),sales=all.filter(s=>!s.void),voids=all.filter(s=>s.void);
       const now=Date.now();
       const rec=result.rec.map(r=>Object.assign({},r,{real:r.real==null?null:Number(r.real),diff:r.diff==null?null:Number(r.diff)}));
-      const draft={id:'VISTA PREVIA · Z-'+box,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:now,productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),now),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),now,box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:result.total.status,shortageUsd:result.total.shortageUsd,surplusUsd:result.total.surplusUsd,shortageBs:result.total.shortageBs,surplusBs:result.total.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'previa'};
+      const draft={id:'VISTA PREVIA · Z-'+box,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:now,productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),now,box),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),now,box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:result.total.status,shortageUsd:result.total.shortageUsd,surplusUsd:result.total.surplusUsd,shortageBs:result.total.shortageBs,surplusBs:result.total.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'previa'};
       printCorteZ(draft,false);return;
     }
     if(e.target.id==='zClose'){
@@ -7405,7 +7405,7 @@ function corteZDlg(){
       const rec=result.rec.map(r=>Object.assign({},r,{real:Number(r.real),diff:Number(r.diff)}));
       const seqs=cajaSeqs(),seq=seqs[box]||{z:1};let zSeq;try{zSeq=await nextCajaSequence('z',box);}catch(error){msg('No se pudo reservar el consecutivo del Corte Z: '+error.message,'bad');return;}seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
       const t=Object.assign({},result.total);
-      const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now()),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
+      const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now(),box),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
       const zStateBefore=JSON.parse(JSON.stringify(S));
       const closedOpening=Object.assign({},active,{status:'cerrada',closedAt:z.closedAt,cutId:z.id});
       upsertOpeningState(closedOpening);
