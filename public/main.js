@@ -5375,29 +5375,65 @@ function exportIgtfCsv(sales){
 }
 
 function exportSeniatTxt(periodo){
-  if(!periodo){const d=new Date();periodo=String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');}
-  const rifAgente=S.cfg.rif.replace(/[^A-Za-z0-9]/g,'').toUpperCase();
-  const list=S.retencionesIva||[];
-  if(!list.length){
-    msg('No hay registros de retención IVA para el período '+periodo+'.','bad');
-    return;
+  const now=new Date();
+  if(!periodo){
+    const suggested=String(now.getFullYear())+String(now.getMonth()+1).padStart(2,'0');
+    periodo=window.prompt('Período impositivo SENIAT (AAAAMM):',suggested);
+    if(periodo===null)return;
   }
-  const lines=list.map(r=>{
-    const rifProv=(r.supplier.rif||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase();
-    const fec=new Date(r.ts).toISOString().slice(0,10);
-    const numFac=(r.docProv||'0001').replace(/[^A-Za-z0-9-]/g,'').slice(0,20);
-    const numCtrl=(r.ctrlProv||'00-00000001').replace(/[^A-Za-z0-9-]/g,'').slice(0,20);
-    const totBs=r2((r.base+r.iva)*(r.rate||S.cfg.rate)).toFixed(2);
-    const baseBs=r2(r.base*(r.rate||S.cfg.rate)).toFixed(2);
-    const retBs=r2(r.retainedBs||(r.iva*0.75*(r.rate||S.cfg.rate))).toFixed(2);
-    const numComp=r.id||(periodo+pad(r.purchaseNo||1,8));
-    return `${rifAgente}\t${periodo}\t${fec}\tC\t01\t${rifProv}\t${numFac}\t${numCtrl}\t${totBs}\t${baseBs}\t${retBs}\t0\t${numComp}\t0.00\t16.00\t0`;
+  periodo=String(periodo).trim();
+  if(!/^\d{6}$/.test(periodo)||Number(periodo.slice(4,6))<1||Number(periodo.slice(4,6))>12){
+    msg('Período inválido. Debe tener formato AAAAMM, por ejemplo 202610.','bad');return;
+  }
+  const clean=value=>String(value??'').replace(/[\t\r\n]/g,' ').trim();
+  const rif=value=>clean(value).toUpperCase().replace(/\s/g,'');
+  const validRif=value=>/^[VEJPG]-?\d{8,9}-?\d$/.test(value);
+  const money=value=>Number(value);
+  const list=(S.retencionesIva||[]).filter(r=>{
+    if(r.void||r.anulada||r.estado==='Anulada')return false;
+    const d=new Date(Number(r.ts)||r.ts);
+    const rowPeriod=String(r.periodo||(Number.isFinite(d.getTime())?String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0'):''));
+    return rowPeriod===periodo;
   });
+  if(!list.length){msg('No hay comprobantes de retención IVA vigentes para el período '+periodo+'.','bad');return;}
+  const rifAgente=rif(S.cfg.rif),errors=[];
+  if(!validRif(rifAgente))errors.push('RIF del agente de retención inválido en Configuración.');
+  const lines=list.map((r,index)=>{
+    const row=index+1,prov=r.supplier||{},rifProv=rif(prov.rif);
+    const fecDate=new Date(Number(r.ts)||r.ts);
+    const fec=Number.isFinite(fecDate.getTime())?fecDate.toISOString().slice(0,10):'';
+    const rawType=String(r.seniatDocType||r.docType||'01').toUpperCase();
+    const tipoDoc=({'01':'01','FACTURA':'01','FACTURA_FISCAL':'01','02':'02','NOTA_DEBITO':'02','NOTA DE DÉBITO':'02','03':'03','NOTA_CREDITO':'03','NOTA DE CRÉDITO':'03'})[rawType];
+    const oper=String(r.operationType||'C').toUpperCase();
+    const numDoc=clean(r.docProv||r.documentNumber),numCtrl=clean(r.ctrlProv||r.controlNumber);
+    const afectado=clean(r.affectedDocument||r.numeroDocumentoAfectado||'0')||'0';
+    const numComp=clean(r.id||r.retentionNumber),rate=money(r.rate||S.cfg.rate);
+    const base=money(r.base),iva=money(r.iva);
+    const retained=money(r.retainedBs!==undefined?r.retainedBs:(money(r.retainedUsd!==undefined?r.retainedUsd:iva*Number(r.pct||S.cfg.retIvaPct||75)/100)*rate));
+    const total=money(r.documentTotal!==undefined?r.documentTotal:base+iva);
+    const exempt=money(r.exempt!==undefined?r.exempt:(r.montoExento||0));
+    const aliquot=money(r.aliquot!==undefined?r.aliquot:(base>0?iva/base*100:NaN));
+    const expediente=clean(r.expediente||'0')||'0',tipoOperacion=oper==='V'?'V':oper==='C'?'C':'';
+    if(!validRif(rifProv))errors.push('Fila '+row+': RIF del proveedor inválido.');
+    if(!fec||fec.slice(0,4)+fec.slice(5,7)!==periodo)errors.push('Fila '+row+': fecha no corresponde al período '+periodo+'.');
+    if(!tipoOperacion)errors.push('Fila '+row+': tipo de operación debe ser C o V.');
+    if(!tipoDoc)errors.push('Fila '+row+': tipo de documento debe ser 01, 02 o 03.');
+    if(!numDoc)errors.push('Fila '+row+': falta número de documento.');
+    if(!numCtrl)errors.push('Fila '+row+': falta número de control.');
+    if((tipoDoc==='02'||tipoDoc==='03')&&(!afectado||afectado==='0'))errors.push('Fila '+row+': la nota de débito/crédito requiere número de documento afectado.');
+    if(!numComp)errors.push('Fila '+row+': falta número de comprobante de retención.');
+    if(![total,base,retained,exempt,aliquot,rate].every(Number.isFinite)||total<0||base<0||retained<0||exempt<0||aliquot<0||rate<=0)errors.push('Fila '+row+': importes, tasa o alícuota inválidos.');
+    const totalBs=r2(total*rate),baseBs=r2(base*rate),exemptBs=r2(exempt*rate);
+    const fields=[rifAgente,periodo,fec,tipoOperacion,tipoDoc,rifProv,numDoc,numCtrl,totalBs.toFixed(2),baseBs.toFixed(2),r2(retained).toFixed(2),afectado,numComp,exemptBs.toFixed(2),aliquot.toFixed(2),expediente].map(clean);
+    if(fields.length!==16)errors.push('Fila '+row+': el registro no contiene exactamente 16 columnas.');
+    return fields.join('\t');
+  });
+  if(errors.length){msg('TXT SENIAT bloqueado: '+errors.slice(0,4).join(' ')+(errors.length>4?' (y '+(errors.length-4)+' errores más).':''),'bad');return;}
+  if(lines.some(line=>line.split('\t').length!==16)){msg('TXT SENIAT bloqueado: se detectó una fila distinta de 16 columnas.','bad');return;}
   const txt=lines.join('\r\n');
-  downloadBlob(`RetencionesIVA_${rifAgente}_${periodo}.txt`,txt,'text/plain;charset=utf-8;');
-  msg('Archivo de trabajo exportado. El contador debe validar formato y datos antes de cualquier carga o declaración ante el SENIAT.');
+  downloadBlob('RetencionesIVA_'+rifAgente+'_'+periodo+'.txt',txt,'text/plain;charset=utf-8;');
+  msg('TXT 99035 generado: '+lines.length+' registros, 16 columnas por fila y delimitador TAB. Revise los datos tributarios antes de declarar.');
 }
-
 function printComprobanteRetencion(r){
   const rate=r.rate||S.cfg.rate;
   const totBs=r2((r.base+r.iva)*rate);
@@ -6702,7 +6738,7 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnPrintInv')printFiscalReport('Libro de Inventario — corte actual',drawInventario());
         if(ev.target.id==='btnExpIgtf')exportIgtfCsv(getFilteredSales());
         if(ev.target.id==='btnPrintActaBcv')printActaBcv(getFilteredSales());
-        if(ev.target.id==='btnTxtSeniat')exportSeniatTxt('202610');
+        if(ev.target.id==='btnTxtSeniat')exportSeniatTxt();
         if(ev.target.id==='btnPreviewPagoSeniat'){
           const fechaPeriodo=new Date();
           const mesPeriodo=String(fechaPeriodo.getFullYear())+'-'+String(fechaPeriodo.getMonth()+1).padStart(2,'0');
