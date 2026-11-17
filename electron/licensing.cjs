@@ -17,6 +17,7 @@ function createLicensing(options = {}) {
   const shell = options.shell;
   const fetchImpl = options.fetchImpl || global.fetch;
   const now = options.now || (() => Date.now());
+  const appVersion = typeof app.getVersion === 'function' ? app.getVersion() : APP_VERSION;
   if (!app || !safeStorage || typeof fetchImpl !== 'function') throw new Error('La integración de licencias requiere Electron safeStorage y fetch.');
   const statePath = path.join(app.getPath('userData'), 'sifer360-license-state.json');
   let state = null;
@@ -54,7 +55,7 @@ function createLicensing(options = {}) {
       session_id: sessionId,
       source: 'sifer360-desktop',
       medium: process.platform,
-      campaign: APP_VERSION,
+      campaign: appVersion,
       landing_path: 'desktop/' + eventType
     };
     if (extra && typeof extra.detail === 'string') payload.landing_path = ('desktop/' + eventType + '/' + extra.detail).slice(0, 300);
