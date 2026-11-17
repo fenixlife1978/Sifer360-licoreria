@@ -2599,18 +2599,18 @@ function inventoryImportProduct(row,mapping,index,usedCodes,usedSkus){
   if(usedCodes.has(code)||usedSkus.has(sku))return{duplicate:true,code,sku};
   const stock=inventoryImportNumber(value('stock'),0),min=inventoryImportNumber(value('min'),0),cost=inventoryImportNumber(value('cost'),0),price=inventoryImportNumber(value('price'),0);
   if(![stock,min,cost,price].every(Number.isFinite)||stock<0||min<0||cost<0||price<0)return{error:'Existencia, mínimo, costo o precio inválido.'};
-  const unit=String(value('unit')||'und').trim()||'und',taxRate=inventoryImportNumber(value('taxRate'),16);
+  const unit=String(value('unit')||'und').trim()||'und',rawTax=value('taxRate'),taxRate=inventoryImportNumber(rawTax!==''&&rawTax!==null?rawTax:(row.tax&&row.tax.rate!==undefined?row.tax.rate:row.taxType==='E'?0:row.taxType==='R'?8:row.taxType==='A'?31:16),16);
   const taxType=taxRate===0?'E':taxRate===8?'R':taxRate===31?'A':'G';
-  const tax={type:taxType,rate:taxRate,igtf:true,percRate:0,codeSeniat:taxType==='E'?'EXENTO-0':taxType==='R'?'RED-08':taxType==='A'?'ADIC-31':'GRAV-16'};
+  const tax=row.tax&&typeof row.tax==='object'?{...row.tax,type:taxType,rate:taxRate,igtf:row.tax.igtf!==false,percRate:inventoryImportNumber(row.tax.percRate,0),codeSeniat:String(row.tax.codeSeniat|| (taxType==='E'?'EXENTO-0':taxType==='R'?'RED-08':taxType==='A'?'ADIC-31':'GRAV-16'))}:{type:taxType,rate:taxRate,igtf:true,percRate:0,codeSeniat:taxType==='E'?'EXENTO-0':taxType==='R'?'RED-08':taxType==='A'?'ADIC-31':'GRAV-16'};
   let presentations=Array.isArray(row.presentations)?row.presentations:null;
   if(!presentations&&typeof row.presentations==='string'){try{const parsed=JSON.parse(row.presentations);if(Array.isArray(parsed))presentations=parsed;}catch{}}
   presentations=(presentations||[{name:'Unidad individual',unit,factor:1,barcode:String(value('barcode')||code),price}]).map((p,i)=>({name:String(p.name||'Presentación '+(i+1)),unit:String(p.unit||unit),factor:inventoryImportNumber(p.factor,1),barcode:String(p.barcode||''),price:inventoryImportNumber(p.price,price)})).filter(p=>Number.isFinite(p.factor)&&p.factor>0&&Number.isFinite(p.price)&&p.price>=0);
   if(!presentations.length)presentations=[{name:'Unidad individual',unit,factor:1,barcode:String(value('barcode')||code),price}];
   const product={
     code,sku,desc,brand:String(value('brand')||'').trim(),dept:String(value('dept')||'General').trim(),cat:String(value('cat')||'General').trim(),subcat:String(value('subcat')||'General').trim(),
-    loc:String(row.loc||row.location||''),unit,stock,min,cost,freight:0,price,photo:String(row.photo||''),
+    loc:String(row.loc||row.location||''),unit,stock,min,cost,freight:inventoryImportNumber(row.freight,0),price,photo:String(row.photo||''),
     pricing:row.pricing&&typeof row.pricing==='object'?row.pricing:{motor:'cost',mode:'auto',bcvRate:S.cfg.rate,parallelRate:r2(S.cfg.rate*1.22),markupCost:40,markupSale:28.57,gaps:[{name:'Detal / Mostrador',gapPct:0,markupCost:40,price},{name:'Bar / Restaurante',gapPct:6,markupCost:31.6,price:r2(price*.94)},{name:'Mayorista',gapPct:12,markupCost:23.2,price:r2(price*.88)},{name:'Distribuidor',gapPct:18,markupCost:14.8,price:r2(price*.82)}]},
-    presentations,tax,assocSuppliers:Array.isArray(row.assocSuppliers)?row.assocSuppliers:[],isKit:false,kitItems:[],volumeMl:row.volumeMl||'',alcoholPct:row.alcoholPct||''
+    presentations,tax,assocSuppliers:Array.isArray(row.assocSuppliers)?row.assocSuppliers:[],isKit:!!row.isKit,kitItems:Array.isArray(row.kitItems)?row.kitItems:[],volumeMl:row.volumeMl||'',alcoholPct:row.alcoholPct||''
   };
   usedCodes.add(code);usedSkus.add(sku);return{product};
 }
@@ -2657,7 +2657,7 @@ async function inventoryImportDlg(){
   });
   mappingBox.addEventListener('change',e=>{const id=e.target.dataset.imMap;if(id){mapping[id]=e.target.value;const current=el.querySelector('#imMappings');if(current)drawPreviewOnly();}});
   const drawPreviewOnly=()=>{const plan=getPlan(),sample=plan.products.slice(0,8);preview.innerHTML='<div class="kpis"><div class="kpi"><span>Filas detectadas</span><b>'+records.length+'</b></div><div class="kpi"><span>Nuevos productos válidos</span><b>'+plan.products.length+'</b></div><div class="kpi"><span>Duplicados omitidos</span><b>'+plan.duplicates.length+'</b></div><div class="kpi"><span>Filas con error</span><b>'+plan.errors.length+'</b></div></div><div class="hint">Vista previa de '+sample.length+' de '+plan.products.length+' productos.</div><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>SKU</th><th>Descripción</th><th class="r">Existencia</th><th class="r">Costo US$</th><th class="r">Precio US$</th><th>Unidad</th></tr></thead><tbody>'+sample.map(p=>'<tr><td>'+esc(p.code)+'</td><td>'+esc(p.sku)+'</td><td>'+esc(p.desc)+'</td><td class="r">'+fq(p.stock)+'</td><td class="r">'+nf(p.cost)+'</td><td class="r">'+nf(p.price)+'</td><td>'+esc(p.unit)+'</td></tr>').join('')+'</tbody></table></div>'+(plan.errors.length?'<p class="hint" style="color:var(--bad)">Primer error: fila '+plan.errors[0].row+' — '+esc(plan.errors[0].error)+'</p>':'');};
-  openWin({title:'Cargar inventario maestro · '+sourceType,w:980,body:el,foot:[{label:'Cancelar'},{label:'Importar al inventario operativo',primary:true,fn:async()=>{
+  openWin({title:'Cargar inventario maestro · CSV / Excel / JSON',w:980,body:el,foot:[{label:'Cancelar'},{label:'Importar al inventario operativo',primary:true,fn:async()=>{
     if(busy||!records.length){msg('Seleccione un archivo válido antes de importar.','bad');return false;}
     const plan=getPlan();if(!plan.products.length){msg('No hay productos nuevos válidos para importar.','bad');return false;}
     if(!confirm('Se agregarán '+plan.products.length+' productos al inventario operativo. Se omitirán '+plan.duplicates.length+' duplicados y '+plan.errors.length+' filas con error. No se alterará el libro fiscal. ¿Continuar?'))return false;
@@ -2690,7 +2690,7 @@ function fiscalOpeningDlg(){
     try{
       selected.forEach(item=>{const p=prod(item.code);window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:batch+':'+item.code,type:'APERTURA_FISCAL_INICIAL',dir:'IN',code:item.code,qty:item.qty,cost:p.cost,document:item.document,sourceId:batch,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});});
       const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollback);msg('SQLite no confirmó la inicialización fiscal. Se restauró el libro fiscal anterior y el inventario operativo no cambió.','bad');return false;}
-      const units=r8(selected.reduce((n,x)=>n+x.qty,0));closeWin();renderCatalog();msg('Inicialización fiscal confirmada: '+selected.length+' productos y '+fq(units)+' unidades respaldadas. El inventario operativo permaneció intacto.','ok');return false;
+      const units=r8(selected.reduce((n,x)=>n+x.qty,0));closeWin();renderCatalog();msg('Inicialización fiscal confirmada: '+selected.length+' productos y '+fq(units)+' unidades respaldadas. El inventario operativo permaneció intacto.','ok');inventoryDlg();return false;
     }catch(error){restoreStateSnapshotIfNeeded(null,rollback);msg('No se pudo inicializar el inventario fiscal: '+error.message,'bad');return false;}
   }}]});
 }
