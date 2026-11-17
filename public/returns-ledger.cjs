@@ -107,7 +107,7 @@ function applyReturn(state,prepared,{returnNo,refundNo,now=Date.now(),user=''}={
     item.total=newTotal;
     item.paid=Math.min(newTotal,newPaid);
     item.creditNotes=item.creditNotes||[];
-    item.creditNotes.push({id:note.id,ts:now,amount:prepared.creditApplied,refund:prepared.refund});
+    item.creditNotes.push({id:note.id,ts:now,amount:prepared.creditApplied,refund:prepared.refund,refundMethod:prepared.method,rate:prepared.rate});
   }
   if(prepared.returnStock){
     for(const line of prepared.lines){
