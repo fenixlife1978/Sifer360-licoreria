@@ -73,7 +73,7 @@ El servidor conserva la cola en SQLite y procesa un solo comando fiscal a la vez
 | Incierta | No se pudo determinar si la máquina emitió | Detener nuevos envíos y consultar físicamente la máquina |
 | Rechazada | El servidor rechazó el trabajo antes de emitir | Corregir la causa antes de iniciar una nueva operación |
 
-Si el cliente agota su tiempo de consulta mientras el servidor sigue procesando, el trabajo local permanece pendiente. No repita el cobro. Actualice la cola y espere el resultado.
+Si el cliente pierde la respuesta del envío (POST) o agota su tiempo de consulta mientras el servidor conserva el trabajo en `pending/processing`, la intención local permanece pendiente porque el servidor podría haber recibido la solicitud. No repita el cobro ni genere una clave nueva para esa misma venta. Consulte la cola con la misma clave idempotente y espere el resultado; solo una respuesta explícita de rechazo permite tratar la solicitud como rechazada.
 
 Si un envío queda **incierto**, el servidor bloquea nuevos envíos para evitar duplicados. Un administrador debe consultar físicamente el último documento de la máquina y conciliar la operación:
 - **Confirmar emitida:** introducir el número exacto de documento y serial fiscal; SIFER reconstruye/actualiza la venta y el inventario desde la intención durable.
