@@ -1145,6 +1145,16 @@ function registerIpc() {
       if (integrity !== 'ok') throw new Error('SQLite no superó integrity_check; se canceló la instalación para proteger los datos.');
       persistDb();
       if (databaseIntegrityStatus(db) !== 'ok') throw new Error('No se pudo confirmar la integridad de SQLite antes de actualizar.');
+      const backupDir = path.join(app.getPath('userData'), 'update-backups');
+      fs.mkdirSync(backupDir, { recursive: true });
+      const backupPath = path.join(backupDir, 'sifer360-preupdate-' + new Date().toISOString().replace(/[:.]/g, '-') + '.sqlite');
+      const backupBytes = Buffer.from(db.export());
+      const backupCheck = new SqlDatabase(new Uint8Array(backupBytes));
+      if (databaseIntegrityStatus(backupCheck) !== 'ok') { try { backupCheck.close(); } catch {} throw new Error('El respaldo previo a la actualización no superó la verificación de integridad.'); }
+      try { backupCheck.close(); } catch {}
+      fs.writeFileSync(backupPath, backupBytes, { flag: 'wx' });
+      const writtenBackup = fs.readFileSync(backupPath);
+      if (!writtenBackup.equals(backupBytes)) throw new Error('No se pudo verificar el respaldo previo a la actualización.');
     }
     setImmediate(() => autoUpdater.quitAndInstall(false, true));
     return { ok: true };
