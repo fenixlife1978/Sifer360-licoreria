@@ -33,6 +33,11 @@ test('purchase voids share the per-cashbox annulment sequence and retain a docum
   assert.ok(end > start, 'purchase history handler must have a clear boundary');
   const handler = source.slice(start, end);
   assert.ok(handler.includes("const purchaseCashbox=String(c.cashbox||currentCaja())"), 'purchase void must use its originating cashbox');
+  assert.ok(handler.includes("if(x.cashbox!==undefined&&x.cashbox!==null&&String(x.cashbox)!=='')"), 'explicit payable cashbox must match the purchase cashbox');
+  assert.ok(handler.includes("String(x.doc||'')===String(c.docProv||'')+' ('+purchaseDocument+')'"), 'legacy payables require the exact supplier document and purchase number');
+  assert.ok(handler.includes("Math.abs(Number(x.ts)-Number(c.ts))<1000"), 'legacy payables require the matching purchase timestamp');
+  assert.ok(handler.includes("samePurchaseSupplier(x)"), 'legacy payables require the same supplier identity');
+  assert.ok(handler.includes("linkedPayables.forEach(x=>{x.void=true"), 'only payables linked to this purchase may be marked void');
   assert.ok(handler.includes("nextCajaSequence('void',purchaseCashbox)"), 'purchase void must share the per-cashbox annulment sequence');
   assert.ok(handler.includes("c.voidNo=voidNo;c.voidDoc='ANU-'"), 'purchase void must persist an auditable annulment document number');
 });
