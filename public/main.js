@@ -3012,7 +3012,9 @@ function cxcDlg(selId){
     const bal=r2(Math.max(0,item.total-item.paid)), rate=S.cfg.rate;
     const mOpts='<option value="MIXTO"'+(payMode==='MIXTO'?' selected':'')+'>★ Cobro Mixto (Múltiples métodos de pago)</option>'+
       METHODS.map(m=>'<option value="'+esc(m.id)+'"'+(payMode===m.id?' selected':'')+'>'+esc(m.name)+' ('+m.cur+')</option>').join('');
-    const hist=(item.payments||[]).map(p=>'<tr><td>'+fmtDT(p.ts)+'</td><td>'+esc(p.method)+'</td><td class="mono">'+esc(p.ref||'-')+'</td><td class="r">'+nf(p.amountUsd)+'</td><td class="r">'+nf(p.amountBs)+'</td><td>'+esc(p.note||'')+'</td></tr>').join('')||'<tr><td colspan="6" class="dim">Sin abonos registrados todavía.</td></tr>';
+    const paymentRows=(item.payments||[]).map(p=>'<tr><td>'+fmtDT(p.ts)+'</td><td>'+esc(p.method)+'</td><td class="mono">'+esc(p.ref||'-')+'</td><td class="r">'+nf(p.amountUsd)+'</td><td class="r">'+nf(p.amountBs)+'</td><td>'+esc(p.note||'')+'</td></tr>');
+    const creditRows=(item.creditNotes||[]).map(note=>'<tr><td>'+fmtDT(note.ts)+'</td><td>Nota de crédito / devolución</td><td class="mono">'+esc(note.id)+'</td><td class="r">'+nf(-Number(note.amount||0))+'</td><td class="r">'+nf(-Number(note.amount||0)*Number(note.rate||S.cfg.rate||1))+'</td><td>Crédito aplicado: '+nf(note.amount||0)+' · Reembolso: '+nf(note.refund||0)+' ('+esc(note.refundMethod||'—')+')</td></tr>');
+    const hist=paymentRows.concat(creditRows).join('')||'<tr><td colspan="6" class="dim">Sin abonos ni notas de crédito registrados todavía.</td></tr>';
 
     let formHtml='';
     if(bal<0.01){
