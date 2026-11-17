@@ -78,3 +78,21 @@ test('la venta fiscal exige simultáneamente existencia física y fiscal antes d
   assert.match(fiscalGuard, /canApplyFiscalSale\(S,lines\)/);
   assert.ok(fiscalGuard.indexOf('physicalShort') < fiscalGuard.indexOf('canApplyFiscalSale'));
 });
+
+test('anular una compra fiscal revierte el libro fiscal y el stock operativo solo tras validar saldos', () => {
+  const start = source.indexOf("const purchaseSourceId='PURCHASE-");
+  const end = source.indexOf("const renderSuppliersTab", start);
+  const flow = source.slice(start, end);
+  assert.match(flow, /canApplyFiscalSale\(S,fiscalLines\)/);
+  assert.match(flow, /p\.stock=r2\(p\.stock-l\.qty\)/);
+  assert.match(flow, /type:'ANULACION_COMPRA_FISCAL',dir:'OUT'/);
+  assert.ok(flow.indexOf('canApplyFiscalSale(S,fiscalLines)') < flow.indexOf("type:'ANULACION_COMPRA_FISCAL'"));
+});
+
+test('anular una venta fiscal repone el libro fiscal y el inventario operativo', () => {
+  const start = source.indexOf("if(isFiscalSale(s)){", source.indexOf('function salesDlg'));
+  const end = source.indexOf("const persisted=await save();", start);
+  const flow = source.slice(start, end);
+  assert.match(flow, /p\.stock=r2\(p\.stock\+l\.qty\)/);
+  assert.match(flow, /type:'ANULACION_VENTA_FISCAL',dir:'IN'/);
+});
