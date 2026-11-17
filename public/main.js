@@ -5415,7 +5415,10 @@ function exportSeniatTxt(periodo){
     const total=money(r.documentTotal!==undefined?r.documentTotal:base+exempt+iva);
     const aliquot=money(r.aliquot!==undefined?r.aliquot:(base>0?iva/base*100:NaN));
     const expediente=clean(r.expediente||'0')||'0',tipoOperacion=oper==='V'?'V':oper==='C'?'C':'';
+    const dateParts=fec.split('-').map(Number);
+    const dateValid=dateParts.length===3&&dateParts.every(Number.isFinite)&&(()=>{const d=new Date(Date.UTC(dateParts[0],dateParts[1]-1,dateParts[2]));return d.getUTCFullYear()===dateParts[0]&&d.getUTCMonth()===dateParts[1]-1&&d.getUTCDate()===dateParts[2];})();
     if(!validRif(rifProv))errors.push('Fila '+row+': RIF del proveedor inválido.');
+    if(!dateValid)errors.push('Fila '+row+': fecha de factura inválida.');
     if(!fec||fec.slice(0,4)+fec.slice(5,7)!==periodo)errors.push('Fila '+row+': fecha no corresponde al período '+periodo+'.');
     if(!tipoOperacion)errors.push('Fila '+row+': tipo de operación debe ser C o V.');
     if(!tipoDoc)errors.push('Fila '+row+': tipo de documento debe ser 01, 02 o 03.');
