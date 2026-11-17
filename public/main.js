@@ -2691,6 +2691,8 @@ function comprasDlg(initialTab){
           &&Math.abs(Number(x.ts)-Number(c.ts))<1000
           &&samePurchaseSupplier(x);
       });
+      const hasAmbiguousLegacyPayable=(S.cxp||[]).some(x=>Number(x.purchaseNo)===Number(c.no)&&!(x.cashbox!==undefined&&x.cashbox!==null&&String(x.cashbox)!=='')&&!linkedPayables.includes(x));
+      if(hasAmbiguousLegacyPayable){msg('No se puede anular la compra COM-'+pad(c.no)+': existe una CxP heredada sin caja que no puede vincularse inequívocamente a este documento. Revise y concilie manualmente esa obligación antes de continuar.','bad');return;}
       const hasRecordedPayments=Number(c.paid||0)>1e-8||linkedPayables.some(x=>Number(x.paid||0)>1e-8||(Array.isArray(x.payments)&&x.payments.length>0));
       if(hasRecordedPayments){msg('No se puede anular la compra COM-'+pad(c.no)+': existen pagos o abonos al proveedor registrados. Primero debe reversarse y conciliarse cada pago; esta anulación no puede dejar dinero entregado sin tratamiento.','bad');return;}
       const rollbackState=JSON.parse(JSON.stringify(S));
