@@ -45,14 +45,14 @@ La detección USB-Serial identifica puertos y posibles chipsets/controladores; n
 
 1. En SIFER360, abra **Impresora térmica no fiscal**.
 2. Seleccione la caja correspondiente.
-3. Elija la impresora Windows instalada en la estación que realizará la impresión.
+3. Elija la impresora Windows instalada en esta estación. El perfil se guarda por estación y caja, de modo que cada PC puede usar su propia cola local aunque compartan la misma SQLite central.
 4. Seleccione el ancho correcto: 58 mm (32 columnas) u 80 mm (42 o 48 columnas).
 5. Habilite y guarde el perfil.
 6. Pulse **Imprimir prueba** y compruebe físicamente el papel, la alineación y el corte.
 
 La impresora térmica recibe trabajos ESC/POS RAW desde la cola de Windows. Se utiliza para tickets, comandas, copias y documentos no fiscales; nunca debe configurarse como sustituto de la impresora fiscal.
 
-La configuración térmica se guarda por caja. Si una misma caja se utiliza desde varias estaciones con nombres de impresora Windows diferentes, debe verificarse que el nombre de cola configurado exista en cada estación; esta condición requiere validación en la instalación real.
+La configuración térmica nueva se guarda por identificador de estación y caja. Los perfiles antiguos guardados solo por caja se conservan como compatibilidad de reserva; al guardar desde cada estación se crea su perfil independiente.
 
 ## 5. Cómo se enrutan los documentos
 
