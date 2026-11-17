@@ -106,7 +106,7 @@ function createLicensing(options = {}) {
       const offlineDays = Math.max(1, Math.min(30, Number(state.offlineDays) || 7));
       const offlineUntil = verified + offlineDays * 86400000;
       if (Number.isFinite(verified) && current <= offlineUntil && state.licenseStatus !== 'revoked') {
-        const offline = current - verified > 5 * 60 * 1000;
+        const offline = !lastRefreshAt || current - lastRefreshAt > 5 * 60 * 1000;
         return {
           state: offline ? 'licensed_offline' : 'licensed',
           blocked: false,
