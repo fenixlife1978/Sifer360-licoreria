@@ -66,3 +66,15 @@ test('fiscal purchase and sale voids stop when source-ledger quantities do not r
 test('sale void restores the pre-operation snapshot if a fiscal reversal throws',()=>{
  assert.match(pos,/const rollbackState=JSON\.parse\(JSON\.stringify\(S\)\);[\s\S]*?try\{[\s\S]*?eventId:'VOID-SALE:'[\s\S]*?catch\(error\)\{[\s\S]*?restoreStateSnapshotIfNeeded\(null,rollbackState\)/);
 });
+
+test('purchase void blocks recorded supplier payments before changing stock or fiscal balances',()=>{
+ const start=pos.indexOf('const renderPurchaseHist');
+ const end=pos.indexOf('const renderSuppliersTab',start);
+ const code=pos.slice(start,end);
+ const guard=code.indexOf('const hasRecordedPayments=');
+ const mutation=code.indexOf('c.void=true');
+ assert.ok(guard>=0&&mutation>guard,'payment guard must run before purchase void mutation');
+ assert.match(code,/Number\\(c\\.paid\\|\\|0\\)>1e-8/);
+ assert.match(code,/Array\\.isArray\\(x\\.payments\\)&&x\\.payments\\.length>0/);
+ assert.match(code,/Primero debe reversarse y conciliarse cada pago/);
+});
