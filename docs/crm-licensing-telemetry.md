@@ -14,7 +14,7 @@ El CRM mantiene productos, planes, pagos y licencias separados. El endpoint de a
 2. El usuario puede abrir planes y pagos en CRM-SICOVEN o introducir una clave recibida después de la aprobación del pago.
 3. La activación requiere Internet y usa `POST /api/activations` con `licenseKey`, `productCode`, `installationId` y `deviceLabel`.
 4. La clave y el resultado se guardan cifrados con Electron safeStorage/DPAPI en el perfil local del usuario, nunca en SQLite.
-5. Al iniciar y recuperar conexión se revalida la misma clave. CRM devuelve `offlineDays`; SIFER permite operación offline hasta ese límite. El valor predeterminado es 7 días.
+5. Al iniciar y recuperar conexión se revalida la misma clave. CRM devuelve `offlineDays` y un token offline firmado con Ed25519. El token vincula product code, licencia, instalación, vencimiento y fecha límite offline; el cliente verifica la firma con una clave pública embebida. SIFER permite operación offline hasta ese límite. El valor predeterminado es 7 días.
 6. Una respuesta de licencia revocada, vencida o sin equipos disponibles bloquea el acceso. Una caída de red no revoca por sí sola una licencia aún dentro del margen offline.
 
 ## Telemetría
