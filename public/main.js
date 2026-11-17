@@ -173,6 +173,7 @@ function fiscalInventoryOpeningDlg(){
   const cost=Number(String(prompt('Costo unitario fiscal validado en US$: ',String(p.cost||0))||'').replace(',','.'));
   const doc=String(prompt('Documento/soporte de apertura (obligatorio):','')||'').trim();
   if(!(qty>0)||!(cost>=0)||!doc){msg('Apertura cancelada: indique cantidad, costo y soporte documental.','bad');return;}
+  if(qty>(Number(p.stock)||0)+1e-9){msg('La existencia fiscal inicial no puede superar el inventario físico operativo de '+fq(p.stock||0)+'.','bad');return;}
   const rollback=JSON.parse(JSON.stringify(S));
   try{window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'OPENING-FISCAL:'+p.code,type:'APERTURA_FISCAL',dir:'IN',code:p.code,qty,cost,document:doc,sourceId:'OPENING-FISCAL:'+p.code,timestamp:Date.now(),cashbox:currentCaja(),user:currentCajero()});}
   catch(error){msg(error.message,'bad');return;}
