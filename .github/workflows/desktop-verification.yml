@@ -7,6 +7,7 @@ on:
       - integration/sqlite-lan-stage-1
       - integration/sqlite-lan-stage-2-hardening
       - feature/fiscal-printer-auto-assistant
+      - feature/printer-duality-shared-fiscal-v1.0.6
       - feature/fiscal-sdk-architecture-validation
       - feature/dual-printer-manager
       - feature/google-drive-automatic-backups
