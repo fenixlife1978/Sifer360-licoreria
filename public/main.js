@@ -4642,6 +4642,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   if((dualMode||printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL'))&&window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
     try{fiscalNetworkInfo=await window.posDesktop.networkStatus()||fiscalNetworkInfo;}catch{}
   }
+  if(dualMode&&(!fiscalNetworkInfo.deviceId||!['standalone','server','client'].includes(fiscalNetworkInfo.role))){msg('No se pudo identificar esta estación en la red. No se registró la venta ni se envió ningún documento. Verifique la conexión LAN.','bad');return;}
   const thermalProfile=getThermalPrinterProfile(currentCaja(),fiscalNetworkInfo.deviceId,fiscalNetworkInfo.role==='standalone');
   const configuredFiscalProfile=S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[currentCaja()]||null;
   if(dualMode&&!['TICKET','FISCAL'].includes(documentChoice)){msg('Seleccione si desea emitir un ticket no fiscal o una factura fiscal.','bad');return;}
@@ -5553,6 +5554,7 @@ async function thermalPrinterConfigDlg(){
   let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
   let stationId='',stationRole='unknown';
   try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'');stationRole=String(net&&net.role||'unknown');}catch{}
+  if(!stationId||!['standalone','server','client'].includes(stationRole)){msg('No se pudo identificar esta estación en la red. Verifique la conexión LAN antes de configurar la impresora térmica.','bad');return;}
   const profileKey=id=>thermalPrinterProfileKey(id,stationId);
   const savedFor=id=>Object.assign({},(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[profileKey(id)])||(stationRole==='standalone'&&S.cfg.thermalPrinters&&S.cfg.thermalPrinters[id])||{});
   let draft={...savedFor(box)};
