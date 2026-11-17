@@ -13,6 +13,9 @@ test('sale void refuses collected payments and financing until refund workflow e
   assert.ok(guard < inventoryRestore, 'guard must run before stock is restored');
   assert.ok(handler.includes("String(p.id||'')!=='credito'"), 'cash payments must be distinguished from credit entries');
   assert.match(handler, /linkedReceivables\.some/);
+  assert.ok(handler.includes("String(x.cashbox||s.cashbox||currentCaja())"), 'legacy receivables must fall back to the originating sale cashbox');
+  assert.ok(handler.includes("Number(x.saleNo)===Number(s.no)"), 'receivables must match sale numbers independent of string/number storage');
+  assert.ok(handler.includes("S.cxc=(S.cxc||[]).filter"), 'unpaid receivable must be removed with the voided sale');
   assert.match(handler, /!!s\.cashea/);
   assert.match(handler, /reembolso\/reverso correspondiente/);
 });
