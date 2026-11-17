@@ -43,7 +43,8 @@ test('ventas, números de control, anulaciones y cortes Z solicitan correlativos
   assert.match(pos, /async function nextCajaSequence\(operation,box=currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('invoice',box\)/);
   assert.match(pos, /nextCajaSequence\('control',currentCaja\(\)\)/);
-  assert.match(pos, /nextCajaSequence\('void',currentCaja\(\)\)/);
+  assert.match(pos, /nextCajaSequence\('void',saleCashbox\)/);
+  assert.match(pos, /nextCajaSequence\('void',purchaseCashbox\)/);
   assert.match(pos, /nextCajaSequence\('z',box\)/);
   assert.match(pos, /nextCajaSequence\('purchase',currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('count',currentCaja\(\)\)/);
