@@ -4638,7 +4638,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   const printMode=S.cfg.printMode||'LEGACY';
   if(printMode==='NOT_CONFIGURED'){msg('Complete el asistente de impresoras antes de registrar ventas. Puede elegir impresora fiscal, ticket interno o trabajar sin impresora.','bad');return;}
   const dualMode=printMode==='DUAL_PRINTER';
-  let fiscalNetworkInfo={role:'standalone',running:false,deviceId:'LOCAL'};
+  let fiscalNetworkInfo={role:'unknown',running:false,deviceId:''};
   if((dualMode||printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL'))&&window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
     try{fiscalNetworkInfo=await window.posDesktop.networkStatus()||fiscalNetworkInfo;}catch{}
   }
@@ -4977,7 +4977,7 @@ function showTicket(s){
   openWin({title:(noPrinter?'Comprobante interno — Nº ':'Ticket de Venta — Nº ')+pad(s.no),w:500,body:el,foot:[
     {label:noPrinter?'Sin impresora configurada':'Imprimir 80mm',left:true,fn:async()=>{
       if(noPrinter){msg('Esta instalación está configurada sin impresora. El comprobante queda guardado en SQLite y puede imprimirse después de configurar un dispositivo.');return false;}
-      let stationId='LOCAL',stationRole='standalone';try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'LOCAL');stationRole=String(net&&net.role||'standalone');}catch{}
+      let stationId='',stationRole='unknown';try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'');stationRole=String(net&&net.role||'unknown');}catch{}
       const thermal=getThermalPrinterProfile(s.cashbox,stationId,stationRole==='standalone');
       if(thermal&&thermal.enabled===true&&thermal.printerName&&window.posDesktop&&window.posDesktop.printerPrintTicket){
         try{const result=await window.posDesktop.printerPrintTicket(thermal.printerName,ticketText(s,thermal.columns||42),{columns:thermal.columns||42});msg(result.message+' · '+thermal.printerName);}
@@ -5551,8 +5551,8 @@ async function thermalPrinterConfigDlg(){
   if(!window.posDesktop||typeof window.posDesktop.printerList!=='function'){msg('La configuración de impresoras térmicas requiere SIFER360 de escritorio en Windows.','bad');return;}
   const boxes=cashboxList().filter(x=>x.active!==false);
   let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
-  let stationId='LOCAL',stationRole='standalone';
-  try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'LOCAL');stationRole=String(net&&net.role||'standalone');}catch{}
+  let stationId='',stationRole='unknown';
+  try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'');stationRole=String(net&&net.role||'unknown');}catch{}
   const profileKey=id=>thermalPrinterProfileKey(id,stationId);
   const savedFor=id=>Object.assign({},(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[profileKey(id)])||(stationRole==='standalone'&&S.cfg.thermalPrinters&&S.cfg.thermalPrinters[id])||{});
   let draft={...savedFor(box)};
