@@ -221,7 +221,7 @@ function seed(){
     products:[],
     clients:[{name:'Consumidor final',rif:'',tel:''}],
     suppliers:[],
-    sales:[],held:[],purchases:[],fiscalInventory:{version:1,balances:{},movements:[]},cxc:[],cxp:[],cortesZ:[],openings:[],movimientosCaja:[],kardex:[],counts:[],
+    sales:[],held:[],purchases:[],returns:[],fiscalInventory:{version:1,balances:{},movements:[]},cxc:[],cxp:[],cortesZ:[],openings:[],movimientosCaja:[],kardex:[],counts:[],
     lotesSudeban:[],retencionesIva:[],retencionesIslr:[],cambiosDivisas:[],rateAudit:[],bcvRates:{},casheaMovimientos:[],casheaLiquidaciones:[],documents:[],fiscalPrinterJobs:[],accounting:{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
@@ -231,7 +231,7 @@ function seed(){
 function stateSnapshot(){
   return {
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
-    sales:S.sales,held:S.held,purchases:S.purchases,fiscalInventory:S.fiscalInventory||{version:1,balances:{},movements:[]},cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],openings:S.openings||[],movimientosCaja:S.movimientosCaja||[],
+    sales:S.sales,held:S.held,purchases:S.purchases,returns:S.returns||[],fiscalInventory:S.fiscalInventory||{version:1,balances:{},movements:[]},cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],openings:S.openings||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,retencionesIslr:S.retencionesIslr||[],cambiosDivisas:S.cambiosDivisas,rateAudit:S.rateAudit||[],bcvRates:S.bcvRates||{},
     casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],fiscalPrinterJobs:S.fiscalPrinterJobs||[],accounting:S.accounting||{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
@@ -779,6 +779,7 @@ function load(){
     S.held=Array.isArray(d.held)?d.held:[];
     S.heldDeletedIds=Array.isArray(d.heldDeletedIds)?d.heldDeletedIds:[];
     if(Array.isArray(d.purchases))S.purchases=d.purchases;
+    if(Array.isArray(d.returns))S.returns=d.returns;
     S.fiscalInventory=d.fiscalInventory&&typeof d.fiscalInventory==='object'?d.fiscalInventory:{version:1,balances:{},movements:[]};
     if(window.SIFERInventoryLedgers)window.SIFERInventoryLedgers.ensureFiscalInventory(S);
     if(Array.isArray(d.cxc))S.cxc=d.cxc;
