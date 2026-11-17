@@ -4638,7 +4638,11 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   const printMode=S.cfg.printMode||'LEGACY';
   if(printMode==='NOT_CONFIGURED'){msg('Complete el asistente de impresoras antes de registrar ventas. Puede elegir impresora fiscal, ticket interno o trabajar sin impresora.','bad');return;}
   const dualMode=printMode==='DUAL_PRINTER';
-  const thermalProfile=S.cfg.thermalPrinters&&S.cfg.thermalPrinters[currentCaja()]||null;
+  let fiscalNetworkInfo={role:'standalone',running:false,deviceId:'LOCAL'};
+  if((dualMode||printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL'))&&window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
+    try{fiscalNetworkInfo=await window.posDesktop.networkStatus()||fiscalNetworkInfo;}catch{}
+  }
+  const thermalProfile=getThermalPrinterProfile(currentCaja(),fiscalNetworkInfo.deviceId);
   const configuredFiscalProfile=S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[currentCaja()]||null;
   if(dualMode&&!['TICKET','FISCAL'].includes(documentChoice)){msg('Seleccione si desea emitir un ticket no fiscal o una factura fiscal.','bad');return;}
   if(dualMode&&documentChoice==='TICKET'&&(!thermalProfile||thermalProfile.enabled!==true||!thermalProfile.printerName)){msg('La impresora térmica no fiscal no está configurada para esta caja. Configure el dispositivo antes de cobrar.','bad');return;}
@@ -4646,10 +4650,6 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   const internalTicketMode=dualMode?documentChoice==='TICKET':(printMode==='INTERNAL_THERMAL'||printMode==='NO_PRINTER');
   const fiscalMode=dualMode?documentChoice==='FISCAL':(printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL'));
   const fiscalProfile=fiscalMode?configuredFiscalProfile:null;
-  let fiscalNetworkInfo={role:'standalone',running:false};
-  if(fiscalMode&&window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
-    try{fiscalNetworkInfo=await window.posDesktop.networkStatus()||fiscalNetworkInfo;}catch{}
-  }
   const useSharedFiscal=fiscalMode&&(fiscalNetworkInfo.role==='client'||fiscalNetworkInfo.role==='server');
   if(fiscalMode&&(!fiscalProfile||fiscalProfile.enabled!==true)){msg('La impresora fiscal no está habilitada para esta caja en la configuración compartida. Configure el dispositivo en el servidor fiscal.','bad');return;}
   if(useSharedFiscal&&(!window.posDesktop||typeof window.posDesktop.fiscalNetworkSubmit!=='function'||typeof window.posDesktop.fiscalNetworkStatus!=='function')){msg('La cola fiscal compartida no está disponible en esta versión. No se registró la venta.','bad');return;}
@@ -4977,7 +4977,8 @@ function showTicket(s){
   openWin({title:(noPrinter?'Comprobante interno — Nº ':'Ticket de Venta — Nº ')+pad(s.no),w:500,body:el,foot:[
     {label:noPrinter?'Sin impresora configurada':'Imprimir 80mm',left:true,fn:async()=>{
       if(noPrinter){msg('Esta instalación está configurada sin impresora. El comprobante queda guardado en SQLite y puede imprimirse después de configurar un dispositivo.');return false;}
-      const thermal=S.cfg.thermalPrinters&&S.cfg.thermalPrinters[s.cashbox];
+      let stationId='LOCAL';try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'LOCAL');}catch{}
+      const thermal=getThermalPrinterProfile(s.cashbox,stationId);
       if(thermal&&thermal.enabled===true&&thermal.printerName&&window.posDesktop&&window.posDesktop.printerPrintTicket){
         try{const result=await window.posDesktop.printerPrintTicket(thermal.printerName,ticketText(s,thermal.columns||42),{columns:thermal.columns||42});msg(result.message+' · '+thermal.printerName);}
         catch(error){msg('No se pudo confirmar el envío del ticket: '+error.message,'bad');}
@@ -5533,16 +5534,28 @@ function fiscalNetworkQueueDlg(){
   refresh();
 }
 
+function thermalPrinterProfileKey(cashbox,deviceId){
+  const station=String(deviceId||'LOCAL').replace(/[^A-Za-z0-9._:-]/g,'').slice(0,80)||'LOCAL';
+  return 'station:'+station+':'+String(cashbox);
+}
+function getThermalPrinterProfile(cashbox,deviceId){
+  const profiles=S.cfg.thermalPrinters||{};
+  return profiles[thermalPrinterProfileKey(cashbox,deviceId)]||profiles[String(cashbox)]||null;
+}
+
 async function thermalPrinterConfigDlg(){
   const user=activeUser();
   if(!user||user.role!=='admin'){msg('Solo el administrador puede configurar las impresoras térmicas.','bad');return;}
   if(!window.posDesktop||typeof window.posDesktop.printerList!=='function'){msg('La configuración de impresoras térmicas requiere SIFER360 de escritorio en Windows.','bad');return;}
   const boxes=cashboxList().filter(x=>x.active!==false);
   let box=boxes.some(x=>String(x.id)===String(currentCaja()))?String(currentCaja()):String((boxes[0]||{id:'01'}).id);
-  const savedFor=id=>(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[id])||{};
+  let stationId='LOCAL';
+  try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'LOCAL');}catch{}
+  const profileKey=id=>thermalPrinterProfileKey(id,stationId);
+  const savedFor=id=>Object.assign({},(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[profileKey(id)])||(S.cfg.thermalPrinters&&S.cfg.thermalPrinters[id])||{});
   let draft={...savedFor(box)};
   const options=boxes.map(x=>'<option value="'+esc(x.id)+'" '+(String(x.id)===box?'selected':'')+'>'+esc(x.id)+' — '+esc(x.name||('Caja '+x.id))+'</option>').join('');
-  const el=h('<div class="form"><div class="hint">Configure una impresora térmica para tickets y notas de venta no fiscales. Cada caja conserva su propia impresora. La prueba envía un ticket de prueba al spooler de Windows; no confirma físicamente la salida del papel.</div><div class="f"><label for="tpCashbox">Caja</label><select class="fld" id="tpCashbox">'+options+'</select></div><div class="f"><label for="tpPrinter">Impresora Windows</label><select class="fld" id="tpPrinter"><option value="">Seleccione impresora…</option></select></div><div class="f"><label for="tpWidth">Papel</label><select class="fld" id="tpWidth"><option value="32">58 mm · 32 columnas</option><option value="42">80 mm · 42 columnas</option><option value="48">80 mm · 48 columnas</option></select></div><label class="chk"><input type="checkbox" id="tpEnabled"> Habilitar tickets en esta caja</label><div class="hint" id="tpStatus" role="status" aria-live="polite">Consultando impresoras de Windows…</div></div>');
+  const el=h('<div class="form"><div class="hint">Configure una impresora térmica para esta estación y caja. Cada estación puede tener su propia cola Windows, independiente de la impresora fiscal compartida. La prueba envía un ticket de prueba al spooler de Windows; no confirma físicamente la salida del papel.</div><div class="f"><label for="tpCashbox">Caja</label><select class="fld" id="tpCashbox">'+options+'</select></div><div class="f"><label for="tpPrinter">Impresora Windows</label><select class="fld" id="tpPrinter"><option value="">Seleccione impresora…</option></select></div><div class="f"><label for="tpWidth">Papel</label><select class="fld" id="tpWidth"><option value="32">58 mm · 32 columnas</option><option value="42">80 mm · 42 columnas</option><option value="48">80 mm · 48 columnas</option></select></div><label class="chk"><input type="checkbox" id="tpEnabled"> Habilitar tickets en esta caja</label><div class="hint" id="tpStatus" role="status" aria-live="polite">Consultando impresoras de Windows…</div></div>');
   const status=$('#tpStatus',el),printer=$('#tpPrinter',el),width=$('#tpWidth',el),enabled=$('#tpEnabled',el);
   const apply=()=>{
     printer.value=draft.printerName||'';
@@ -5563,7 +5576,7 @@ async function thermalPrinterConfigDlg(){
   };
   el.addEventListener('change',async e=>{
     if(e.target.id==='tpCashbox'){
-      const current=read();S.cfg.thermalPrinters=S.cfg.thermalPrinters||{};S.cfg.thermalPrinters[box]=current;
+      const current=read();S.cfg.thermalPrinters=S.cfg.thermalPrinters||{};S.cfg.thermalPrinters[profileKey(box)]=current;
       box=String(e.target.value);draft={...savedFor(box)};await detect();apply();
     }
   });
@@ -5572,10 +5585,10 @@ async function thermalPrinterConfigDlg(){
     if(p.enabled&&!p.printerName){msg('Seleccione una impresora antes de habilitar los tickets.','bad');return false;}
     if(![32,42,48].includes(p.columns)){msg('Ancho de papel no válido.','bad');return false;}
     if(!S.cfg.thermalPrinters)S.cfg.thermalPrinters={};
-    S.cfg.thermalPrinters[box]=p;
+    S.cfg.thermalPrinters[profileKey(box)]=p;
     const persisted=await save();
     if(!persisted||!persisted.ok){msg('SQLite no confirmó la configuración térmica.','bad');return false;}
-    msg('Impresora térmica guardada para Caja '+box+'.');
+    msg('Impresora térmica guardada para esta estación · Caja '+box+'.');
     return true;
   }};
   openWin({title:'Impresora térmica no fiscal · Caja '+esc(box),w:620,body:el,foot:[{label:'Cerrar'},{label:'Actualizar impresoras',fn:async()=>{await detect();return false;}},{label:'Imprimir prueba',fn:async()=>{
