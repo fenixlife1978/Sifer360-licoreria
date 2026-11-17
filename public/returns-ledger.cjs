@@ -73,7 +73,8 @@ function applyReturn(state,prepared,{returnNo,refundNo,now=Date.now(),user=''}={
   if(!sale||sale.void)fail('La venta original ya no está disponible o fue anulada.');
   // Revalidate quantities at commit time to prevent stale dialogs or duplicate submissions.
   const fresh=prepareReturn({state,sale,lines:prepared.lines.map(line=>({lineIndex:line.lineIndex,qty:line.qty})),returnStock:prepared.returnStock,method:prepared.method,reference:prepared.reference,reason:prepared.reason,rate:prepared.rate});
-  if(Math.abs(fresh.total-prepared.total)>0.01)fail('La venta cambió después de preparar la devolución. Vuelva a calcularla.');
+  if(Math.abs(fresh.total-prepared.total)>0.01||Math.abs(fresh.creditApplied-prepared.creditApplied)>0.01||Math.abs(fresh.refund-prepared.refund)>0.01)
+    fail('La venta o su saldo CxC cambió después de preparar la devolución. Vuelva a calcularla.');
   if(state.returns.some(note=>note.id==='NC-'+prepared.cashbox.replace(/\W/g,'')+'-'+String(returnNo).padStart(6,'0')))
     fail('El consecutivo de la nota de crédito ya está utilizado.');
   const note={
