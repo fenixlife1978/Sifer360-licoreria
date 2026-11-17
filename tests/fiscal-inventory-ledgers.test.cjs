@@ -38,3 +38,32 @@ test('fiscal stock refuses an outgoing movement greater than its balance', () =>
   const state = {};
   assert.throws(() => applyFiscalMovement(state, { eventId: 'SALE-1', code: 'SKU-1', type: 'VENTA_FISCAL', dir: 'OUT', qty: 1 }), /insuficiente/);
 });
+
+
+test('an eventId repeated with different fiscal payload is rejected instead of silently ignored', () => {
+  const state = {};
+  const original = { eventId: 'PUR-2:SKU-2', sourceId: 'PUR-2', code: 'SKU-2', type: 'COMPRA_FISCAL', dir: 'IN', qty: 4, cost: 2 };
+  applyFiscalMovement(state, original);
+  assert.equal(applyFiscalMovement(state, { ...original }).duplicate, true);
+  assert.throws(
+    () => applyFiscalMovement(state, { ...original, qty: 40 }),
+    /Conflicto de idempotencia/
+  );
+  assert.throws(
+    () => applyFiscalMovement(state, { ...original, code: 'SKU-OTHER' }),
+    /Conflicto de idempotencia/
+  );
+  assert.equal(fiscalBalance(state, 'SKU-2'), 4);
+  assert.equal(fiscalBalance(state, 'SKU-OTHER'), 0);
+});
+
+test('fiscal movement rejects negative or non-finite unit costs', () => {
+  const state = {};
+  assert.throws(() => applyFiscalMovement(state, {
+    eventId: 'BAD-COST-1', code: 'SKU-3', dir: 'IN', qty: 1, cost: -0.01
+  }), /Costo unitario fiscal inválido/);
+  assert.throws(() => applyFiscalMovement(state, {
+    eventId: 'BAD-COST-2', code: 'SKU-3', dir: 'IN', qty: 1, cost: Number.NaN
+  }), /Costo unitario fiscal inválido/);
+  assert.equal(fiscalBalance(state, 'SKU-3'), 0);
+});
