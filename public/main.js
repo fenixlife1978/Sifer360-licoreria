@@ -2657,7 +2657,7 @@ function comprasDlg(initialTab){
         const p=prod(l.code);
         if(p){
           p.stock=Math.max(0,r2(p.stock-l.qty));
-          if(c.docType==='FACTURA_FISCAL')window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'VOID-PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no)+':'+p.code,type:'ANULACION_COMPRA_FISCAL',dir:'OUT',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(c.no),sourceId:'PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no),timestamp:Date.now(),cashbox:c.cashbox||currentCaja(),user:currentCajero()});
+          if(c.docType==='FACTURA_FISCAL'){const sourceId='PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no),originalEvent=sourceId+':'+p.code,ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);if(ledger.movements.some(m=>m.eventId===originalEvent))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'VOID-PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no)+':'+p.code,type:'ANULACION_COMPRA_FISCAL',dir:'OUT',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(c.no),sourceId,timestamp:Date.now(),cashbox:c.cashbox||currentCaja(),user:currentCajero()});}
           addKardex({
             code:p.code,type:'ANULACIÓN',dir:'OUT',doc:'COM-'+pad(c.no),
             party:'Anulación compra prov. '+c.supplier.name,qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
@@ -5059,7 +5059,7 @@ function salesDlg(){
         const p=prod(l.code);
         if(p){
           p.stock=r2(p.stock+l.qty);
-          if(isFiscalSale(s))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'VOID-SALE-'+String(s.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(s.no)+':'+p.code,type:'ANULACION_VENTA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.unitCost||p.cost,document:'FAC-'+pad(s.no),sourceId:s.accountingSourceId||('SALE-'+pad(s.no)),timestamp:Date.now(),cashbox:s.cashbox||currentCaja(),user:currentCajero()});
+          if(isFiscalSale(s)){const sourceId=s.accountingSourceId||('SALE-'+pad(s.no)),originalEvent=sourceId+':'+p.code,ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);if(ledger.movements.some(m=>m.eventId===originalEvent))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'VOID-SALE-'+String(s.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(s.no)+':'+p.code,type:'ANULACION_VENTA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.unitCost||p.cost,document:'FAC-'+pad(s.no),sourceId,timestamp:Date.now(),cashbox:s.cashbox||currentCaja(),user:currentCajero()});}
           addKardex({
             code:p.code,type:'ANULACIÓN',dir:'IN',doc:(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no),
             party:'Reingreso por anulación de venta ('+s.client.name+')',
