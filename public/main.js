@@ -5402,7 +5402,7 @@ function exportSeniatTxt(periodo){
     const row=index+1,prov=r.supplier||{},rifProv=rif(prov.rif);
     const fecDate=new Date(Number(r.docDateTs)||Number(r.ts)||r.ts);
     const storedDocDate=clean(r.docDate);
-    const fec=/^\\d{4}-\\d{2}-\\d{2}$/.test(storedDocDate)?storedDocDate:(Number.isFinite(fecDate.getTime())?fecDate.toISOString().slice(0,10):'');
+    const fec=/^\d{4}-\d{2}-\d{2}$/.test(storedDocDate)?storedDocDate:(Number.isFinite(fecDate.getTime())?fecDate.toISOString().slice(0,10):'');
     const rawType=String(r.seniatDocType||r.docType||'01').toUpperCase();
     const tipoDoc=({'01':'01','FACTURA':'01','FACTURA_FISCAL':'01','02':'02','NOTA_DEBITO':'02','NOTA DE DÉBITO':'02','03':'03','NOTA_CREDITO':'03','NOTA DE CRÉDITO':'03'})[rawType];
     const oper=String(r.operationType||'C').toUpperCase();
