@@ -1234,7 +1234,6 @@ if (!hasSingleInstanceLock) {
     if (networkConfig.role === 'server') { try { await startLanServer(networkConfig.port); } catch (error) { throw new Error('No se pudo reanudar el servidor LAN. SIFER no iniciará en modo local para evitar crear una base de datos paralela. ' + (error && error.message ? error.message : String(error))); } }
     createWindow();
     if (app.isPackaged) {
-      setTimeout(() => autoUpdater.checkForUpdates().catch(error => broadcastAppUpdate('error', { message: String(error && error.message || error).slice(0, 500) })), 12000);
       updateCheckTimer = setInterval(() => autoUpdater.checkForUpdates().catch(error => broadcastAppUpdate('error', { message: String(error && error.message || error).slice(0, 500) })), 6 * 60 * 60 * 1000);
     }
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
