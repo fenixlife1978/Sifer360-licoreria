@@ -56,6 +56,10 @@ test('SENIAT 99035 refuses invalid RIF and missing affected document for credit/
   badNote.run('202610');
   assert.equal(badNote.downloads.length,0);
   assert.match(badNote.messages.join(' '),/documento afectado/);
+  const badDate=await harness([{...validRecord,docDate:'2026-10-35'}]);
+  badDate.run('202610');
+  assert.equal(badDate.downloads.length,0);
+  assert.match(badDate.messages.join(' '),/fecha de factura inválida/);
 });
 
 test('SENIAT 99035 rejects invalid period and never downloads an empty or malformed declaration',async()=>{
