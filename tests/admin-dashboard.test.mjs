@@ -204,8 +204,11 @@ test('CxP de compras conserva ocho decimales en saldos y pagos y mantiene el his
 test('Corte Z consolida ventas por SKU/código y ajustes de inventario positivos y negativos', () => {
   assert.match(main, /const getProductSales=\(sales\)=>/);
   assert.match(main, /productSales:getProductSales\(sales\)/);
-  assert.match(main, /inventoryAdjustments:getInventoryAdjustments\(shiftStart\(\),Date\.now\(\)\)/);
+  assert.match(main, /inventoryAdjustments:getInventoryAdjustments\\(shiftStart\\(\\),Date\\.now\\(\\),box\\)/);
   assert.match(main, /CONSOLIDADO DE PRODUCTOS VENDIDOS · SKU \/ CÓDIGO \/ CANTIDAD/);
   assert.match(main, /AJUSTES DE INVENTARIO · POSITIVOS \(\+\) Y NEGATIVOS/);
   assert.match(main, /Number\(a\.sign\)>0\?/);
+  assert.match(main, /cashbox:ev\\.cashbox\\|\\|currentCaja\\(\\)/);
+  assert.match(main, /String\\(k\\.cashbox\\|\\|''\\)===String\\(box\\|\\|''\\)/);
+  assert.match(main, /getInventoryAdjustments\\(shiftStart\\(\\),now,box\\)/);
 });
