@@ -1247,4 +1247,4 @@ if (!hasSingleInstanceLock) {
   });
 }
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('before-quit', () => { clearTimeout(saveTimer); if (networkServer) networkServer.close(); stopDiscoveryServer(); persistDb(); });
+app.on('before-quit', () => { clearTimeout(saveTimer); if (updateCheckTimer) clearInterval(updateCheckTimer); if (networkServer) networkServer.close(); stopDiscoveryServer(); persistDb(); });
