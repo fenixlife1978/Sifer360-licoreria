@@ -67,3 +67,12 @@ test('fiscal movement rejects negative or non-finite unit costs', () => {
   }), /Costo unitario fiscal inválido/);
   assert.equal(fiscalBalance(state, 'SKU-3'), 0);
 });
+
+test('reusing an eventId with a different unit cost or movement type is rejected', () => {
+  const state = {};
+  const event = { eventId: 'PUR-4:SKU-4', sourceId: 'PUR-4', code: 'SKU-4', type: 'COMPRA_FISCAL', dir: 'IN', qty: 2, cost: 5 };
+  applyFiscalMovement(state, event);
+  assert.throws(() => applyFiscalMovement(state, { ...event, cost: 6 }), /Conflicto de idempotencia/);
+  assert.throws(() => applyFiscalMovement(state, { ...event, type: 'AJUSTE_FISCAL' }), /Conflicto de idempotencia/);
+  assert.equal(fiscalBalance(state, 'SKU-4'), 2);
+});
