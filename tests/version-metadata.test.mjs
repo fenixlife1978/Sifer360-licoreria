@@ -22,6 +22,7 @@ test('v1.0.8 package and Windows artifacts use one consistent version', async ()
   assert.doesNotMatch(buildExe, /SIFER360-1\.0\.[467]-/);
   assert.doesNotMatch(desktop, /SIFER360-1\.0\.[467]-/);
   assert.doesNotMatch(validation, /SIFER360-1\.0\.[467]-/);
+  for (const workflow of [buildExe, desktop, validation]) assert.doesNotMatch(workflow, /GOOGLE_OAUTH|google-drive-oauth/);
 });
 
 test('v1.0.8 remains local-only and cannot upload SQLite to cloud backup services', async () => {
@@ -33,5 +34,4 @@ test('v1.0.8 remains local-only and cannot upload SQLite to cloud backup service
   assert.doesNotMatch(main, /createGoogleDriveBackup|backup:run-now|backup:connect-google|sqliteDatabaseToJson/);
   assert.doesNotMatch(preload, /backupStatus|backupConnectGoogle|backupRunNow|backupEnableDaily/);
   assert.doesNotMatch(renderer, /Google Drive|gdrive|backupRunNow/);
-  assert.doesNotMatch(workflow, /GOOGLE_OAUTH|google-drive-oauth/);
 });
