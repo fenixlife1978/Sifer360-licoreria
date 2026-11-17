@@ -1,7 +1,7 @@
 # Ventas híbridas, inventario dual y presentaciones del POS
 
 ## Estado de implementación
-Rama de trabajo de la evolución 1.1.0. La selección de presentaciones y la primera implementación de impresión híbrida están integradas y en validación automatizada. El importador universal y el asistente de inicialización fiscal siguen pendientes. No se modifica `main`, no se publica Release ni instalador.
+Rama de trabajo de la evolución 1.1.0. Ya están integrados el selector de presentaciones, los tres modos de impresión, la primera venta híbrida, el importador universal CSV/XLSX/JSON y la auditoría de apertura fiscal inicial. Todo sigue en validación automatizada y revisión de integridad. No se modifica `main`, no se publica Release ni instalador.
 
 ## Principios obligatorios
 - SQLite local del servidor LAN sigue siendo la única fuente de verdad.
@@ -16,7 +16,7 @@ Rama de trabajo de la evolución 1.1.0. La selección de presentaciones y la pri
 2. **Factura fiscal:** emisión por la máquina fiscal habilitada para la caja. Se valida la disponibilidad y trazabilidad fiscal de las cantidades.
 3. **Impresión híbrida:** una venta comercial padre con un identificador común y dos documentos hijos cuando existan renglones respaldados y no respaldados. La factura fiscal contiene únicamente renglones cuya cantidad completa tenga respaldo fiscal suficiente; el ticket térmico contiene el resto. Los documentos conservan sus importes, impuestos, pagos distribuidos y relación con la venta padre. Si todos los renglones pertenecen a un solo grupo, solo se genera el documento que corresponda.
 
-La primera implementación de modo híbrido no permite una venta mixta cuando se usa Cashea como medio de pago, porque falta una distribución contractual por documento. En ese caso el POS bloquea la confirmación y pide usar un solo tipo de comprobante o separar la operación. Los pagos restantes se distribuyen proporcionalmente entre documentos hijos y se reconcilian contra la venta padre. Los libros fiscales y el cálculo mensual de débito IVA toman solo la porción fiscal; IGTF, caja y conciliación bancaria conservan la venta comercial completa, incluidos los tickets internos.
+La primera implementación de modo híbrido no permite una venta mixta cuando se usa Cashea como medio de pago, porque falta una distribución contractual por documento. En ese caso el POS bloquea la confirmación y pide usar un solo tipo de comprobante o separar la operación. Los pagos, vuelto e IGTF restantes se distribuyen proporcionalmente entre documentos hijos y se reconcilian contra la venta padre. Las devoluciones internas de ventas híbridas que ya emitieron factura fiscal quedan bloqueadas hasta disponer del flujo de nota de crédito fiscal; las ventas internas sin factura pueden devolverse y restauran el saldo fiscal de las unidades respaldadas que se consumieron. Los libros fiscales y el cálculo mensual de débito IVA toman solo la porción fiscal; IGTF, caja y conciliación bancaria conservan la venta comercial completa, incluidos los tickets internos.
 
 La emisión fiscal debe finalizar antes de considerar confirmada la venta. Si la máquina fiscal queda en estado pendiente o incierto, la operación queda bloqueada para reintento hasta reconciliar el trabajo. El ticket complementario se envía automáticamente a la impresora térmica después de guardar la venta. Se registra su estado como pendiente, enviado o incierto; si la impresora térmica falla, no se repite el cobro ni la factura fiscal y se exige consultar el equipo antes de reimprimir.
 
@@ -30,18 +30,19 @@ La emisión fiscal debe finalizar antes de considerar confirmada la venta. Si la
 - Las presentaciones históricas de ventas no se recalculan si posteriormente cambia el precio o el factor del catálogo.
 
 ## Importador universal e inicialización
-- Admitir CSV, XLSX y JSON con detección de colecciones y mapeo de columnas.
+- El botón **Cargar inventario maestro** acepta CSV, XLSX y JSON, detecta colecciones de productos en respaldos completos y permite mapear columnas.
 - Si el respaldo contiene varias entidades, importar solo productos; ignorar clientes, proveedores, pagos, ventas, compras y demás colecciones en este asistente.
-- Mostrar previsualización, conteo de filas, columnas mapeadas, errores, duplicados y resumen antes de escribir.
-- La primera importación aumenta únicamente inventario operativo.
-- La auditoría fiscal inicial permite seleccionar cantidades por producto y asociar documentos verificables. La inicialización fiscal no aumenta stock operativo.
+- Mostrar previsualización, conteo de filas, columnas mapeadas, errores, duplicados y resumen antes de escribir. Los duplicados por código o SKU se omiten sin sobrescribir.
+- La primera importación aumenta únicamente inventario operativo y registra la apertura en Kardex; no crea movimientos fiscales.
+- El botón **Auditoría fiscal inicial** permite seleccionar cantidades por producto y registrar la fecha y referencia exacta de la factura de compra. La cantidad validada no puede superar el stock físico menos el saldo fiscal ya existente. La inicialización fiscal no aumenta stock operativo.
 - Las compras futuras con documento fiscal válido alimentan inventario operativo y libro fiscal en la misma transacción SQLite; compras sin respaldo solo alimentan inventario operativo.
 
 ## Criterios de aceptación
 - Venta ticket, factura fiscal e híbrida se registran una sola vez y mantienen una sola relación de cobro.
 - El modo híbrido nunca emite un renglón sin respaldo en la factura fiscal y nunca duplica cantidades entre sus documentos.
 - Fallos de impresora, timeout, reinicio o pérdida de LAN no duplican venta, cobro, número fiscal ni movimiento de inventario.
-- Los totales de documentos hijos reconcilian exactamente con la venta padre, incluyendo IVA, IGTF, descuentos, pagos, crédito y vuelto.
+- Los totales de documentos hijos reconcilian con la venta padre, incluyendo IVA, IGTF, descuentos, pagos, crédito y vuelto. Cashea mixto permanece bloqueado explícitamente hasta su conciliación.
 - El stock operativo final coincide con las unidades base vendidas; los movimientos del libro fiscal coinciden con las cantidades asignadas y sustentadas.
 - Una venta con varias presentaciones descuenta el factor correcto y se refleja correctamente en Kardex, reportes, devoluciones y anulaciones.
+- Los tickets no fiscales también quedan registrados en ventas, caja, IGTF y conciliación bancaria. Cuando consumen unidades con respaldo, el libro de inventario registra la salida correspondiente; una devolución interna restaura la porción respaldada.
 - Pruebas automatizadas y de integración con SQLite temporal, impresora simulada y LAN antes de generar el instalador.
