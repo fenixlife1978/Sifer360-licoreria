@@ -50,3 +50,13 @@ test('hybrid completion offers a separate thermal ticket without repeating the f
   assert.match(main,/printerPrintTicket\(thermal\.printerName,ticketText\(sale\.ticketDocument,columns\)/);
   assert.match(main,/s\.documentMode==='HYBRID'/);
 });
+
+test('hybrid fiscal portions feed only fiscal books while tickets remain in commercial, IGTF and bank reports',()=>{
+  assert.match(main,/function fiscalSaleData\(sale\)/);
+  assert.match(main,/return Object\.assign\(\{\},sale,part,\{fiscal:sale\.fiscal,documentMode:'FISCAL',docType:'01-FACTURA'/);
+  assert.match(main,/const getFilteredAllSales=\(\)=>/);
+  assert.match(main,/const getFilteredSales=\(\)=>getFilteredAllSales\(\)\.filter\(isFiscalSale\)\.map\(fiscalSaleData\)/);
+  assert.match(main,/const drawIgtf=\(\)=>\{\s*const sales=getFilteredAllSales\(\)/);
+  assert.match(main,/const drawSudeban=\(\)=>\{\s*const sales=getFilteredAllSales\(\)/);
+  assert.match(main,/\.filter\(x=>isFiscalSale\(x\)&&!x\.void&&enPeriodoSeniat\(x\.ts\)\)\.map\(fiscalSaleData\)/);
+});
