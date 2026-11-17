@@ -7075,20 +7075,66 @@ function getZHistory(){
 function moneyTotal(rows,fn){
   return r2(rows.reduce((a,x)=>a+fn(x),0));
 }
+function zNormalizeMethod(value){
+  const raw=String(value||'').replace(/^\[Mixto\s+\d+\/\d+\]\s*/i,'').trim();
+  return METHODS.find(m=>m.id===raw||m.name.toLowerCase()===raw.toLowerCase())||null;
+}
+function zPaymentAmount(payment,method){
+  if(!payment||!method)return 0;
+  const amount=method.cur==='VES'?Number(payment.amountBs||0):Number(payment.amountUsd||0);
+  return Number.isFinite(amount)?Math.max(0,amount):0;
+}
+function zAddLedgerPayment(out,payment,kind){
+  const method=zNormalizeMethod(payment.method||payment.id);
+  if(!method)return;
+  const amount=zPaymentAmount(payment,method);
+  const key=method.id;
+  out[key]=(Number(out[key])||0)+(kind==='OUT'?-amount:amount);
+}
 function zPayTotals(sales){
   const out={};
-  sales.forEach(s=>(s.pays||[]).forEach(p=>{
-    const k=(p.name||p.id||'Otro')+' ('+(p.cur||'USD')+')';
-    out[k]=(out[k]||0)+Number(p.amount||0);
-  }));
+  const add=(label,amount,cur)=>{const key=label+' ('+cur+')';out[key]=(out[key]||0)+Number(amount||0);};
+  sales.forEach(s=>(s.pays||[]).forEach(p=>add(p.name||p.id||'Otro',p.amount,p.cur||'USD')));
+  const box=String(currentCaja());
+  (S.cxc||[]).forEach(item=>{
+    if(!item.cashbox||String(item.cashbox)!==box)return;
+    (item.payments||[]).forEach(p=>{
+      if(!p.cashbox||String(p.cashbox)!==box)return;
+      const m=zNormalizeMethod(p.method||p.id);if(m)add('Cobro CxC · '+m.name,zPaymentAmount(p,m),m.cur);
+    });
+  });
+  (S.cxp||[]).forEach(item=>{
+    if(!item.cashbox||String(item.cashbox)!==box)return;
+    (item.payments||[]).forEach(p=>{
+      if(!p.cashbox||String(p.cashbox)!==box)return;
+      const m=zNormalizeMethod(p.method||p.id);if(m)add('Pago CxP · '+m.name,zPaymentAmount(p,m),m.cur);
+    });
+  });
   return out;
 }
 function zOperationalTotals(sales,start,end,box){
   const inPeriod=ts=>Number(ts)>=Number(start)&&Number(ts)<=Number(end);
+  const sameBox=(item,payment)=>!!item.cashbox&&!!payment.cashbox&&String(item.cashbox)===String(box)&&String(payment.cashbox)===String(box);
   const out={cxcUsd:0,cxcBs:0,casheaUsd:0,creditSalesUsd:0,cashInUsd:0,cashOutUsd:0,cashInBs:0,cashOutBs:0,movementCount:0};
   (S.cxc||[]).forEach(item=>{
     if(!item.cashbox||String(item.cashbox)!==String(box))return;
-    (item.payments||[]).forEach(p=>{if(inPeriod(p.ts)){out.cxcUsd=r2(out.cxcUsd+Number(p.amountUsd||0));out.cxcBs=r2(out.cxcBs+Number(p.amountBs||0));}});
+    (item.payments||[]).forEach(p=>{
+      if(!sameBox(item,p)||!inPeriod(p.ts))return;
+      out.cxcUsd=r2(out.cxcUsd+Number(p.amountUsd||0));
+      out.cxcBs=r2(out.cxcBs+Number(p.amountBs||0));
+      const method=zNormalizeMethod(p.method||p.id);
+      if(method&&method.id==='efUSD')out.cashInUsd=r2(out.cashInUsd+Number(p.amountUsd||0));
+      if(method&&method.id==='efBs')out.cashInBs=r2(out.cashInBs+Number(p.amountBs||0));
+    });
+  });
+  (S.cxp||[]).forEach(item=>{
+    if(!item.cashbox||String(item.cashbox)!==String(box))return;
+    (item.payments||[]).forEach(p=>{
+      if(!sameBox(item,p)||!inPeriod(p.ts))return;
+      const method=zNormalizeMethod(p.method||p.id);
+      if(method&&method.id==='efUSD')out.cashOutUsd=r2(out.cashOutUsd+Number(p.amountUsd||0));
+      if(method&&method.id==='efBs')out.cashOutBs=r2(out.cashOutBs+Number(p.amountBs||0));
+    });
   });
   sales.filter(s=>!s.void).forEach(s=>(s.pays||[]).forEach(p=>{if(p.id==='credito')out.creditSalesUsd=r2(out.creditSalesUsd+Number(p.amount||0));}));
   const saleNos=new Set(sales.filter(s=>!s.void&&String(s.cashbox||box)===String(box)).map(s=>String(s.no)));
@@ -7098,8 +7144,10 @@ function zOperationalTotals(sales,start,end,box){
     if((S.casheaMovimientos||[]).some(m=>ops.includes(m.id)&&saleNos.has(String(m.ventaNo))))out.casheaUsd=r2(out.casheaUsd+Number(lot.depositadoUsd||0));
   });
   (S.movimientosCaja||[]).forEach(m=>{
-    if(String(m.cashbox||box)!==String(box)||!inPeriod(m.ts))return;
-    const currency=m.currency==='USD'?'Usd':'Bs',direction=m.direction==='IN'?'In':'Out',key='cash'+direction+currency;
+    if(!m.cashbox||String(m.cashbox)!==String(box)||!inPeriod(m.ts))return;
+    const currency=m.currency==='USD'?'Usd':(m.currency==='BS'?'Bs':null);
+    if(!currency)return;
+    const direction=m.direction==='IN'?'In':'Out',key='cash'+direction+currency;
     out[key]=r2(out[key]+Math.max(0,Number(m.amount||0)));out.movementCount++;
   });
   return out;
@@ -7179,6 +7227,7 @@ function zExpectedByMethod(sales,opening){
   METHODS.forEach(m=>out[m.id]=0);
   out.efBs=Number(opening&&opening.bs||0);
   out.efUSD=Number(opening&&opening.usd||0);
+  const box=String(opening&&opening.cashbox||'');
   sales.forEach(s=>{
     (s.pays||[]).forEach(p=>{
       if(Object.prototype.hasOwnProperty.call(out,p.id))out[p.id]+=Number(p.amount||0);
@@ -7190,15 +7239,36 @@ function zExpectedByMethod(sales,opening){
       const cashBs=(s.pays||[]).filter(p=>p.id==='efBs').reduce((a,p)=>a+Number(p.amount||0),0);
       const usdEquivalent=cashUsd+cashBs/rate;
       if(usdEquivalent>0){
-        const usdChange=change*(cashUsd/usdEquivalent);
-        const bsChange=change*(cashBs/rate/usdEquivalent)*rate;
-        out.efUSD-=usdChange;
-        out.efBs-=bsChange;
+        out.efUSD-=change*(cashUsd/usdEquivalent);
+        out.efBs-=change*(cashBs/rate/usdEquivalent)*rate;
       }
     }
   });
+  (S.cxc||[]).forEach(item=>{
+    if(!box||!item.cashbox||String(item.cashbox)!==box)return;
+    (item.payments||[]).forEach(p=>{
+      if(!p.cashbox||String(p.cashbox)!==box)return;
+      zAddLedgerPayment(out,p,'IN');
+    });
+  });
+  (S.cxp||[]).forEach(item=>{
+    if(!box||!item.cashbox||String(item.cashbox)!==box)return;
+    (item.payments||[]).forEach(p=>{
+      if(!p.cashbox||String(p.cashbox)!==box)return;
+      zAddLedgerPayment(out,p,'OUT');
+    });
+  });
+  const cxpPurchaseKeys=new Set((S.cxp||[]).filter(x=>x.purchaseNo!=null&&x.cashbox&&String(x.cashbox)===box).map(x=>String(x.cashbox)+'|'+String(x.purchaseNo)));
+  (S.purchases||[]).forEach(p=>{
+    if(!box||!p.cashbox||String(p.cashbox)!==box||p.void||Number(p.paid||0)<=0)return;
+    if(cxpPurchaseKeys.has(String(p.cashbox)+'|'+String(p.no)))return;
+    const method=zNormalizeMethod(p.payMethod);
+    if(!method)return;
+    const amount=method.cur==='VES'?Number(p.paid||0)*Number(p.rate||S.cfg.rate||1):Number(p.paid||0);
+    out[method.id]+=(Number.isFinite(amount)?amount:0);
+  });
   (S.movimientosCaja||[]).forEach(m=>{
-    if(!opening.cashbox||String(m.cashbox||'')!==String(opening.cashbox)||Number(m.ts)<Number(opening.openedAt||0))return;
+    if(!box||!m.cashbox||String(m.cashbox)!==box||Number(m.ts)<Number(opening&&opening.openedAt||0))return;
     const key=m.currency==='USD'?'efUSD':(m.currency==='BS'?'efBs':null);
     if(!key)return;
     const amount=Math.max(0,Number(m.amount||0));
