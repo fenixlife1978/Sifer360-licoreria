@@ -7254,7 +7254,7 @@ function zPayTotals(sales,start,end,box){
 function zOperationalTotals(sales,start,end,box){
   const inPeriod=ts=>Number(ts)>=Number(start)&&Number(ts)<=Number(end);
   const sameBox=(item,payment)=>!!item.cashbox&&String(item.cashbox)===String(box)&&(!payment.cashbox||String(payment.cashbox)===String(box));
-  const out={cxcUsd:0,cxcBs:0,casheaUsd:0,creditSalesUsd:0,cashInUsd:0,cashOutUsd:0,cashInBs:0,cashOutBs:0,movementCount:0};
+  const out={cxcUsd:0,cxcBs:0,casheaUsd:0,creditSalesUsd:0,returnUsd:0,returnIvaUsd:0,returnCount:0,refundUsd:0,refundBs:0,cashInUsd:0,cashOutUsd:0,cashInBs:0,cashOutBs:0,movementCount:0};
   (S.cxc||[]).forEach(item=>{
     if(!item.cashbox||String(item.cashbox)!==String(box))return;
     (item.payments||[]).forEach(p=>{
@@ -7289,6 +7289,14 @@ function zOperationalTotals(sales,start,end,box){
     if(lot.tipo==='REVERSIÓN'||lot.estado==='Revertido'||!inPeriod(lot.fecha))return;
     const ops=Array.isArray(lot.operaciones)?lot.operaciones:[];
     if((S.casheaMovimientos||[]).some(m=>ops.includes(m.id)&&saleNos.has(String(m.ventaNo))))out.casheaUsd=r2(out.casheaUsd+Number(lot.depositadoUsd||0));
+  });
+  (S.returns||[]).forEach(note=>{
+    if(String(note.cashbox||'')!==String(box)||!inPeriod(note.ts))return;
+    out.returnUsd=r2(out.returnUsd+Number(note.total||0));
+    out.returnIvaUsd=r2(out.returnIvaUsd+Number(note.iva||0));
+    out.returnCount++;
+    if(note.refundCurrency==='VES')out.refundBs=r2(out.refundBs+Number(note.refundAmount||0));
+    else out.refundUsd=r2(out.refundUsd+Number(note.refund||0));
   });
   (S.movimientosCaja||[]).forEach(m=>{
     if(!m.cashbox||String(m.cashbox)!==String(box)||!inPeriod(m.ts))return;
