@@ -891,6 +891,20 @@ function salePortion(sale,lines,mode,residual,fiscalRatio){
   const change=residual?r2(Number(sale.change||0)-r2(Number(sale.change||0)*ratio)):r2(Number(sale.change||0)*ratio);
   return{...sale,lines,sub,disc:r2(sub-base),base,baseG16:r2(baseG16),baseR8:r2(baseR8),baseA31:r2(baseA31),baseEx:r2(baseEx),iva,total:r2(base+iva),igtf,pays,change,documentMode:mode,docType:mode==='HYBRID'?'TICKET-INTERNO':'01-FACTURA'};
 }
+function ticketFiscalOutPlan(lines,ticketLines,fiscalLines){
+  const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S),physical=new Map(),fiscal=new Map(),ticket=new Map(),fiscalUsed=new Map(),result=new Map();
+  (lines||[]).forEach(line=>physical.set(String(line.code),Number(prod(line.code)&&prod(line.code).stock||0)));
+  (fiscalLines||[]).forEach(line=>fiscalUsed.set(String(line.code),(fiscalUsed.get(String(line.code))||0)+Number(line.qty||0)));
+  (ticketLines||[]).forEach(line=>ticket.set(String(line.code),(ticket.get(String(line.code))||0)+Number(line.qty||0)));
+  ticket.forEach((qty,code)=>{
+    const supported=Math.max(0,Number(ledger.balances[code]&&ledger.balances[code].stock||0));
+    const operational=Number(physical.get(code)||0),nonFiscalAvailable=Math.max(0,operational-supported);
+    const fiscalRemaining=Math.max(0,supported-Number(fiscalUsed.get(code)||0));
+    const consume=Math.min(fiscalRemaining,Math.max(0,qty-nonFiscalAvailable));
+    if(consume>1e-9)result.set(code,r8(consume));
+  });
+  return result;
+}
 function totals(){
   let sub=0,base=0,totIva=0,baseG16=0,baseR8=0,baseA31=0,baseEx=0;
   S.cart.forEach(l=>{
@@ -4868,14 +4882,15 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   const fiscalLineIndexes=hybridMode?new Set(hybridPlan.fiscalIndexes):(fiscalMode?new Set(lines.map((_,i)=>i)):new Set());
   const fiscalSaleLines=lines.filter((_,i)=>fiscalLineIndexes.has(i));
   const ticketSaleLines=hybridMode?lines.filter((_,i)=>hybridPlan.ticketIndexes.includes(i)):(internalTicketMode?lines:[]);
+  const physicalRequired=new Map();
+  lines.forEach(line=>physicalRequired.set(String(line.code),(physicalRequired.get(String(line.code))||0)+Number(line.qty)));
+  const physicalShort=Array.from(physicalRequired.entries()).find(([code,qty])=>{const p=prod(code);return !p||Number(p.stock)+1e-9<qty;});
+  if(physicalShort){const p=prod(physicalShort[0]);msg('Venta bloqueada: inventario físico insuficiente para '+(p?p.desc:physicalShort[0])+'. Disponible: '+fq(p&&p.stock||0)+', requerido: '+fq(physicalShort[1])+'.','bad');return;}
   if(fiscalMode){
-    const physicalRequired=new Map();
-    fiscalSaleLines.forEach(line=>physicalRequired.set(String(line.code),(physicalRequired.get(String(line.code))||0)+Number(line.qty)));
-    const physicalShort=Array.from(physicalRequired.entries()).find(([code,qty])=>{const p=prod(code);return !p||Number(p.stock)+1e-9<qty;});
-    if(physicalShort){const p=prod(physicalShort[0]);msg('Venta fiscal bloqueada: inventario físico insuficiente para '+(p?p.desc:physicalShort[0])+'. Disponible: '+fq(p&&p.stock||0)+', requerido: '+fq(physicalShort[1])+'.','bad');return;}
     const fiscalCheck=window.SIFERInventoryLedgers&&window.SIFERInventoryLedgers.canApplyFiscalSale(S,fiscalSaleLines);
     if(!fiscalCheck||!fiscalCheck.ok){const code=fiscalCheck&&fiscalCheck.code||'artículo';const p=prod(code);msg('Venta fiscal bloqueada: inventario fiscal insuficiente para '+(p?p.desc:code)+'. Disponible: '+fq(fiscalCheck&&fiscalCheck.available||0)+'. Registre/valide la existencia fiscal inicial o la compra fiscal antes de facturar.','bad');return;}
   }
+  const ticketFiscalOutByCode=ticketFiscalOutPlan(lines,ticketSaleLines,fiscalSaleLines);
   const creditAmt=(isCred&&st.pending>=0.01)?r2(st.pending):0;
   const casheaAmt=r2(amts.cashea||0);
   let cxcNo=null,casheaNo=null;
@@ -4900,7 +4915,8 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     sub:t.sub,disc:t.disc,base:t.base,
     baseG16:t.baseG16,baseR8:t.baseR8,baseA31:t.baseA31,baseEx:t.baseEx,
     iva:t.iva,total:t.total,igtf:st.igtf,rate:S.cfg.rate,pays,
-    change:r2(st.change),credit:creditAmt,void:false
+    change:r2(st.change),credit:creditAmt,void:false,
+    ticketFiscalOut:Array.from(ticketFiscalOutByCode.entries()).map(([code,qty])=>({code,qty}))
   };
 
   if(casheaAmt>0){
@@ -5044,10 +5060,18 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     }
   }
 
+const ticketFiscalRemaining=new Map(ticketFiscalOutByCode);
 S.cart.forEach((l,lineIndex)=>{
     const p=prod(l.code);
     const baseQty=lineBaseQty(l);
     if(fiscalLineIndexes.has(lineIndex))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':'+p.code+':'+lineIndex,type:'VENTA_FISCAL',dir:'OUT',code:p.code,qty:baseQty,cost:p.cost,document:'FAC-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
+    else{
+      const fiscalOut=Math.min(baseQty,Number(ticketFiscalRemaining.get(p.code)||0));
+      if(fiscalOut>1e-9){
+        window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':TICKET:'+p.code+':'+lineIndex,type:'SALIDA_TICKET_NO_FISCAL',dir:'OUT',code:p.code,qty:fiscalOut,cost:p.cost,document:'TKT-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
+        ticketFiscalRemaining.set(p.code,Math.max(0,Number(ticketFiscalRemaining.get(p.code)||0)-fiscalOut));
+      }
+    }
     p.stock=Math.max(0,r2(p.stock-baseQty));
     addKardex({
       ts,code:p.code,type:'VENTA',dir:'OUT',doc:(internalTicketMode?'TKT-':'FAC-')+pad(invNo),cashbox:currentCaja(),
@@ -5313,7 +5337,7 @@ function salesDlg(){
       // Until a documented refund/reversal workflow exists, never void a sale after
       // money or a third-party financing settlement has been collected.
       const saleCashbox=String(s.cashbox||currentCaja());
-      const saleDocument=(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no);
+      const saleDocument=((s.docType==='TICKET-INTERNO'||(s.documentMode==='HYBRID'&&!s.fiscal))?'TKT-':'FAC-')+pad(s.no);
       const sameSaleClient=x=>{
         const saleRif=String(s.client&&s.client.rif||'').trim();
         const receivableRif=String(x.client&&x.client.rif||'').trim();
@@ -5358,12 +5382,26 @@ function salesDlg(){
           if(p){
             p.stock=r2(p.stock+l.qty);
             addKardex({
-              code:p.code,type:'ANULACIÓN',dir:'IN',doc:(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no),
+              code:p.code,type:'ANULACIÓN',dir:'IN',doc:(s.docType==='TICKET-INTERNO'||(s.documentMode==='HYBRID'&&!s.fiscal)?'TKT-':'FAC-')+pad(s.no),
               party:'Reingreso por anulación de venta ('+s.client.name+')',
               qty:l.qty,stockAfter:p.stock,cost:p.cost,user:S.cfg.cajero
             });
           }
         });
+        if(!isFiscalSale(s)&&Array.isArray(s.ticketFiscalOut)&&s.ticketFiscalOut.length){
+          const sourceId=s.accountingSourceId||('SALE-'+pad(s.no));
+          const ticketMovements=window.SIFERInventoryLedgers.ensureFiscalInventory(S).movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='SALIDA_TICKET_NO_FISCAL');
+          const expected=new Map(s.ticketFiscalOut.map(item=>[String(item.code),Number(item.qty)])),recorded=new Map();
+          ticketMovements.forEach(m=>recorded.set(String(m.code),(recorded.get(String(m.code))||0)+Number(m.qty)));
+          const mismatch=Array.from(expected.entries()).find(([code,qty])=>Math.abs(qty-(recorded.get(code)||0))>1e-8)
+            ||Array.from(recorded.entries()).find(([code,qty])=>Math.abs(qty-(expected.get(code)||0))>1e-8);
+          if(mismatch)throw new Error('El libro fiscal no coincide con las salidas de inventario de ticket para '+mismatch[0]+'. Concílielo antes de anular.');
+          ticketMovements.forEach(original=>window.SIFERInventoryLedgers.applyFiscalMovement(S,{
+            eventId:'VOID-TICKET-SALE:'+original.eventId,type:'REVERSO_SALIDA_TICKET_NO_FISCAL',dir:'IN',
+            code:original.code,qty:original.qty,cost:original.cost,document:'TKT-'+pad(s.no),
+            sourceId,timestamp:Date.now(),cashbox:saleCashbox,user:currentCajero()
+          }));
+        }
         if(isFiscalSale(s)){
           const sourceId=s.accountingSourceId||('SALE-'+pad(s.no));
           const fiscalMovements=window.SIFERInventoryLedgers.ensureFiscalInventory(S).movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='VENTA_FISCAL');
@@ -6256,7 +6294,11 @@ function printerSetupWizardDlg(){
   }}]});
 }
 
-function isFiscalSale(sale){return !!sale&&sale.docType!=='TICKET-INTERNO'&&!['INTERNAL_THERMAL','NO_PRINTER'].includes(sale.documentMode);}
+function isFiscalSale(sale){
+  if(!sale)return false;
+  if(sale.documentMode==='HYBRID')return !!sale.fiscal;
+  return sale.docType!=='TICKET-INTERNO'&&!['INTERNAL_THERMAL','NO_PRINTER'].includes(sale.documentMode);
+}
 
 function seniatSudebanDlg(initialTab){
   if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir el módulo Fiscal.','bad');return;}
