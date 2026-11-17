@@ -7274,7 +7274,7 @@ function zExpectedByMethod(sales,opening){
     const amount=Math.max(0,Number(m.amount||0));
     out[key]+=m.direction==='IN'?amount:-amount;
   });
-  Object.keys(out).forEach(k=>out[k]=r2(k==='efBs'||k==='efUSD'?out[k]:Math.max(0,out[k])));
+  Object.keys(out).forEach(k=>out[k]=r2(out[k]));
   return out;
 }
 function zDiffStatus(rows){
