@@ -7835,7 +7835,7 @@ function showDownloadedUpdatePrompt(version){
   siferUpdatePromptOpen=true;
   const body=h('<div class="form"><p>La actualización <b>v'+esc(version||'disponible')+'</b> se descargó y verificó correctamente en segundo plano.</p><p>Al instalar, SIFER360 cerrará la aplicación ordenadamente. La base SQLite y los datos del negocio permanecerán en su ubicación protegida.</p><p class="hint">Antes de instalar, termine cualquier venta abierta y resuelva las emisiones fiscales pendientes.</p></div>');
   openWin({title:'Actualización lista para instalar',w:520,body,foot:[
-    {label:'Más tarde',fn:()=>{siferUpdatePromptOpen=false;msg('La actualización quedó descargada. Puede instalarla más tarde desde el aviso de actualización.');}},
+    {label:'Más tarde',fn:()=>{siferUpdatePromptOpen=false;msg('La actualización quedó descargada. Se volverá a ofrecer al iniciar SIFER360; no se instalará hasta que el usuario lo acepte.');}},
     {label:'Instalar ahora',primary:true,fn:async()=>{
       const pending=(S&&S.fiscalPrinterJobs||[]).filter(job=>['pending','uncertain','processing'].includes(job.status));
       if(S&&Array.isArray(S.cart)&&S.cart.length){msg('Termine o descarte la venta abierta antes de actualizar.','bad');return false;}
