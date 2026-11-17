@@ -5,7 +5,7 @@ Rama de trabajo de la evolución 1.1.0. La selección de presentaciones y la pri
 
 ## Principios obligatorios
 - SQLite local del servidor LAN sigue siendo la única fuente de verdad.
-- El inventario operativo representa todas las unidades físicas. El libro de inventario con respaldo fiscal conserva movimientos y cantidades sustentados documentalmente.
+- El inventario operativo representa todas las unidades físicas. El libro de inventario con respaldo fiscal conserva movimientos y cantidades sustentados documentalmente. Si una venta por ticket consume físicamente unidades con respaldo fiscal, el sistema registra una salida de inventario fiscal no facturada para que el saldo documental no supere las existencias reales; esto no convierte el ticket en factura fiscal.
 - No se presume respaldo fiscal por importar un producto ni por tenerlo en catálogo.
 - El comprobante de venta y la impresora seleccionada no cambian la obligación tributaria que corresponda a la operación. Los tickets internos se conservan en ventas y auditoría; nunca se ocultan operaciones ni se eliminan de registros exigibles.
 - Los envíos a impresoras se hacen con idempotencia y reconciliación: una respuesta incierta no autoriza repetir cobros ni documentos.
@@ -18,7 +18,7 @@ Rama de trabajo de la evolución 1.1.0. La selección de presentaciones y la pri
 
 La primera implementación de modo híbrido no permite una venta mixta cuando se usa Cashea como medio de pago, porque falta una distribución contractual por documento. En ese caso el POS bloquea la confirmación y pide usar un solo tipo de comprobante o separar la operación. Los pagos restantes se distribuyen proporcionalmente entre documentos hijos y se reconcilian contra la venta padre.
 
-La emisión fiscal debe finalizar antes de considerar confirmada la venta. Si la máquina fiscal queda en estado pendiente o incierto, la operación queda bloqueada para reintento hasta reconciliar el trabajo. El ticket complementario se presenta después de guardar la venta y se imprime desde la pantalla de finalización; si la impresora térmica falla, no se repite el cobro ni la factura fiscal.
+La emisión fiscal debe finalizar antes de considerar confirmada la venta. Si la máquina fiscal queda en estado pendiente o incierto, la operación queda bloqueada para reintento hasta reconciliar el trabajo. El ticket complementario se envía automáticamente a la impresora térmica después de guardar la venta. Se registra su estado como pendiente, enviado o incierto; si la impresora térmica falla, no se repite el cobro ni la factura fiscal y se exige consultar el equipo antes de reimprimir.
 
 ## Presentaciones de productos
 - Cada producto conserva una presentación base y puede registrar otras (botella, lata, six-pack, caja, etc.).
