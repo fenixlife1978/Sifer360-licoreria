@@ -7099,14 +7099,14 @@ function zPayTotals(sales){
   (S.cxc||[]).forEach(item=>{
     if(!item.cashbox||String(item.cashbox)!==box)return;
     (item.payments||[]).forEach(p=>{
-      if(!p.cashbox||String(p.cashbox)!==box)return;
+      if(p.cashbox&&String(p.cashbox)!==box)return;
       const m=zNormalizeMethod(p.method||p.id);if(m)add('Cobro CxC · '+m.name,zPaymentAmount(p,m),m.cur);
     });
   });
   (S.cxp||[]).forEach(item=>{
     if(!item.cashbox||String(item.cashbox)!==box)return;
     (item.payments||[]).forEach(p=>{
-      if(!p.cashbox||String(p.cashbox)!==box)return;
+      if(p.cashbox&&String(p.cashbox)!==box)return;
       const m=zNormalizeMethod(p.method||p.id);if(m)add('Pago CxP · '+m.name,zPaymentAmount(p,m),m.cur);
     });
   });
@@ -7114,7 +7114,7 @@ function zPayTotals(sales){
 }
 function zOperationalTotals(sales,start,end,box){
   const inPeriod=ts=>Number(ts)>=Number(start)&&Number(ts)<=Number(end);
-  const sameBox=(item,payment)=>!!item.cashbox&&!!payment.cashbox&&String(item.cashbox)===String(box)&&String(payment.cashbox)===String(box);
+  const sameBox=(item,payment)=>!!item.cashbox&&String(item.cashbox)===String(box)&&(!payment.cashbox||String(payment.cashbox)===String(box));
   const out={cxcUsd:0,cxcBs:0,casheaUsd:0,creditSalesUsd:0,cashInUsd:0,cashOutUsd:0,cashInBs:0,cashOutBs:0,movementCount:0};
   (S.cxc||[]).forEach(item=>{
     if(!item.cashbox||String(item.cashbox)!==String(box))return;
@@ -7247,14 +7247,14 @@ function zExpectedByMethod(sales,opening){
   (S.cxc||[]).forEach(item=>{
     if(!box||!item.cashbox||String(item.cashbox)!==box)return;
     (item.payments||[]).forEach(p=>{
-      if(!p.cashbox||String(p.cashbox)!==box)return;
+      if(p.cashbox&&String(p.cashbox)!==box)return;
       zAddLedgerPayment(out,p,'IN');
     });
   });
   (S.cxp||[]).forEach(item=>{
     if(!box||!item.cashbox||String(item.cashbox)!==box)return;
     (item.payments||[]).forEach(p=>{
-      if(!p.cashbox||String(p.cashbox)!==box)return;
+      if(p.cashbox&&String(p.cashbox)!==box)return;
       zAddLedgerPayment(out,p,'OUT');
     });
   });
