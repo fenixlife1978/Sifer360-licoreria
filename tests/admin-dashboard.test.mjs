@@ -211,4 +211,10 @@ test('Corte Z consolida ventas por SKU/código y ajustes de inventario positivos
   assert.ok(main.includes("cashbox:ev.cashbox||currentCaja()"));
   assert.ok(main.includes("String(k.cashbox||'')===String(box||'')"));
   assert.ok(main.includes("getInventoryAdjustments(shiftStart(),now,box)"));
+  assert.ok(main.includes("function zNormalizeMethod(value)"));
+  assert.ok(main.includes("function zAddLedgerPayment(out,payment,kind)"));
+  assert.ok(main.includes("(!payment.cashbox||String(payment.cashbox)===String(box))"));
+  assert.ok(main.includes("if(p.cashbox&&String(p.cashbox)!==box)return;"));
+  assert.ok(main.includes("out.cashOutUsd=r2(out.cashOutUsd+Number(p.amountUsd||0))"));
+  assert.ok(main.includes("out.cashOutBs=r2(out.cashOutBs+Number(p.amountBs||0))"));
 });
