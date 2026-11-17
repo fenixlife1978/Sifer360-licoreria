@@ -6559,7 +6559,11 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnExpC')exportLibroComprasCsv(getFilteredPurchases());
         if(ev.target.id==='btnExpInv'){
           const rate=Number(S.cfg.rate)||0,query=norm(qText);
-          if(inventoryBookView==='kardex'||inventoryBookView==='entradas'){
+          if(inventoryBookView==='fiscal'){
+            const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S),headers=['Fecha','Codigo','Tipo','Direccion','Documento_fuente','Cantidad','Costo_unitario_USD','Saldo_fiscal','Operador','Caja'];
+            const rows=ledger.movements.filter(m=>!query||norm([m.code,m.type,m.document,m.user,m.cashbox].join(' ')).includes(query)).map(m=>[m.timestamp?new Date(m.timestamp).toISOString():'',m.code,m.type,m.dir,m.document,m.qty,m.cost,m.stockAfter,m.user,m.cashbox].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';'));
+            downloadBlob('Libro_Inventario_Fiscal_SIFER_'+new Date().toISOString().slice(0,10)+'.csv','\\uFEFF'+[headers.join(';')].concat(rows).join('\\r\\n'),'text/csv;charset=utf-8;');
+          }else if(inventoryBookView==='kardex'||inventoryBookView==='entradas'){
             const headers=['Fecha','Codigo','SKU','Descripcion','Tipo','Direccion','Documento_fuente','Contraparte','Unidad','Cantidad','Costo_unitario_USD','Importe_USD','Saldo_unidades','Operador'];
             const rows=(S.kardex||[]).filter(k=>filterPeriod(Number(k.ts)||Date.parse(k.date||'')||0)).filter(k=>!query||norm([k.code,k.type,k.doc,k.party,k.user].join(' ')).includes(query)).slice().sort((a,b)=>(Number(a.ts)||0)-(Number(b.ts)||0)).map(k=>{const p=(S.products||[]).find(x=>String(x.code)===String(k.code));return [k.ts?new Date(k.ts).toISOString():'',k.code||'',p?.sku||'',p?.desc||'',k.type||'',k.dir||'',k.doc||'',k.party||'',p?.unit||'',Number(k.qty)||0,Number(k.cost)||0,r2((Number(k.qty)||0)*(Number(k.cost)||0)),k.stockAfter??'',k.user||''].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';');});
             downloadBlob('Movimientos_Mercancia_SIFER_'+new Date().toISOString().slice(0,10)+'.csv','\uFEFF'+[headers.join(';')].concat(rows).join('\r\n'),'text/csv;charset=utf-8;');
