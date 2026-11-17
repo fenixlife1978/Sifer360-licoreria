@@ -5097,6 +5097,7 @@ S.cart.forEach((l,lineIndex)=>{
   if(sale.ticketDocument&&sale.fiscal)sale.ticketDocument.fiscal=sale.fiscal;
   S.sales.push(sale);S.invoice=Math.max(S.invoice,invNo+1);S.cart=[];S.sel=-1;S.client=S.clients[0];
   const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);renderAll();msg(fiscalMode?'La impresora fiscal pudo haber emitido el documento, pero SQLite no confirmó la venta. NO reimprima ni repita el cobro; consulte la máquina y reconcilie la intención fiscal pendiente.':'SQLite no confirmó la venta; se mostró el último estado durable disponible y no se confirmó la factura.','bad');return;}
+  renderAll();showSaleCompletion(sale);
   if(hybridMode&&sale.ticketDocument){
     try{
       const net=await window.posDesktop.networkStatus(),thermal=getThermalPrinterProfile(sale.cashbox,String(net&&net.deviceId||''),String(net&&net.role||'')==='standalone');
@@ -5106,15 +5107,15 @@ S.cart.forEach((l,lineIndex)=>{
       sale.ticketDocument.printStatus='sent';sale.ticketDocument.printedAt=Date.now();sale.ticketDocument.printMessage=String(result&&result.message||'Enviado a la impresora térmica.');
       const printSaved=await save();
       if(!printSaved||!printSaved.ok)msg('La factura fiscal y la venta quedaron guardadas; el ticket se envió, pero SQLite no confirmó el estado de impresión. No repita el cobro.','bad');
+      const note=$('.sale-completion-note');if(note&&!hasChange)note.textContent='Venta híbrida vinculada. Factura fiscal emitida Nº '+(sale.fiscal&&sale.fiscal.documentNumber||'')+'. Ticket no fiscal enviado a la impresora térmica. El cobro se registró una sola vez.';
     }catch(error){
       sale.ticketDocument.printStatus='uncertain';sale.ticketDocument.printError=String(error&&error.message||error).slice(0,500);
       await save();
+      const note=$('.sale-completion-note');if(note&&!hasChange)note.textContent='Venta híbrida vinculada. La impresora no confirmó el ticket; consulte el equipo antes de reimprimir. El cobro se registró una sola vez.';
       msg('La factura fiscal y la venta quedaron guardadas, pero la impresora térmica no confirmó el ticket complementario. Consulte la impresora antes de reimprimir.','bad');
     }
   }
-  renderAll();
   msg((hybridMode?'Venta híbrida ':'')+(internalTicketMode?'Ticket de Venta ':'Factura ')+pad(sale.no)+' procesado por '+usd(r2(sale.total+sale.igtf))+(casheaAmt>0?' (Financiado Cashea: '+usd(casheaAmt)+')':'')+(creditAmt>0?' (Saldo a CxC: '+usd(creditAmt)+')':'')+'.');
-  showSaleCompletion(sale);
 }
 
 const TICKET_FONTS=[
