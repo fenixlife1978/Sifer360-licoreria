@@ -5118,12 +5118,13 @@ function salesDlg(){
           ||Array.from(recorded.entries()).find(([code,qty])=>Math.abs(qty-(expected.get(code)||0))>1e-8);
         if(mismatch){msg('No se puede anular la venta fiscal: el libro fiscal no coincide con los renglones de la factura para '+mismatch[0]+'. Primero debe conciliarse el movimiento faltante o sobrante.','bad');return;}
       }
-      let voidNo;try{voidNo=await nextCajaSequence('void',currentCaja());}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
+      const saleCashbox=String(s.cashbox||currentCaja());
+      let voidNo;try{voidNo=await nextCajaSequence('void',saleCashbox);}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
       const rollbackState=JSON.parse(JSON.stringify(S));
       try{
         s.void=true;
         s.transType='03-ANUL';
-        s.voidNo=voidNo;s.voidDoc='ANU-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(voidNo,6);
+        s.voidNo=voidNo;s.voidDoc='ANU-'+saleCashbox.replace(/\W/g,'')+'-'+pad(voidNo,6);
         s.voidTs=Date.now();
         s.lines.forEach(l=>{
           const p=prod(l.code);
@@ -5142,7 +5143,7 @@ function salesDlg(){
           fiscalMovements.forEach(original=>window.SIFERInventoryLedgers.applyFiscalMovement(S,{
             eventId:'VOID-SALE:'+original.eventId,type:'ANULACION_VENTA_FISCAL',dir:'IN',
             code:original.code,qty:original.qty,cost:original.cost,document:'FAC-'+pad(s.no),
-            sourceId,timestamp:Date.now(),cashbox:s.cashbox||currentCaja(),user:currentCajero()
+            sourceId,timestamp:Date.now(),cashbox:saleCashbox,user:currentCajero()
           }));
         }
         S.cxc=(S.cxc||[]).filter(x=>!(Number(x.saleNo)===Number(s.no)&&String(x.cashbox||s.cashbox||currentCaja())===String(s.cashbox||currentCaja())));
