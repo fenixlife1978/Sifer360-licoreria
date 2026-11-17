@@ -20,6 +20,7 @@ test('sale void refuses collected payments and financing until refund workflow e
   assert.ok(handler.includes("String(x.doc||'')===saleDocument"), 'legacy receivables require the exact sale document');
   assert.ok(handler.includes("Math.abs(Number(x.ts)-Number(s.ts))<1000"), 'legacy receivables require a matching sale timestamp');
   assert.ok(handler.includes("sameSaleClient(x)"), 'legacy receivables require the same customer identity');
+  assert.ok(handler.includes("hasAmbiguousLegacyReceivable"), 'ambiguous legacy receivables must block void rather than be ignored');
   assert.ok(handler.includes("S.cxc=(S.cxc||[]).filter(x=>!linkedReceivables.includes(x))"), 'only receivables linked to this sale may be removed');
   assert.match(handler, /!!s\.cashea/);
   assert.match(handler, /reembolso\/reverso correspondiente/);
