@@ -177,11 +177,13 @@ function createLicensing(options = {}) {
       } catch (error) {
         const status = Number(error && error.status);
         if (status === 403 || status === 409) {
+          telemetry('app_error', { detail: 'license_' + status });
           state.licenseStatus = 'revoked';
           persist();
           return { state: 'revoked', blocked: true, message: error.message || 'Licencia inválida, vencida, revocada o sin equipos disponibles.', telemetryEnabled: state.telemetryEnabled };
         }
         lastRefreshAt = 0;
+        telemetry('app_error', { detail: 'crm_connection' });
         const offline = localStatus();
         if (offline.state === 'licensed' || offline.state === 'licensed_offline') return { ...offline, state: 'licensed_offline', message: 'CRM no está disponible. Se mantiene la autorización offline temporal.' };
         return { ...offline, connectionError: error.message || 'No se pudo conectar con CRM-SICOVEN.' };
@@ -209,6 +211,8 @@ function createLicensing(options = {}) {
       telemetry('license_activated');
       return localStatus();
     } catch (error) {
+      const status = Number(error && error.status);
+      telemetry('app_error', { detail: 'activation_' + (status || 'connection') });
       state.licenseKey = previous;
       if (previous) state.licenseStatus = 'active';
       persist();
