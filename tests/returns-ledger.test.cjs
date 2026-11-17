@@ -104,3 +104,14 @@ test('electronic VES refund methods preserve their currency and exchange-rate am
   assert.equal(note.refundAmount,1160);
   assert.equal(state.movimientosCaja.length,0);
 });
+
+test('cash Bs refund creates a BS cash movement understood by Corte Z',()=>{
+  const {sale,state}=fixture();
+  state.cxc[0].total=0;
+  const prepared=prepareReturn({state,sale,lines:[{lineIndex:1,qty:1}],method:'efBs',reason:'Devolución en efectivo Bs.'});
+  const note=applyReturn(state,prepared,{returnNo:9,refundNo:6});
+  assert.equal(note.refundCurrency,'VES');
+  assert.equal(state.movimientosCaja[0].currency,'BS');
+  assert.equal(state.movimientosCaja[0].amount,1160);
+  assert.equal(state.movimientosCaja[0].direction,'OUT');
+});
