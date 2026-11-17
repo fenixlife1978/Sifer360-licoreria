@@ -61,9 +61,9 @@ test('compras fiscales alimentan el libro fiscal; compras no fiscales no lo alim
 });
 
 test('ventas fiscales validan saldo fiscal antes de emitir y solo esas ventas descuentan el libro fiscal', () => {
-  assert.match(source, /const fiscalCheck=window\.SIFERInventoryLedgers&&window\.SIFERInventoryLedgers\.canApplyFiscalSale\(S,lines\)/);
-  assert.match(source, /if\(fiscalMode\)window\.SIFERInventoryLedgers\.applyFiscalMovement\(S,\{eventId:sale\.accountingSourceId\+':'.*?type:'VENTA_FISCAL',dir:'OUT'/);
-  assert.match(source, /p\.stock=Math\.max\(0,r2\(p\.stock-l\.qty\)\);/);
+  assert.match(source, /const fiscalCheck=window\.SIFERInventoryLedgers&&window\.SIFERInventoryLedgers\.canApplyFiscalSale\(S,fiscalSaleLines\)/);
+  assert.match(source, /if\(fiscalLineIndexes\.has\(lineIndex\)\)window\.SIFERInventoryLedgers\.applyFiscalMovement\(S,\{eventId:sale\.accountingSourceId\+':'.*?type:'VENTA_FISCAL',dir:'OUT'/);
+  assert.match(source, /const baseQty=lineBaseQty\(l\);[\s\S]*?p\.stock=Math\.max\(0,r2\(p\.stock-baseQty\)\);/);
 });
 
 test('la compra rechaza cantidades y costos no finitos antes de mutar inventario', () => {
@@ -75,7 +75,7 @@ test('la venta fiscal exige simultáneamente existencia física y fiscal antes d
   const fiscalGuard = source.slice(source.indexOf('if(fiscalMode){', source.indexOf('const pays=METHODS.filter')), source.indexOf('const creditAmt=', source.indexOf('const pays=METHODS.filter')));
   assert.match(fiscalGuard, /physicalRequired=new Map\(\)/);
   assert.match(fiscalGuard, /Number\(p\.stock\)\+1e-9<qty/);
-  assert.match(fiscalGuard, /canApplyFiscalSale\(S,lines\)/);
+  assert.match(fiscalGuard, /canApplyFiscalSale\(S,fiscalSaleLines\)/);
   assert.ok(fiscalGuard.indexOf('physicalShort') < fiscalGuard.indexOf('canApplyFiscalSale'));
 });
 
