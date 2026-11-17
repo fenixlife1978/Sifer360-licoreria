@@ -1,10 +1,8 @@
-name: SIFER360 1.0.8 Desktop and SQLite validation
+name: SIFER360 1.0.8 Local Desktop and SQLite validation
 
 on:
   push:
     branches:
-      - feature/google-drive-automatic-backups
-      - integration/google-drive-1.0.4
   pull_request:
     branches:
       - release/v1.0.0
@@ -19,7 +17,7 @@ concurrency:
 
 jobs:
   desktop-validation:
-    name: Desktop and SQLite backup validation
+    name: Local Desktop and SQLite validation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact source revision
@@ -31,19 +29,12 @@ jobs:
           package-manager-cache: false
       - name: Install dependencies
         run: npm install --legacy-peer-deps
-      - name: Inject public Google OAuth Desktop Client ID
-        env:
-          SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
-        run: |
-          node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(!id || !id.endsWith('.apps.googleusercontent.com')) throw new Error('Falta SIFER360_GOOGLE_OAUTH_CLIENT_ID válido.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({ clientId:id }, null, 2))"
       - name: Run complete automated tests
         run: npm test
       - name: Validate desktop JavaScript syntax
         run: |
           node --check electron/main.cjs
           node --check electron/preload.cjs
-          node --check electron/google-drive-backup.cjs
-          node --check electron/sqlite-json-export.cjs
           node --check electron/binary-architecture.cjs
           node --check public/main.js
           node --check public/access.js
