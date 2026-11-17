@@ -7091,24 +7091,31 @@ function zAddLedgerPayment(out,payment,kind){
   const key=method.id;
   out[key]=(Number(out[key])||0)+(kind==='OUT'?-amount:amount);
 }
-function zPayTotals(sales){
+function zPayTotals(sales,start,end,box){
   const out={};
+  const inPeriod=ts=>Number(ts)>=Number(start)&&Number(ts)<=Number(end);
   const add=(label,amount,cur)=>{const key=label+' ('+cur+')';out[key]=(out[key]||0)+Number(amount||0);};
   sales.forEach(s=>(s.pays||[]).forEach(p=>add(p.name||p.id||'Otro',p.amount,p.cur||'USD')));
-  const box=String(currentCaja());
+  const cashbox=String(box||currentCaja());
   (S.cxc||[]).forEach(item=>{
-    if(!item.cashbox||String(item.cashbox)!==box)return;
+    if(!item.cashbox||String(item.cashbox)!==cashbox)return;
     (item.payments||[]).forEach(p=>{
-      if(p.cashbox&&String(p.cashbox)!==box)return;
+      if((p.cashbox&&String(p.cashbox)!==cashbox)||!inPeriod(p.ts))return;
       const m=zNormalizeMethod(p.method||p.id);if(m)add('Cobro CxC · '+m.name,zPaymentAmount(p,m),m.cur);
     });
   });
   (S.cxp||[]).forEach(item=>{
-    if(!item.cashbox||String(item.cashbox)!==box)return;
+    if(!item.cashbox||String(item.cashbox)!==cashbox)return;
     (item.payments||[]).forEach(p=>{
-      if(p.cashbox&&String(p.cashbox)!==box)return;
+      if((p.cashbox&&String(p.cashbox)!==cashbox)||!inPeriod(p.ts))return;
       const m=zNormalizeMethod(p.method||p.id);if(m)add('Pago CxP · '+m.name,zPaymentAmount(p,m),m.cur);
     });
+  });
+  (S.purchases||[]).forEach(p=>{
+    if(!p.cashbox||String(p.cashbox)!==cashbox||p.void||!inPeriod(p.ts)||Number(p.paid||0)<=0)return;
+    const linked=(S.cxp||[]).some(x=>String(x.cashbox||'')===cashbox&&String(x.purchaseNo||'')===String(p.no));
+    if(linked)return;
+    const m=zNormalizeMethod(p.payMethod);if(m)add('Compra pagada · '+m.name,m.cur==='VES'?Number(p.paid||0)*Number(p.rate||S.cfg.rate||1):Number(p.paid||0),m.cur);
   });
   return out;
 }
@@ -7135,6 +7142,14 @@ function zOperationalTotals(sales,start,end,box){
       if(method&&method.id==='efUSD')out.cashOutUsd=r2(out.cashOutUsd+Number(p.amountUsd||0));
       if(method&&method.id==='efBs')out.cashOutBs=r2(out.cashOutBs+Number(p.amountBs||0));
     });
+  });
+  const cxpPurchaseKeys=new Set((S.cxp||[]).filter(x=>x.purchaseNo!=null&&x.cashbox&&String(x.cashbox)===String(box)).map(x=>String(x.cashbox)+'|'+String(x.purchaseNo)));
+  (S.purchases||[]).forEach(p=>{
+    if(!p.cashbox||String(p.cashbox)!==String(box)||p.void||!inPeriod(p.ts)||Number(p.paid||0)<=0)return;
+    if(cxpPurchaseKeys.has(String(p.cashbox)+'|'+String(p.no)))return;
+    const method=zNormalizeMethod(p.payMethod);
+    if(method&&method.id==='efUSD')out.cashOutUsd=r2(out.cashOutUsd+Number(p.paid||0));
+    if(method&&method.id==='efBs')out.cashOutBs=r2(out.cashOutBs+Number(p.paid||0)*Number(p.rate||S.cfg.rate||1));
   });
   sales.filter(s=>!s.void).forEach(s=>(s.pays||[]).forEach(p=>{if(p.id==='credito')out.creditSalesUsd=r2(out.creditSalesUsd+Number(p.amount||0));}));
   const saleNos=new Set(sales.filter(s=>!s.void&&String(s.cashbox||box)===String(box)).map(s=>String(s.no)));
@@ -7460,7 +7475,7 @@ function corteZDlg(){
       const all=getPeriodSales(),sales=all.filter(s=>!s.void),voids=all.filter(s=>s.void);
       const now=Date.now();
       const rec=result.rec.map(r=>Object.assign({},r,{real:r.real==null?null:Number(r.real),diff:r.diff==null?null:Number(r.diff)}));
-      const draft={id:'VISTA PREVIA · Z-'+box,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:now,productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),now,box),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),now,box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:result.total.status,shortageUsd:result.total.shortageUsd,surplusUsd:result.total.surplusUsd,shortageBs:result.total.shortageBs,surplusBs:result.total.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'previa'};
+      const draft={id:'VISTA PREVIA · Z-'+box,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:now,productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),now,box),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales,shiftStart(),now,box),detailTotals:zOperationalTotals(all,shiftStart(),now,box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:result.total.status,shortageUsd:result.total.shortageUsd,surplusUsd:result.total.surplusUsd,shortageBs:result.total.shortageBs,surplusBs:result.total.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'previa'};
       printCorteZ(draft,false);return;
     }
     if(e.target.id==='zClose'){
@@ -7475,7 +7490,7 @@ function corteZDlg(){
       const rec=result.rec.map(r=>Object.assign({},r,{real:Number(r.real),diff:Number(r.diff)}));
       const seqs=cajaSeqs(),seq=seqs[box]||{z:1};let zSeq;try{zSeq=await nextCajaSequence('z',box);}catch(error){msg('No se pudo reservar el consecutivo del Corte Z: '+error.message,'bad');return;}seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
       const t=Object.assign({},result.total);
-      const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now(),box),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
+      const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now(),box),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales,shiftStart(),Date.now(),box),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
       const zStateBefore=JSON.parse(JSON.stringify(S));
       const closedOpening=Object.assign({},active,{status:'cerrada',closedAt:z.closedAt,cutId:z.id});
       upsertOpeningState(closedOpening);
