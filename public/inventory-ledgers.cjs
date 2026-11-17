@@ -51,9 +51,12 @@ function applyFiscalMovement(state, event) {
   }
   const duplicate = ledger.movements.find(m => String(m.eventId) === eventId);
   if (duplicate) {
+    const requestedCost = event.cost === undefined ? Number(duplicate.cost) : Number(event.cost);
     const same = String(duplicate.code) === code
+      && String(duplicate.type || '') === String(event.type || '')
       && String(duplicate.dir) === dir
       && Math.abs(Number(duplicate.qty) - qty) < 1e-9
+      && Math.abs(Number(duplicate.cost) - requestedCost) < 1e-9
       && String(duplicate.sourceId || duplicate.eventId) === String(event.sourceId || eventId);
     if (!same) throw new Error('Conflicto de idempotencia: el identificador del movimiento ya existe con otros datos.');
     return { applied: false, duplicate: true };
