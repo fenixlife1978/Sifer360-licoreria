@@ -30,7 +30,7 @@ function createLicensing(options = {}) {
     const temporary = statePath + '.tmp';
     fs.mkdirSync(path.dirname(statePath), { recursive: true });
     fs.writeFileSync(temporary, JSON.stringify({ version: 1, encrypted }), { mode: 0o600 });
-    const fd = fs.openSync(temporary, 'r');
+    const fd = fs.openSync(temporary, 'r+');
     try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     fs.renameSync(temporary, statePath);
   }
