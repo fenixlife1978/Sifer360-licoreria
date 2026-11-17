@@ -39,11 +39,14 @@ test('mixed hybrid Cashea is blocked until its financing can be allocated safely
 
 test('only the fiscal allocation consumes the fiscal ledger while every sale line consumes physical stock once',()=>{
   assert.match(main,/if\(fiscalLineIndexes\.has\(lineIndex\)\)window\.SIFERInventoryLedgers\.applyFiscalMovement/);
+  assert.match(main,/if\(fiscalLineIndexes\.has\(lineIndex\)\)window\.SIFERInventoryLedgers\.applyFiscalMovement/);
+  assert.match(main,/type:'SALIDA_TICKET_NO_FISCAL',dir:'OUT'/);
   assert.match(main,/p\.stock=Math\.max\(0,r2\(p\.stock-baseQty\)\)/);
 });
 
 test('hybrid completion offers a separate thermal ticket without repeating the fiscal invoice or sale',()=>{
   assert.match(main,/if\(hybrid&&ticketDocument&&ticketDocument\.lines\.length\)foot\.push/);
   assert.match(main,/showTicket\(ticketDocument\)/);
+  assert.match(main,/printerPrintTicket\(thermal\.printerName,ticketText\(sale\.ticketDocument,columns\)/);
   assert.match(main,/s\.documentMode==='HYBRID'/);
 });
