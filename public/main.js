@@ -7243,6 +7243,8 @@ function zExpectedByMethod(sales,opening){
   out.efBs=Number(opening&&opening.bs||0);
   out.efUSD=Number(opening&&opening.usd||0);
   const box=String(opening&&opening.cashbox||'');
+  const openedAt=Number(opening&&opening.openedAt||opening&&opening.ts||0);
+  const inShift=ts=>Number(ts)>=openedAt&&Number(ts)<=Date.now();
   sales.forEach(s=>{
     (s.pays||[]).forEach(p=>{
       if(Object.prototype.hasOwnProperty.call(out,p.id))out[p.id]+=Number(p.amount||0);
@@ -7262,20 +7264,20 @@ function zExpectedByMethod(sales,opening){
   (S.cxc||[]).forEach(item=>{
     if(!box||!item.cashbox||String(item.cashbox)!==box)return;
     (item.payments||[]).forEach(p=>{
-      if(p.cashbox&&String(p.cashbox)!==box)return;
+      if((p.cashbox&&String(p.cashbox)!==box)||!inShift(p.ts))return;
       zAddLedgerPayment(out,p,'IN');
     });
   });
   (S.cxp||[]).forEach(item=>{
     if(!box||!item.cashbox||String(item.cashbox)!==box)return;
     (item.payments||[]).forEach(p=>{
-      if(p.cashbox&&String(p.cashbox)!==box)return;
+      if((p.cashbox&&String(p.cashbox)!==box)||!inShift(p.ts))return;
       zAddLedgerPayment(out,p,'OUT');
     });
   });
   const cxpPurchaseKeys=new Set((S.cxp||[]).filter(x=>x.purchaseNo!=null&&x.cashbox&&String(x.cashbox)===box).map(x=>String(x.cashbox)+'|'+String(x.purchaseNo)));
   (S.purchases||[]).forEach(p=>{
-    if(!box||!p.cashbox||String(p.cashbox)!==box||p.void||Number(p.paid||0)<=0)return;
+    if(!box||!p.cashbox||String(p.cashbox)!==box||p.void||!inShift(p.ts)||Number(p.paid||0)<=0)return;
     if(cxpPurchaseKeys.has(String(p.cashbox)+'|'+String(p.no)))return;
     const method=zNormalizeMethod(p.payMethod);
     if(!method)return;
