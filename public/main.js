@@ -4786,6 +4786,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       currency:'VES',
       displayCurrency:'USD'
     };
+    let sharedFiscalStillPending=false;
     try{
       let issued;
       if(useSharedFiscal){
@@ -4808,7 +4809,10 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
           fiscalJob.status='uncertain';
           throw new Error('La impresora fiscal compartida no confirmó el resultado. Trabajo '+remoteJob.id+'. Consulte el último documento de la máquina; no se reintentará automáticamente.');
         }else{
-          throw new Error('La solicitud fiscal permanece pendiente en el servidor (trabajo '+(remoteJob.id||'sin ID')+'). No repita el cobro; consulte el estado de la cola fiscal.');
+          // El servidor aún conserva el trabajo en cola o transmitiéndolo. No convertir
+          // un retraso de consulta en una emisión incierta: podría terminar emitiéndose.
+          sharedFiscalStillPending=true;
+          throw new Error('La solicitud fiscal sigue '+(remoteJob.status==='processing'?'en transmisión':'pendiente')+' en el servidor (trabajo '+(remoteJob.id||'sin ID')+'). No repita el cobro; actualice la cola fiscal y concilie el resultado cuando termine.');
         }
       }else{
         issued=await window.posDesktop.fiscalPrinterEmitInvoice(fiscalProfile,fiscalInvoice);
@@ -4820,7 +4824,8 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       if(fiscalProfile)fiscalProfile.serial=issued.fiscalSerial;
       sale.fiscal={provider:(fiscalProfile&&fiscalProfile.provider)||issued.provider||'shared',model:(fiscalProfile&&fiscalProfile.model)||issued.model||'Impresora fiscal compartida',documentNumber:issued.fiscalDocumentNumber,serial:issued.fiscalSerial,authorization:issued.authorization||'',status:'issued'};
     }catch(error){
-      if(fiscalJob.status!=='rejected')fiscalJob.status=(error.statusCode===401||/sesión.*expiró|no autorizado|cajero.*autenticado|usuario.*asignado/i.test(String(error.message||error))||/cola fiscal está bloqueada/i.test(String(error.message||error)))?'rejected':'uncertain';
+      if(sharedFiscalStillPending)fiscalJob.status='pending';
+      else if(fiscalJob.status!=='rejected')fiscalJob.status=(error.statusCode===401||/sesión.*expiró|no autorizado|cajero.*autenticado|usuario.*asignado/i.test(String(error.message||error))||/cola fiscal está bloqueada/i.test(String(error.message||error)))?'rejected':'uncertain';
       fiscalJob.lastError=String(error.message||error).slice(0,1000);
       fiscalJob.lastAttemptAt=Date.now();
       const journalResult=await save();
