@@ -30,8 +30,8 @@ test('v1.0.8 remains local-only and cannot upload SQLite to cloud backup service
   const preload = await read('../electron/preload.cjs');
   const renderer = await read('../public/main.js');
   const workflow = await read('../.github/workflows/sifer360-104-google-drive-validation.yml');
-  assert.match(main, /legacyBackupScheduler\.remove\(\)/);
-  assert.doesNotMatch(main, /createGoogleDriveBackup|backup:run-now|backup:connect-google|sqliteDatabaseToJson/);
+  assert.match(main, /legacyBackupTaskRetirer\.remove\(\)/);
+  assert.doesNotMatch(main, /createGoogleDriveBackup|createWindowsBackupScheduler|backup:run-now|backup:connect-google|sqliteDatabaseToJson|google-drive-backup\.cjs/);
   assert.doesNotMatch(preload, /backupStatus|backupConnectGoogle|backupRunNow|backupEnableDaily/);
   assert.doesNotMatch(renderer, /Google Drive|gdrive|backupRunNow/);
 });
