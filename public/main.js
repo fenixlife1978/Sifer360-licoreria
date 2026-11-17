@@ -5104,7 +5104,23 @@ function salesDlg(){
       if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin((s.docType==='TICKET-INTERNO'?'Anular ticket ':'Anular factura ')+pad(s.no)))return;
       // Until a documented refund/reversal workflow exists, never void a sale after
       // money or a third-party financing settlement has been collected.
-      const linkedReceivables=(S.cxc||[]).filter(x=>Number(x.saleNo)===Number(s.no)&&String(x.cashbox||s.cashbox||currentCaja())===String(s.cashbox||currentCaja()));
+      const saleCashbox=String(s.cashbox||currentCaja());
+      const saleDocument=(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no);
+      const sameSaleClient=x=>{
+        const saleRif=String(s.client&&s.client.rif||'').trim();
+        const receivableRif=String(x.client&&x.client.rif||'').trim();
+        if(saleRif&&receivableRif)return saleRif===receivableRif;
+        return String(x.client&&x.client.name||'').trim()===String(s.client&&s.client.name||'').trim();
+      };
+      const linkedReceivables=(S.cxc||[]).filter(x=>{
+        if(Number(x.saleNo)!==Number(s.no))return false;
+        if(x.cashbox!==undefined&&x.cashbox!==null&&String(x.cashbox)!=='')return String(x.cashbox)===saleCashbox;
+        // Legacy rows without cashbox are safe to associate only with a full sale fingerprint.
+        return String(x.doc||'')===saleDocument
+          &&x.ts!==undefined&&x.ts!==null&&Number.isFinite(Number(x.ts))
+          &&Math.abs(Number(x.ts)-Number(s.ts))<1000
+          &&sameSaleClient(x);
+      });
       const hasCollectedSalePayment=(Array.isArray(s.pays)&&s.pays.some(p=>String(p.id||'')!=='credito'&&Number(p.amount||0)>1e-8))
         ||linkedReceivables.some(x=>Number(x.paid||0)>1e-8||(Array.isArray(x.payments)&&x.payments.length>0))
         ||!!s.cashea;
@@ -5120,7 +5136,6 @@ function salesDlg(){
           ||Array.from(recorded.entries()).find(([code,qty])=>Math.abs(qty-(expected.get(code)||0))>1e-8);
         if(mismatch){msg('No se puede anular la venta fiscal: el libro fiscal no coincide con los renglones de la factura para '+mismatch[0]+'. Primero debe conciliarse el movimiento faltante o sobrante.','bad');return;}
       }
-      const saleCashbox=String(s.cashbox||currentCaja());
       let voidNo;try{voidNo=await nextCajaSequence('void',saleCashbox);}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
       const rollbackState=JSON.parse(JSON.stringify(S));
       try{
@@ -5148,7 +5163,7 @@ function salesDlg(){
             sourceId,timestamp:Date.now(),cashbox:saleCashbox,user:currentCajero()
           }));
         }
-        S.cxc=(S.cxc||[]).filter(x=>!(Number(x.saleNo)===Number(s.no)&&String(x.cashbox||s.cashbox||currentCaja())===String(s.cashbox||currentCaja())));
+        S.cxc=(S.cxc||[]).filter(x=>!linkedReceivables.includes(x));
 
       }catch(error){
         restoreStateSnapshotIfNeeded(null,rollbackState);
