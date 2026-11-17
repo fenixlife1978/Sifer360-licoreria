@@ -1171,8 +1171,10 @@ if (!hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     readNetworkConfig();
     if (networkConfig.role !== 'client') await initializeDatabase();
-    licensing = createLicensing({ app, safeStorage, shell });
-    await licensing.initialize();
+    if (!process.argv.includes('--sifer-google-drive-backup')) {
+      licensing = createLicensing({ app, safeStorage, shell });
+      await licensing.initialize();
+    }
     googleDriveBackup = createGoogleDriveBackup({ app, safeStorage, shell, dialog });
     if (process.argv.includes('--sifer-google-drive-backup')) {
       if (networkConfig.role === 'client') throw new Error('Los clientes LAN no generan respaldos: la única SQLite está en el servidor.');
