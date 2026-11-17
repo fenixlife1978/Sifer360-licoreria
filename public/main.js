@@ -4797,17 +4797,22 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
           saleId:sale.accountingSourceId,invoice:fiscalInvoice
         });
         let remoteJob=accepted&&accepted.job;
+        // Desde que el servidor acepta la solicitud, un fallo consultando el estado
+        // no demuestra que la emisión sea incierta: podría seguir en cola o imprimiéndose.
+        sharedFiscalStillPending=true;
         for(let attempt=0;attempt<120;attempt++){
           if(!remoteJob||!remoteJob.status)throw new Error('El servidor no devolvió el estado del trabajo fiscal. No se volverá a enviar la factura.');
           if(['issued','uncertain','rejected'].includes(remoteJob.status))break;
           await new Promise(resolve=>setTimeout(resolve,500));
           remoteJob=await window.posDesktop.fiscalNetworkStatus(idempotencyKey);
         }
-        if(remoteJob.status==='issued'&&remoteJob.result){issued=remoteJob.result;}
+        if(remoteJob.status==='issued'&&remoteJob.result){sharedFiscalStillPending=false;issued=remoteJob.result;}
         else if(remoteJob.status==='rejected'){
+          sharedFiscalStillPending=false;
           fiscalJob.status='rejected';
           throw new Error('El servidor rechazó la emisión antes de imprimir: '+(remoteJob.error||'revise la configuración fiscal del servidor.'));
         }else if(remoteJob.status==='uncertain'){
+          sharedFiscalStillPending=false;
           fiscalJob.status='uncertain';
           throw new Error('La impresora fiscal compartida no confirmó el resultado. Trabajo '+remoteJob.id+'. Consulte el último documento de la máquina; no se reintentará automáticamente.');
         }else{
@@ -4981,6 +4986,10 @@ function showTicket(s){
       if(noPrinter){msg('Esta instalación está configurada sin impresora. El comprobante queda guardado en SQLite y puede imprimirse después de configurar un dispositivo.');return false;}
       let stationId='',stationRole='unknown';try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'');stationRole=String(net&&net.role||'unknown');}catch{}
       const thermal=getThermalPrinterProfile(s.cashbox,stationId,stationRole==='standalone');
+      if(s.documentMode==='DUAL_PRINTER'&&(!stationId||!['standalone','server','client'].includes(stationRole)||!thermal||thermal.enabled!==true||!thermal.printerName||!window.posDesktop||typeof window.posDesktop.printerPrintTicket!=='function')){
+        msg('Ticket no enviado: esta estación no tiene una impresora térmica propia configurada para la caja de origen. No se utilizará la impresora predeterminada de Windows para evitar interferir con la fiscal.','bad');
+        return false;
+      }
       if(thermal&&thermal.enabled===true&&thermal.printerName&&window.posDesktop&&window.posDesktop.printerPrintTicket){
         try{const result=await window.posDesktop.printerPrintTicket(thermal.printerName,ticketText(s,thermal.columns||42),{columns:thermal.columns||42});msg(result.message+' · '+thermal.printerName);}
         catch(error){msg('No se pudo confirmar el envío del ticket: '+error.message,'bad');}
