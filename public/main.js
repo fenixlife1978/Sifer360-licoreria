@@ -5102,7 +5102,7 @@ function salesDlg(){
       if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin((s.docType==='TICKET-INTERNO'?'Anular ticket ':'Anular factura ')+pad(s.no)))return;
       // Until a documented refund/reversal workflow exists, never void a sale after
       // money or a third-party financing settlement has been collected.
-      const linkedReceivables=(S.cxc||[]).filter(x=>Number(x.saleNo)===Number(s.no)&&String(x.cashbox||'')===String(s.cashbox||currentCaja()));
+      const linkedReceivables=(S.cxc||[]).filter(x=>Number(x.saleNo)===Number(s.no)&&String(x.cashbox||s.cashbox||currentCaja())===String(s.cashbox||currentCaja()));
       const hasCollectedSalePayment=(Array.isArray(s.pays)&&s.pays.some(p=>String(p.id||'')!=='credito'&&Number(p.amount||0)>1e-8))
         ||linkedReceivables.some(x=>Number(x.paid||0)>1e-8||(Array.isArray(x.payments)&&x.payments.length>0))
         ||!!s.cashea;
@@ -5145,7 +5145,7 @@ function salesDlg(){
             sourceId,timestamp:Date.now(),cashbox:s.cashbox||currentCaja(),user:currentCajero()
           }));
         }
-        S.cxc=(S.cxc||[]).filter(x=>!(x.saleNo===s.no&&x.cashbox===currentCaja()));
+        S.cxc=(S.cxc||[]).filter(x=>!(Number(x.saleNo)===Number(s.no)&&String(x.cashbox||s.cashbox||currentCaja())===String(s.cashbox||currentCaja())));
 
       }catch(error){
         restoreStateSnapshotIfNeeded(null,rollbackState);
