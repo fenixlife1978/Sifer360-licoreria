@@ -5100,6 +5100,13 @@ function salesDlg(){
     if(e.target.id==='saVoid'&&s&&!s.void&&s.fiscal){msg('Esta factura ya fue emitida por una máquina fiscal. No se permite anularla solo en el POS. Debe integrarse y ejecutarse la anulación/nota de crédito en la propia máquina.','bad');return;}
     if(e.target.id==='saVoid'&&s&&!s.void){
       if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin((s.docType==='TICKET-INTERNO'?'Anular ticket ':'Anular factura ')+pad(s.no)))return;
+      // Until a documented refund/reversal workflow exists, never void a sale after
+      // money or a third-party financing settlement has been collected.
+      const linkedReceivables=(S.cxc||[]).filter(x=>Number(x.saleNo)===Number(s.no)&&String(x.cashbox||'')===String(s.cashbox||currentCaja()));
+      const hasCollectedSalePayment=(Array.isArray(s.pays)&&s.pays.some(p=>String(p.id||'')!=='credito'&&Number(p.amount||0)>1e-8))
+        ||linkedReceivables.some(x=>Number(x.paid||0)>1e-8||(Array.isArray(x.payments)&&x.payments.length>0))
+        ||!!s.cashea;
+      if(hasCollectedSalePayment){msg('No se puede anular esta venta: registra cobros o financiación. Primero debe ejecutarse y conciliarse el reembolso/reverso correspondiente. Esta anulación no puede eliminar una cuenta por cobrar ni devolver mercancía dejando dinero cobrado sin tratamiento.','bad');return;}
       if(!armed||Date.now()-armed>5000){armed=Date.now();e.target.textContent='Confirmar anulación';return;}
       if(isFiscalSale(s)){
         const sourceId=s.accountingSourceId||('SALE-'+pad(s.no));
