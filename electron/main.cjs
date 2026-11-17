@@ -22,11 +22,29 @@ const { sqliteDatabaseToJson } = require('./sqlite-json-export.cjs');
 const PrinterManager = require('./printer-manager.cjs');
 const { createFiscalNetworkQueue } = require('./fiscal-network-queue.cjs');
 const { createLicensing } = require('./licensing.cjs');
+const { autoUpdater } = require('electron-updater');
 let fiscalNetworkQueue = null;
 let fiscalNetworkQueueRecovered = false;
 let googleDriveBackup = null;
 let licensing = null;
 let scheduledBackupRunning = false;
+let updateDownloaded = false;
+let updateCheckTimer = null;
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = false;
+autoUpdater.allowPrerelease = false;
+autoUpdater.logger = console;
+function broadcastAppUpdate(status, details = {}) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('app-update:status', { status, ...details });
+  }
+}
+autoUpdater.on('checking-for-update', () => broadcastAppUpdate('checking'));
+autoUpdater.on('update-available', info => broadcastAppUpdate('available', { version: info.version, releaseNotes: info.releaseNotes || '' }));
+autoUpdater.on('update-not-available', info => broadcastAppUpdate('not-available', { version: info.version }));
+autoUpdater.on('download-progress', progress => broadcastAppUpdate('download-progress', { percent: Math.round(progress.percent || 0), transferred: progress.transferred, total: progress.total }));
+autoUpdater.on('update-downloaded', info => { updateDownloaded = true; broadcastAppUpdate('downloaded', { version: info.version, releaseNotes: info.releaseNotes || '' }); });
+autoUpdater.on('error', error => broadcastAppUpdate('error', { message: String(error && error.message || error).slice(0, 500) }));
 const authSessions = new Map();
 const initSqlJs = require('sql.js');
 
@@ -1115,6 +1133,33 @@ function registerIpc() {
   ipcMain.handle('fiscal-printer:readiness', async (_e, profile = {}) => FiscalPrinterManager.checkFiscalReadiness(profile));
   ipcMain.handle('fiscal-printer:test-bridge', async (_e, profile = {}) => FiscalPrinterManager.testBridge(profile));
   ipcMain.handle('fiscal-printer:emit-invoice', async (_e, profile = {}, invoice = {}) => FiscalPrinterManager.emitInvoice(profile, invoice));
+  ipcMain.handle('app-update:check', async () => {
+    if (!app.isPackaged) return { ok: false, reason: 'development-build' };
+    try { const result = await autoUpdater.checkForUpdates(); return { ok: true, version: result && result.updateInfo && result.updateInfo.version || null }; }
+    catch (error) { return { ok: false, error: String(error && error.message || error) }; }
+  });
+  ipcMain.handle('app-update:install', async () => {
+    if (!updateDownloaded) throw new Error('La actualización todavía no terminó de descargarse.');
+    if (networkConfig.role === 'server' && networkServer) throw new Error('Cierre todas las cajas cliente y detenga el servidor LAN antes de actualizar el equipo servidor.');
+    if (networkConfig.role !== 'client' && db) {
+      const integrity = databaseIntegrityStatus(db);
+      if (integrity !== 'ok') throw new Error('SQLite no superó integrity_check; se canceló la instalación para proteger los datos.');
+      persistDb();
+      if (databaseIntegrityStatus(db) !== 'ok') throw new Error('No se pudo confirmar la integridad de SQLite antes de actualizar.');
+      const backupDir = path.join(app.getPath('userData'), 'update-backups');
+      fs.mkdirSync(backupDir, { recursive: true });
+      const backupPath = path.join(backupDir, 'sifer360-preupdate-' + new Date().toISOString().replace(/[:.]/g, '-') + '.sqlite');
+      const backupBytes = Buffer.from(db.export());
+      const backupCheck = new SqlDatabase(new Uint8Array(backupBytes));
+      if (databaseIntegrityStatus(backupCheck) !== 'ok') { try { backupCheck.close(); } catch {} throw new Error('El respaldo previo a la actualización no superó la verificación de integridad.'); }
+      try { backupCheck.close(); } catch {}
+      fs.writeFileSync(backupPath, backupBytes, { flag: 'wx' });
+      const writtenBackup = fs.readFileSync(backupPath);
+      if (!writtenBackup.equals(backupBytes)) throw new Error('No se pudo verificar el respaldo previo a la actualización.');
+    }
+    setImmediate(() => autoUpdater.quitAndInstall(false, true));
+    return { ok: true };
+  });
 
 }
 function createWindow() {
@@ -1188,6 +1233,9 @@ if (!hasSingleInstanceLock) {
     registerNetworkIpc();
     if (networkConfig.role === 'server') { try { await startLanServer(networkConfig.port); } catch (error) { throw new Error('No se pudo reanudar el servidor LAN. SIFER no iniciará en modo local para evitar crear una base de datos paralela. ' + (error && error.message ? error.message : String(error))); } }
     createWindow();
+    if (app.isPackaged) {
+      updateCheckTimer = setInterval(() => autoUpdater.checkForUpdates().catch(error => broadcastAppUpdate('error', { message: String(error && error.message || error).slice(0, 500) })), 6 * 60 * 60 * 1000);
+    }
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   }).catch(error => {
     if (process.argv.includes('--sifer-google-drive-backup')) {
@@ -1199,4 +1247,4 @@ if (!hasSingleInstanceLock) {
   });
 }
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('before-quit', () => { clearTimeout(saveTimer); if (networkServer) networkServer.close(); stopDiscoveryServer(); persistDb(); });
+app.on('before-quit', () => { clearTimeout(saveTimer); if (updateCheckTimer) clearInterval(updateCheckTimer); if (networkServer) networkServer.close(); stopDiscoveryServer(); persistDb(); });

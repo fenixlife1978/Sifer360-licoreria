@@ -7,7 +7,7 @@ const vite = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8')
 const css = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
 
 test('portable Electron carga todos los recursos de interfaz con rutas relativas', () => {
-  for (const asset of ['logo.svg', 'styles.css', 'access.css', 'sifer360-cashea.css', 'sql-wasm.js', 'main.js', 'access.js']) {
+  for (const asset of ['logo.svg', 'styles.css', 'access.css', 'sifer360-cashea.css', 'sql-wasm.js', 'inventory-ledgers.js', 'main.js', 'access.js']) {
     assert.match(html, new RegExp('(?:href|src)="./' + asset.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"'), asset);
     assert.equal(existsSync(new URL('../public/' + asset, import.meta.url)), true, asset);
   }

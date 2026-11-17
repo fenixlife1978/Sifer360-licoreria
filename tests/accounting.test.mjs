@@ -154,3 +154,11 @@ test('las notas 1.0.2 documentan la corrección de campos bloqueados y saldos in
   assert.match(notes, /saldo inicial opcional/);
   assert.match(notes, /asiento de apertura cuadrado/);
 });
+
+test('Contabilidad VEN-NIF consulta inventario operativo y fiscal desde el mismo estado SQLite del POS',()=>{
+  assert.match(accounting,/\['inventory','Inventario fiscal'\]/);
+  assert.match(accounting,/function renderInventory\(\)/);
+  assert.match(accounting,/full\.fiscalInventory/);
+  assert.match(accounting,/full\.products/);
+  assert.match(accounting,/Movimientos del inventario fiscal/);
+});

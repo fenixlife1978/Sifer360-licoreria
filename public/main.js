@@ -162,6 +162,29 @@ function addKardex(ev){
   });
 }
 
+function fiscalInventoryOpeningDlg(){
+  if(!['admin','contador'].includes(activeUser()?.role)){msg('Solo administrador o contador puede registrar la apertura fiscal.','bad');return;}
+  const products=S.products||[];if(!products.length){msg('Registre primero los artículos.','bad');return;}
+  const choices=products.map((p,i)=>(i+1)+'. '+p.code+' — '+p.desc).join('\n');
+  const index=Number(prompt('Seleccione el artículo por número:\n'+choices));const p=products[index-1];if(!p){msg('Artículo no seleccionado.','bad');return;}
+  const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);
+  if(ledger.movements.some(m=>m.code===p.code)){msg('El artículo ya tiene movimientos fiscales; la apertura solo se admite una vez. Use un ajuste fiscal trazable.','bad');return;}
+  const qty=Number(String(prompt('Cantidad fiscal inicial documentada para '+p.desc+':','0')||'').replace(',','.'));
+  const cost=Number(String(prompt('Costo unitario fiscal validado en US$: ',String(p.cost||0))||'').replace(',','.'));
+  const doc=String(prompt('Documento/soporte de apertura (obligatorio):','')||'').trim();
+  if(!(qty>0)||!(cost>=0)||!doc){msg('Apertura cancelada: indique cantidad, costo y soporte documental.','bad');return;}
+  if(qty>(Number(p.stock)||0)+1e-9){msg('La existencia fiscal inicial no puede superar el inventario físico operativo de '+fq(p.stock||0)+'.','bad');return;}
+  const rollback=JSON.parse(JSON.stringify(S));
+  try{window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'OPENING-FISCAL:'+p.code,type:'APERTURA_FISCAL',dir:'IN',code:p.code,qty,cost,document:doc,sourceId:'OPENING-FISCAL:'+p.code,timestamp:Date.now(),cashbox:currentCaja(),user:currentCajero()});}
+  catch(error){msg(error.message,'bad');return;}
+  save().then(result=>{if(!result||!result.ok){restoreStateSnapshotIfNeeded(result,rollback);msg('SQLite no confirmó la apertura fiscal; se restauró el estado anterior.','bad');return;}renderAll();msg('Apertura fiscal registrada con soporte para '+p.code+'.');});
+}
+function renderFiscalInventoryReport(products,ledger){
+  const balances=products.map((p,i)=>{const b=ledger.balances[String(p.code)]||{stock:0,cost:0};return '<tr><td>'+(i+1)+'</td><td class="mono">'+esc(p.code)+'</td><td>'+esc(p.desc)+'</td><td class="r">'+fq(b.stock||0)+'</td><td class="r">'+nf(b.cost||0)+'</td><td class="r">'+nf(r2((Number(b.stock)||0)*(Number(b.cost)||0)))+'</td></tr>';}).join('');
+  const movements=ledger.movements.slice().sort((a,b)=>(Number(a.timestamp)||0)-(Number(b.timestamp)||0));
+  const movementRows=movements.map(m=>'<tr><td>'+fmtDT(m.timestamp)+'</td><td class="mono">'+esc(m.code)+'</td><td>'+esc((products.find(p=>p.code===m.code)||{}).desc||'Artículo no localizado')+'</td><td>'+esc(m.type)+'</td><td>'+(m.dir==='IN'?'Entrada':'Salida')+'</td><td class="mono">'+esc(m.document||'—')+'</td><td class="r">'+(m.dir==='IN'?'+':'−')+fq(m.qty)+'</td><td class="r">'+nf(m.cost)+'</td><td class="r">'+fq(m.stockAfter)+'</td><td>'+esc(m.user||'—')+'</td></tr>').join('')||'<tr class="empty"><td colspan="10">Sin movimientos fiscales registrados.</td></tr>';
+  return '<div class="hint">Inventario fiscal separado del inventario operativo. Se alimenta con aperturas documentadas y compras con factura fiscal; descuenta únicamente ventas fiscales. Los tickets y compras no fiscales no alteran este libro.</div><h4>Existencias fiscales y valoración auxiliar</h4><div class="gridwrap fiscal-wrap"><table class="grid"><thead><tr><th>#</th><th>Código</th><th>Artículo</th><th class="r">Existencia fiscal</th><th class="r">Costo US$</th><th class="r">Valor US$</th></tr></thead><tbody>'+balances+'</tbody></table></div><h4>Libro de movimientos fiscales</h4><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1100px"><thead><tr><th>Fecha</th><th>Código</th><th>Artículo</th><th>Tipo</th><th>Dirección</th><th>Documento fuente</th><th class="r">Cantidad</th><th class="r">Costo US$</th><th class="r">Saldo fiscal</th><th>Operador</th></tr></thead><tbody>'+movementRows+'</tbody></table></div>';
+}
 function seed(){
   S={
     cfg:{
@@ -173,7 +196,7 @@ function seed(){
     products:[],
     clients:[{name:'Consumidor final',rif:'',tel:''}],
     suppliers:[],
-    sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],openings:[],movimientosCaja:[],kardex:[],counts:[],
+    sales:[],held:[],purchases:[],fiscalInventory:{version:1,balances:{},movements:[]},cxc:[],cxp:[],cortesZ:[],openings:[],movimientosCaja:[],kardex:[],counts:[],
     lotesSudeban:[],retencionesIva:[],retencionesIslr:[],cambiosDivisas:[],rateAudit:[],bcvRates:{},casheaMovimientos:[],casheaLiquidaciones:[],documents:[],fiscalPrinterJobs:[],accounting:{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
@@ -183,7 +206,7 @@ function seed(){
 function stateSnapshot(){
   return {
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
-    sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],openings:S.openings||[],movimientosCaja:S.movimientosCaja||[],
+    sales:S.sales,held:S.held,purchases:S.purchases,fiscalInventory:S.fiscalInventory||{version:1,balances:{},movements:[]},cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],openings:S.openings||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,retencionesIslr:S.retencionesIslr||[],cambiosDivisas:S.cambiosDivisas,rateAudit:S.rateAudit||[],bcvRates:S.bcvRates||{},
     casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],fiscalPrinterJobs:S.fiscalPrinterJobs||[],accounting:S.accounting||{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
@@ -731,6 +754,8 @@ function load(){
     S.held=Array.isArray(d.held)?d.held:[];
     S.heldDeletedIds=Array.isArray(d.heldDeletedIds)?d.heldDeletedIds:[];
     if(Array.isArray(d.purchases))S.purchases=d.purchases;
+    S.fiscalInventory=d.fiscalInventory&&typeof d.fiscalInventory==='object'?d.fiscalInventory:{version:1,balances:{},movements:[]};
+    if(window.SIFERInventoryLedgers)window.SIFERInventoryLedgers.ensureFiscalInventory(S);
     if(Array.isArray(d.cxc))S.cxc=d.cxc;
     if(Array.isArray(d.cxp))S.cxp=d.cxp;
     if(Array.isArray(d.kardex)&&d.kardex.length)S.kardex=d.kardex;
@@ -2655,6 +2680,7 @@ function comprasDlg(initialTab){
         const p=prod(l.code);
         if(p){
           p.stock=Math.max(0,r2(p.stock-l.qty));
+          if(c.docType==='FACTURA_FISCAL'){const sourceId='PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no),originalEvent=sourceId+':'+p.code,ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);if(ledger.movements.some(m=>m.eventId===originalEvent))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'VOID-PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no)+':'+p.code,type:'ANULACION_COMPRA_FISCAL',dir:'OUT',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(c.no),sourceId,timestamp:Date.now(),cashbox:c.cashbox||currentCaja(),user:currentCajero()});}
           addKardex({
             code:p.code,type:'ANULACIÓN',dir:'OUT',doc:'COM-'+pad(c.no),
             party:'Anulación compra prov. '+c.supplier.name,qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
@@ -2736,6 +2762,7 @@ function comprasDlg(initialTab){
       p.stock=nextStock;
       p.cost=nextCost;
       if(l.price>0){p.price=r8(l.price);if(p.pricing){p.pricing.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;p.pricing.markupSale=p.price>0?r2(((p.price-p.cost)/p.price)*100):0;}if(p.presentations&&p.presentations[0]&&Number(p.presentations[0].factor)===1)p.presentations[0].price=p.price;if(p.pricing&&Array.isArray(p.pricing.gaps)){p.pricing.gaps.forEach((g,idx)=>{if(idx===0){g.price=p.price;g.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;}else if(p.pricing.mode==='auto'){g.price=r2(p.price*(1-(Number(g.gapPct)||0)/100));g.markupCost=p.cost>0?r2(((g.price-p.cost)/p.cost)*100):0;}});}}
+      if(docType==='FACTURA_FISCAL')window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'PURCHASE-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(no)+':'+p.code,type:'COMPRA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(no),sourceId:'PURCHASE-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(no),timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
       addKardex({
         ts,code:p.code,type:'COMPRA',dir:'IN',doc:'COM-'+pad(no),
         party:sup.name+' (Fac. '+docProv+')',qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
@@ -4692,6 +4719,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     amount:r2(amts[m.id]),
     ref:(refs&&refs[m.id])||''
   }));
+  if(fiscalMode){const fiscalCheck=window.SIFERInventoryLedgers&&window.SIFERInventoryLedgers.canApplyFiscalSale(S,lines);if(!fiscalCheck||!fiscalCheck.ok){const code=fiscalCheck&&fiscalCheck.code||'artículo';const p=prod(code);msg('Venta fiscal bloqueada: inventario fiscal insuficiente para '+(p?p.desc:code)+'. Disponible: '+fq(fiscalCheck&&fiscalCheck.available||0)+'. Registre/valide la existencia fiscal inicial o la compra fiscal antes de facturar.','bad');return;}}
   const creditAmt=(isCred&&st.pending>=0.01)?r2(st.pending):0;
   const casheaAmt=r2(amts.cashea||0);
   let cxcNo=null,casheaNo=null;
@@ -4849,6 +4877,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
 
 S.cart.forEach(l=>{
     const p=prod(l.code);
+    if(fiscalMode)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':'+p.code,type:'VENTA_FISCAL',dir:'OUT',code:p.code,qty:l.qty,cost:p.cost,document:'FAC-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
     p.stock=Math.max(0,r2(p.stock-l.qty));
     addKardex({
       ts,code:p.code,type:'VENTA',dir:'OUT',doc:(internalTicketMode?'TKT-':'FAC-')+pad(invNo),cashbox:currentCaja(),
@@ -5053,6 +5082,7 @@ function salesDlg(){
         const p=prod(l.code);
         if(p){
           p.stock=r2(p.stock+l.qty);
+          if(isFiscalSale(s)){const sourceId=s.accountingSourceId||('SALE-'+pad(s.no)),originalEvent=sourceId+':'+p.code,ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);if(ledger.movements.some(m=>m.eventId===originalEvent))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'VOID-SALE-'+String(s.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(s.no)+':'+p.code,type:'ANULACION_VENTA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.unitCost||p.cost,document:'FAC-'+pad(s.no),sourceId,timestamp:Date.now(),cashbox:s.cashbox||currentCaja(),user:currentCajero()});}
           addKardex({
             code:p.code,type:'ANULACIÓN',dir:'IN',doc:(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no),
             party:'Reingreso por anulación de venta ('+s.client.name+')',
@@ -6132,10 +6162,10 @@ function seniatSudebanDlg(initialTab){
     movements.forEach(m=>{const key=[m.code||'',m.type||'',m.dir||''].join('|'),row=grouped.get(key)||{code:m.code||'',type:m.type||'',dir:m.dir||'',qty:0,value:0,count:0,docs:new Set()};row.qty+=Number(m.qty)||0;row.value+=(Number(m.qty)||0)*(Number(m.cost)||0);row.count++;if(m.doc)row.docs.add(String(m.doc));grouped.set(key,row);});
     const registerRows=Array.from(grouped.values()).sort((a,b)=>String(a.code).localeCompare(String(b.code),'es')||String(a.type).localeCompare(String(b.type),'es')).map(g=>{const p=productMap.get(String(g.code));return '<tr><td class="mono">'+esc(g.code)+'</td><td>'+esc(p?.desc||'Artículo histórico no localizado')+'</td><td>'+esc(p?.unit||'und')+'</td><td>'+esc(g.type)+'</td><td>'+(g.dir==='IN'?'Entradas':'Salidas')+'</td><td class="r">'+fq(g.qty)+'</td><td class="r">'+nf(g.qty?g.value/g.qty:0)+'</td><td class="r">'+nf(r2(g.value))+'</td><td class="r">'+g.count+'</td><td>'+esc(Array.from(g.docs).join(', ')||'Referencia no registrada')+'</td></tr>';}).join('')||'<tr class="empty"><td colspan="10">No existen eventos reales en el período seleccionado.</td></tr>';
     const stockTable='<div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1180px"><thead><tr><th>#</th><th>Código</th><th>SKU</th><th>Descripción / clasificación</th><th>U.M.</th><th class="r">Existencia</th><th class="r">Costo CPP US$</th><th class="r">Valor US$</th><th class="r">Stock mínimo</th><th>Control</th><th>Último movimiento</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="5" class="r"><b>TOTAL GENERAL</b></td><td class="r"><b>'+fq(totalUnits)+'</b></td><td></td><td class="r"><b>'+nf(totalCost)+'</b></td><td colspan="3"></td></tr></tfoot></table></div>';
-    const views=[['existencias','Existencias actuales'],['kardex','Kardex detallado'],['entradas','Entradas y salidas'],['vennif','Valoración VEN-NIF'],['mercantil','Inventario mercantil']];
-    const tabs='<div class="tabs inv-book-tabs">'+views.map(([id,label])=>'<button class="tab '+(inventoryBookView===id?'active':'')+'" data-inv-view="'+id+'">'+label+'</button>').join('')+'</div>';
+    const views=[['existencias','Inventario operativo'],['fiscal','Inventario fiscal'],['kardex','Kardex detallado'],['entradas','Entradas y salidas'],['vennif','Valoración VEN-NIF'],['mercantil','Inventario mercantil']];
+    const tabs='<div class="tabs inv-book-tabs">'+views.map(([id,label])=>'<button class="tab '+(inventoryBookView===id?'active':'')+'" data-inv-view="'+id+'">'+label+'</button>').join('')+(inventoryBookView==='fiscal'?'<button class="btn mini2 primary" data-inv-opening>＋ Apertura fiscal</button>':'')+'</div>';
     let content='';
-    if(inventoryBookView==='kardex')content='<div class="hint">Kardex cronológico reutilizando los eventos existentes de S.kardex. Importe = cantidad × costo registrado; el saldo se muestra únicamente cuando el evento lo conserva.</div><div class="kpis"><div class="kpi"><span>Entradas del período</span><b class="ok">'+fq(totalIn)+'</b><small>'+usd(valueIn)+'</small></div><div class="kpi"><span>Salidas del período</span><b class="warn">'+fq(totalOut)+'</b><small>'+usd(valueOut)+'</small></div><div class="kpi"><span>Eventos encontrados</span><b>'+movements.length+'</b><small>Sin duplicar el Kardex profesional</small></div></div><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1320px"><thead><tr><th>Fecha / hora</th><th>Código</th><th>Artículo</th><th>Tipo</th><th>Dirección</th><th>Documento fuente</th><th>Contraparte / detalle</th><th class="r">Cantidad</th><th class="r">Costo unit. US$</th><th class="r">Importe US$</th><th class="r">Saldo</th><th>Operador</th></tr></thead><tbody>'+movementRows+'</tbody></table></div>';
+    if(inventoryBookView==='fiscal'){const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);content=renderFiscalInventoryReport(products,ledger);}else if(inventoryBookView==='kardex')content='<div class="hint">Kardex cronológico reutilizando los eventos existentes de S.kardex. Importe = cantidad × costo registrado; el saldo se muestra únicamente cuando el evento lo conserva.</div><div class="kpis"><div class="kpi"><span>Entradas del período</span><b class="ok">'+fq(totalIn)+'</b><small>'+usd(valueIn)+'</small></div><div class="kpi"><span>Salidas del período</span><b class="warn">'+fq(totalOut)+'</b><small>'+usd(valueOut)+'</small></div><div class="kpi"><span>Eventos encontrados</span><b>'+movements.length+'</b><small>Sin duplicar el Kardex profesional</small></div></div><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1320px"><thead><tr><th>Fecha / hora</th><th>Código</th><th>Artículo</th><th>Tipo</th><th>Dirección</th><th>Documento fuente</th><th>Contraparte / detalle</th><th class="r">Cantidad</th><th class="r">Costo unit. US$</th><th class="r">Importe US$</th><th class="r">Saldo</th><th>Operador</th></tr></thead><tbody>'+movementRows+'</tbody></table></div>';
     else if(inventoryBookView==='entradas')content='<div class="hint">Registro auxiliar por artículo, tipo y período, consolidado exclusivamente desde movimientos existentes. Las salidas por autoconsumo/retiro solo aparecerán si fueron registradas como operación fuente identificable; no se infieren.</div><div class="kpis"><div class="kpi"><span>Total entradas</span><b class="ok">'+fq(totalIn)+'</b><small>'+usd(valueIn)+'</small></div><div class="kpi"><span>Total salidas</span><b class="warn">'+fq(totalOut)+'</b><small>'+usd(valueOut)+'</small></div><div class="kpi"><span>Artículos con movimientos</span><b>'+new Set(movements.map(m=>String(m.code||''))).size+'</b><small>'+movements.length+' eventos fuente</small></div></div><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1120px"><thead><tr><th>Código</th><th>Artículo</th><th>U.M.</th><th>Tipo</th><th>Dirección</th><th class="r">Cantidad acumulada</th><th class="r">Costo medio US$</th><th class="r">Importe US$</th><th class="r">Eventos</th><th>Documentos fuente</th></tr></thead><tbody>'+registerRows+'</tbody></table></div>';
     else if(inventoryBookView==='vennif')content='<div class="hint">Vista auxiliar de medición: costo unitario CPP y valor de existencias disponibles. No se encontró un submódulo de deterioro/valor neto realizable ni asientos automáticos de reducción; no se simulan ajustes ni se declara cumplimiento VEN-NIF por esta sola vista.</div>'+stockTable+'<div class="group"><b>Información no gestionada:</b> evaluación documentada del valor neto realizable, deterioro por artículo, reversión de deterioros y asientos contables de ajuste. Debe incorporarse como flujo específico antes de presentar esos importes como medición VEN-NIF completa.</div>';
     else if(inventoryBookView==='mercantil')content='<div class="semaforo-bar" style="background:#FFF6E5;border-color:#F5DEB0"><div class="semaforo-dot" style="background:#945D08"></div><div class="semaforo-text" style="color:#744600"><b>VISTA PREPARATORIA DE INVENTARIO MERCANTIL</b>. El corte actual de mercancía no constituye por sí solo el libro mercantil completo ni acredita su apertura, cierre, firma o formalización.</div></div><div class="khead"><div><span>Fecha del corte disponible</span><b>'+esc(fmtDT(Date.now()))+'</b></div><div><span>Inventario actual a costo registrado</span><b>'+usd(totalCost)+'</b></div><div><span>Saldo de apertura validado</span><b>No disponible en esta auditoría</b></div><div><span>Estado de reconstrucción</span><b>Requiere validar apertura e historial</b></div></div>'+stockTable+'<div class="group"><b>Alcance pendiente:</b> apertura anual certificada; cierre físico y valorizado; activos, derechos, créditos y pasivos distintos de mercancía; y resultados del ejercicio. No se fabrican saldos históricos cuando faltan eventos o documentos de apertura.</div>';
@@ -6445,6 +6475,7 @@ function seniatSudebanDlg(initialTab){
     if(e.target.id==='btnFiscalNetworkQueue'){fiscalNetworkQueueDlg();return;}
     const inventoryViewBtn=e.target.closest('[data-inv-view]');
     if(inventoryViewBtn){inventoryBookView=inventoryViewBtn.dataset.invView;renderTabContent();return;}
+    if(e.target.closest('[data-inv-opening]')){fiscalInventoryOpeningDlg();return;}
     const tabBtn=e.target.closest('.tab[data-tab]');
     if(tabBtn){
       $('.tab.active',el)?.classList.remove('active');
@@ -6529,7 +6560,11 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnExpC')exportLibroComprasCsv(getFilteredPurchases());
         if(ev.target.id==='btnExpInv'){
           const rate=Number(S.cfg.rate)||0,query=norm(qText);
-          if(inventoryBookView==='kardex'||inventoryBookView==='entradas'){
+          if(inventoryBookView==='fiscal'){
+            const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S),headers=['Fecha','Codigo','Tipo','Direccion','Documento_fuente','Cantidad','Costo_unitario_USD','Saldo_fiscal','Operador','Caja'];
+            const rows=ledger.movements.filter(m=>!query||norm([m.code,m.type,m.document,m.user,m.cashbox].join(' ')).includes(query)).map(m=>[m.timestamp?new Date(m.timestamp).toISOString():'',m.code,m.type,m.dir,m.document,m.qty,m.cost,m.stockAfter,m.user,m.cashbox].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';'));
+            downloadBlob('Libro_Inventario_Fiscal_SIFER_'+new Date().toISOString().slice(0,10)+'.csv','\uFEFF'+[headers.join(';')].concat(rows).join('\r\n'),'text/csv;charset=utf-8;');
+          }else if(inventoryBookView==='kardex'||inventoryBookView==='entradas'){
             const headers=['Fecha','Codigo','SKU','Descripcion','Tipo','Direccion','Documento_fuente','Contraparte','Unidad','Cantidad','Costo_unitario_USD','Importe_USD','Saldo_unidades','Operador'];
             const rows=(S.kardex||[]).filter(k=>filterPeriod(Number(k.ts)||Date.parse(k.date||'')||0)).filter(k=>!query||norm([k.code,k.type,k.doc,k.party,k.user].join(' ')).includes(query)).slice().sort((a,b)=>(Number(a.ts)||0)-(Number(b.ts)||0)).map(k=>{const p=(S.products||[]).find(x=>String(x.code)===String(k.code));return [k.ts?new Date(k.ts).toISOString():'',k.code||'',p?.sku||'',p?.desc||'',k.type||'',k.dir||'',k.doc||'',k.party||'',p?.unit||'',Number(k.qty)||0,Number(k.cost)||0,r2((Number(k.qty)||0)*(Number(k.cost)||0)),k.stockAfter??'',k.user||''].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';');});
             downloadBlob('Movimientos_Mercancia_SIFER_'+new Date().toISOString().slice(0,10)+'.csv','\uFEFF'+[headers.join(';')].concat(rows).join('\r\n'),'text/csv;charset=utf-8;');
@@ -7804,6 +7839,37 @@ function restoreWorkspaceAfterReload(){
 window.addEventListener('sifer:authenticated',event=>{
   if(event.detail&&event.detail.role==='admin'&&S&&S.cfg&&S.cfg.printSetupCompleted!==true&&S.cfg.printMode==='NOT_CONFIGURED')setTimeout(()=>printerSetupWizardDlg(),900);
 });
+let siferUpdatePromptOpen=false;
+function showDownloadedUpdatePrompt(version){
+  window.__SIFER_UPDATE_READY=true;
+  let banner=document.getElementById('sifer-update-banner');
+  if(!banner){banner=document.createElement('button');banner.id='sifer-update-banner';banner.type='button';banner.textContent='Actualización SIFER360 lista · Instalar';banner.style.cssText='position:fixed;z-index:99999;right:16px;bottom:18px;padding:12px 16px;border:1px solid #2563eb;border-radius:10px;background:#123b70;color:#fff;font-weight:700;box-shadow:0 4px 18px #0004;cursor:pointer';banner.addEventListener('click',()=>showDownloadedUpdatePrompt(version));document.body.appendChild(banner);}
+  if(siferUpdatePromptOpen)return;
+  siferUpdatePromptOpen=true;
+  const body=h('<div class="form"><p>La actualización <b>v'+esc(version||'disponible')+'</b> se descargó y verificó correctamente en segundo plano.</p><p>Al instalar, SIFER360 cerrará la aplicación ordenadamente. La base SQLite y los datos del negocio permanecerán en su ubicación protegida.</p><p class="hint">Antes de instalar, termine cualquier venta abierta y resuelva las emisiones fiscales pendientes.</p></div>');
+  openWin({title:'Actualización lista para instalar',w:520,body,foot:[
+    {label:'Más tarde',fn:()=>{siferUpdatePromptOpen=false;msg('La actualización quedó descargada. Se volverá a ofrecer al iniciar SIFER360; no se instalará hasta que el usuario lo acepte.');}},
+    {label:'Instalar ahora',primary:true,fn:async()=>{
+      const pending=(S&&S.fiscalPrinterJobs||[]).filter(job=>['pending','uncertain','processing'].includes(job.status));
+      if(S&&Array.isArray(S.cart)&&S.cart.length){msg('Termine o descarte la venta abierta antes de actualizar.','bad');return false;}
+      if(pending.length){msg('No se puede actualizar mientras existan emisiones fiscales pendientes o inciertas. Concilie primero la cola fiscal.','bad');return false;}
+      try{const result=await window.posDesktop.appUpdateInstall();if(!result||!result.ok)throw new Error('El sistema no confirmó la preparación de la instalación.');msg('Cerrando SIFER360 para instalar la actualización…');}
+      catch(error){msg('No se pudo iniciar la actualización: '+error.message,'bad');return false;}
+      return true;
+    }}
+  ],onClose:()=>{siferUpdatePromptOpen=false;}});
+}
+function connectSiferAutoUpdater(){
+  if(!window.posDesktop||typeof window.posDesktop.onAppUpdateStatus!=='function')return;
+  window.posDesktop.onAppUpdateStatus(payload=>{
+    if(!payload)return;
+    if(payload.status==='available'){msg('Nueva actualización v'+(payload.version||'disponible')+' detectada. Se está descargando en segundo plano.');}
+    else if(payload.status==='download-progress'){window.__SIFER_UPDATE_PROGRESS=payload.percent||0;}
+    else if(payload.status==='downloaded'){showDownloadedUpdatePrompt(payload.version);}
+    else if(payload.status==='error'){console.warn('SIFER360 updater:',payload.message||'Error de actualización');}
+  });
+  if(typeof window.posDesktop.appUpdateCheck==='function')window.posDesktop.appUpdateCheck().catch(error=>console.warn('No se pudo iniciar la comprobación de actualizaciones:',error));
+}
 function showStartupFailure(error){
   const detail=error&&error.stack?error.stack:(error&&error.message?error.message:String(error));
   console.error('SIFER360: error fatal al iniciar la interfaz',error);
@@ -7820,6 +7886,7 @@ prepareDatabaseBeforeStartup().then(async()=>{
   renderCatOptions();
   renderAll();
   wire();
+  connectSiferAutoUpdater();
   if(window.__POS_OPENING_MIGRATION_ERROR)msg(window.__POS_OPENING_MIGRATION_ERROR,'bad');
   primeOperationBaseline();
   window.__SIFER_READY = true;

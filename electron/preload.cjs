@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('posDesktop', {
+  appUpdateCheck: () => ipcRenderer.invoke('app-update:check'),
+  appUpdateInstall: () => ipcRenderer.invoke('app-update:install'),
+  onAppUpdateStatus: callback => { if (typeof callback !== 'function') return () => {}; const listener = (_event, payload) => callback(payload); ipcRenderer.on('app-update:status', listener); return () => ipcRenderer.removeListener('app-update:status', listener); },
   authInitializeLegacyUsers: users => ipcRenderer.invoke('auth:initialize-legacy', users),
   authLogin: credentials => ipcRenderer.invoke('auth:login', credentials),
   authVerifySession: token => ipcRenderer.invoke('auth:verify-session', token),
