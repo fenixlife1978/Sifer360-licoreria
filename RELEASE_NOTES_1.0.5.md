@@ -5,7 +5,7 @@
 - Aviso no intrusivo con acceso directo a planes, pagos y activación; al vencer la prueba, la aplicación exige una licencia válida.
 - Activación online desde CRM-SICOVEN con clave de licencia y código de producto exclusivo `SIFER360_LICORERIA`.
 - La clave y el estado local se guardan cifrados con Electron safeStorage/DPAPI.
-- Revalidación online al iniciar y al recuperar conectividad. El margen offline lo determina CRM (7 días por defecto, configurable entre 1 y 30 días).
+- Revalidación online al iniciar y al recuperar conectividad. CRM entrega un token offline firmado Ed25519 que vincula producto, licencia, instalación y vencimiento. El margen offline lo determina CRM (7 días por defecto, configurable entre 1 y 30 días).
 - Una licencia de SICOVEN u otro producto no activa SIFER360 LICORERÍA. Los límites de equipos y revocaciones se respetan desde CRM.
 
 ## Planes y catálogo
