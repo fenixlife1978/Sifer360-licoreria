@@ -4792,6 +4792,10 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     try{
       let issued;
       if(useSharedFiscal){
+        // El POST puede expirar después de que el servidor haya guardado el trabajo.
+        // Desde antes del envío, un error de transporte se trata como pendiente;
+        // solo respuestas de rechazo explícitas permiten marcarlo rechazado.
+        sharedFiscalStillPending=true;
         const accepted=await window.posDesktop.fiscalNetworkSubmit({
           idempotencyKey,cashbox:currentCaja(),cashier:currentCajero(),userSessionToken:String((activeUser()||{}).authToken||''),
           saleId:sale.accountingSourceId,invoice:fiscalInvoice
@@ -4831,8 +4835,10 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       if(fiscalProfile)fiscalProfile.serial=issued.fiscalSerial;
       sale.fiscal={provider:(fiscalProfile&&fiscalProfile.provider)||issued.provider||'shared',model:(fiscalProfile&&fiscalProfile.model)||issued.model||'Impresora fiscal compartida',documentNumber:issued.fiscalDocumentNumber,serial:issued.fiscalSerial,authorization:issued.authorization||'',status:'issued'};
     }catch(error){
-      if(sharedFiscalStillPending)fiscalJob.status='pending';
-      else if(fiscalJob.status!=='rejected')fiscalJob.status=(error.statusCode===401||/sesión.*expiró|no autorizado|cajero.*autenticado|usuario.*asignado/i.test(String(error.message||error))||/cola fiscal está bloqueada/i.test(String(error.message||error)))?'rejected':'uncertain';
+      const fiscalErrorText=String(error.message||error);
+      const definitiveFiscalRejection=([400,401,403].includes(Number(error.statusCode))||/sesión.*expiró|no autorizado|cajero.*autenticado|usuario.*asignado|cola fiscal está bloqueada/i.test(fiscalErrorText));
+      if(sharedFiscalStillPending&&!definitiveFiscalRejection)fiscalJob.status='pending';
+      else if(fiscalJob.status!=='rejected')fiscalJob.status=definitiveFiscalRejection?'rejected':'uncertain';
       fiscalJob.lastError=String(error.message||error).slice(0,1000);
       fiscalJob.lastAttemptAt=Date.now();
       const journalResult=await save();
