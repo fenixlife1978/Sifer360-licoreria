@@ -4793,7 +4793,7 @@ function showSaleCompletion(sale){
   if(hybrid&&ticketDocument&&ticketDocument.lines.length)foot.push({label:'Ver / imprimir ticket complementario',primary:true,fn:()=>{closeWin();showTicket(ticketDocument);return false;}});
   else if(!hybrid)foot.push({label:noPrinter?'Ver comprobante interno':(internalTicket?'Ver / imprimir ticket interno':'Ver / imprimir ticket'),primary:true,fn:()=>{closeWin();showTicket(sale);return false;}});
   foot.push({label:'Cerrar'});
-  openWin({title:hasChange?'Vuelto de la venta':'Venta finalizada',w:430,body,foot,onOpen:()=>{const node=$('.sale-completion',body);if(node)node.setAttribute('tabindex','-1');}});
+  openWin({title:hasChange?'Vuelto de la venta':'Venta finalizada',w:390,body,foot,onOpen:()=>{const node=$('.sale-completion',body);if(node)node.setAttribute('tabindex','-1');}});
 }
 
 async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
@@ -5069,6 +5069,7 @@ S.cart.forEach((l,lineIndex)=>{
       payments:paidUpfront>0?[{ts,method:'Pago inicial en caja',cur:'USD',amountUsd:paidUpfront,amountBs:r2(paidUpfront*S.cfg.rate),ref:(internalTicketMode?'TKT-':'FAC-')+pad(invNo),note:'Abono en caja al registrar la venta'}]:[]
     });
   }
+  if(sale.ticketDocument&&sale.fiscal)sale.ticketDocument.fiscal=sale.fiscal;
   S.sales.push(sale);S.invoice=Math.max(S.invoice,invNo+1);S.cart=[];S.sel=-1;S.client=S.clients[0];
   const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);renderAll();msg(fiscalMode?'La impresora fiscal pudo haber emitido el documento, pero SQLite no confirmó la venta. NO reimprima ni repita el cobro; consulte la máquina y reconcilie la intención fiscal pendiente.':'SQLite no confirmó la venta; se mostró el último estado durable disponible y no se confirmó la factura.','bad');return;}
   renderAll();
