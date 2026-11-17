@@ -70,3 +70,11 @@ test('la compra rechaza cantidades y costos no finitos antes de mutar inventario
   assert.match(source, /Number\.isFinite\(Number\(l\.qty\)\)[\s\S]{0,120}Number\.isFinite\(Number\(l\.cost\)\)/);
   assert.match(source, /try\{lines=pLines\.map\([\s\S]{0,2500}catch\(error\)\{restoreStateSnapshotIfNeeded\(null,rollbackState\)/);
 });
+
+test('la venta fiscal exige simultáneamente existencia física y fiscal antes de emitir', () => {
+  const fiscalGuard = source.slice(source.indexOf('if(fiscalMode){', source.indexOf('const pays=METHODS.filter')), source.indexOf('const creditAmt=', source.indexOf('const pays=METHODS.filter')));
+  assert.match(fiscalGuard, /physicalRequired=new Map\(\)/);
+  assert.match(fiscalGuard, /Number\(p\.stock\)\+1e-9<qty/);
+  assert.match(fiscalGuard, /canApplyFiscalSale\(S,lines\)/);
+  assert.ok(fiscalGuard.indexOf('physicalShort') < fiscalGuard.indexOf('canApplyFiscalSale'));
+});
