@@ -31,7 +31,7 @@ test('fiscal purchase reversals and fiscal sale voids only reverse recorded fisc
 
 test('operational/fiscal inventory transaction matrix is documented without pretending legal compliance',()=>{
  assert.match(doc,/Compra sin factura fiscal/);
- assert.match(doc,/Ticket no fiscal/);
+ assert.match(doc,/ticket no fiscal/i);
  assert.match(doc,/No se presume que todo el stock operativo sea fiscal/);
  assert.match(doc,/no equivale por sí solo al libro contable VEN-NIF/);
 });
