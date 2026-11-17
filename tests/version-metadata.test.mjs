@@ -7,10 +7,13 @@ const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 test('v1.0.8 package and Windows artifacts use one consistent version', async () => {
   const pkg = JSON.parse(await read('../package.json'));
   const builder = JSON.parse(await read('../electron-builder.json'));
-  const [buildExe, desktop, drive] = await Promise.all([
+  const [buildExe, desktop, validation, main, preload, renderer] = await Promise.all([
     read('../.github/workflows/build-exe.yml'),
     read('../.github/workflows/desktop-verification.yml'),
-    read('../.github/workflows/sifer360-104-google-drive-validation.yml')
+    read('../.github/workflows/sifer360-104-google-drive-validation.yml'),
+    read('../electron/main.cjs'),
+    read('../electron/preload.cjs'),
+    read('../public/main.js')
   ]);
 
   assert.equal(pkg.version, '1.0.8');
@@ -22,4 +25,16 @@ test('v1.0.8 package and Windows artifacts use one consistent version', async ()
   assert.doesNotMatch(buildExe, /SIFER360-1\.0\.[467]-/);
   assert.doesNotMatch(desktop, /SIFER360-1\.0\.[467]-/);
   assert.doesNotMatch(drive, /SIFER360-1\.0\.[467]-/);
+});
+
+test('v1.0.8 remains local-only and cannot upload SQLite to cloud backup services', async () => {
+  const main = await read('../electron/main.cjs');
+  const preload = await read('../electron/preload.cjs');
+  const renderer = await read('../public/main.js');
+  const workflow = await read('../.github/workflows/sifer360-104-google-drive-validation.yml');
+  assert.match(main, /legacyBackupScheduler\\.remove\\(\\)/);
+  assert.doesNotMatch(main, /createGoogleDriveBackup|backup:run-now|backup:connect-google|sqliteDatabaseToJson/);
+  assert.doesNotMatch(preload, /backupStatus|backupConnectGoogle|backupRunNow|backupEnableDaily/);
+  assert.doesNotMatch(renderer, /Google Drive|gdrive|backupRunNow/);
+  assert.doesNotMatch(workflow, /GOOGLE_OAUTH|google-drive-oauth/);
 });
