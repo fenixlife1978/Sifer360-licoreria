@@ -37,3 +37,11 @@ test('operational/fiscal inventory transaction matrix is documented without pret
  assert.match(doc,/No se presume que todo el stock operativo sea fiscal/);
  assert.match(doc,/no equivale por sí solo al libro contable VEN-NIF/);
 });
+
+test('purchase void prevalidates physical/fiscal balances and restores the SQLite snapshot on failure',()=>{
+ assert.match(pos,/const rollbackState=JSON\.parse\(JSON\.stringify\(S\)\);[\s\S]*?const fiscalLines=/);
+ assert.match(pos,/const fiscalCheck=window\.SIFERInventoryLedgers\.canApplyFiscalSale\(S,fiscalLines\)/);
+ assert.match(pos,/const physicalShort=c\.lines\.find/);
+ assert.match(pos,/restoreStateSnapshotIfNeeded\(null,rollbackState\)/);
+ assert.match(pos,/restoreStateSnapshotIfNeeded\(persisted,rollbackState\)/);
+});
