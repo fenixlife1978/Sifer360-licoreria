@@ -127,7 +127,7 @@ function applyReturn(state,prepared,{returnNo,refundNo,now=Date.now(),user=''}={
     state.movimientosCaja.push({
       id:'REF-'+prepared.cashbox.replace(/\W/g,'')+'-'+String(refundNo).padStart(6,'0'),
       cashbox:prepared.cashbox,sequence:Number(refundNo),ts:now,direction:'OUT',
-      currency:prepared.refundCurrency,amount:prepared.refundAmount,
+      currency:prepared.refundCurrency==='VES'?'BS':'USD',amount:prepared.refundAmount,
       reason:'Reembolso '+note.id+' · Venta '+prepared.saleNo,
       counterpartAccount:'Reembolsos a clientes',rate:prepared.rate,user
     });
