@@ -49,14 +49,28 @@ function applyFiscalMovement(state, event) {
   if (!eventId || !code || !Number.isFinite(qty) || qty <= 0 || !['IN', 'OUT'].includes(dir)) {
     throw new Error('Movimiento fiscal incompleto o inválido.');
   }
-  if (ledger.movements.some(m => m.eventId === eventId)) return { applied: false, duplicate: true };
+  const duplicate = ledger.movements.find(m => String(m.eventId) === eventId);
+  if (duplicate) {
+    const requestedCost = event.cost === undefined ? Number(duplicate.cost) : Number(event.cost);
+    const same = String(duplicate.code) === code
+      && String(duplicate.type || '') === String(event.type || '')
+      && String(duplicate.dir) === dir
+      && Math.abs(Number(duplicate.qty) - qty) < 1e-9
+      && Math.abs(Number(duplicate.cost) - requestedCost) < 1e-9
+      && String(duplicate.sourceId || duplicate.eventId) === String(event.sourceId || eventId)
+      && String(duplicate.reason || '') === String(event.reason || '');
+    if (!same) throw new Error('Conflicto de idempotencia: el identificador del movimiento ya existe con otros datos.');
+    return { applied: false, duplicate: true };
+  }
   const current = ledger.balances[code] || { stock: 0, cost: Number(event.cost) || 0 };
   const before = Math.max(0, Number(current.stock) || 0);
   if (dir === 'OUT' && before + 1e-9 < qty) {
     throw new Error('Existencia fiscal insuficiente para ' + code + ': disponible ' + before + ', requerido ' + qty + '.');
   }
   const after = dir === 'IN' ? before + qty : before - qty;
-  const cost = Math.max(0, Number(event.cost === undefined ? current.cost : event.cost) || 0);
+  const rawCost = event.cost === undefined ? current.cost : Number(event.cost);
+  if (!Number.isFinite(Number(rawCost)) || Number(rawCost) < 0) throw new Error('Costo unitario fiscal inválido.');
+  const cost = Number(rawCost);
   const nextCost = dir === 'IN' && after > 0
     ? ((before * (Number(current.cost) || 0)) + (qty * cost)) / after
     : (Number(current.cost) || cost);
@@ -65,7 +79,7 @@ function applyFiscalMovement(state, event) {
     eventId, sourceId: String(event.sourceId || eventId), code, type: String(event.type || ''),
     dir, qty: Math.round(qty * 1e8) / 1e8, stockBefore: before,
     stockAfter: Math.round(after * 1e8) / 1e8, cost,
-    document: String(event.document || ''), timestamp: Number(event.timestamp) || Date.now(),
+    document: String(event.document || ''), reason: String(event.reason || ''), timestamp: Number(event.timestamp) || Date.now(),
     cashbox: String(event.cashbox || ''), user: String(event.user || '')
   });
   return { applied: true, stockBefore: before, stockAfter: after };

@@ -119,7 +119,7 @@ test('la vista previa 80 mm está disponible antes de confirmar el cierre y no g
   assert.match(fn, /id="zClose">Confirmar cierre e imprimir/);
   assert.ok(fn.indexOf('id="zPreview"') < fn.indexOf('id="zClose"'));
   assert.match(fn, /if\(e\.target\.id==='zPreview'\)[\s\S]*?const draft=\{/);
-  assert.match(fn, /payments:zPayTotals\(sales\)/);
+  assert.match(fn, /payments:zPayTotals\(sales,shiftStart\(\),now,box\)/);
   assert.match(fn, /reconciliation:rec/);
   assert.match(fn, /printCorteZ\(draft,false\);return;/);
   assert.match(pos, /Object\.entries\(z\.payments\)\.map\(\(\[name,amount\]\)=>line\(name,name\.includes\('\(VES\)'\)\?bsf\(amount\):usd\(amount\)\)/);
@@ -152,4 +152,66 @@ test('Corte Z reutiliza la apertura de inicio de sesión y oculta la segunda ape
   assert.match(pos, /writeActiveOpening\(op\)/);
   assert.doesNotMatch(access, /sifer360_openings|function renderOpening\(/);
   assert.match(pos, /const boxOpen=\(\)=>!!\(active&&String\(active\.cashbox\)===box&&active\.status==='abierta'\)/);
+});
+
+
+test('el arqueo Z calcula cobros CxC, pagos CxP, compras al contado y movimientos por caja/turno', () => {
+  const normalizeStart = pos.indexOf('function zNormalizeMethod(');
+  const normalizeEnd = pos.indexOf('function zPayTotals(', normalizeStart);
+  const expectedStart = pos.indexOf('function zExpectedByMethod(');
+  const expectedEnd = pos.indexOf('function zDiffStatus(', expectedStart);
+  assert.ok(normalizeStart >= 0 && normalizeEnd > normalizeStart);
+  assert.ok(expectedStart >= 0 && expectedEnd > expectedStart);
+  const helpers = pos.slice(normalizeStart, normalizeEnd);
+  const expectedFn = pos.slice(expectedStart, expectedEnd);
+  const sandbox = {
+    METHODS: [
+      { id: 'efUSD', name: 'Efectivo USD', cur: 'USD' },
+      { id: 'efBs', name: 'Efectivo Bs.', cur: 'VES' },
+      { id: 'transf', name: 'Transferencia Bs.', cur: 'VES' }
+    ],
+    S: {
+      cfg: { rate: 10 },
+      cxc: [
+        { cashbox: 'Caja 1', payments: [
+          { cashbox: 'Caja 1', ts: 1100, method: 'efUSD', amountUsd: 20, amountBs: 200 },
+          { cashbox: 'Caja 1', ts: 1101, method: 'efBs', amountUsd: 4, amountBs: 40 },
+          { cashbox: 'Caja 1', ts: 900, method: 'efUSD', amountUsd: 999, amountBs: 9990 },
+          { cashbox: 'Caja 2', ts: 1102, method: 'efUSD', amountUsd: 999, amountBs: 9990 }
+        ] }
+      ],
+      cxp: [
+        { cashbox: 'Caja 1', payments: [
+          { cashbox: 'Caja 1', ts: 1200, method: 'efBs', amountUsd: 2.5, amountBs: 25 }
+        ] },
+        { cashbox: 'Caja 1', purchaseNo: 'COM-2', payments: [
+          { cashbox: 'Caja 1', ts: 1300, method: 'efBs', amountUsd: 5, amountBs: 50 }
+        ] }
+      ],
+      purchases: [
+        { no: 'COM-1', cashbox: 'Caja 1', ts: 1400, paid: 12, payMethod: 'efUSD', rate: 10 },
+        { no: 'COM-2', cashbox: 'Caja 1', ts: 1401, paid: 5, payMethod: 'efBs', rate: 10 },
+        { no: 'COM-3', cashbox: 'Caja 2', ts: 1402, paid: 999, payMethod: 'efUSD', rate: 10 }
+      ],
+      movimientosCaja: [
+        { cashbox: 'Caja 1', ts: 1500, currency: 'USD', direction: 'IN', amount: 7 },
+        { cashbox: 'Caja 1', ts: 1600, currency: 'BS', direction: 'OUT', amount: 3 },
+        { cashbox: 'Caja 2', ts: 1500, currency: 'USD', direction: 'IN', amount: 999 }
+      ]
+    },
+    r2: n => Math.round((n + Number.EPSILON) * 100) / 100,
+    Date
+  };
+  const result = runInNewContext(
+    helpers + '\n' + expectedFn + '\nresult = zExpectedByMethod(sales, opening);',
+    Object.assign(sandbox, {
+      sales: [{ cashbox: 'Caja 1', rate: 10, change: 10, pays: [
+        { id: 'efUSD', amount: 30 },
+        { id: 'efBs', amount: 50 }
+      ] }],
+      opening: { cashbox: 'Caja 1', openedAt: 1000, usd: 100, bs: 200 }
+    })
+  );
+  assert.equal(result.efUSD, 160.43);
+  assert.equal(result.efBs, 197.71);
 });

@@ -69,7 +69,7 @@ test('dashboard and management layouts are responsive', () => {
 test('the liquor-store build contains no automotive master catalog or OEM form fields', () => {
   assert.doesNotMatch(main, /CATÁLOGO MAESTRO AUTOMOTRIZ|MASTER_CURATED_CATALOG|AUTO_MODELS_MATRIX|VERIFIED_OEM_MAP|masterCatalogBrowserDlg|btnMasterCat|pfOem|Código OEM/);
   assert.match(main, /products:\[\]/);
-  assert.match(main, /sales:\[\],held:\[\],purchases:\[\],fiscalInventory:\{version:1,balances:\{\},movements:\[\]\},cxc:\[\],cxp:\[\]/);
+  assert.match(main, /sales:\[\],held:\[\],purchases:\[\],returns:\[\],fiscalInventory:\{version:1,balances:\{\},movements:\[\]\},cxc:\[\],cxp:\[\]/);
   assert.match(main, /Bebidas alcohólicas/);
   assert.match(main, /Botella 750 ml/);
   assert.match(main, /Contenido neto \(ml\)/);
@@ -204,8 +204,28 @@ test('CxP de compras conserva ocho decimales en saldos y pagos y mantiene el his
 test('Corte Z consolida ventas por SKU/código y ajustes de inventario positivos y negativos', () => {
   assert.match(main, /const getProductSales=\(sales\)=>/);
   assert.match(main, /productSales:getProductSales\(sales\)/);
-  assert.match(main, /inventoryAdjustments:getInventoryAdjustments\(shiftStart\(\),Date\.now\(\)\)/);
+  assert.ok(main.includes("inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now(),box)"));
   assert.match(main, /CONSOLIDADO DE PRODUCTOS VENDIDOS · SKU \/ CÓDIGO \/ CANTIDAD/);
   assert.match(main, /AJUSTES DE INVENTARIO · POSITIVOS \(\+\) Y NEGATIVOS/);
   assert.match(main, /Number\(a\.sign\)>0\?/);
+  assert.ok(main.includes("cashbox:ev.cashbox||currentCaja()"));
+  assert.ok(main.includes("String(k.cashbox||'')===String(box||'')"));
+  assert.ok(main.includes("getInventoryAdjustments(shiftStart(),now,box)"));
+  assert.ok(main.includes("function zNormalizeMethod(value)"));
+  assert.ok(main.includes("function zAddLedgerPayment(out,payment,kind)"));
+  assert.ok(main.includes("(!payment.cashbox||String(payment.cashbox)===String(box))"));
+  assert.ok(main.includes("if(!sameBox(item,p)||!inPeriod(p.ts))return;"));
+  assert.ok(main.includes("out.cashOutUsd=r2(out.cashOutUsd+Number(p.amountUsd||0))"));
+  assert.ok(main.includes("out.cashOutBs=r2(out.cashOutBs+Number(p.amountBs||0))"));
+  assert.ok(main.includes("function zPayTotals(sales,start,end,box)"));
+  assert.ok(main.includes("!inPeriod(p.ts)"));
+  assert.ok(main.includes("payments:zPayTotals(sales,shiftStart(),now,box)"));
+  assert.ok(main.includes("payments:zPayTotals(sales,shiftStart(),Date.now(),box)"));
+  assert.ok(main.includes("const cxpPurchaseKeys=new Set"));
+  assert.ok(main.includes("if(cxpPurchaseKeys.has(String(p.cashbox)+'|'+String(p.no)))return;"));
+  assert.ok(main.includes("if(method&&method.id==='efUSD')out.cashOutUsd=r2(out.cashOutUsd+Number(p.paid||0))"));
+  assert.ok(main.includes("if(method&&method.id==='efBs')out.cashOutBs=r2(out.cashOutBs+Number(p.paid||0)*Number(p.rate||S.cfg.rate||1))"));
+  assert.ok(main.includes("const inShift=ts=>Number(ts)>=openedAt&&Number(ts)<=Date.now()"));
+  assert.ok(main.includes("(p.cashbox&&String(p.cashbox)!==box)||!inShift(p.ts)"));
+  assert.ok(main.includes("p.void||!inShift(p.ts)||Number(p.paid||0)<=0"));
 });

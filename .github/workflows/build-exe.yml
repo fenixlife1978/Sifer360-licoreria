@@ -6,7 +6,7 @@ concurrency:
 
 on:
   push:
-    branches: [ main, master, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-sdk-architecture-validation, feature/dual-printer-manager, feature/google-drive-automatic-backups, integration/google-drive-1.0.4, integration/crm-licensing-telemetry-1.0.5 ]
+    branches: [ main, master, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-sdk-architecture-validation, feature/dual-printer-manager, integration/crm-licensing-telemetry-1.0.5 ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, master, integration/sqlite-lan-stage-1, release/v1.0.0 ]
@@ -32,12 +32,6 @@ jobs:
       - name: Instalar dependencias
         run: npm install --legacy-peer-deps
 
-      - name: Validar e inyectar OAuth Client ID público de Google Drive
-        env:
-          SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
-        run: |
-          node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(!id || !id.endsWith('.apps.googleusercontent.com')) throw new Error('Falta SIFER360_GOOGLE_OAUTH_CLIENT_ID o no tiene formato de Client ID de Google.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId:id}, null, 2)); console.log('Google OAuth Client ID configurado (valor oculto).')"
-
       - name: Ejecutar pruebas de regresión
         run: npm test
 
@@ -52,7 +46,7 @@ jobs:
       - name: Guardar ejecutable como artefacto privado de CI
         uses: actions/upload-artifact@v5
         with:
-          name: SIFER360-1.0.7-Windows-Installer-and-Portable
+          name: SIFER360-1.0.8-Windows-Installer-and-Portable
           path: dist-exe/*.exe
           if-no-files-found: error
           retention-days: 30

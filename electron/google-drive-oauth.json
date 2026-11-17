@@ -1,4 +1,0 @@
-{
-  "clientId": "",
-  "comment": "Google OAuth Desktop client ID. Set by release build configuration; do not put a client secret here."
-}

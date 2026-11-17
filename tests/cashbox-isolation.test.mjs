@@ -61,7 +61,7 @@ test('la apertura de caja es obligatoria para finalizar ventas de cajero', () =>
 });
 
 test('la anulación de una venta revierte inventario y estado si el servidor/SQLite no confirma el guardado', () => {
-  assert.match(main, /const rollbackState=JSON\.parse\(JSON\.stringify\(S\)\);\s*s\.void=true/);
+  assert.match(main, /const rollbackState=JSON\.parse\(JSON\.stringify\(S\)\);\s*try\s*\{\s*s\.void=true/);
   assert.match(main, /const persisted=await save\(\);\s*if\(!persisted\|\|!persisted\.ok\)\{restoreStateSnapshotIfNeeded\(persisted,rollbackState\)/);
   assert.match(main, /SQLite\/servidor no confirmó la anulación/);
 });

@@ -153,7 +153,7 @@ function addKardex(ev){
     type:ev.type,       /* 'INICIAL' | 'COMPRA' | 'VENTA' | 'CONTEO' | 'AJUSTE' | 'ANULACIÓN' */
     dir:ev.dir,         /* 'IN' | 'OUT' */
     doc:ev.doc||'-',
-    cashbox:ev.cashbox||'',
+    cashbox:ev.cashbox||currentCaja(),
     party:ev.party||'',
     qty:r2(ev.qty),
     stockAfter:r2(ev.stockAfter),
@@ -179,11 +179,36 @@ function fiscalInventoryOpeningDlg(){
   catch(error){msg(error.message,'bad');return;}
   save().then(result=>{if(!result||!result.ok){restoreStateSnapshotIfNeeded(result,rollback);msg('SQLite no confirmó la apertura fiscal; se restauró el estado anterior.','bad');return;}renderAll();msg('Apertura fiscal registrada con soporte para '+p.code+'.');});
 }
+
+function fiscalInventoryAdjustmentDlg(){
+  if(!['admin','contador'].includes(activeUser()?.role)){msg('Solo administrador o contador puede registrar ajustes fiscales.','bad');return;}
+  const products=S.products||[];if(!products.length){msg('Registre primero los artículos.','bad');return;}
+  const choices=products.map((p,i)=>(i+1)+'. '+p.code+' — '+p.desc).join('\n');
+  const index=Number(prompt('Seleccione el artículo por número:\n'+choices));const p=products[index-1];if(!p){msg('Artículo no seleccionado.','bad');return;}
+  const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);
+  const current=ledger.balances[String(p.code)]||{stock:0,cost:Number(p.cost)||0};
+  const direction=String(prompt('Tipo de ajuste: escriba E para entrada fiscal o S para salida fiscal.','E')||'').trim().toUpperCase();
+  if(!['E','S'].includes(direction)){msg('Ajuste fiscal cancelado.','bad');return;}
+  const qty=Number(String(prompt('Cantidad del ajuste fiscal:','0')||'').replace(',','.'));
+  const cost=Number(String(prompt('Costo unitario fiscal validado en US$: ',String(current.cost||p.cost||0))||'').replace(',','.'));
+  const doc=String(prompt('Documento/soporte del ajuste (obligatorio):','')||'').trim();
+  const reason=String(prompt('Motivo del ajuste fiscal (obligatorio):','')||'').trim();
+  if(!(qty>0)||!Number.isFinite(qty)||!(cost>=0)||!Number.isFinite(cost)||!doc||!reason){msg('Ajuste cancelado: indique cantidad válida, costo, soporte documental y motivo.','bad');return;}
+  const dir=direction==='E'?'IN':'OUT';
+  if(dir==='IN'&&Number(current.stock)+qty>(Number(p.stock)||0)+1e-9){msg('El ajuste de entrada superaría la existencia física operativa. Fiscal actual: '+fq(current.stock||0)+', físico: '+fq(p.stock||0)+'.','bad');return;}
+  if(dir==='OUT'&&Number(current.stock)+1e-9<qty){msg('Existencia fiscal insuficiente. Disponible: '+fq(current.stock||0)+', requerido: '+fq(qty)+'.','bad');return;}
+  const rollback=JSON.parse(JSON.stringify(S));
+  const stamp=Date.now(),eventId='FISCAL-ADJ:'+String(p.code)+':'+stamp+':'+Math.random().toString(36).slice(2,10);
+  try{window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId,type:'AJUSTE_FISCAL',dir,code:p.code,qty,cost,document:doc,reason,sourceId:eventId,timestamp:stamp,cashbox:currentCaja(),user:currentCajero()});}
+  catch(error){msg(error.message,'bad');return;}
+  save().then(result=>{if(!result||!result.ok){restoreStateSnapshotIfNeeded(result,rollback);msg('SQLite no confirmó el ajuste fiscal; se restauró el estado anterior.','bad');return;}renderAll();msg('Ajuste fiscal trazable registrado para '+p.code+'.');});
+}
+
 function renderFiscalInventoryReport(products,ledger){
   const balances=products.map((p,i)=>{const b=ledger.balances[String(p.code)]||{stock:0,cost:0};return '<tr><td>'+(i+1)+'</td><td class="mono">'+esc(p.code)+'</td><td>'+esc(p.desc)+'</td><td class="r">'+fq(b.stock||0)+'</td><td class="r">'+nf(b.cost||0)+'</td><td class="r">'+nf(r2((Number(b.stock)||0)*(Number(b.cost)||0)))+'</td></tr>';}).join('');
   const movements=ledger.movements.slice().sort((a,b)=>(Number(a.timestamp)||0)-(Number(b.timestamp)||0));
-  const movementRows=movements.map(m=>'<tr><td>'+fmtDT(m.timestamp)+'</td><td class="mono">'+esc(m.code)+'</td><td>'+esc((products.find(p=>p.code===m.code)||{}).desc||'Artículo no localizado')+'</td><td>'+esc(m.type)+'</td><td>'+(m.dir==='IN'?'Entrada':'Salida')+'</td><td class="mono">'+esc(m.document||'—')+'</td><td class="r">'+(m.dir==='IN'?'+':'−')+fq(m.qty)+'</td><td class="r">'+nf(m.cost)+'</td><td class="r">'+fq(m.stockAfter)+'</td><td>'+esc(m.user||'—')+'</td></tr>').join('')||'<tr class="empty"><td colspan="10">Sin movimientos fiscales registrados.</td></tr>';
-  return '<div class="hint">Inventario fiscal separado del inventario operativo. Se alimenta con aperturas documentadas y compras con factura fiscal; descuenta únicamente ventas fiscales. Los tickets y compras no fiscales no alteran este libro.</div><h4>Existencias fiscales y valoración auxiliar</h4><div class="gridwrap fiscal-wrap"><table class="grid"><thead><tr><th>#</th><th>Código</th><th>Artículo</th><th class="r">Existencia fiscal</th><th class="r">Costo US$</th><th class="r">Valor US$</th></tr></thead><tbody>'+balances+'</tbody></table></div><h4>Libro de movimientos fiscales</h4><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1100px"><thead><tr><th>Fecha</th><th>Código</th><th>Artículo</th><th>Tipo</th><th>Dirección</th><th>Documento fuente</th><th class="r">Cantidad</th><th class="r">Costo US$</th><th class="r">Saldo fiscal</th><th>Operador</th></tr></thead><tbody>'+movementRows+'</tbody></table></div>';
+  const movementRows=movements.map(m=>'<tr><td>'+fmtDT(m.timestamp)+'</td><td class="mono">'+esc(m.code)+'</td><td>'+esc((products.find(p=>p.code===m.code)||{}).desc||'Artículo no localizado')+'</td><td>'+esc(m.type)+'</td><td>'+(m.dir==='IN'?'Entrada':'Salida')+'</td><td class="mono">'+esc(m.document||'—')+'</td><td class="r">'+(m.dir==='IN'?'+':'−')+fq(m.qty)+'</td><td class="r">'+nf(m.cost)+'</td><td class="r">'+fq(m.stockAfter)+'</td><td>'+esc(m.user||'—')+'</td></tr>').join('')||'<tr class="empty"><td colspan="11">Sin movimientos fiscales registrados.</td></tr>';
+  return '<div class="hint">Inventario fiscal separado del inventario operativo. Se alimenta con aperturas documentadas y compras con factura fiscal; descuenta únicamente ventas fiscales. Los tickets y compras no fiscales no alteran este libro.</div><h4>Existencias fiscales y valoración auxiliar</h4><div class="gridwrap fiscal-wrap"><table class="grid"><thead><tr><th>#</th><th>Código</th><th>Artículo</th><th class="r">Existencia fiscal</th><th class="r">Costo US$</th><th class="r">Valor US$</th></tr></thead><tbody>'+balances+'</tbody></table></div><h4>Libro de movimientos fiscales</h4><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1100px"><thead><tr><th>Fecha</th><th>Código</th><th>Artículo</th><th>Tipo</th><th>Dirección</th><th>Documento fuente</th><th>Motivo / justificación</th><th class="r">Cantidad</th><th class="r">Costo US$</th><th class="r">Saldo fiscal</th><th>Operador</th></tr></thead><tbody>'+movementRows+'</tbody></table></div>';
 }
 function seed(){
   S={
@@ -196,7 +221,7 @@ function seed(){
     products:[],
     clients:[{name:'Consumidor final',rif:'',tel:''}],
     suppliers:[],
-    sales:[],held:[],purchases:[],fiscalInventory:{version:1,balances:{},movements:[]},cxc:[],cxp:[],cortesZ:[],openings:[],movimientosCaja:[],kardex:[],counts:[],
+    sales:[],held:[],purchases:[],returns:[],fiscalInventory:{version:1,balances:{},movements:[]},cxc:[],cxp:[],cortesZ:[],openings:[],movimientosCaja:[],kardex:[],counts:[],
     lotesSudeban:[],retencionesIva:[],retencionesIslr:[],cambiosDivisas:[],rateAudit:[],bcvRates:{},casheaMovimientos:[],casheaLiquidaciones:[],documents:[],fiscalPrinterJobs:[],accounting:{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
@@ -206,7 +231,7 @@ function seed(){
 function stateSnapshot(){
   return {
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
-    sales:S.sales,held:S.held,purchases:S.purchases,fiscalInventory:S.fiscalInventory||{version:1,balances:{},movements:[]},cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],openings:S.openings||[],movimientosCaja:S.movimientosCaja||[],
+    sales:S.sales,held:S.held,purchases:S.purchases,returns:S.returns||[],fiscalInventory:S.fiscalInventory||{version:1,balances:{},movements:[]},cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],openings:S.openings||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,retencionesIslr:S.retencionesIslr||[],cambiosDivisas:S.cambiosDivisas,rateAudit:S.rateAudit||[],bcvRates:S.bcvRates||{},
     casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],fiscalPrinterJobs:S.fiscalPrinterJobs||[],accounting:S.accounting||{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
@@ -754,6 +779,7 @@ function load(){
     S.held=Array.isArray(d.held)?d.held:[];
     S.heldDeletedIds=Array.isArray(d.heldDeletedIds)?d.heldDeletedIds:[];
     if(Array.isArray(d.purchases))S.purchases=d.purchases;
+    if(Array.isArray(d.returns))S.returns=d.returns;
     S.fiscalInventory=d.fiscalInventory&&typeof d.fiscalInventory==='object'?d.fiscalInventory:{version:1,balances:{},movements:[]};
     if(window.SIFERInventoryLedgers)window.SIFERInventoryLedgers.ensureFiscalInventory(S);
     if(Array.isArray(d.cxc))S.cxc=d.cxc;
@@ -2665,7 +2691,7 @@ function comprasDlg(initialTab){
             '<td class="r">'+nf8(c.total)+'</td>'+
             '<td class="r">'+nf8(Number(c.retIva||0)+Number(c.retIslr||0))+'</td>'+
             '<td class="r">'+nf8(paidTotal)+'</td>'+
-            '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA':nf8(pend))+'</td>'+
+            '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA'+(c.voidDoc?' · '+esc(c.voidDoc):''):nf8(pend))+'</td>'+
             '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'">Anular</button>')+'</td>'+
           '</tr>';
         }).join(''):'<tr class="empty"><td colspan="11">Sin compras registradas.</td></tr>')+'</tbody>'+
@@ -2675,22 +2701,69 @@ function comprasDlg(initialTab){
       if(!b)return;
       const c=S.purchases.find(x=>x.no===+b.dataset.voidComp&&String(x.cashbox||currentCaja())===currentCaja());
       if(!c||c.void)return;
-      c.void=true;
+      const purchaseCashbox=String(c.cashbox||currentCaja());
+      const purchaseDocument='COM-'+pad(c.no);
+      const samePurchaseSupplier=x=>{
+        const supplierRif=String(c.supplier&&c.supplier.rif||'').trim();
+        const payableRif=String(x.supplier&&x.supplier.rif||'').trim();
+        if(supplierRif&&payableRif)return supplierRif===payableRif;
+        return String(x.supplier&&x.supplier.name||'').trim()===String(c.supplier&&c.supplier.name||'').trim();
+      };
+      const linkedPayables=(S.cxp||[]).filter(x=>{
+        if(Number(x.purchaseNo)!==Number(c.no))return false;
+        if(x.cashbox!==undefined&&x.cashbox!==null&&String(x.cashbox)!=='')return String(x.cashbox)===purchaseCashbox;
+        return String(x.doc||'')===String(c.docProv||'')+' ('+purchaseDocument+')'
+          &&x.ts!==undefined&&x.ts!==null&&Number.isFinite(Number(x.ts))
+          &&Math.abs(Number(x.ts)-Number(c.ts))<1000
+          &&samePurchaseSupplier(x);
+      });
+      const hasAmbiguousLegacyPayable=(S.cxp||[]).some(x=>Number(x.purchaseNo)===Number(c.no)&&!(x.cashbox!==undefined&&x.cashbox!==null&&String(x.cashbox)!=='')&&!linkedPayables.includes(x));
+      if(hasAmbiguousLegacyPayable){msg('No se puede anular la compra COM-'+pad(c.no)+': existe una CxP heredada sin caja que no puede vincularse inequívocamente a este documento. Revise y concilie manualmente esa obligación antes de continuar.','bad');return;}
+      const hasRecordedPayments=Number(c.paid||0)>1e-8||linkedPayables.some(x=>Number(x.paid||0)>1e-8||(Array.isArray(x.payments)&&x.payments.length>0));
+      if(hasRecordedPayments){msg('No se puede anular la compra COM-'+pad(c.no)+': existen pagos o abonos al proveedor registrados. Primero debe reversarse y conciliarse cada pago; esta anulación no puede dejar dinero entregado sin tratamiento.','bad');return;}
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      const purchaseSourceId='PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no);
+      const fiscalMovements=(c.docType==='FACTURA_FISCAL'
+        ?window.SIFERInventoryLedgers.ensureFiscalInventory(S).movements.filter(m=>String(m.sourceId||'')===purchaseSourceId&&m.type==='COMPRA_FISCAL')
+        :[]);
+      const fiscalLines=fiscalMovements.map(m=>({code:m.code,qty:m.qty}));
+      if(c.docType==='FACTURA_FISCAL'){
+        const expected=new Map(),recorded=new Map();
+        c.lines.forEach(l=>expected.set(String(l.code),(expected.get(String(l.code))||0)+Number(l.qty)));
+        fiscalMovements.forEach(l=>recorded.set(String(l.code),(recorded.get(String(l.code))||0)+Number(l.qty)));
+        const mismatch=Array.from(expected.entries()).find(([code,qty])=>Math.abs(qty-(recorded.get(code)||0))>1e-8)
+          ||Array.from(recorded.entries()).find(([code,qty])=>Math.abs(qty-(expected.get(code)||0))>1e-8);
+        if(mismatch){msg('No se puede anular la compra fiscal: el libro fiscal no coincide con los renglones del documento para '+mismatch[0]+'. Primero debe conciliarse el movimiento faltante o sobrante.','bad');return;}
+      }
+      const fiscalCheck=window.SIFERInventoryLedgers.canApplyFiscalSale(S,fiscalLines);
+      if(!fiscalCheck.ok){msg('No se puede anular la compra: la existencia fiscal disponible de '+fiscalCheck.code+' es '+fq(fiscalCheck.available)+', menor que la cantidad que debe revertirse ('+fq(fiscalCheck.required)+'). Registre y concilie una nota de crédito o ajuste documentado.','bad');return;}
+      const physicalRequired=new Map();
+      c.lines.forEach(l=>physicalRequired.set(String(l.code),(physicalRequired.get(String(l.code))||0)+Number(l.qty)));
+      const physicalShort=Array.from(physicalRequired.entries()).find(([code,qty])=>{const p=prod(code);return !p||Number(p.stock)+1e-9<qty;});
+      if(physicalShort){msg('No se puede anular la compra: existencia física insuficiente de '+physicalShort[0]+'. Disponible: '+fq(prod(physicalShort[0])?.stock||0)+', requerido: '+fq(physicalShort[1])+'. Registre la devolución o ajuste correspondiente.','bad');return;}
+      let voidNo;try{voidNo=await nextCajaSequence('void',purchaseCashbox);}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
+      try{
+      c.void=true;c.voidNo=voidNo;c.voidDoc='ANU-'+purchaseCashbox.replace(/\\W/g,'')+'-'+pad(voidNo,6);
       c.lines.forEach(l=>{
         const p=prod(l.code);
         if(p){
-          p.stock=Math.max(0,r2(p.stock-l.qty));
-          if(c.docType==='FACTURA_FISCAL'){const sourceId='PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no),originalEvent=sourceId+':'+p.code,ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);if(ledger.movements.some(m=>m.eventId===originalEvent))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'VOID-PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no)+':'+p.code,type:'ANULACION_COMPRA_FISCAL',dir:'OUT',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(c.no),sourceId,timestamp:Date.now(),cashbox:c.cashbox||currentCaja(),user:currentCajero()});}
+          p.stock=r2(p.stock-l.qty);
           addKardex({
             code:p.code,type:'ANULACIÓN',dir:'OUT',doc:'COM-'+pad(c.no),
             party:'Anulación compra prov. '+c.supplier.name,qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
           });
         }
       });
-      (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja())).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
+      fiscalMovements.forEach(original=>window.SIFERInventoryLedgers.applyFiscalMovement(S,{
+        eventId:'VOID-PURCHASE:'+original.eventId,type:'ANULACION_COMPRA_FISCAL',dir:'OUT',
+        code:original.code,qty:original.qty,cost:original.cost,document:'COM-'+pad(c.no),
+        sourceId:purchaseSourceId,timestamp:Date.now(),cashbox:purchaseCashbox,user:currentCajero()
+      }));
+      linkedPayables.forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
       (S.retencionesIva||[]).filter(x=>(Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||'')&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
       (S.retencionesIslr||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja())).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
-      const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la anulación de la compra; se restauró el estado durable anterior.','bad');return;}
+      }catch(error){restoreStateSnapshotIfNeeded(null,rollbackState);msg('No se pudo revertir la compra: '+error.message,'bad');return;}
+      const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);msg('El servidor no confirmó la anulación de la compra; se restauró el estado durable anterior.','bad');return;}
       renderAll();renderPurchaseHist(v);msg('Compra COM-'+pad(c.no)+' anulada. Se revirtió el ingreso en inventario y Kardex.');
     };
   };
@@ -2752,7 +2825,7 @@ function comprasDlg(initialTab){
     const ts=Date.now();
     let no;try{no=await nextCajaSequence('purchase',currentCaja());}catch(error){msg('No se pudo reservar el número de compra: '+error.message,'bad');return false;}
     S.purchaseSeq=Math.max(Number(S.purchaseSeq)||1,no+1);
-    const lines=pLines.map(l=>{
+    const lines=pLines.map((l,lineIndex)=>{
       const p=prod(l.code);
       /* Costo Promedio Ponderado */
       const prevVal=Math.max(0,p.stock)*p.cost;
@@ -2762,7 +2835,7 @@ function comprasDlg(initialTab){
       p.stock=nextStock;
       p.cost=nextCost;
       if(l.price>0){p.price=r8(l.price);if(p.pricing){p.pricing.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;p.pricing.markupSale=p.price>0?r2(((p.price-p.cost)/p.price)*100):0;}if(p.presentations&&p.presentations[0]&&Number(p.presentations[0].factor)===1)p.presentations[0].price=p.price;if(p.pricing&&Array.isArray(p.pricing.gaps)){p.pricing.gaps.forEach((g,idx)=>{if(idx===0){g.price=p.price;g.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;}else if(p.pricing.mode==='auto'){g.price=r2(p.price*(1-(Number(g.gapPct)||0)/100));g.markupCost=p.cost>0?r2(((g.price-p.cost)/p.cost)*100):0;}});}}
-      if(docType==='FACTURA_FISCAL')window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'PURCHASE-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(no)+':'+p.code,type:'COMPRA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(no),sourceId:'PURCHASE-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(no),timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
+      if(docType==='FACTURA_FISCAL')window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'PURCHASE-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(no)+':'+p.code+':'+lineIndex,type:'COMPRA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(no),sourceId:'PURCHASE-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(no),timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
       addKardex({
         ts,code:p.code,type:'COMPRA',dir:'IN',doc:'COM-'+pad(no),
         party:sup.name+' (Fac. '+docProv+')',qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
@@ -2795,8 +2868,8 @@ function comprasDlg(initialTab){
       comp.retIvaDoc=retDoc;
       if(!S.retencionesIva)S.retencionesIva=[];
       S.retencionesIva.push({
-        id:retDoc,ts,periodo,cashbox:currentCaja(),sequence:retSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,
-        ctrlProv:comp.ctrlProv,base,iva,pct:retPct,rate:purchaseRate,
+        id:retDoc,ts,periodo,docDate,docDateTs,cashbox:currentCaja(),sequence:retSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,
+        ctrlProv:comp.ctrlProv,docType:'01',operationType:'C',documentTotal:total,exempt:0,base,iva,pct:retPct,rate:purchaseRate,
         retainedUsd:retUsd,retainedBs:retBs,
         estado:'Pendiente de revisión del contador',declarada:false,pagada:false,comprobanteEntregado:false,observaciones:''
       });
@@ -2939,7 +3012,9 @@ function cxcDlg(selId){
     const bal=r2(Math.max(0,item.total-item.paid)), rate=S.cfg.rate;
     const mOpts='<option value="MIXTO"'+(payMode==='MIXTO'?' selected':'')+'>★ Cobro Mixto (Múltiples métodos de pago)</option>'+
       METHODS.map(m=>'<option value="'+esc(m.id)+'"'+(payMode===m.id?' selected':'')+'>'+esc(m.name)+' ('+m.cur+')</option>').join('');
-    const hist=(item.payments||[]).map(p=>'<tr><td>'+fmtDT(p.ts)+'</td><td>'+esc(p.method)+'</td><td class="mono">'+esc(p.ref||'-')+'</td><td class="r">'+nf(p.amountUsd)+'</td><td class="r">'+nf(p.amountBs)+'</td><td>'+esc(p.note||'')+'</td></tr>').join('')||'<tr><td colspan="6" class="dim">Sin abonos registrados todavía.</td></tr>';
+    const paymentRows=(item.payments||[]).map(p=>'<tr><td>'+fmtDT(p.ts)+'</td><td>'+esc(p.method)+'</td><td class="mono">'+esc(p.ref||'-')+'</td><td class="r">'+nf(p.amountUsd)+'</td><td class="r">'+nf(p.amountBs)+'</td><td>'+esc(p.note||'')+'</td></tr>');
+    const creditRows=(item.creditNotes||[]).map(note=>'<tr><td>'+fmtDT(note.ts)+'</td><td>Nota de crédito / devolución</td><td class="mono">'+esc(note.id)+'</td><td class="r">'+nf(-Number(note.amount||0))+'</td><td class="r">'+nf(-Number(note.amount||0)*Number(note.rate||S.cfg.rate||1))+'</td><td>Crédito aplicado: '+nf(note.amount||0)+' · Reembolso: '+nf(note.refund||0)+' ('+esc(note.refundMethod||'—')+')</td></tr>');
+    const hist=paymentRows.concat(creditRows).join('')||'<tr><td colspan="6" class="dim">Sin abonos ni notas de crédito registrados todavía.</td></tr>';
 
     let formHtml='';
     if(bal<0.01){
@@ -4875,9 +4950,9 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     }
   }
 
-S.cart.forEach(l=>{
+S.cart.forEach((l,lineIndex)=>{
     const p=prod(l.code);
-    if(fiscalMode)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':'+p.code,type:'VENTA_FISCAL',dir:'OUT',code:p.code,qty:l.qty,cost:p.cost,document:'FAC-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
+    if(fiscalMode)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':'+p.code+':'+lineIndex,type:'VENTA_FISCAL',dir:'OUT',code:p.code,qty:l.qty,cost:p.cost,document:'FAC-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
     p.stock=Math.max(0,r2(p.stock-l.qty));
     addKardex({
       ts,code:p.code,type:'VENTA',dir:'OUT',doc:(internalTicketMode?'TKT-':'FAC-')+pad(invNo),cashbox:currentCaja(),
@@ -5045,22 +5120,86 @@ function showTicket(s){
   ]});
 }
 
+async function registerSaleReturn(s,refresh){
+  if(!s||s.void){msg('Seleccione una venta vigente.','bad');return false;}
+  if(!['admin','contador'].includes((activeUser()||{}).role)){
+    msg('La devolución requiere autorización de administrador o contador.','bad');return false;
+  }
+  if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin('Autorizar devolución / nota de crédito de la venta '+pad(s.no)))return false;
+  const box=String(s.cashbox||'');
+  const already=(index)=>window.SIFERReturnsLedger.returnedQuantity(S,s,index);
+  const choices=(s.lines||[]).map((line,index)=>(index+1)+'. '+line.desc+' · SKU '+line.code+' · Vendido '+fq(line.qty)+' · Devuelto '+fq(already(index))+' · Disponible '+fq(Math.max(0,Number(line.qty)-already(index)))+' · '+usd(Number(line.net||0)+Number(line.iva||0))).join('\n');
+  const raw=window.prompt('Renglones y cantidades a devolver (separe con punto y coma; ejemplo 1=1; 2=0.5):\n\n'+choices,'');
+  if(raw===null||!raw.trim())return false;
+  const lines=[];
+  for(const part of raw.split(';')){
+    const pair=part.trim().split('=');
+    if(pair.length!==2){msg('Formato inválido. Use número de renglón=cantidad, separados por punto y coma.','bad');return false;}
+    const lineIndex=Number(pair[0])-1,qty=Number(pair[1].trim().replace(',','.'));
+    lines.push({lineIndex,qty});
+  }
+  const reason=String(window.prompt('Motivo de la devolución:','')||'').trim();
+  if(!reason){msg('La devolución requiere un motivo.','bad');return false;}
+  const returnStock=window.confirm('¿La mercancía está en condiciones de reingresar al inventario físico?');
+  let prepared;
+  try{
+    prepared=window.SIFERReturnsLedger.prepareReturn({state:S,sale:s,lines,returnStock,method:'efUSD',reason,rate:s.rate});
+  }catch(error){msg(error.message,'bad');return false;}
+  if(prepared.refund>0){
+    const methodList=METHODS.filter(method=>method.id!=='cashea').map(method=>method.id+' = '+method.name).join('\n');
+    const method=String(window.prompt('Debe reembolsar '+usd(prepared.refund)+'. Seleccione el método exacto:\n'+methodList,'efUSD')||'').trim();
+    const reference=['efUSD','efBs'].includes(method)?'':String(window.prompt('Número de referencia / confirmación del reembolso:','')||'').trim();
+    try{
+      prepared=window.SIFERReturnsLedger.prepareReturn({state:S,sale:s,lines,returnStock,method,reference,reason,rate:s.rate});
+    }catch(error){msg(error.message,'bad');return false;}
+  }
+  let returnNo,refundNo=null;
+  try{
+    returnNo=await nextCajaSequence('return',box);
+    if(prepared.refund>0)refundNo=await nextCajaSequence('refund',box);
+  }catch(error){msg('No se pudo reservar la numeración de la devolución/reembolso: '+error.message,'bad');return false;}
+  const rollbackState=JSON.parse(JSON.stringify(S));
+  try{
+    const note=window.SIFERReturnsLedger.applyReturn(S,prepared,{returnNo,refundNo,now:Date.now(),user:currentCajero()});
+    const persisted=await save();
+    if(!persisted||!persisted.ok){
+      restoreStateSnapshotIfNeeded(persisted,rollbackState);
+      msg('SQLite no confirmó la nota de crédito; se restauró el último estado durable. Verifique antes de repetir.','bad');
+      if(refresh)refresh();
+      return false;
+    }
+    msg('Nota de crédito '+note.id+' guardada para la venta '+pad(s.no)+'. Crédito aplicado a CxC: '+usd(note.creditApplied)+'. Reembolso: '+usd(note.refund)+'.');
+    if(refresh)refresh();
+    return true;
+  }catch(error){
+    restoreStateSnapshotIfNeeded(null,rollbackState);
+    msg('No se pudo registrar la devolución: '+error.message,'bad');
+    if(refresh)refresh();
+    return false;
+  }
+}
+
 /* ---------- ventas del día / cierre ---------- */
 function salesDlg(){
   let selNo=null,armed=0;
-  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>'+(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER'?'Ticket':'Documento')+'</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver ticket</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><p class="hint" id="saNote"></p></div>');
+  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>'+(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER'?'Ticket':'Documento')+'</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver ticket</button><button class="btn" id="saReturn">Devolución / NC</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><div class="group" id="saReturns"></div><p class="hint" id="saNote"></p></div>');
   const todays=()=>S.sales.filter(s=>sameDay(s.ts)&&s.cashbox===currentCaja()).sort((a,b)=>b.no-a.no);
   const draw=()=>{
     const list=todays();
     $('#saBody',el).innerHTML=list.length?list.map(s=>{const due=r2(s.total+s.igtf);return '<tr data-no="'+s.no+'" class="'+(s.no===selNo?'sel':'')+(s.void?' void':'')+'"><td class="mono">'+pad(s.no)+(s.void?' (anulada)':'')+'</td><td>'+fmtT(new Date(s.ts))+'</td><td>'+esc(s.client.name)+'</td><td class="r">'+nf(due)+'</td><td class="r">'+nf(due*s.rate)+'</td><td>'+esc(s.pays.map(p=>p.name.split(' (')[0]).join(' + '))+'</td></tr>';}).join(''):'<tr class="empty"><td colspan="6">Todavía no hay ventas hoy.</td></tr>';
     const ok=list.filter(s=>!s.void);
+    const returnNotes=(S.returns||[]).filter(note=>String(note.cashbox||'')===currentCaja()&&sameDay(note.ts));
+    const returnTotal=r2(returnNotes.reduce((sum,note)=>sum+Number(note.total||0),0));
+    const returnIva=r2(returnNotes.reduce((sum,note)=>sum+Number(note.iva||0),0));
     const by={};
     ok.forEach(s=>s.pays.forEach(p=>{const k=p.id;by[k]=by[k]||{name:p.name,cur:p.cur,n:0,amt:0};by[k].n++;by[k].amt+=p.amount;}));
+    returnNotes.forEach(note=>{if(Number(note.refund||0)<=0)return;const m=METHODS.find(method=>method.id===note.refundMethod);if(!m)return;const k='refund-'+m.id;by[k]=by[k]||{name:'Reembolso · '+m.name,cur:m.cur,n:0,amt:0};by[k].n++;by[k].amt-=m.cur==='VES'?Number(note.refundAmount||0):Number(note.refund||0);});
     const sum=(f)=>r2(ok.reduce((a,s)=>a+f(s),0));
     const metRows=Object.keys(by).map(k=>'<tr><td>'+esc(by[k].name.split(' (')[0])+'</td><td>'+by[k].n+'</td><td>'+(by[k].cur==='USD'?'US$ ':'Bs. ')+nf(by[k].amt)+'</td></tr>').join('')||'<tr><td colspan="3" class="dim">Sin cobros.</td></tr>';
-    $('#saCierre',el).innerHTML='<table class="sumt"><thead><tr><th>Cierre por forma de pago</th><th>Ops.</th><th>Recibido</th></tr></thead><tbody>'+metRows+'</tbody></table><table class="sumt"><thead><tr><th>Totales del día</th><th>US$</th></tr></thead><tbody><tr><td>Ventas válidas</td><td>'+ok.length+'</td></tr><tr><td>Base imponible</td><td>'+nf(sum(s=>s.base))+'</td></tr><tr><td>IVA 16 %</td><td>'+nf(sum(s=>s.iva))+'</td></tr><tr><td>IGTF 3 %</td><td>'+nf(sum(s=>s.igtf))+'</td></tr><tr class="tot"><td>Total facturado</td><td>'+nf(sum(s=>s.total+s.igtf))+'</td></tr><tr><td>Total en Bs. (a la tasa de cada venta)</td><td>'+nf(sum(s=>(s.total+s.igtf)*s.rate))+'</td></tr></tbody></table>';
+    $('#saCierre',el).innerHTML='<table class="sumt"><thead><tr><th>Cierre por forma de pago</th><th>Ops.</th><th>Recibido</th></tr></thead><tbody>'+metRows+'</tbody></table><table class="sumt"><thead><tr><th>Totales del día</th><th>US$</th></tr></thead><tbody><tr><td>Ventas válidas</td><td>'+ok.length+'</td></tr><tr><td>Notas de crédito</td><td>'+returnNotes.length+'</td></tr><tr><td>Devoluciones</td><td>−'+nf(returnTotal)+'</td></tr><tr><td>Base imponible neta</td><td>'+nf(r2(sum(s=>s.base)-returnNotes.reduce((a,n)=>a+Number(n.base||0),0)))+'</td></tr><tr><td>IVA neto</td><td>'+nf(r2(sum(s=>s.iva)-returnIva))+'</td></tr><tr><td>IGTF 3 %</td><td>'+nf(sum(s=>s.igtf))+'</td></tr><tr class="tot"><td>Total neto facturado</td><td>'+nf(r2(sum(s=>s.total+s.igtf)-returnTotal))+'</td></tr><tr><td>Total neto en Bs. (a la tasa de cada venta)</td><td>'+nf(r2(sum(s=>(s.total+s.igtf)*s.rate)-returnNotes.reduce((a,n)=>a+Number(n.total||0)*Number(n.rate||S.cfg.rate||1),0)))+'</td></tr></tbody></table>';
+    $('#saReturns',el).innerHTML=returnNotes.length?'<b>Notas de crédito / devoluciones del día</b><div class="gridwrap"><table class="grid"><thead><tr><th>Nota</th><th>Factura origen</th><th>Motivo</th><th class="r">Total</th><th class="r">CxC aplicado</th><th class="r">Reembolso</th></tr></thead><tbody>'+returnNotes.slice().sort((a,b)=>Number(b.ts)-Number(a.ts)).map(note=>'<tr><td class="mono">'+esc(note.id)+'</td><td>'+pad(note.saleNo)+'</td><td>'+esc(note.reason||'—')+'</td><td class="r">'+nf(note.total)+'</td><td class="r">'+nf(note.creditApplied)+'</td><td class="r">'+nf(note.refund)+'</td></tr>').join('')+'</tbody></table></div>':'';
     $('#saNote',el).textContent=list.some(s=>s.no<1043)&&!saved?'Las facturas 1038 a 1042 son ejemplos para mostrar el cierre.':'';
-    $('#saView',el).disabled=!selNo;$('#saVoid',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;
+    $('#saView',el).disabled=!selNo;$('#saReturn',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;$('#saVoid',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;
     $('#saVoid',el).textContent='Anular venta';
   };
   el.addEventListener('click',async e=>{
@@ -5068,29 +5207,81 @@ function salesDlg(){
     if(tr){selNo=+tr.dataset.no;armed=0;draw();return;}
     const s=S.sales.find(x=>x.no===selNo&&x.cashbox===currentCaja());
     if(e.target.id==='saView'&&s){showTicket(s);}
+    if(e.target.id==='saReturn'&&s&&!s.void){await registerSaleReturn(s,draw);}
     if(e.target.id==='saVoid'&&s&&!s.void&&s.fiscal){msg('Esta factura ya fue emitida por una máquina fiscal. No se permite anularla solo en el POS. Debe integrarse y ejecutarse la anulación/nota de crédito en la propia máquina.','bad');return;}
     if(e.target.id==='saVoid'&&s&&!s.void){
       if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin((s.docType==='TICKET-INTERNO'?'Anular ticket ':'Anular factura ')+pad(s.no)))return;
-      if(!armed||Date.now()-armed>5000){armed=Date.now();e.target.textContent='Confirmar anulación';return;}
-      let voidNo;try{voidNo=await nextCajaSequence('void',currentCaja());}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
-      const rollbackState=JSON.parse(JSON.stringify(S));
-      s.void=true;
-      s.transType='03-ANUL';
-      s.voidNo=voidNo;s.voidDoc='ANU-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(voidNo,6);
-      s.voidTs=Date.now();
-      s.lines.forEach(l=>{
-        const p=prod(l.code);
-        if(p){
-          p.stock=r2(p.stock+l.qty);
-          if(isFiscalSale(s)){const sourceId=s.accountingSourceId||('SALE-'+pad(s.no)),originalEvent=sourceId+':'+p.code,ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);if(ledger.movements.some(m=>m.eventId===originalEvent))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'VOID-SALE-'+String(s.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(s.no)+':'+p.code,type:'ANULACION_VENTA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.unitCost||p.cost,document:'FAC-'+pad(s.no),sourceId,timestamp:Date.now(),cashbox:s.cashbox||currentCaja(),user:currentCajero()});}
-          addKardex({
-            code:p.code,type:'ANULACIÓN',dir:'IN',doc:(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no),
-            party:'Reingreso por anulación de venta ('+s.client.name+')',
-            qty:l.qty,stockAfter:p.stock,cost:p.cost,user:S.cfg.cajero
-          });
-        }
+      // Until a documented refund/reversal workflow exists, never void a sale after
+      // money or a third-party financing settlement has been collected.
+      const saleCashbox=String(s.cashbox||currentCaja());
+      const saleDocument=(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no);
+      const sameSaleClient=x=>{
+        const saleRif=String(s.client&&s.client.rif||'').trim();
+        const receivableRif=String(x.client&&x.client.rif||'').trim();
+        if(saleRif&&receivableRif)return saleRif===receivableRif;
+        return String(x.client&&x.client.name||'').trim()===String(s.client&&s.client.name||'').trim();
+      };
+      const linkedReceivables=(S.cxc||[]).filter(x=>{
+        if(Number(x.saleNo)!==Number(s.no))return false;
+        if(x.cashbox!==undefined&&x.cashbox!==null&&String(x.cashbox)!=='')return String(x.cashbox)===saleCashbox;
+        // Legacy rows without cashbox are safe to associate only with a full sale fingerprint.
+        return String(x.doc||'')===saleDocument
+          &&x.ts!==undefined&&x.ts!==null&&Number.isFinite(Number(x.ts))
+          &&Math.abs(Number(x.ts)-Number(s.ts))<1000
+          &&sameSaleClient(x);
       });
-      S.cxc=(S.cxc||[]).filter(x=>!(x.saleNo===s.no&&x.cashbox===currentCaja()));
+      const hasAmbiguousLegacyReceivable=(S.cxc||[]).some(x=>Number(x.saleNo)===Number(s.no)&&!(x.cashbox!==undefined&&x.cashbox!==null&&String(x.cashbox)!=='')&&!linkedReceivables.includes(x));
+      if(hasAmbiguousLegacyReceivable){msg('No se puede anular esta venta: existe una CxC heredada sin caja que no puede vincularse inequívocamente a esta factura. Revise y concilie manualmente esa cuenta antes de continuar.','bad');return;}
+      const hasCollectedSalePayment=(Array.isArray(s.pays)&&s.pays.some(p=>String(p.id||'')!=='credito'&&Number(p.amount||0)>1e-8))
+        ||linkedReceivables.some(x=>Number(x.paid||0)>1e-8||(Array.isArray(x.payments)&&x.payments.length>0))
+        ||!!s.cashea;
+      if(hasCollectedSalePayment){msg('No se puede anular esta venta: registra cobros o financiación. Primero debe ejecutarse y conciliarse el reembolso/reverso correspondiente. Esta anulación no puede eliminar una cuenta por cobrar ni devolver mercancía dejando dinero cobrado sin tratamiento.','bad');return;}
+      if(!armed||Date.now()-armed>5000){armed=Date.now();e.target.textContent='Confirmar anulación';return;}
+      if(isFiscalSale(s)){
+        const sourceId=s.accountingSourceId||('SALE-'+pad(s.no));
+        const originalMovements=window.SIFERInventoryLedgers.ensureFiscalInventory(S).movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='VENTA_FISCAL');
+        const expected=new Map(),recorded=new Map();
+        s.lines.forEach(l=>expected.set(String(l.code),(expected.get(String(l.code))||0)+Number(l.qty)));
+        originalMovements.forEach(l=>recorded.set(String(l.code),(recorded.get(String(l.code))||0)+Number(l.qty)));
+        const mismatch=Array.from(expected.entries()).find(([code,qty])=>Math.abs(qty-(recorded.get(code)||0))>1e-8)
+          ||Array.from(recorded.entries()).find(([code,qty])=>Math.abs(qty-(expected.get(code)||0))>1e-8);
+        if(mismatch){msg('No se puede anular la venta fiscal: el libro fiscal no coincide con los renglones de la factura para '+mismatch[0]+'. Primero debe conciliarse el movimiento faltante o sobrante.','bad');return;}
+      }
+      let voidNo;try{voidNo=await nextCajaSequence('void',saleCashbox);}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
+      const rollbackState=JSON.parse(JSON.stringify(S));
+      try{
+        s.void=true;
+        s.transType='03-ANUL';
+        s.voidNo=voidNo;s.voidDoc='ANU-'+saleCashbox.replace(/\W/g,'')+'-'+pad(voidNo,6);
+        s.voidTs=Date.now();
+        s.lines.forEach(l=>{
+          const p=prod(l.code);
+          if(p){
+            p.stock=r2(p.stock+l.qty);
+            addKardex({
+              code:p.code,type:'ANULACIÓN',dir:'IN',doc:(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no),
+              party:'Reingreso por anulación de venta ('+s.client.name+')',
+              qty:l.qty,stockAfter:p.stock,cost:p.cost,user:S.cfg.cajero
+            });
+          }
+        });
+        if(isFiscalSale(s)){
+          const sourceId=s.accountingSourceId||('SALE-'+pad(s.no));
+          const fiscalMovements=window.SIFERInventoryLedgers.ensureFiscalInventory(S).movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='VENTA_FISCAL');
+          fiscalMovements.forEach(original=>window.SIFERInventoryLedgers.applyFiscalMovement(S,{
+            eventId:'VOID-SALE:'+original.eventId,type:'ANULACION_VENTA_FISCAL',dir:'IN',
+            code:original.code,qty:original.qty,cost:original.cost,document:'FAC-'+pad(s.no),
+            sourceId,timestamp:Date.now(),cashbox:saleCashbox,user:currentCajero()
+          }));
+        }
+        S.cxc=(S.cxc||[]).filter(x=>!linkedReceivables.includes(x));
+
+      }catch(error){
+        restoreStateSnapshotIfNeeded(null,rollbackState);
+        armed=0;renderCatalog();draw();
+        msg('No se pudo revertir la venta: '+error.message,'bad');
+        return;
+      }
       const persisted=await save();
       if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);armed=0;renderCatalog();draw();msg('SQLite/servidor no confirmó la anulación; se mostró el último estado durable disponible.','bad');return;}
       armed=0;renderCatalog();draw();msg((s.docType==='TICKET-INTERNO'?'Ticket de Venta ':'Factura ')+pad(s.no)+' anulado. Se devolvió la mercancía al inventario y Kardex.');
@@ -5252,29 +5443,69 @@ function exportIgtfCsv(sales){
 }
 
 function exportSeniatTxt(periodo){
-  if(!periodo){const d=new Date();periodo=String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');}
-  const rifAgente=S.cfg.rif.replace(/[^A-Za-z0-9]/g,'').toUpperCase();
-  const list=S.retencionesIva||[];
-  if(!list.length){
-    msg('No hay registros de retención IVA para el período '+periodo+'.','bad');
-    return;
+  const now=new Date();
+  if(!periodo){
+    const suggested=String(now.getFullYear())+String(now.getMonth()+1).padStart(2,'0');
+    periodo=window.prompt('Período impositivo SENIAT (AAAAMM):',suggested);
+    if(periodo===null)return;
   }
-  const lines=list.map(r=>{
-    const rifProv=(r.supplier.rif||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase();
-    const fec=new Date(r.ts).toISOString().slice(0,10);
-    const numFac=(r.docProv||'0001').replace(/[^A-Za-z0-9-]/g,'').slice(0,20);
-    const numCtrl=(r.ctrlProv||'00-00000001').replace(/[^A-Za-z0-9-]/g,'').slice(0,20);
-    const totBs=r2((r.base+r.iva)*(r.rate||S.cfg.rate)).toFixed(2);
-    const baseBs=r2(r.base*(r.rate||S.cfg.rate)).toFixed(2);
-    const retBs=r2(r.retainedBs||(r.iva*0.75*(r.rate||S.cfg.rate))).toFixed(2);
-    const numComp=r.id||(periodo+pad(r.purchaseNo||1,8));
-    return `${rifAgente}\t${periodo}\t${fec}\tC\t01\t${rifProv}\t${numFac}\t${numCtrl}\t${totBs}\t${baseBs}\t${retBs}\t0\t${numComp}\t0.00\t16.00\t0`;
+  periodo=String(periodo).trim();
+  if(!/^\d{6}$/.test(periodo)||Number(periodo.slice(4,6))<1||Number(periodo.slice(4,6))>12){
+    msg('Período inválido. Debe tener formato AAAAMM, por ejemplo 202610.','bad');return;
+  }
+  const clean=value=>String(value??'').replace(/[\t\r\n]/g,' ').trim();
+  const rif=value=>clean(value).toUpperCase().replace(/\s/g,'');
+  const validRif=value=>/^[VEJPG]-?\d{8,9}-?\d$/.test(value);
+  const money=value=>Number(value);
+  const list=(S.retencionesIva||[]).filter(r=>{
+    if(r.void||r.anulada||r.estado==='Anulada')return false;
+    const d=new Date(Number(r.ts)||r.ts);
+    const rowPeriod=String(r.periodo||(Number.isFinite(d.getTime())?String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0'):''));
+    return rowPeriod===periodo;
   });
+  if(!list.length){msg('No hay comprobantes de retención IVA vigentes para el período '+periodo+'.','bad');return;}
+  const rifAgente=rif(S.cfg.rif),errors=[];
+  if(!validRif(rifAgente))errors.push('RIF del agente de retención inválido en Configuración.');
+  const lines=list.map((r,index)=>{
+    const row=index+1,prov=r.supplier||{},rifProv=rif(prov.rif);
+    const fecDate=new Date(Number(r.docDateTs)||Number(r.ts)||r.ts);
+    const storedDocDate=clean(r.docDate);
+    const fec=/^\d{4}-\d{2}-\d{2}$/.test(storedDocDate)?storedDocDate:(Number.isFinite(fecDate.getTime())?fecDate.toISOString().slice(0,10):'');
+    const rawType=String(r.seniatDocType||r.docType||'01').toUpperCase();
+    const tipoDoc=({'01':'01','FACTURA':'01','FACTURA_FISCAL':'01','02':'02','NOTA_DEBITO':'02','NOTA DE DÉBITO':'02','03':'03','NOTA_CREDITO':'03','NOTA DE CRÉDITO':'03'})[rawType];
+    const oper=String(r.operationType||'C').toUpperCase();
+    const numDoc=clean(r.docProv||r.documentNumber),numCtrl=clean(r.ctrlProv||r.controlNumber);
+    const afectado=clean(r.affectedDocument||r.numeroDocumentoAfectado||'0')||'0';
+    const numComp=clean(r.id||r.retentionNumber),rate=money(r.rate||S.cfg.rate);
+    const base=money(r.base),iva=money(r.iva);
+    const retained=money(r.retainedBs!==undefined?r.retainedBs:(money(r.retainedUsd!==undefined?r.retainedUsd:iva*Number(r.pct||S.cfg.retIvaPct||75)/100)*rate));
+    const exempt=money(r.exempt!==undefined?r.exempt:(r.montoExento||0));
+    const total=money(r.documentTotal!==undefined?r.documentTotal:base+exempt+iva);
+    const aliquot=money(r.aliquot!==undefined?r.aliquot:(base>0?iva/base*100:NaN));
+    const expediente=clean(r.expediente||'0')||'0',tipoOperacion=oper==='V'?'V':oper==='C'?'C':'';
+    const dateParts=fec.split('-').map(Number);
+    const dateValid=dateParts.length===3&&dateParts.every(Number.isFinite)&&(()=>{const d=new Date(Date.UTC(dateParts[0],dateParts[1]-1,dateParts[2]));return d.getUTCFullYear()===dateParts[0]&&d.getUTCMonth()===dateParts[1]-1&&d.getUTCDate()===dateParts[2];})();
+    if(!validRif(rifProv))errors.push('Fila '+row+': RIF del proveedor inválido.');
+    if(!dateValid)errors.push('Fila '+row+': fecha de factura inválida.');
+    if(!fec||fec.slice(0,4)+fec.slice(5,7)!==periodo)errors.push('Fila '+row+': fecha no corresponde al período '+periodo+'.');
+    if(!tipoOperacion)errors.push('Fila '+row+': tipo de operación debe ser C o V.');
+    if(!tipoDoc)errors.push('Fila '+row+': tipo de documento debe ser 01, 02 o 03.');
+    if(!numDoc)errors.push('Fila '+row+': falta número de documento.');
+    if(!numCtrl)errors.push('Fila '+row+': falta número de control.');
+    if((tipoDoc==='02'||tipoDoc==='03')&&(!afectado||afectado==='0'))errors.push('Fila '+row+': la nota de débito/crédito requiere número de documento afectado.');
+    if(!numComp)errors.push('Fila '+row+': falta número de comprobante de retención.');
+    if(![total,base,retained,exempt,aliquot,rate].every(Number.isFinite)||total<0||base<0||retained<0||exempt<0||aliquot<0||rate<=0)errors.push('Fila '+row+': importes, tasa o alícuota inválidos.');
+    const totalBs=r2(total*rate),baseBs=r2(base*rate),exemptBs=r2(exempt*rate);
+    const fields=[rifAgente,periodo,fec,tipoOperacion,tipoDoc,rifProv,numDoc,numCtrl,totalBs.toFixed(2),baseBs.toFixed(2),r2(retained).toFixed(2),afectado,numComp,exemptBs.toFixed(2),aliquot.toFixed(2),expediente].map(clean);
+    if(fields.length!==16)errors.push('Fila '+row+': el registro no contiene exactamente 16 columnas.');
+    return fields.join('\t');
+  });
+  if(errors.length){msg('TXT SENIAT bloqueado: '+errors.slice(0,4).join(' ')+(errors.length>4?' (y '+(errors.length-4)+' errores más).':''),'bad');return;}
+  if(lines.some(line=>line.split('\t').length!==16)){msg('TXT SENIAT bloqueado: se detectó una fila distinta de 16 columnas.','bad');return;}
   const txt=lines.join('\r\n');
-  downloadBlob(`RetencionesIVA_${rifAgente}_${periodo}.txt`,txt,'text/plain;charset=utf-8;');
-  msg('Archivo de trabajo exportado. El contador debe validar formato y datos antes de cualquier carga o declaración ante el SENIAT.');
+  downloadBlob('RetencionesIVA_'+rifAgente+'_'+periodo+'.txt',txt,'text/plain;charset=utf-8;');
+  msg('TXT 99035 generado: '+lines.length+' registros, 16 columnas por fila y delimitador TAB. Revise los datos tributarios antes de declarar.');
 }
-
 function printComprobanteRetencion(r){
   const rate=r.rate||S.cfg.rate;
   const totBs=r2((r.base+r.iva)*rate);
@@ -6163,7 +6394,7 @@ function seniatSudebanDlg(initialTab){
     const registerRows=Array.from(grouped.values()).sort((a,b)=>String(a.code).localeCompare(String(b.code),'es')||String(a.type).localeCompare(String(b.type),'es')).map(g=>{const p=productMap.get(String(g.code));return '<tr><td class="mono">'+esc(g.code)+'</td><td>'+esc(p?.desc||'Artículo histórico no localizado')+'</td><td>'+esc(p?.unit||'und')+'</td><td>'+esc(g.type)+'</td><td>'+(g.dir==='IN'?'Entradas':'Salidas')+'</td><td class="r">'+fq(g.qty)+'</td><td class="r">'+nf(g.qty?g.value/g.qty:0)+'</td><td class="r">'+nf(r2(g.value))+'</td><td class="r">'+g.count+'</td><td>'+esc(Array.from(g.docs).join(', ')||'Referencia no registrada')+'</td></tr>';}).join('')||'<tr class="empty"><td colspan="10">No existen eventos reales en el período seleccionado.</td></tr>';
     const stockTable='<div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1180px"><thead><tr><th>#</th><th>Código</th><th>SKU</th><th>Descripción / clasificación</th><th>U.M.</th><th class="r">Existencia</th><th class="r">Costo CPP US$</th><th class="r">Valor US$</th><th class="r">Stock mínimo</th><th>Control</th><th>Último movimiento</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="5" class="r"><b>TOTAL GENERAL</b></td><td class="r"><b>'+fq(totalUnits)+'</b></td><td></td><td class="r"><b>'+nf(totalCost)+'</b></td><td colspan="3"></td></tr></tfoot></table></div>';
     const views=[['existencias','Inventario operativo'],['fiscal','Inventario fiscal'],['kardex','Kardex detallado'],['entradas','Entradas y salidas'],['vennif','Valoración VEN-NIF'],['mercantil','Inventario mercantil']];
-    const tabs='<div class="tabs inv-book-tabs">'+views.map(([id,label])=>'<button class="tab '+(inventoryBookView===id?'active':'')+'" data-inv-view="'+id+'">'+label+'</button>').join('')+(inventoryBookView==='fiscal'?'<button class="btn mini2 primary" data-inv-opening>＋ Apertura fiscal</button>':'')+'</div>';
+    const tabs='<div class="tabs inv-book-tabs">'+views.map(([id,label])=>'<button class="tab '+(inventoryBookView===id?'active':'')+'" data-inv-view="'+id+'">'+label+'</button>').join('')+(inventoryBookView==='fiscal'?'<button class="btn mini2 primary" data-inv-opening>＋ Apertura fiscal</button><button class="btn mini2" data-inv-fiscal-adjust>± Ajuste fiscal trazable</button>':'')+'</div>';
     let content='';
     if(inventoryBookView==='fiscal'){const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);content=renderFiscalInventoryReport(products,ledger);}else if(inventoryBookView==='kardex')content='<div class="hint">Kardex cronológico reutilizando los eventos existentes de S.kardex. Importe = cantidad × costo registrado; el saldo se muestra únicamente cuando el evento lo conserva.</div><div class="kpis"><div class="kpi"><span>Entradas del período</span><b class="ok">'+fq(totalIn)+'</b><small>'+usd(valueIn)+'</small></div><div class="kpi"><span>Salidas del período</span><b class="warn">'+fq(totalOut)+'</b><small>'+usd(valueOut)+'</small></div><div class="kpi"><span>Eventos encontrados</span><b>'+movements.length+'</b><small>Sin duplicar el Kardex profesional</small></div></div><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1320px"><thead><tr><th>Fecha / hora</th><th>Código</th><th>Artículo</th><th>Tipo</th><th>Dirección</th><th>Documento fuente</th><th>Contraparte / detalle</th><th class="r">Cantidad</th><th class="r">Costo unit. US$</th><th class="r">Importe US$</th><th class="r">Saldo</th><th>Operador</th></tr></thead><tbody>'+movementRows+'</tbody></table></div>';
     else if(inventoryBookView==='entradas')content='<div class="hint">Registro auxiliar por artículo, tipo y período, consolidado exclusivamente desde movimientos existentes. Las salidas por autoconsumo/retiro solo aparecerán si fueron registradas como operación fuente identificable; no se infieren.</div><div class="kpis"><div class="kpi"><span>Total entradas</span><b class="ok">'+fq(totalIn)+'</b><small>'+usd(valueIn)+'</small></div><div class="kpi"><span>Total salidas</span><b class="warn">'+fq(totalOut)+'</b><small>'+usd(valueOut)+'</small></div><div class="kpi"><span>Artículos con movimientos</span><b>'+new Set(movements.map(m=>String(m.code||''))).size+'</b><small>'+movements.length+' eventos fuente</small></div></div><div class="gridwrap fiscal-wrap"><table class="grid" style="min-width:1120px"><thead><tr><th>Código</th><th>Artículo</th><th>U.M.</th><th>Tipo</th><th>Dirección</th><th class="r">Cantidad acumulada</th><th class="r">Costo medio US$</th><th class="r">Importe US$</th><th class="r">Eventos</th><th>Documentos fuente</th></tr></thead><tbody>'+registerRows+'</tbody></table></div>';
@@ -6476,6 +6707,7 @@ function seniatSudebanDlg(initialTab){
     const inventoryViewBtn=e.target.closest('[data-inv-view]');
     if(inventoryViewBtn){inventoryBookView=inventoryViewBtn.dataset.invView;renderTabContent();return;}
     if(e.target.closest('[data-inv-opening]')){fiscalInventoryOpeningDlg();return;}
+    if(e.target.closest('[data-inv-fiscal-adjust]')){fiscalInventoryAdjustmentDlg();return;}
     const tabBtn=e.target.closest('.tab[data-tab]');
     if(tabBtn){
       $('.tab.active',el)?.classList.remove('active');
@@ -6578,7 +6810,7 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnPrintInv')printFiscalReport('Libro de Inventario — corte actual',drawInventario());
         if(ev.target.id==='btnExpIgtf')exportIgtfCsv(getFilteredSales());
         if(ev.target.id==='btnPrintActaBcv')printActaBcv(getFilteredSales());
-        if(ev.target.id==='btnTxtSeniat')exportSeniatTxt('202610');
+        if(ev.target.id==='btnTxtSeniat')exportSeniatTxt();
         if(ev.target.id==='btnPreviewPagoSeniat'){
           const fechaPeriodo=new Date();
           const mesPeriodo=String(fechaPeriodo.getFullYear())+'-'+String(fechaPeriodo.getMonth()+1).padStart(2,'0');
@@ -6977,20 +7209,96 @@ function getZHistory(){
 function moneyTotal(rows,fn){
   return r2(rows.reduce((a,x)=>a+fn(x),0));
 }
-function zPayTotals(sales){
+function zNormalizeMethod(value){
+  const raw=String(value||'').replace(/^\[Mixto\s+\d+\/\d+\]\s*/i,'').trim();
+  return METHODS.find(m=>m.id===raw||m.name.toLowerCase()===raw.toLowerCase())||null;
+}
+function zPaymentAmount(payment,method){
+  if(!payment||!method)return 0;
+  const amount=method.cur==='VES'?Number(payment.amountBs||0):Number(payment.amountUsd||0);
+  return Number.isFinite(amount)?Math.max(0,amount):0;
+}
+function zAddLedgerPayment(out,payment,kind){
+  const method=zNormalizeMethod(payment.method||payment.id);
+  if(!method)return;
+  const amount=zPaymentAmount(payment,method);
+  const key=method.id;
+  out[key]=(Number(out[key])||0)+(kind==='OUT'?-amount:amount);
+}
+function zPayTotals(sales,start,end,box){
   const out={};
-  sales.forEach(s=>(s.pays||[]).forEach(p=>{
-    const k=(p.name||p.id||'Otro')+' ('+(p.cur||'USD')+')';
-    out[k]=(out[k]||0)+Number(p.amount||0);
-  }));
+  const inPeriod=ts=>Number(ts)>=Number(start)&&Number(ts)<=Number(end);
+  const add=(label,amount,cur)=>{const key=label+' ('+cur+')';out[key]=(out[key]||0)+Number(amount||0);};
+  sales.forEach(s=>(s.pays||[]).forEach(p=>add(p.name||p.id||'Otro',p.amount,p.cur||'USD')));
+  const cashbox=String(box||currentCaja());
+  (S.cxc||[]).forEach(item=>{
+    if(!item.cashbox||String(item.cashbox)!==cashbox)return;
+    (item.payments||[]).forEach(p=>{
+      if((p.cashbox&&String(p.cashbox)!==cashbox)||!inPeriod(p.ts))return;
+      const m=zNormalizeMethod(p.method||p.id);if(m)add('Cobro CxC · '+m.name,zPaymentAmount(p,m),m.cur);
+    });
+  });
+  (S.cxp||[]).forEach(item=>{
+    if(!item.cashbox||String(item.cashbox)!==cashbox)return;
+    (item.payments||[]).forEach(p=>{
+      if((p.cashbox&&String(p.cashbox)!==cashbox)||!inPeriod(p.ts))return;
+      const m=zNormalizeMethod(p.method||p.id);if(m)add('Pago CxP · '+m.name,zPaymentAmount(p,m),m.cur);
+    });
+  });
+  (S.returns||[]).forEach(note=>{
+    if(String(note.cashbox||'')!==cashbox||!inPeriod(note.ts)||Number(note.refund||0)<=0)return;
+    const m=zNormalizeMethod(note.refundMethod);
+    if(m)add('Reembolso NC · '+m.name,-(m.cur==='VES'?Number(note.refundAmount||0):Number(note.refund||0)),m.cur);
+  });
+  (S.purchases||[]).forEach(p=>{
+    if(!p.cashbox||String(p.cashbox)!==cashbox||p.void||!inPeriod(p.ts)||Number(p.paid||0)<=0)return;
+    const linked=(S.cxp||[]).some(x=>String(x.cashbox||'')===cashbox&&String(x.purchaseNo||'')===String(p.no));
+    if(linked)return;
+    const m=zNormalizeMethod(p.payMethod);if(m)add('Compra pagada · '+m.name,m.cur==='VES'?Number(p.paid||0)*Number(p.rate||S.cfg.rate||1):Number(p.paid||0),m.cur);
+  });
   return out;
+}
+function zReturnSummary(start,end,box){
+  const rows=(S.returns||[]).filter(note=>String(note.cashbox||'')===String(box)&&Number(note.ts)>=Number(start)&&Number(note.ts)<=Number(end));
+  return {
+    count:rows.length,
+    total:r2(rows.reduce((sum,note)=>sum+Number(note.total||0),0)),
+    base:r2(rows.reduce((sum,note)=>sum+Number(note.base||0),0)),
+    iva:r2(rows.reduce((sum,note)=>sum+Number(note.iva||0),0)),
+    totalBs:r2(rows.reduce((sum,note)=>sum+Number(note.total||0)*Number(note.rate||S.cfg.rate||1),0))
+  };
 }
 function zOperationalTotals(sales,start,end,box){
   const inPeriod=ts=>Number(ts)>=Number(start)&&Number(ts)<=Number(end);
-  const out={cxcUsd:0,cxcBs:0,casheaUsd:0,creditSalesUsd:0,cashInUsd:0,cashOutUsd:0,cashInBs:0,cashOutBs:0,movementCount:0};
+  const sameBox=(item,payment)=>!!item.cashbox&&String(item.cashbox)===String(box)&&(!payment.cashbox||String(payment.cashbox)===String(box));
+  const out={cxcUsd:0,cxcBs:0,casheaUsd:0,creditSalesUsd:0,returnUsd:0,returnIvaUsd:0,returnCount:0,refundUsd:0,refundBs:0,cashInUsd:0,cashOutUsd:0,cashInBs:0,cashOutBs:0,movementCount:0};
   (S.cxc||[]).forEach(item=>{
-    if(item.cashbox&&String(item.cashbox)!==String(box))return;
-    (item.payments||[]).forEach(p=>{if(inPeriod(p.ts)){out.cxcUsd=r2(out.cxcUsd+Number(p.amountUsd||0));out.cxcBs=r2(out.cxcBs+Number(p.amountBs||0));}});
+    if(!item.cashbox||String(item.cashbox)!==String(box))return;
+    (item.payments||[]).forEach(p=>{
+      if(!sameBox(item,p)||!inPeriod(p.ts))return;
+      out.cxcUsd=r2(out.cxcUsd+Number(p.amountUsd||0));
+      out.cxcBs=r2(out.cxcBs+Number(p.amountBs||0));
+      const method=zNormalizeMethod(p.method||p.id);
+      if(method&&method.id==='efUSD')out.cashInUsd=r2(out.cashInUsd+Number(p.amountUsd||0));
+      if(method&&method.id==='efBs')out.cashInBs=r2(out.cashInBs+Number(p.amountBs||0));
+    });
+  });
+  (S.cxp||[]).forEach(item=>{
+    if(!item.cashbox||String(item.cashbox)!==String(box))return;
+    (item.payments||[]).forEach(p=>{
+      if(!sameBox(item,p)||!inPeriod(p.ts))return;
+      const method=zNormalizeMethod(p.method||p.id);
+      if(method&&method.id==='efUSD')out.cashOutUsd=r2(out.cashOutUsd+Number(p.amountUsd||0));
+      if(method&&method.id==='efBs')out.cashOutBs=r2(out.cashOutBs+Number(p.amountBs||0));
+    });
+  });
+  const cxpPurchaseKeys=new Set((S.cxp||[]).filter(x=>x.purchaseNo!=null&&x.cashbox&&String(x.cashbox)===String(box)).map(x=>String(x.cashbox)+'|'+String(x.purchaseNo)));
+  (S.purchases||[]).forEach(p=>{
+    if(!p.cashbox||String(p.cashbox)!==String(box)||p.void||!inPeriod(p.ts)||Number(p.paid||0)<=0)return;
+    if(cxpPurchaseKeys.has(String(p.cashbox)+'|'+String(p.no)))return;
+    const method=zNormalizeMethod(p.payMethod);
+    if(method&&method.id==='efUSD')out.cashOutUsd=r2(out.cashOutUsd+Number(p.paid||0));
+    if(method&&method.id==='efBs')out.cashOutBs=r2(out.cashOutBs+Number(p.paid||0)*Number(p.rate||S.cfg.rate||1));
   });
   sales.filter(s=>!s.void).forEach(s=>(s.pays||[]).forEach(p=>{if(p.id==='credito')out.creditSalesUsd=r2(out.creditSalesUsd+Number(p.amount||0));}));
   const saleNos=new Set(sales.filter(s=>!s.void&&String(s.cashbox||box)===String(box)).map(s=>String(s.no)));
@@ -6999,9 +7307,19 @@ function zOperationalTotals(sales,start,end,box){
     const ops=Array.isArray(lot.operaciones)?lot.operaciones:[];
     if((S.casheaMovimientos||[]).some(m=>ops.includes(m.id)&&saleNos.has(String(m.ventaNo))))out.casheaUsd=r2(out.casheaUsd+Number(lot.depositadoUsd||0));
   });
+  (S.returns||[]).forEach(note=>{
+    if(String(note.cashbox||'')!==String(box)||!inPeriod(note.ts))return;
+    out.returnUsd=r2(out.returnUsd+Number(note.total||0));
+    out.returnIvaUsd=r2(out.returnIvaUsd+Number(note.iva||0));
+    out.returnCount++;
+    if(note.refundCurrency==='VES')out.refundBs=r2(out.refundBs+Number(note.refundAmount||0));
+    else out.refundUsd=r2(out.refundUsd+Number(note.refund||0));
+  });
   (S.movimientosCaja||[]).forEach(m=>{
-    if(String(m.cashbox||box)!==String(box)||!inPeriod(m.ts))return;
-    const currency=m.currency==='USD'?'Usd':'Bs',direction=m.direction==='IN'?'In':'Out',key='cash'+direction+currency;
+    if(!m.cashbox||String(m.cashbox)!==String(box)||!inPeriod(m.ts))return;
+    const currency=m.currency==='USD'?'Usd':(m.currency==='BS'?'Bs':null);
+    if(!currency)return;
+    const direction=m.direction==='IN'?'In':'Out',key='cash'+direction+currency;
     out[key]=r2(out[key]+Math.max(0,Number(m.amount||0)));out.movementCount++;
   });
   return out;
@@ -7081,6 +7399,9 @@ function zExpectedByMethod(sales,opening){
   METHODS.forEach(m=>out[m.id]=0);
   out.efBs=Number(opening&&opening.bs||0);
   out.efUSD=Number(opening&&opening.usd||0);
+  const box=String(opening&&opening.cashbox||'');
+  const openedAt=Number(opening&&opening.openedAt||opening&&opening.ts||0);
+  const inShift=ts=>Number(ts)>=openedAt&&Number(ts)<=Date.now();
   sales.forEach(s=>{
     (s.pays||[]).forEach(p=>{
       if(Object.prototype.hasOwnProperty.call(out,p.id))out[p.id]+=Number(p.amount||0);
@@ -7092,21 +7413,42 @@ function zExpectedByMethod(sales,opening){
       const cashBs=(s.pays||[]).filter(p=>p.id==='efBs').reduce((a,p)=>a+Number(p.amount||0),0);
       const usdEquivalent=cashUsd+cashBs/rate;
       if(usdEquivalent>0){
-        const usdChange=change*(cashUsd/usdEquivalent);
-        const bsChange=change*(cashBs/rate/usdEquivalent)*rate;
-        out.efUSD-=usdChange;
-        out.efBs-=bsChange;
+        out.efUSD-=change*(cashUsd/usdEquivalent);
+        out.efBs-=change*(cashBs/rate/usdEquivalent)*rate;
       }
     }
   });
+  (S.cxc||[]).forEach(item=>{
+    if(!box||!item.cashbox||String(item.cashbox)!==box)return;
+    (item.payments||[]).forEach(p=>{
+      if((p.cashbox&&String(p.cashbox)!==box)||!inShift(p.ts))return;
+      zAddLedgerPayment(out,p,'IN');
+    });
+  });
+  (S.cxp||[]).forEach(item=>{
+    if(!box||!item.cashbox||String(item.cashbox)!==box)return;
+    (item.payments||[]).forEach(p=>{
+      if((p.cashbox&&String(p.cashbox)!==box)||!inShift(p.ts))return;
+      zAddLedgerPayment(out,p,'OUT');
+    });
+  });
+  const cxpPurchaseKeys=new Set((S.cxp||[]).filter(x=>x.purchaseNo!=null&&x.cashbox&&String(x.cashbox)===box).map(x=>String(x.cashbox)+'|'+String(x.purchaseNo)));
+  (S.purchases||[]).forEach(p=>{
+    if(!box||!p.cashbox||String(p.cashbox)!==box||p.void||!inShift(p.ts)||Number(p.paid||0)<=0)return;
+    if(cxpPurchaseKeys.has(String(p.cashbox)+'|'+String(p.no)))return;
+    const method=zNormalizeMethod(p.payMethod);
+    if(!method)return;
+    const amount=method.cur==='VES'?Number(p.paid||0)*Number(p.rate||S.cfg.rate||1):Number(p.paid||0);
+    out[method.id]+=(Number.isFinite(amount)?amount:0);
+  });
   (S.movimientosCaja||[]).forEach(m=>{
-    if(String(m.cashbox||opening.cashbox||'')!==String(opening.cashbox||m.cashbox||'')||Number(m.ts)<Number(opening.openedAt||0))return;
+    if(!box||!m.cashbox||String(m.cashbox)!==box||Number(m.ts)<Number(opening&&opening.openedAt||0))return;
     const key=m.currency==='USD'?'efUSD':(m.currency==='BS'?'efBs':null);
     if(!key)return;
     const amount=Math.max(0,Number(m.amount||0));
     out[key]+=m.direction==='IN'?amount:-amount;
   });
-  Object.keys(out).forEach(k=>out[k]=r2(k==='efBs'||k==='efUSD'?out[k]:Math.max(0,out[k])));
+  Object.keys(out).forEach(k=>out[k]=r2(out[k]));
   return out;
 }
 function zDiffStatus(rows){
@@ -7130,7 +7472,7 @@ function printCorteZ(z,autoPrint){
   const notes=z.observations?line('Observaciones',z.observations):'';
   const html='<div class="zpaper"><center><b>'+esc(S.cfg.empresa||'SIFER 360')+'</b><br>REPORTE Z · CIERRE DE CAJA<br><small>REPORTE DE CONTROL INTERNO · NO FISCAL</small></center><hr>'+
     line('Corte Z',z.id)+line('Fecha',fmtDT(z.closedAt))+line('Caja',z.cashbox)+line('Cajero',z.cashier)+line('Desde',z.openedAt?fmtDT(z.openedAt):'—')+line('Desde factura',z.invoiceFrom||'—')+line('Hasta factura',z.invoiceTo||'—')+
-    '<hr><b>RESUMEN DE VENTAS</b>'+line('Facturas válidas',String(z.salesCount))+line('Anulaciones',String(z.voidCount))+line('Ventas netas USD',usd(z.netUsd))+line('Ventas netas Bs.',bsf(z.netBs))+line('IVA USD',usd(z.ivaUsd))+line('IGTF USD',usd(z.igtfUsd))+
+    '<hr><b>RESUMEN DE VENTAS</b>'+line('Facturas válidas',String(z.salesCount))+line('Anulaciones',String(z.voidCount))+line('Notas de crédito',String(z.returnCount||0))+line('Devoluciones USD',usd(z.returnUsd||0))+line('Ventas netas USD',usd(z.netUsd))+line('Ventas netas Bs.',bsf(z.netBs))+line('IVA neto USD',usd(z.ivaUsd))+line('IGTF USD',usd(z.igtfUsd))+
     '<hr><b>CONSOLIDADO DE PRODUCTOS VENDIDOS · SKU / CÓDIGO / CANTIDAD</b>'+productHtml+'<hr><b>AJUSTES DE INVENTARIO · POSITIVOS (+) Y NEGATIVOS (−)</b>'+adjustmentHtml+
     '<hr><b>RESUMEN DE COBROS Y CRÉDITOS</b>'+line('Cobros de CxC recibidos',usd(z.detailTotals&&z.detailTotals.cxcUsd||0)+' / '+bsf(z.detailTotals&&z.detailTotals.cxcBs||0))+line('Depósitos Cashea recibidos',usd(z.detailTotals&&z.detailTotals.casheaUsd||0))+line('Ventas a crédito generadas (CxC)',usd(z.detailTotals&&z.detailTotals.creditSalesUsd||0))+
     '<hr><b>TOTALES COBRADOS · POR MÉTODO</b>'+(Object.keys(z.payments||{}).length?Object.entries(z.payments).map(([name,amount])=>line(name,name.includes('(VES)')?bsf(amount):usd(amount))).join(''):'<div class="zrec">No hay cobros registrados por método en este corte.</div>')+'<hr><b>ARQUEO DE CAJA · POR MÉTODO</b><div class="zrec-head"><b>SISTEMA</b> / <b>REAL CONTADO O CONCILIADO</b> / <b>DIFERENCIA</b></div>'+(recHtml||'<div class="zrec">Este Corte Z no contiene detalle de arqueo por método.</div>')+
@@ -7168,11 +7510,16 @@ function corteZDlg(){
       const row=map.get(code)||{code,desc:String(l.desc||l.name||'Producto sin nombre'),qty:0};
       row.qty=r2(row.qty+(Number(l.qty)||0));map.set(code,row);
     }));
-    return [...map.values()].sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
+    (S.returns||[]).filter(note=>String(note.cashbox||'')===box&&Number(note.ts)>=shiftStart()).forEach(note=>(note.lines||[]).forEach(line=>{
+      const code=String(line.code||'SIN-CODIGO');
+      const row=map.get(code)||{code,desc:String(line.desc||'Producto sin nombre'),qty:0};
+      row.qty=r2(row.qty-Number(line.qty||0));map.set(code,row);
+    }));
+    return [...map.values()].filter(row=>Math.abs(row.qty)>0.000001).sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
   };
-  const getInventoryAdjustments=(start,end)=>(S.kardex||[]).filter(k=>{
+  const getInventoryAdjustments=(start,end,box)=>(S.kardex||[]).filter(k=>{
     const ts=Number(k.ts)||0;
-    return ts>=Number(start)&&ts<=Number(end)&&['CONTEO','AJUSTE'].includes(String(k.type||'').toUpperCase());
+    return String(k.cashbox||'')===String(box||'')&&ts>=Number(start)&&ts<=Number(end)&&['CONTEO','AJUSTE','DEVOLUCION'].includes(String(k.type||'').toUpperCase());
   }).map(k=>({code:String(k.code||'SIN-CODIGO'),desc:String((prod(k.code)||{}).desc||k.party||'Producto sin nombre'),qty:Math.abs(Number(k.qty)||0),sign:k.dir==='IN'?1:-1,doc:String(k.doc||'—'),reason:String(k.party||'')})).sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true})||a.doc.localeCompare(b.doc));
   const getRows=()=>{
     const sales=getPeriodSales().filter(s=>!s.void);
@@ -7217,8 +7564,8 @@ function corteZDlg(){
     $('#zOpenShift',el).disabled=opened;
     $('#zOpeningBs',el).disabled=opened;
     $('#zOpeningUsd',el).disabled=opened;
-    const period=getPeriodSales(),validSales=period.filter(s=>!s.void),voidSales=period.filter(s=>s.void);
-    $('#zSummary',el).innerHTML=[['Facturas válidas',String(validSales.length)],['Anulaciones',String(voidSales.length)],['Ventas netas USD',usd(moneyTotal(validSales,s=>Number(s.total||0)))],['Ventas netas Bs.',bsf(moneyTotal(validSales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)))],['IVA USD',usd(moneyTotal(validSales,s=>Number(s.iva||0)))],['IGTF USD',usd(moneyTotal(validSales,s=>Number(s.igtf||0)))]] .map(r=>'<tr><td>'+esc(r[0])+'</td><td class="r"><b>'+esc(r[1])+'</b></td></tr>').join('');
+    const period=getPeriodSales(),validSales=period.filter(s=>!s.void),voidSales=period.filter(s=>s.void),returns=zReturnSummary(shiftStart(),Date.now(),box);
+    $('#zSummary',el).innerHTML=[['Facturas válidas',String(validSales.length)],['Anulaciones',String(voidSales.length)],['Notas de crédito',String(returns.count)],['Devoluciones USD',usd(returns.total)],['Ventas netas USD',usd(r2(moneyTotal(validSales,s=>Number(s.total||0))-returns.total))],['Ventas netas Bs.',bsf(r2(moneyTotal(validSales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0))-returns.totalBs))],['IVA neto USD',usd(r2(moneyTotal(validSales,s=>Number(s.iva||0))-returns.iva))],['IGTF USD',usd(moneyTotal(validSales,s=>Number(s.igtf||0)))]] .map(r=>'<tr><td>'+esc(r[0])+'</td><td class="r"><b>'+esc(r[1])+'</b></td></tr>').join('');
     const oldReal=readReal();
     const movements=(S.movimientosCaja||[]).filter(m=>String(m.cashbox||box)===String(box)&&Number(m.ts)>=shiftStart()&&Number(m.ts)<=Date.now()).sort((a,b)=>Number(b.ts)-Number(a.ts));
     $('#zMovRows',el).innerHTML=movements.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Movimiento</th><th>Motivo</th><th class="r">Monto</th><th>Usuario</th></tr></thead><tbody>'+movements.map(m=>'<tr><td>'+esc(fmtDT(m.ts))+'</td><td>'+esc((m.direction==='IN'?'Entrada (+)':'Salida (−)')+' · '+(m.currency==='USD'?'Efectivo USD':'Efectivo Bs.'))+'</td><td>'+esc(m.reason||'—')+'</td><td class="r">'+esc(m.currency==='USD'?usd(m.amount):bsf(m.amount))+'</td><td>'+esc(m.user||'—')+'</td></tr>').join('')+'</tbody></table></div>':'<div class="hint">Sin movimientos de efectivo registrados en este turno.</div>';
@@ -7292,7 +7639,8 @@ function corteZDlg(){
       const all=getPeriodSales(),sales=all.filter(s=>!s.void),voids=all.filter(s=>s.void);
       const now=Date.now();
       const rec=result.rec.map(r=>Object.assign({},r,{real:r.real==null?null:Number(r.real),diff:r.diff==null?null:Number(r.diff)}));
-      const draft={id:'VISTA PREVIA · Z-'+box,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:now,productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),now),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),now,box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:result.total.status,shortageUsd:result.total.shortageUsd,surplusUsd:result.total.surplusUsd,shortageBs:result.total.shortageBs,surplusBs:result.total.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'previa'};
+      const returns=zReturnSummary(shiftStart(),now,box);
+      const draft={id:'VISTA PREVIA · Z-'+box,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:now,productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),now,box),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,returnCount:returns.count,returnUsd:returns.total,returnIvaUsd:returns.iva,netUsd:r2(moneyTotal(sales,s=>Number(s.total||0))-returns.total),netBs:r2(moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0))-returns.totalBs),ivaUsd:r2(moneyTotal(sales,s=>Number(s.iva||0))-returns.iva),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales,shiftStart(),now,box),detailTotals:zOperationalTotals(all,shiftStart(),now,box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:result.total.status,shortageUsd:result.total.shortageUsd,surplusUsd:result.total.surplusUsd,shortageBs:result.total.shortageBs,surplusBs:result.total.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'previa'};
       printCorteZ(draft,false);return;
     }
     if(e.target.id==='zClose'){
@@ -7306,8 +7654,8 @@ function corteZDlg(){
       const all=getPeriodSales(),sales=all.filter(s=>!s.void),voids=all.filter(s=>s.void);
       const rec=result.rec.map(r=>Object.assign({},r,{real:Number(r.real),diff:Number(r.diff)}));
       const seqs=cajaSeqs(),seq=seqs[box]||{z:1};let zSeq;try{zSeq=await nextCajaSequence('z',box);}catch(error){msg('No se pudo reservar el consecutivo del Corte Z: '+error.message,'bad');return;}seq.z=zSeq+1;seqs[box]=seq;localStorage.setItem('sifer360_box_sequences',JSON.stringify(seqs));
-      const t=Object.assign({},result.total);
-      const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now()),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,netUsd:moneyTotal(sales,s=>Number(s.total||0)),netBs:moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)),ivaUsd:moneyTotal(sales,s=>Number(s.iva||0)),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
+      const t=Object.assign({},result.total),returns=zReturnSummary(shiftStart(),Date.now(),box);
+      const z={id:'Z-'+box.replace(/\W/g,'')+'-'+new Date().getFullYear()+two(new Date().getMonth()+1)+two(new Date().getDate())+'-'+pad(zSeq,4),rate:Number(S.cfg.rate)||1,cashbox:box,cashier:currentCajero(),openedAt:active.openedAt,closedAt:Date.now(),productSales:getProductSales(sales),inventoryAdjustments:getInventoryAdjustments(shiftStart(),Date.now(),box),openingId:active.id||'',invoiceFrom:all.length?pad(Math.min(...all.map(s=>Number(s.no)||0))):'—',invoiceTo:all.length?pad(Math.max(...all.map(s=>Number(s.no)||0))):'—',salesCount:sales.length,voidCount:voids.length,returnCount:returns.count,returnUsd:returns.total,returnIvaUsd:returns.iva,netUsd:r2(moneyTotal(sales,s=>Number(s.total||0))-returns.total),netBs:r2(moneyTotal(sales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0))-returns.totalBs),ivaUsd:r2(moneyTotal(sales,s=>Number(s.iva||0))-returns.iva),igtfUsd:moneyTotal(sales,s=>Number(s.igtf||0)),payments:zPayTotals(sales,shiftStart(),Date.now(),box),detailTotals:zOperationalTotals(all,shiftStart(),Date.now(),box),openingBs:Number(active.bs||0),openingUsd:Number(active.usd||0),reconciliation:rec,reconciliationStatus:status,shortageUsd:t.shortageUsd,surplusUsd:t.surplusUsd,shortageBs:t.shortageBs,surplusBs:t.surplusBs,observations:$('#zObservations',el).value.trim(),saleIds:all.map(s=>s.no),status:'cerrada'};
       const zStateBefore=JSON.parse(JSON.stringify(S));
       const closedOpening=Object.assign({},active,{status:'cerrada',closedAt:z.closedAt,cutId:z.id});
       upsertOpeningState(closedOpening);
@@ -7673,15 +8021,6 @@ async function databaseSettingsDlg(){
       '</div>' +
       '<div id="dbMsg" class="hint" style="margin-top:10px;min-height:18px"></div>' +
     '</div>' +
-    '<div style="background:#131C2E;border:1px solid #7C5B16;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:9px">' +
-      '<div style="display:flex;align-items:center;gap:8px"><b style="color:#FDE68A;font-size:13px">Respaldo cifrado automático en Google Drive</b><span style="background:#713F12;color:#FDE68A;padding:2px 7px;border-radius:4px;font-size:10px">OPCIONAL</span></div>' +
-      '<div class="hint" style="margin:0">SQLite continúa siendo la única base operativa. Solo el equipo independiente o servidor LAN puede generar copias. El archivo se cifra localmente antes de subirlo a una carpeta privada de tu Google Drive.</div>' +
-      '<div class="f"><label for="gdriveEmail">Correo de la cuenta Google Drive</label><input class="fld" id="gdriveEmail" type="email" autocomplete="email" placeholder="tu-correo@gmail.com" style="width:100%"></div>' +
-      '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn" id="gdriveConnect" type="button">Conectar Google Drive</button><button class="btn" id="gdriveEnable" type="button">Activar respaldo diario 8:00 p. m.</button><button class="btn" id="gdriveDisable" type="button">Desactivar</button></div>' +
-      '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn primary" id="gdriveNow" type="button">Realizar respaldo ahora</button><button class="btn" id="gdriveRecovery" type="button">Guardar clave de recuperación</button></div>' +
-      '<div id="gdriveStatus" class="hint" role="status" aria-live="polite" style="margin:0;min-height:28px">Consultando configuración de Google Drive…</div>' +
-      '<div class="hint" style="margin:0;color:#FDE68A">Importante: conserva la clave de recuperación fuera de este equipo. Sin ella no podrás descifrar los respaldos si cambias de PC o Windows. Puedes cambiar de cuenta Google cuando quieras; los respaldos anteriores permanecerán en la cuenta antigua y los nuevos irán a la cuenta nueva.</div>' +
-    '</div>' +
   '</div>');
 
   const note = $('#dbMsg', el);
@@ -7739,59 +8078,7 @@ async function databaseSettingsDlg(){
     }
   });
 
-  const gdriveStatus = $('#gdriveStatus', el);
-  const gdriveEmail = $('#gdriveEmail', el);
-  const showDriveStatus = s => {
-    if (!isDesktop) { gdriveStatus.textContent = 'Esta función requiere la aplicación de escritorio Windows.'; return; }
-    $('#gdriveConnect', el).disabled = !s.oauthReady;
-    $('#gdriveEnable', el).disabled = !s.configured || !s.oauthReady;
-    $('#gdriveNow', el).disabled = !s.configured || !s.oauthReady;
-    if (s.email) gdriveEmail.value = s.email;
-    $('#gdriveConnect', el).textContent = s.configured ? 'Cambiar cuenta de Google' : 'Conectar Google Drive';
-    const history = (s.history || []).map(x => (x.ok ? '✓ ' : '✕ ') + (x.at || '')).join(' · ');
-    gdriveStatus.textContent = (s.configured ? 'Cuenta conectada: ' + s.email : 'Google Drive no conectado.') +
-      (s.enabled ? ' · Respaldo diario activo: 8:00 p. m. hora Venezuela.' : ' · Programación desactivada.') +
-      (s.lastBackupAt ? ' · Último intento: ' + s.lastBackupAt + ' (' + (s.lastBackupStatus || 'sin estado') + ')' : '') +
-      (s.lastBackupError ? ' · Error: ' + s.lastBackupError : '') +
-      (history ? ' · Historial: ' + history : '') +
-      (!s.oauthReady ? ' · Falta registrar/configurar el OAuth Client ID de SIFER360 en Google Cloud; la conexión se habilitará al incorporar esa credencial pública.' : '');
-  };
-  const refreshDriveStatus = async () => {
-    if (!isDesktop || !window.posDesktop.backupStatus) { showDriveStatus({}); return; }
-    try { showDriveStatus(await window.posDesktop.backupStatus()); }
-    catch (e) { gdriveStatus.textContent = 'No se pudo consultar Google Drive: ' + e.message; }
-  };
-  $('#gdriveConnect', el).disabled = !isDesktop;
-  $('#gdriveEnable', el).disabled = !isDesktop;
-  $('#gdriveDisable', el).disabled = !isDesktop;
-  $('#gdriveNow', el).disabled = !isDesktop;
-  $('#gdriveRecovery', el).disabled = !isDesktop;
-  $('#gdriveConnect', el).addEventListener('click', async () => {
-    const email = gdriveEmail.value.trim();
-    if (!email) { gdriveStatus.textContent = 'Escribe el correo de Google que quieres conectar.'; return; }
-    gdriveStatus.textContent = 'Validando la nueva cuenta de Google. La cuenta actual seguirá activa si la autorización falla…';
-    try { const previous = await window.posDesktop.backupStatus(); const previousEmail = previous.email || ''; const result = await window.posDesktop.backupConnectGoogle(email); showDriveStatus(result); gdriveStatus.textContent += (previousEmail && previousEmail.toLowerCase() !== email.toLowerCase() ? ' Cuenta cambiada correctamente. Los respaldos anteriores permanecen en la cuenta anterior; los siguientes se guardarán aquí.' : ' Guarda ahora la clave de recuperación antes de activar la programación.'); }
-    catch (e) { gdriveStatus.textContent = 'No se pudo conectar Google Drive: ' + e.message; }
-  });
-  $('#gdriveEnable', el).addEventListener('click', async () => {
-    gdriveStatus.textContent = 'Programando la tarea diaria de Windows…';
-    try { showDriveStatus(await window.posDesktop.backupEnableDaily()); }
-    catch (e) { gdriveStatus.textContent = 'No se pudo activar el respaldo diario: ' + e.message; }
-  });
-  $('#gdriveDisable', el).addEventListener('click', async () => {
-    try { showDriveStatus(await window.posDesktop.backupDisableDaily()); }
-    catch (e) { gdriveStatus.textContent = 'No se pudo desactivar: ' + e.message; }
-  });
-  $('#gdriveNow', el).addEventListener('click', async () => {
-    gdriveStatus.textContent = 'Verificando SQLite, cifrando y enviando el respaldo…';
-    try { const result = await window.posDesktop.backupRunNow(); gdriveStatus.textContent = 'Respaldos verificados y cargados: ' + result.fileName + (result.json ? ' y ' + result.json.fileName : '') + ' · SHA-256 SQLite ' + result.sha256; await refreshDriveStatus(); }
-    catch (e) { gdriveStatus.textContent = 'No se completó el respaldo: ' + e.message; }
-  });
-  $('#gdriveRecovery', el).addEventListener('click', async () => {
-    try { const result = await window.posDesktop.backupExportRecoveryKey(); gdriveStatus.textContent = result.saved ? 'Clave de recuperación guardada. Guárdala en un medio seguro separado de esta PC.' : 'No se guardó la clave.'; }
-    catch (e) { gdriveStatus.textContent = 'No se pudo guardar la clave: ' + e.message; }
-  });
-  refreshDriveStatus();
+
 
   $('#dbResetAll', el).addEventListener('click', () => {
     resetAll();

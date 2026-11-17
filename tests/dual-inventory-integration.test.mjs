@@ -27,8 +27,8 @@ test('fiscal sales validate fiscal availability and reduce both ledgers; interna
 });
 
 test('fiscal purchase reversals and fiscal sale voids only reverse recorded fiscal movements',()=>{
- assert.match(pos,/originalEvent=sourceId/);
- assert.match(pos,/ledger\.movements\.some\(m=>m\.eventId===originalEvent\)/);
+ assert.ok(pos.includes("movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='VENTA_FISCAL')"));
+ assert.match(pos,/eventId:'VOID-SALE:'\+original\.eventId/);
 });
 
 test('operational/fiscal inventory transaction matrix is documented without pretending legal compliance',()=>{
@@ -36,4 +36,45 @@ test('operational/fiscal inventory transaction matrix is documented without pret
  assert.match(doc,/ticket no fiscal/i);
  assert.match(doc,/No se presume que todo el stock operativo sea fiscal/);
  assert.match(doc,/no equivale por sí solo al libro contable VEN-NIF/);
+});
+
+test('purchase void prevalidates physical/fiscal balances and restores the SQLite snapshot on failure',()=>{
+ assert.match(pos,/const rollbackState=JSON\.parse\(JSON\.stringify\(S\)\);[\s\S]*?const fiscalLines=/);
+ assert.match(pos,/const fiscalCheck=window\.SIFERInventoryLedgers\.canApplyFiscalSale\(S,fiscalLines\)/);
+ assert.match(pos,/const physicalRequired=new Map\(\)/);
+ assert.match(pos,/physicalRequired\.entries\(\)/);
+ assert.match(pos,/restoreStateSnapshotIfNeeded\(null,rollbackState\)/);
+ assert.match(pos,/restoreStateSnapshotIfNeeded\(persisted,rollbackState\)/);
+});
+
+test('fiscal purchase and sale reversals target each original fiscal event and aggregate physical stock checks',()=>{
+ assert.match(pos,/const physicalRequired=new Map\(\)/);
+ assert.match(pos,/pLines\.map\(\(l,lineIndex\)=>/);
+ assert.match(pos,/PURCHASE-[\s\S]*?lineIndex,type:'COMPRA_FISCAL'/);
+ assert.ok(pos.includes("sale.accountingSourceId+':'+p.code+':'+lineIndex"));
+ assert.ok(pos.includes("movements.filter(m=>String(m.sourceId||'')===purchaseSourceId&&m.type==='COMPRA_FISCAL')"));
+ assert.ok(pos.includes("movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='VENTA_FISCAL')"));
+});
+
+test('fiscal purchase and sale voids stop when source-ledger quantities do not reconcile with document lines',()=>{
+ assert.match(pos,/const expected=new Map\(\),recorded=new Map\(\);[\s\S]*?c\.lines\.forEach\(l=>expected\.set/);
+ assert.match(pos,/No se puede anular la compra fiscal: el libro fiscal no coincide/);
+ assert.match(pos,/s\.lines\.forEach\(l=>expected\.set/);
+ assert.match(pos,/No se puede anular la venta fiscal: el libro fiscal no coincide/);
+});
+
+test('sale void restores the pre-operation snapshot if a fiscal reversal throws',()=>{
+ assert.match(pos,/const rollbackState=JSON\.parse\(JSON\.stringify\(S\)\);[\s\S]*?try\{[\s\S]*?eventId:'VOID-SALE:'[\s\S]*?catch\(error\)\{[\s\S]*?restoreStateSnapshotIfNeeded\(null,rollbackState\)/);
+});
+
+test('purchase void blocks recorded supplier payments before changing stock or fiscal balances',()=>{
+ const start=pos.indexOf('const renderPurchaseHist');
+ const end=pos.indexOf('const renderSuppliersTab',start);
+ const code=pos.slice(start,end);
+ const guard=code.indexOf('const hasRecordedPayments=');
+ const mutation=code.indexOf('c.void=true');
+ assert.ok(guard>=0&&mutation>guard,'payment guard must run before purchase void mutation');
+ assert.match(code,/Number\(c\.paid\|\|0\)>1e-8/);
+ assert.match(code,/Array\.isArray\(x\.payments\)&&x\.payments\.length>0/);
+ assert.match(code,/Primero debe reversarse y conciliarse cada pago/);
 });

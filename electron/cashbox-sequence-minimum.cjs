@@ -23,7 +23,7 @@ function getCashboxSequenceMinimum(state = {}, cashboxId, operationType) {
   if (operation === 'invoice') return maxPlusOne(rows('sales', true), item => item.no);
   if (operation === 'control') return maxPlusOne(rows('sales', true), item => suffixNumber(item.ctrlNo));
   if (operation === 'z') return maxPlusOne(rows('cortesZ'), item => suffixNumber(item.id));
-  if (operation === 'void') return maxPlusOne(rows('sales', true), item => item.voidNo);
+  if (operation === 'void') return maxPlusOne([...rows('sales', true), ...rows('purchases')], item => item.voidNo);
   if (operation === 'purchase') return maxPlusOne(rows('purchases'), item => item.no);
   if (operation === 'count') return maxPlusOne(rows('counts'), item => Number(item.sequence) || suffixNumber(item.id));
   if (operation === 'cxc') return maxPlusOne(rows('cxc'), item => Number(item.sequence) || suffixNumber(item.id));
