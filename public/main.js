@@ -5117,10 +5117,69 @@ function showTicket(s){
   ]});
 }
 
+async function registerSaleReturn(s,refresh){
+  if(!s||s.void){msg('Seleccione una venta vigente.','bad');return false;}
+  if(!['admin','contador'].includes((activeUser()||{}).role)){
+    msg('La devolución requiere autorización de administrador o contador.','bad');return false;
+  }
+  if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin('Autorizar devolución / nota de crédito de la venta '+pad(s.no)))return false;
+  const box=String(s.cashbox||'');
+  const already=(index)=>window.SIFERReturnsLedger.returnedQuantity(S,s,index);
+  const choices=(s.lines||[]).map((line,index)=>(index+1)+'. '+line.desc+' · SKU '+line.code+' · Vendido '+fq(line.qty)+' · Devuelto '+fq(already(index))+' · Disponible '+fq(Math.max(0,Number(line.qty)-already(index)))+' · '+usd(Number(line.net||0)+Number(line.iva||0))).join('\n');
+  const raw=window.prompt('Renglones y cantidades a devolver (separe con punto y coma; ejemplo 1=1; 2=0.5):\n\n'+choices,'');
+  if(raw===null||!raw.trim())return false;
+  const lines=[];
+  for(const part of raw.split(';')){
+    const pair=part.trim().split('=');
+    if(pair.length!==2){msg('Formato inválido. Use número de renglón=cantidad, separados por punto y coma.','bad');return false;}
+    const lineIndex=Number(pair[0])-1,qty=Number(pair[1].trim().replace(',','.'));
+    lines.push({lineIndex,qty});
+  }
+  const reason=String(window.prompt('Motivo de la devolución:','')||'').trim();
+  if(!reason){msg('La devolución requiere un motivo.','bad');return false;}
+  const returnStock=window.confirm('¿La mercancía está en condiciones de reingresar al inventario físico?');
+  let prepared;
+  try{
+    prepared=window.SIFERReturnsLedger.prepareReturn({state:S,sale:s,lines,returnStock,method:'efUSD',reason,rate:s.rate});
+  }catch(error){msg(error.message,'bad');return false;}
+  if(prepared.refund>0){
+    const methodList=METHODS.filter(method=>method.id!=='cashea').map(method=>method.id+' = '+method.name).join('\n');
+    const method=String(window.prompt('Debe reembolsar '+usd(prepared.refund)+'. Seleccione el método exacto:\n'+methodList,'efUSD')||'').trim();
+    const reference=['efUSD','efBs'].includes(method)?'':String(window.prompt('Número de referencia / confirmación del reembolso:','')||'').trim();
+    try{
+      prepared=window.SIFERReturnsLedger.prepareReturn({state:S,sale:s,lines,returnStock,method,reference,reason,rate:s.rate});
+    }catch(error){msg(error.message,'bad');return false;}
+  }
+  let returnNo,refundNo=null;
+  try{
+    returnNo=await nextCajaSequence('return',box);
+    if(prepared.refund>0)refundNo=await nextCajaSequence('refund',box);
+  }catch(error){msg('No se pudo reservar la numeración de la devolución/reembolso: '+error.message,'bad');return false;}
+  const rollbackState=JSON.parse(JSON.stringify(S));
+  try{
+    const note=window.SIFERReturnsLedger.applyReturn(S,prepared,{returnNo,refundNo,now:Date.now(),user:currentCajero()});
+    const persisted=await save();
+    if(!persisted||!persisted.ok){
+      restoreStateSnapshotIfNeeded(persisted,rollbackState);
+      msg('SQLite no confirmó la nota de crédito; se restauró el último estado durable. Verifique antes de repetir.','bad');
+      if(refresh)refresh();
+      return false;
+    }
+    msg('Nota de crédito '+note.id+' guardada para la venta '+pad(s.no)+'. Crédito aplicado a CxC: '+usd(note.creditApplied)+'. Reembolso: '+usd(note.refund)+'.');
+    if(refresh)refresh();
+    return true;
+  }catch(error){
+    restoreStateSnapshotIfNeeded(null,rollbackState);
+    msg('No se pudo registrar la devolución: '+error.message,'bad');
+    if(refresh)refresh();
+    return false;
+  }
+}
+
 /* ---------- ventas del día / cierre ---------- */
 function salesDlg(){
   let selNo=null,armed=0;
-  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>'+(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER'?'Ticket':'Documento')+'</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver ticket</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><p class="hint" id="saNote"></p></div>');
+  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>'+(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER'?'Ticket':'Documento')+'</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver ticket</button><button class="btn" id="saReturn">Devolución / NC</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><p class="hint" id="saNote"></p></div>');
   const todays=()=>S.sales.filter(s=>sameDay(s.ts)&&s.cashbox===currentCaja()).sort((a,b)=>b.no-a.no);
   const draw=()=>{
     const list=todays();
@@ -5132,7 +5191,7 @@ function salesDlg(){
     const metRows=Object.keys(by).map(k=>'<tr><td>'+esc(by[k].name.split(' (')[0])+'</td><td>'+by[k].n+'</td><td>'+(by[k].cur==='USD'?'US$ ':'Bs. ')+nf(by[k].amt)+'</td></tr>').join('')||'<tr><td colspan="3" class="dim">Sin cobros.</td></tr>';
     $('#saCierre',el).innerHTML='<table class="sumt"><thead><tr><th>Cierre por forma de pago</th><th>Ops.</th><th>Recibido</th></tr></thead><tbody>'+metRows+'</tbody></table><table class="sumt"><thead><tr><th>Totales del día</th><th>US$</th></tr></thead><tbody><tr><td>Ventas válidas</td><td>'+ok.length+'</td></tr><tr><td>Base imponible</td><td>'+nf(sum(s=>s.base))+'</td></tr><tr><td>IVA 16 %</td><td>'+nf(sum(s=>s.iva))+'</td></tr><tr><td>IGTF 3 %</td><td>'+nf(sum(s=>s.igtf))+'</td></tr><tr class="tot"><td>Total facturado</td><td>'+nf(sum(s=>s.total+s.igtf))+'</td></tr><tr><td>Total en Bs. (a la tasa de cada venta)</td><td>'+nf(sum(s=>(s.total+s.igtf)*s.rate))+'</td></tr></tbody></table>';
     $('#saNote',el).textContent=list.some(s=>s.no<1043)&&!saved?'Las facturas 1038 a 1042 son ejemplos para mostrar el cierre.':'';
-    $('#saView',el).disabled=!selNo;$('#saVoid',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;
+    $('#saView',el).disabled=!selNo;$('#saReturn',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;$('#saVoid',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;
     $('#saVoid',el).textContent='Anular venta';
   };
   el.addEventListener('click',async e=>{
@@ -5140,6 +5199,7 @@ function salesDlg(){
     if(tr){selNo=+tr.dataset.no;armed=0;draw();return;}
     const s=S.sales.find(x=>x.no===selNo&&x.cashbox===currentCaja());
     if(e.target.id==='saView'&&s){showTicket(s);}
+    if(e.target.id==='saReturn'&&s&&!s.void){await registerSaleReturn(s,draw);}
     if(e.target.id==='saVoid'&&s&&!s.void&&s.fiscal){msg('Esta factura ya fue emitida por una máquina fiscal. No se permite anularla solo en el POS. Debe integrarse y ejecutarse la anulación/nota de crédito en la propia máquina.','bad');return;}
     if(e.target.id==='saVoid'&&s&&!s.void){
       if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin((s.docType==='TICKET-INTERNO'?'Anular ticket ':'Anular factura ')+pad(s.no)))return;
