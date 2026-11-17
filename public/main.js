@@ -4804,7 +4804,14 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     amount:r2(amts[m.id]),
     ref:(refs&&refs[m.id])||''
   }));
-  if(fiscalMode){const fiscalCheck=window.SIFERInventoryLedgers&&window.SIFERInventoryLedgers.canApplyFiscalSale(S,lines);if(!fiscalCheck||!fiscalCheck.ok){const code=fiscalCheck&&fiscalCheck.code||'artículo';const p=prod(code);msg('Venta fiscal bloqueada: inventario fiscal insuficiente para '+(p?p.desc:code)+'. Disponible: '+fq(fiscalCheck&&fiscalCheck.available||0)+'. Registre/valide la existencia fiscal inicial o la compra fiscal antes de facturar.','bad');return;}}
+  if(fiscalMode){
+    const physicalRequired=new Map();
+    lines.forEach(line=>physicalRequired.set(String(line.code),(physicalRequired.get(String(line.code))||0)+Number(line.qty)));
+    const physicalShort=Array.from(physicalRequired.entries()).find(([code,qty])=>{const p=prod(code);return !p||Number(p.stock)+1e-9<qty;});
+    if(physicalShort){const p=prod(physicalShort[0]);msg('Venta fiscal bloqueada: inventario físico insuficiente para '+(p?p.desc:physicalShort[0])+'. Disponible: '+fq(p&&p.stock||0)+', requerido: '+fq(physicalShort[1])+'.','bad');return;}
+    const fiscalCheck=window.SIFERInventoryLedgers&&window.SIFERInventoryLedgers.canApplyFiscalSale(S,lines);
+    if(!fiscalCheck||!fiscalCheck.ok){const code=fiscalCheck&&fiscalCheck.code||'artículo';const p=prod(code);msg('Venta fiscal bloqueada: inventario fiscal insuficiente para '+(p?p.desc:code)+'. Disponible: '+fq(fiscalCheck&&fiscalCheck.available||0)+'. Registre/valide la existencia fiscal inicial o la compra fiscal antes de facturar.','bad');return;}
+  }
   const creditAmt=(isCred&&st.pending>=0.01)?r2(st.pending):0;
   const casheaAmt=r2(amts.cashea||0);
   let cxcNo=null,casheaNo=null;
