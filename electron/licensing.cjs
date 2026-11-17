@@ -10,7 +10,7 @@ const ACTIVATION_URL = CRM_BASE_URL + '/api/activations';
 const TELEMETRY_URL = CRM_BASE_URL + '/api/analytics/events';
 const TRIAL_MS = 24 * 60 * 60 * 1000;
 const APP_VERSION = '1.0.5';
-const LICENSE_PUBLIC_KEY_PEM = '-----BEGIN PUBLIC KEY-----\\nMCowBQYDK2VwAyEAMK05zLaqyrSkJ/eti0YVq/NLGFmjTJc+T66yKYskEi8=\\n-----END PUBLIC KEY-----\\n';
+const LICENSE_PUBLIC_KEY_PEM = '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMK05zLaqyrSkJ/eti0YVq/NLGFmjTJc+T66yKYskEi8=\n-----END PUBLIC KEY-----\n';
 
 function createLicensing(options = {}) {
   const app = options.app;
