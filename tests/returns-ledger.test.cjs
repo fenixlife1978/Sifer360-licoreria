@@ -92,3 +92,15 @@ test('revalidates CxC if its balance changes after preparing the return',()=>{
   assert.equal(state.products[0].stock,7);
   assert.equal(state.returns.length,0);
 });
+
+test('electronic VES refund methods preserve their currency and exchange-rate amount',()=>{
+  const {sale,state}=fixture();
+  state.cxc[0].total=0;
+  const prepared=prepareReturn({state,sale,lines:[{lineIndex:1,qty:1}],method:'punto',reference:'POS-REF-77',reason:'Reembolso por punto'});
+  assert.equal(prepared.refundCurrency,'VES');
+  assert.equal(prepared.refundAmount,1160);
+  const note=applyReturn(state,prepared,{returnNo:8,refundNo:5});
+  assert.equal(note.refundCurrency,'VES');
+  assert.equal(note.refundAmount,1160);
+  assert.equal(state.movimientosCaja.length,0);
+});
