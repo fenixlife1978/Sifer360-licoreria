@@ -65,3 +65,8 @@ test('ventas fiscales validan saldo fiscal antes de emitir y solo esas ventas de
   assert.match(source, /if\(fiscalMode\)window\.SIFERInventoryLedgers\.applyFiscalMovement\(S,\{eventId:sale\.accountingSourceId\+':'.*?type:'VENTA_FISCAL',dir:'OUT'/);
   assert.match(source, /p\.stock=Math\.max\(0,r2\(p\.stock-l\.qty\)\);/);
 });
+
+test('la compra rechaza cantidades y costos no finitos antes de mutar inventario', () => {
+  assert.match(source, /Number\.isFinite\(Number\(l\.qty\)\)[\s\S]{0,120}Number\.isFinite\(Number\(l\.cost\)\)/);
+  assert.match(source, /try\{lines=pLines\.map\([\s\S]{0,2500}catch\(error\)\{restoreStateSnapshotIfNeeded\(null,rollbackState\)/);
+});
