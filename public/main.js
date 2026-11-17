@@ -6318,6 +6318,11 @@ function isFiscalSale(sale){
   if(sale.documentMode==='HYBRID')return !!sale.fiscal;
   return sale.docType!=='TICKET-INTERNO'&&!['INTERNAL_THERMAL','NO_PRINTER'].includes(sale.documentMode);
 }
+function fiscalSaleData(sale){
+  if(!sale||sale.documentMode!=='HYBRID')return sale;
+  const part=sale.fiscalDocumentSnapshot||sale;
+  return Object.assign({},sale,part,{fiscal:sale.fiscal,documentMode:'FISCAL',docType:'01-FACTURA',hybridParentNo:sale.no});
+}
 
 function seniatSudebanDlg(initialTab){
   if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir el módulo Fiscal.','bad');return;}
@@ -6370,14 +6375,15 @@ function seniatSudebanDlg(initialTab){
     return true;
   };
 
-  const getFilteredSales=()=>{
+  const getFilteredAllSales=()=>{
     const q=norm(qText);
     return (S.sales||[]).filter(s=>{
-      if(!isFiscalSale(s)||!filterPeriod(s.ts))return false;
+      if(!filterPeriod(s.ts))return false;
       if(!q)return true;
-      return norm(s.client.name+s.client.rif+pad(s.no)+(s.ctrlNo||'')).indexOf(q)>=0;
+      return norm((s.client&&s.client.name||'')+(s.client&&s.client.rif||'')+pad(s.no)+(s.ctrlNo||'')).indexOf(q)>=0;
     });
   };
+  const getFilteredSales=()=>getFilteredAllSales().filter(isFiscalSale).map(fiscalSaleData);
 
   const getFilteredPurchases=()=>{
     const q=norm(qText);
@@ -6389,14 +6395,15 @@ function seniatSudebanDlg(initialTab){
   };
 
   const drawResumen=()=>{
-    const sales=getFilteredSales();
+    const sales=getFilteredAllSales();
     const okSales=sales.filter(s=>!s.void);
+    const fiscalSales=getFilteredSales().filter(s=>!s.void);
     const purchases=getFilteredPurchases().filter(p=>!p.void);
     const rate=S.cfg.rate;
 
     const totSalesUsd=r2(okSales.reduce((a,s)=>a+s.total+(s.igtf||0),0));
     const totSalesBs=r2(okSales.reduce((a,s)=>a+(s.total+(s.igtf||0))*(s.rate||rate),0));
-    const totDebitoBs=r2(okSales.reduce((a,s)=>a+s.iva*(s.rate||rate),0));
+    const totDebitoBs=r2(fiscalSales.reduce((a,s)=>a+s.iva*(s.rate||rate),0));
     const totCreditoBs=r2(purchases.reduce((a,p)=>a+p.iva*(p.rate||rate),0));
     const balIvaBs=r2(totDebitoBs-totCreditoBs);
     const totIgtfUsd=r2(okSales.reduce((a,s)=>a+(s.igtf||0),0));
@@ -6408,7 +6415,7 @@ function seniatSudebanDlg(initialTab){
     }));
 
     return '<div class="fiscal-grid">'+
-      '<div class="fiscal-card"><span>Total Ventas Facturadas</span><b class="ok">'+usd(totSalesUsd)+'</b><small>'+bsf(totSalesBs)+'</small></div>'+
+      '<div class="fiscal-card"><span>Total Ventas Registradas (Fiscal + Ticket)</span><b class="ok">'+usd(totSalesUsd)+'</b><small>'+bsf(totSalesBs)+'</small></div>'+
       '<div class="fiscal-card"><span>Débito Fiscal IVA (16%)</span><b>'+bsf(totDebitoBs)+'</b><small>Equiv. '+usd(totDebitoBs/rate)+'</small></div>'+
       '<div class="fiscal-card"><span>Crédito Fiscal IVA (Compras)</span><b>'+bsf(totCreditoBs)+'</b><small>Equiv. '+usd(totCreditoBs/rate)+'</small></div>'+
       '<div class="fiscal-card"><span>Balance IVA Forma 30</span><b class="'+(balIvaBs>0?'bad':'ok')+'">'+bsf(Math.abs(balIvaBs))+'</b><small>'+(balIvaBs>0?'A enterar al SENIAT':'Crédito a favor siguiente período')+'</small></div>'+
@@ -6564,7 +6571,7 @@ function seniatSudebanDlg(initialTab){
     return '<h3 style="margin:2px 0">Libro de Inventario y Movimientos de Mercancía</h3>'+tabs+content;
   };
   const drawIgtf=()=>{
-    const sales=getFilteredSales().filter(s=>!s.void);
+    const sales=getFilteredAllSales().filter(s=>!s.void);
     const igtfSales=sales.filter(s=>(s.igtf>0)||(s.pays||[]).some(p=>p.cur==='USD'));
     let sumBaseUsd=0, sumBaseBs=0, sumIgtfUsd=0, sumIgtfBs=0;
 
@@ -6625,7 +6632,7 @@ function seniatSudebanDlg(initialTab){
   };
 
   const drawAuditoria=()=>{
-    const sales=getFilteredSales();
+    const sales=getFilteredAllSales();
     const ok=sales.filter(s=>!s.void);
 
     const rowsHtml=sales.length?sales.map(s=>{
@@ -6659,7 +6666,7 @@ function seniatSudebanDlg(initialTab){
   };
 
   const drawSudeban=()=>{
-    const sales=getFilteredSales().filter(s=>!s.void);
+    const sales=getFilteredAllSales().filter(s=>!s.void);
     const byM={punto:0,biopago:0,pmovil:0,transf:0,efBs:0,efUSD:0,zelle:0};
     const countM={punto:0,biopago:0,pmovil:0,transf:0,efBs:0,efUSD:0,zelle:0};
 
@@ -6754,7 +6761,7 @@ function seniatSudebanDlg(initialTab){
     const [anioPeriodo,mesPeriodo]=mesActual.split('-').map(Number);
     const enPeriodoSeniat=ts=>{const d=new Date(ts);return d.getFullYear()===anioPeriodo&&d.getMonth()+1===mesPeriodo;};
     // El IVA se declara por mes calendario. Este cálculo ignora el filtro de búsqueda y las quincenas de otras pestañas.
-    const sales=(S.sales||[]).filter(x=>isFiscalSale(x)&&!x.void&&enPeriodoSeniat(x.ts));
+    const sales=(S.sales||[]).filter(x=>isFiscalSale(x)&&!x.void&&enPeriodoSeniat(x.ts)).map(fiscalSaleData);
     const purchases=(S.purchases||[]).filter(x=>!x.void&&enPeriodoSeniat(x.ts));
     const retenciones=(S.retencionesIva||[]).filter(r=>enPeriodoSeniat(r.ts));
     const debito=r2(sales.reduce((a,x)=>a+(x.iva||0)*(x.rate||S.cfg.rate),0));
@@ -6968,8 +6975,8 @@ function seniatSudebanDlg(initialTab){
           msg('Vista del libro de inventario exportada a CSV.');
         }
         if(ev.target.id==='btnPrintInv')printFiscalReport('Libro de Inventario — corte actual',drawInventario());
-        if(ev.target.id==='btnExpIgtf')exportIgtfCsv(getFilteredSales());
-        if(ev.target.id==='btnPrintActaBcv')printActaBcv(getFilteredSales());
+        if(ev.target.id==='btnExpIgtf')exportIgtfCsv(getFilteredAllSales());
+        if(ev.target.id==='btnPrintActaBcv')printActaBcv(getFilteredAllSales());
         if(ev.target.id==='btnTxtSeniat')exportSeniatTxt();
         if(ev.target.id==='btnPreviewPagoSeniat'){
           const fechaPeriodo=new Date();
@@ -6977,7 +6984,7 @@ function seniatSudebanDlg(initialTab){
           const [anioFiscal,mesFiscal]=mesPeriodo.split('-').map(Number);
           const enPeriodoFiscal=ts=>{const d=new Date(ts);return d.getFullYear()===anioFiscal&&d.getMonth()+1===mesFiscal;};
           // Totales mensuales sin depender del filtro de búsqueda ni de la vista quincenal de otras pestañas.
-          const sales=(S.sales||[]).filter(x=>isFiscalSale(x)&&!x.void&&enPeriodoFiscal(x.ts));
+          const sales=(S.sales||[]).filter(x=>isFiscalSale(x)&&!x.void&&enPeriodoFiscal(x.ts)).map(fiscalSaleData);
           const purchases=(S.purchases||[]).filter(x=>!x.void&&enPeriodoFiscal(x.ts));
           const retenciones=(S.retencionesIva||[]).filter(r=>enPeriodoFiscal(r.ts));
           const debito=r2(sales.reduce((a,x)=>a+(x.iva||0)*(x.rate||S.cfg.rate),0));
