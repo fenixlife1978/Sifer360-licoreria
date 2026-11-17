@@ -2,9 +2,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
+const path = require('node:path');
 const { runInNewContext } = require('node:vm');
 
-const source = readFileSync(new URL('../public/main.js', import.meta.url), 'utf8');
+const source = readFileSync(path.join(__dirname, '../public/main.js'), 'utf8');
 const start = source.indexOf('function getLastSupplierPurchaseCost(');
 const end = source.indexOf('/* ---------- MÓDULO DE COMPRAS Y PROVEEDORES ---------- */', start);
 assert.ok(start >= 0 && end > start, 'Debe existir el helper de último costo neto por proveedor');
