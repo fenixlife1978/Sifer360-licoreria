@@ -101,7 +101,7 @@ test('el asistente inicial se abre después del primer inicio de sesión del adm
 });
 
 test('los tickets internos quedan fuera de libros fiscales y del débito mensual de IVA', () => {
-  assert.match(main, /function isFiscalSale\(sale\)\{return !!sale&&sale\.docType!=='TICKET-INTERNO'&&!\['INTERNAL_THERMAL','NO_PRINTER'\]\.includes\(sale\.documentMode\);\}/);
+  assert.match(main, /function isFiscalSale\(sale\)\{[\s\S]*?if\(sale\.documentMode==='HYBRID'\)return !!sale\.fiscal;[\s\S]*?return sale\.docType!=='TICKET-INTERNO'/);
   assert.match(main, /if\(!isFiscalSale\(s\)\|\|!filterPeriod\(s\.ts\)\)return false;/);
   assert.match(main, /isFiscalSale\(x\)&&!x\.void&&enPeriodoSeniat\(x\.ts\)/);
   assert.match(main, /isFiscalSale\(x\)&&!x\.void&&enPeriodoFiscal\(x\.ts\)/);
