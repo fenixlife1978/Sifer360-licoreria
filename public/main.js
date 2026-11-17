@@ -2457,8 +2457,246 @@ function searchCatalogDlg(){
 }
 
 /* ---------- inventario ---------- */
+
+function inventoryImportKey(value){
+  return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+function inventoryImportNumber(value,fallback){
+  if(value===null||value===undefined||value==='')return fallback===undefined?0:fallback;
+  if(typeof value==='number')return Number.isFinite(value)?value:(fallback||0);
+  let raw=String(value).trim().replace(/\s/g,'');
+  if(raw.includes(',')&&raw.includes('.')){
+    if(raw.lastIndexOf(',')>raw.lastIndexOf('.'))raw=raw.replace(/\./g,'').replace(',','.');
+    else raw=raw.replace(/,/g,'');
+  }else if(raw.includes(','))raw=raw.replace(',','.');
+  const number=Number(raw);return Number.isFinite(number)?number:(fallback===undefined?0:fallback);
+}
+function inventoryParseDelimited(text){
+  const sample=String(text||'').split(/\r?\n/).slice(0,5).join('\n');
+  const delimiters=[';',',','\t'];let delimiter=';';
+  const score=delimiters.map(d=>({d,n:(sample.split('\n')[0]||'').split(d).length})).sort((a,b)=>b.n-a.n);
+  delimiter=score[0].d;
+  const rows=[];let row=[],field='',quoted=false;
+  const input=String(text||'').replace(/^\uFEFF/,'');
+  for(let i=0;i<input.length;i++){
+    const ch=input[i],next=input[i+1];
+    if(ch==='"'&&quoted&&next==='"'){field+='"';i++;continue;}
+    if(ch==='"'){quoted=!quoted;continue;}
+    if(ch===delimiter&&!quoted){row.push(field);field='';continue;}
+    if((ch==='\n'||ch==='\r')&&!quoted){
+      if(ch==='\r'&&next==='\n')i++;
+      row.push(field);field='';
+      if(row.some(cell=>String(cell).trim()!==''))rows.push(row);
+      row=[];continue;
+    }
+    field+=ch;
+  }
+  row.push(field);if(row.some(cell=>String(cell).trim()!==''))rows.push(row);
+  if(rows.length<2)return [];
+  const headers=rows.shift().map((v,i)=>String(v||'').trim()||('Columna '+(i+1)));
+  return rows.map(cells=>Object.fromEntries(headers.map((key,i)=>[key,cells[i]===undefined?'':cells[i]])));
+}
+async function inventoryZipEntries(buffer){
+  const bytes=new Uint8Array(buffer),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),read16=o=>view.getUint16(o,true),read32=o=>view.getUint32(o,true);
+  let end=-1;for(let i=bytes.length-22;i>=Math.max(0,bytes.length-65558);i--)if(read32(i)===0x06054b50){end=i;break;}
+  if(end<0)throw new Error('El archivo no contiene una estructura XLSX/ZIP válida.');
+  const count=read16(end+10),central=read32(end+16),files=new Map();let offset=central;
+  for(let i=0;i<count;i++){
+    if(read32(offset)!==0x02014b50)throw new Error('Índice ZIP XLSX inválido.');
+    const method=read16(offset+10),compressedSize=read32(offset+20),nameLen=read16(offset+28),extraLen=read16(offset+30),commentLen=read16(offset+32),localOffset=read32(offset+42);
+    const name=new TextDecoder().decode(bytes.slice(offset+46,offset+46+nameLen));
+    const localNameLen=read16(localOffset+26),localExtraLen=read16(localOffset+28),dataStart=localOffset+30+localNameLen+localExtraLen;
+    const compressed=bytes.slice(dataStart,dataStart+compressedSize);let plain;
+    if(method===0)plain=compressed;
+    else if(method===8){
+      if(typeof DecompressionStream!=='function')throw new Error('Este equipo no admite descompresión XLSX. Guarde el archivo como CSV para importarlo.');
+      const stream=new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      plain=new Uint8Array(await new Response(stream).arrayBuffer());
+    }else{offset+=46+nameLen+extraLen+commentLen;continue;}
+    files.set(name,new TextDecoder().decode(plain));
+    offset+=46+nameLen+extraLen+commentLen;
+  }
+  return files;
+}
+async function inventoryParseXlsx(buffer){
+  const files=await inventoryZipEntries(buffer),parseXml=name=>{const value=files.get(name);if(!value) return null;const doc=new DOMParser().parseFromString(value,'application/xml');if(doc.querySelector('parsererror'))throw new Error('XML XLSX inválido: '+name);return doc;};
+  const workbook=parseXml('xl/workbook.xml'),rels=parseXml('xl/_rels/workbook.xml.rels');if(!workbook||!rels)throw new Error('El XLSX no contiene libro/relaciones válidas.');
+  const sheet=workbook.getElementsByTagName('sheet')[0];if(!sheet)throw new Error('El XLSX no contiene hojas.');
+  const relId=sheet.getAttribute('r:id')||sheet.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');
+  const relation=Array.from(rels.getElementsByTagName('Relationship')).find(x=>x.getAttribute('Id')===relId);
+  let target=relation&&relation.getAttribute('Target')||'worksheets/sheet1.xml';
+  const sheetPath=target.startsWith('/')?target.slice(1):(target.startsWith('xl/')?target:'xl/'+target.replace(/^\.\//,''));
+  const sheetDoc=parseXml(sheetPath);if(!sheetDoc)throw new Error('No se encontró la primera hoja del XLSX.');
+  const sharedDoc=parseXml('xl/sharedStrings.xml'),shared=sharedDoc?Array.from(sharedDoc.getElementsByTagName('si')).map(si=>Array.from(si.getElementsByTagName('t')).map(t=>t.textContent||'').join('')):[];
+  const columnIndex=ref=>{const letters=String(ref||'').replace(/[0-9]/g,'');let n=0;for(const ch of letters)n=n*26+ch.charCodeAt(0)-64;return Math.max(0,n-1);};
+  const rows=Array.from(sheetDoc.getElementsByTagName('row')).map(row=>{
+    const cells=[];Array.from(row.getElementsByTagName('c')).forEach(cell=>{
+      const idx=columnIndex(cell.getAttribute('r')),type=cell.getAttribute('t'),v=cell.getElementsByTagName('v')[0],inline=cell.getElementsByTagName('is')[0];
+      let value=v?v.textContent||'':inline?Array.from(inline.getElementsByTagName('t')).map(t=>t.textContent||'').join(''):'';
+      if(type==='s')value=shared[Number(value)]||'';
+      cells[idx]=value;
+    });return cells;
+  }).filter(row=>row.some(v=>v!==undefined&&String(v).trim()!==''));
+  if(rows.length<2)return [];
+  const headers=rows.shift().map((v,i)=>String(v||'').trim()||('Columna '+(i+1)));
+  return rows.map(cells=>Object.fromEntries(headers.map((key,i)=>[key,cells[i]===undefined?'':cells[i]])));
+}
+function inventoryIsProductRecord(row){
+  if(!row||typeof row!=='object'||Array.isArray(row))return false;
+  const keys=Object.keys(row).map(inventoryImportKey);
+  const hasDescription=keys.some(k=>['desc','descripcion','description','nombre','producto','product','name'].includes(k));
+  const hasIdentifier=keys.some(k=>['code','codigo','sku','ean','barcode','codigobarras','referencia','id'].includes(k));
+  return hasDescription&&hasIdentifier;
+}
+function inventoryExtractProductRows(root){
+  if(Array.isArray(root))return root.filter(inventoryIsProductRecord);
+  if(inventoryIsProductRecord(root))return [root];
+  const recognized=new Set(['products','product','productos','inventario','inventory','articulos','catalogo','catalog','maestroproductos','inventariomaestro']);
+  const containers=[root,root&&root.data,root&&root.state,root&&root.backup,root&&root.database,root&&root.collections,root&&root.payload];
+  const candidates=[];
+  containers.forEach(container=>{
+    if(!container||typeof container!=='object'||Array.isArray(container))return;
+    Object.keys(container).forEach(key=>{
+      if(!recognized.has(inventoryImportKey(key)))return;
+      const value=container[key],rows=Array.isArray(value)?value:(value&&typeof value==='object'?Object.values(value):[]);
+      const filtered=rows.filter(inventoryIsProductRecord);
+      if(filtered.length)candidates.push(filtered);
+    });
+  });
+  candidates.sort((a,b)=>b.length-a.length);
+  return candidates[0]||[];
+}
+function inventoryImportFields(){
+  return [
+    {id:'code',label:'Código interno / EAN',aliases:['codigo','code','codigoproducto','productcode','referencia','id']},
+    {id:'sku',label:'SKU',aliases:['sku','codigosku','stockkeepingunit']},
+    {id:'barcode',label:'Código de barras',aliases:['barcode','ean','ean13','codigobarras','codigodebarras']},
+    {id:'desc',label:'Descripción',aliases:['descripcion','description','nombre','producto','product','name']},
+    {id:'brand',label:'Marca',aliases:['marca','brand','fabricante']},
+    {id:'dept',label:'Departamento',aliases:['departamento','depto','dept','department']},
+    {id:'cat',label:'Categoría',aliases:['categoria','category','familia']},
+    {id:'subcat',label:'Subcategoría',aliases:['subcategoria','subcat','subcategory','subfamilia']},
+    {id:'unit',label:'Unidad base',aliases:['unidad','unidadmedida','um','unit','medida']},
+    {id:'stock',label:'Existencia',aliases:['existencia','stock','cantidad','cantidadactual','qty','quantity','existenciaactual']},
+    {id:'min',label:'Stock mínimo',aliases:['minimo','stockminimo','min','minstock']},
+    {id:'cost',label:'Costo unitario',aliases:['costo','cost','costounitario','cpp','costopromedio']},
+    {id:'price',label:'Precio de venta',aliases:['precio','price','precioventa','pvp','preciodetalle']},
+    {id:'taxRate',label:'Alícuota IVA %',aliases:['iva','alicuota','taxrate','tasaiva','porcentajeiva']}
+  ];
+}
+function inventoryImportGuess(headers,field){
+  const aliases=field.aliases.map(inventoryImportKey),normalized=headers.map(inventoryImportKey);
+  let idx=normalized.findIndex(h=>aliases.includes(h));
+  if(idx<0)idx=normalized.findIndex(h=>aliases.some(a=>a.length>3&&(h.includes(a)||a.includes(h))));
+  return idx>=0?headers[idx]:'';
+}
+function inventoryImportProduct(row,mapping,index,usedCodes,usedSkus){
+  const value=id=>{const key=mapping[id];return key&&row[key]!==undefined?row[key]:row[id]!==undefined?row[id]:'';};
+  const desc=String(value('desc')||'').trim();if(!desc)return{error:'Falta descripción.'};
+  let code=String(value('code')||value('barcode')||value('sku')||'').trim();
+  if(!code){let n=index+1;do{code='IMP'+String(n++).padStart(7,'0');}while(usedCodes.has(code));}
+  const sku=String(value('sku')||code).trim();
+  if(usedCodes.has(code)||usedSkus.has(sku))return{duplicate:true,code,sku};
+  const stock=inventoryImportNumber(value('stock'),0),min=inventoryImportNumber(value('min'),0),cost=inventoryImportNumber(value('cost'),0),price=inventoryImportNumber(value('price'),0);
+  if(![stock,min,cost,price].every(Number.isFinite)||stock<0||min<0||cost<0||price<0)return{error:'Existencia, mínimo, costo o precio inválido.'};
+  const unit=String(value('unit')||'und').trim()||'und',taxRate=inventoryImportNumber(value('taxRate'),16);
+  const taxType=taxRate===0?'E':taxRate===8?'R':taxRate===31?'A':'G';
+  const tax={type:taxType,rate:taxRate,igtf:true,percRate:0,codeSeniat:taxType==='E'?'EXENTO-0':taxType==='R'?'RED-08':taxType==='A'?'ADIC-31':'GRAV-16'};
+  let presentations=Array.isArray(row.presentations)?row.presentations:null;
+  if(!presentations&&typeof row.presentations==='string'){try{const parsed=JSON.parse(row.presentations);if(Array.isArray(parsed))presentations=parsed;}catch{}}
+  presentations=(presentations||[{name:'Unidad individual',unit,factor:1,barcode:String(value('barcode')||code),price}]).map((p,i)=>({name:String(p.name||'Presentación '+(i+1)),unit:String(p.unit||unit),factor:inventoryImportNumber(p.factor,1),barcode:String(p.barcode||''),price:inventoryImportNumber(p.price,price)})).filter(p=>Number.isFinite(p.factor)&&p.factor>0&&Number.isFinite(p.price)&&p.price>=0);
+  if(!presentations.length)presentations=[{name:'Unidad individual',unit,factor:1,barcode:String(value('barcode')||code),price}];
+  const product={
+    code,sku,desc,brand:String(value('brand')||'').trim(),dept:String(value('dept')||'General').trim(),cat:String(value('cat')||'General').trim(),subcat:String(value('subcat')||'General').trim(),
+    loc:String(row.loc||row.location||''),unit,stock,min,cost,freight:0,price,photo:String(row.photo||''),
+    pricing:row.pricing&&typeof row.pricing==='object'?row.pricing:{motor:'cost',mode:'auto',bcvRate:S.cfg.rate,parallelRate:r2(S.cfg.rate*1.22),markupCost:40,markupSale:28.57,gaps:[{name:'Detal / Mostrador',gapPct:0,markupCost:40,price},{name:'Bar / Restaurante',gapPct:6,markupCost:31.6,price:r2(price*.94)},{name:'Mayorista',gapPct:12,markupCost:23.2,price:r2(price*.88)},{name:'Distribuidor',gapPct:18,markupCost:14.8,price:r2(price*.82)}]},
+    presentations,tax,assocSuppliers:Array.isArray(row.assocSuppliers)?row.assocSuppliers:[],isKit:false,kitItems:[],volumeMl:row.volumeMl||'',alcoholPct:row.alcoholPct||''
+  };
+  usedCodes.add(code);usedSkus.add(sku);return{product};
+}
+async function inventoryImportDlg(){
+  const fields=inventoryImportFields();let records=[],headers=[],mapping={},fileName='',sourceType='',busy=false;
+  const el=h('<div class="form" style="gap:10px"><div class="hint">Importador universal: detecta productos aunque el archivo contenga otras colecciones. Solo se importarán productos al inventario operativo; clientes, proveedores, ventas, compras y movimientos históricos se ignoran. No se crea saldo fiscal durante la importación.</div><div class="row" style="flex-wrap:wrap"><button class="btn primary" id="imChoose">Seleccionar CSV, Excel o JSON</button><input id="imFile" type="file" accept=".csv,.json,.xlsx" hidden><span id="imFileName" class="hint">Ningún archivo seleccionado.</span></div><div id="imMappings" class="newgrid"></div><div id="imPreview" class="hint">Seleccione un archivo para detectar productos y configurar el mapeo.</div></div>');
+  const input=$('#imFile',el),mappingBox=$('#imMappings',el),preview=$('#imPreview',el);
+  const getPlan=()=>{
+    const usedCodes=new Set((S.products||[]).map(p=>String(p.code))),usedSkus=new Set((S.products||[]).map(p=>String(p.sku||'')));
+    const products=[],duplicates=[],errors=[];
+    records.forEach((row,index)=>{
+      const result=inventoryImportProduct(row,mapping,index,usedCodes,usedSkus);
+      if(result.product)products.push(result.product);
+      else if(result.duplicate)duplicates.push(result);
+      else errors.push({row:index+2,error:result.error});
+    });
+    return{products,duplicates,errors};
+  };
+  const draw=()=>{
+    mappingBox.innerHTML=fields.map(field=>{
+      const options=['<option value="">— No importar —</option>'].concat(headers.map(header=>'<option value="'+esc(header)+'" '+(mapping[field.id]===header?'selected':'')+'>'+esc(header)+'</option>')).join('');
+      return '<div class="f"><label for="imMap_'+field.id+'">'+esc(field.label)+'</label><select class="fld" id="imMap_'+field.id+'" data-im-map="'+field.id+'">'+options+'</select></div>';
+    }).join('');
+    if(!records.length){preview.textContent='No se detectaron registros de productos.';return;}
+    const plan=getPlan(),sample=plan.products.slice(0,8);
+    preview.innerHTML='<div class="kpis"><div class="kpi"><span>Filas detectadas</span><b>'+records.length+'</b></div><div class="kpi"><span>Nuevos productos válidos</span><b>'+plan.products.length+'</b></div><div class="kpi"><span>Duplicados omitidos</span><b>'+plan.duplicates.length+'</b></div><div class="kpi"><span>Filas con error</span><b>'+plan.errors.length+'</b></div></div><div class="hint">Vista previa de '+sample.length+' de '+plan.products.length+' productos. Los duplicados por código o SKU no se sobrescriben.</div><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>SKU</th><th>Descripción</th><th class="r">Existencia</th><th class="r">Costo US$</th><th class="r">Precio US$</th><th>Unidad</th></tr></thead><tbody>'+sample.map(p=>'<tr><td class="mono">'+esc(p.code)+'</td><td class="mono">'+esc(p.sku)+'</td><td>'+esc(p.desc)+'</td><td class="r">'+fq(p.stock)+'</td><td class="r">'+nf(p.cost)+'</td><td class="r">'+nf(p.price)+'</td><td>'+esc(p.unit)+'</td></tr>').join('')+'</tbody></table></div>'+(plan.errors.length?'<p class="hint" style="color:var(--bad)">Primer error: fila '+plan.errors[0].row+' — '+esc(plan.errors[0].error)+'</p>':'')+(plan.duplicates.length?'<p class="hint">Primer duplicado omitido: '+esc(plan.duplicates[0].code)+' / '+esc(plan.duplicates[0].sku)+'</p>':'');
+  };
+  $('#imChoose',el).addEventListener('click',()=>input.click());
+  input.addEventListener('change',async()=>{
+    const file=input.files&&input.files[0];if(!file)return;
+    if(file.size>50*1024*1024){preview.textContent='El archivo supera el límite de 50 MB.';return;}
+    busy=true;fileName=file.name;$('#imFileName',el).textContent=fileName;preview.textContent='Leyendo y detectando colecciones…';
+    try{
+      const ext=file.name.split('.').pop().toLowerCase();let rows=[];
+      if(ext==='csv'){sourceType='CSV';rows=inventoryParseDelimited(await file.text());}
+      else if(ext==='json'){sourceType='JSON';const parsed=JSON.parse(await file.text());rows=inventoryExtractProductRows(parsed);}
+      else if(ext==='xlsx'){sourceType='XLSX';rows=await inventoryParseXlsx(await file.arrayBuffer());}
+      else throw new Error('Formato no admitido. Use CSV, XLSX o JSON.');
+      if(!Array.isArray(rows)||!rows.length)throw new Error('No se detectó una colección de productos válida en el archivo.');
+      records=rows;headers=Array.from(new Set(rows.flatMap(row=>Object.keys(row||{}))));mapping={};
+      fields.forEach(field=>{mapping[field.id]=inventoryImportGuess(headers,field);});
+      busy=false;draw();
+    }catch(error){records=[];headers=[];mapping={};busy=false;mappingBox.innerHTML='';preview.textContent='No se pudo leer el archivo: '+(error.message||error);}
+  });
+  mappingBox.addEventListener('change',e=>{const id=e.target.dataset.imMap;if(id){mapping[id]=e.target.value;const current=el.querySelector('#imMappings');if(current)drawPreviewOnly();}});
+  const drawPreviewOnly=()=>{const plan=getPlan(),sample=plan.products.slice(0,8);preview.innerHTML='<div class="kpis"><div class="kpi"><span>Filas detectadas</span><b>'+records.length+'</b></div><div class="kpi"><span>Nuevos productos válidos</span><b>'+plan.products.length+'</b></div><div class="kpi"><span>Duplicados omitidos</span><b>'+plan.duplicates.length+'</b></div><div class="kpi"><span>Filas con error</span><b>'+plan.errors.length+'</b></div></div><div class="hint">Vista previa de '+sample.length+' de '+plan.products.length+' productos.</div><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>SKU</th><th>Descripción</th><th class="r">Existencia</th><th class="r">Costo US$</th><th class="r">Precio US$</th><th>Unidad</th></tr></thead><tbody>'+sample.map(p=>'<tr><td>'+esc(p.code)+'</td><td>'+esc(p.sku)+'</td><td>'+esc(p.desc)+'</td><td class="r">'+fq(p.stock)+'</td><td class="r">'+nf(p.cost)+'</td><td class="r">'+nf(p.price)+'</td><td>'+esc(p.unit)+'</td></tr>').join('')+'</tbody></table></div>'+(plan.errors.length?'<p class="hint" style="color:var(--bad)">Primer error: fila '+plan.errors[0].row+' — '+esc(plan.errors[0].error)+'</p>':'');};
+  openWin({title:'Cargar inventario maestro · '+sourceType,w:980,body:el,foot:[{label:'Cancelar'},{label:'Importar al inventario operativo',primary:true,fn:async()=>{
+    if(busy||!records.length){msg('Seleccione un archivo válido antes de importar.','bad');return false;}
+    const plan=getPlan();if(!plan.products.length){msg('No hay productos nuevos válidos para importar.','bad');return false;}
+    if(!confirm('Se agregarán '+plan.products.length+' productos al inventario operativo. Se omitirán '+plan.duplicates.length+' duplicados y '+plan.errors.length+' filas con error. No se alterará el libro fiscal. ¿Continuar?'))return false;
+    const rollback=JSON.parse(JSON.stringify(S)),batch='IMPORT-'+currentCaja().replace(/\W/g,'')+'-'+Date.now(),ts=Date.now();
+    try{
+      plan.products.forEach(product=>{S.products.push(product);if(Number(product.stock)>0)addKardex({ts,code:product.code,type:'APERTURA_IMPORTACION',dir:'IN',doc:batch,party:'Carga inicial de inventario maestro · '+fileName,qty:product.stock,stockAfter:product.stock,cost:product.cost,user:currentCajero()});});
+      const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollback);msg('SQLite no confirmó la importación. Se restauró el inventario anterior.','bad');return false;}
+      closeWin();msg('Inventario maestro importado: '+plan.products.length+' productos y '+fq(plan.products.reduce((n,p)=>n+p.stock,0))+' unidades operativas. El inventario fiscal no fue modificado.','ok');renderCatalog();inventoryDlg();return false;
+    }catch(error){restoreStateSnapshotIfNeeded(null,rollback);msg('No se pudo importar el inventario: '+error.message,'bad');return false;}
+  }}]});
+}
+function fiscalOpeningDlg(){
+  if(!['admin','contador'].includes((activeUser()||{}).role)){msg('La inicialización fiscal requiere autorización de administrador o contador.','bad');return;}
+  const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);
+  const products=(S.products||[]).filter(p=>Number(p.stock)>0).slice().sort((a,b)=>String(a.desc).localeCompare(String(b.desc),'es'));
+  const el=h('<div class="form" style="gap:10px"><div class="hint">Marque los productos con respaldo documental verificable. La cantidad inicial fiscal se copiará desde el inventario operativo al libro fiscal, sin sumar ni restar una sola unidad al stock maestro. Indique referencia exacta del documento de compra para cada artículo.</div><div class="f"><label for="foDate">Fecha de respaldo / apertura</label><input class="fld" id="foDate" type="date" value="'+isoD(Date.now())+'"></div><div class="gridwrap tallwrap"><table class="grid" style="min-width:1050px"><thead><tr><th></th><th>SKU / Código</th><th>Producto</th><th class="r">Stock operativo</th><th class="r">Fiscal actual</th><th class="r">Disponible para validar</th><th class="r">Cantidad respaldada</th><th>Factura / referencia</th></tr></thead><tbody id="foRows"></tbody></table></div><div class="hint" id="foSummary"></div></div>');
+  $('#foRows',el).innerHTML=products.map(p=>{
+    const fiscal=window.SIFERInventoryLedgers.fiscalBalance(S,p.code),available=Math.max(0,Number(p.stock)-fiscal);
+    return '<tr data-fo-code="'+esc(p.code)+'"><td><input type="checkbox" data-fo-check></td><td class="mono">'+esc(p.sku||p.code)+'<div class="sub">'+esc(p.code)+'</div></td><td>'+esc(p.desc)+'<div class="sub">'+esc(p.brand||'')+'</div></td><td class="r">'+fq(p.stock)+'</td><td class="r">'+fq(fiscal)+'</td><td class="r">'+fq(available)+'</td><td class="r"><input class="fld cell r" data-fo-qty value="'+fq(available)+'" inputmode="decimal" disabled></td><td><input class="fld cell" data-fo-doc placeholder="Nº de factura / soporte" disabled></td></tr>';
+  }).join('')||'<tr class="empty"><td colspan="8">No hay existencias operativas para inicializar.</td></tr>';
+  el.addEventListener('change',e=>{
+    if(e.target.matches('[data-fo-check]')){const row=e.target.closest('tr'),enabled=e.target.checked;row.querySelector('[data-fo-qty]').disabled=!enabled;row.querySelector('[data-fo-doc]').disabled=!enabled;}
+  });
+  openWin({title:'Auditoría e inicialización del inventario fiscal',w:1080,body:el,foot:[{label:'Cancelar'},{label:'Validar e inicializar inventario fiscal',primary:true,fn:async()=>{
+    const date=$('#foDate',el).value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){msg('Indique una fecha válida para el respaldo documental.','bad');return false;}
+    const selected=Array.from(el.querySelectorAll('tr[data-fo-code]')).filter(row=>row.querySelector('[data-fo-check]').checked).map(row=>({code:row.dataset.foCode,qty:inventoryImportNumber(row.querySelector('[data-fo-qty]').value,0),document:row.querySelector('[data-fo-doc]').value.trim()}));
+    if(!selected.length){msg('Seleccione al menos un producto con respaldo fiscal.','bad');return false;}
+    for(const item of selected){const p=prod(item.code),fiscal=window.SIFERInventoryLedgers.fiscalBalance(S,item.code),available=Math.max(0,Number(p&&p.stock||0)-fiscal);if(!p||!Number.isFinite(item.qty)||item.qty<=0||item.qty>available+1e-9||!item.document){msg('Revise '+(p&&p.desc||item.code)+': la cantidad debe ser mayor que cero, no superar el disponible y tener referencia documental.','bad');return false;}}
+    const rollback=JSON.parse(JSON.stringify(S)),batch='FISCAL-OPEN-'+currentCaja().replace(/\W/g,'')+'-'+Date.now(),ts=Date.parse(date+'T12:00:00')||Date.now();
+    try{
+      selected.forEach(item=>{const p=prod(item.code);window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:batch+':'+item.code,type:'APERTURA_FISCAL_INICIAL',dir:'IN',code:item.code,qty:item.qty,cost:p.cost,document:item.document,sourceId:batch,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});});
+      const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollback);msg('SQLite no confirmó la inicialización fiscal. Se restauró el libro fiscal anterior y el inventario operativo no cambió.','bad');return false;}
+      const units=r8(selected.reduce((n,x)=>n+x.qty,0));closeWin();renderCatalog();msg('Inicialización fiscal confirmada: '+selected.length+' productos y '+fq(units)+' unidades respaldadas. El inventario operativo permaneció intacto.','ok');return false;
+    }catch(error){restoreStateSnapshotIfNeeded(null,rollback);msg('No se pudo inicializar el inventario fiscal: '+error.message,'bad');return false;}
+  }}]});
+}
+
 function inventoryDlg(){
-  const el=h('<div class="form"><div class="invbar"><label for="invQ">Buscar</label><input class="fld" id="invQ" placeholder="SKU, código, marca, depto, categoría o descripción" autocomplete="off"><label class="chk"><input type="checkbox" id="invLow"> Solo bajo mínimo</label><button class="btn" id="btnNewProd">+ Nuevo en Blanco</button><button class="btn mini2" id="btnGoConteo">Conteo físico masivo…</button><button class="btn mini2" id="btnGoLabels">Habladores / Etiquetas SKU</button></div><div class="dim" id="invSum"></div><div class="gridwrap tallwrap"><table class="grid" style="min-width:1040px"><thead><tr><th>SKU / Código</th><th>Descripción / Marca</th><th>Depto. / Categoría / Subcat.</th><th>Pas.</th><th class="c" style="width:68px">U.M.</th><th class="c" style="width:90px">I.V.A.</th><th class="r">Existencia</th><th class="r">Mín.</th><th class="r">CPP unit. US$</th><th class="r">Valor inventario US$</th><th class="r">Precio US$</th><th class="c">Acciones</th></tr></thead><tbody id="invBody"></tbody></table></div></div>');
+  const el=h('<div class="form"><div class="invbar"><label for="invQ">Buscar</label><input class="fld" id="invQ" placeholder="SKU, código, marca, depto, categoría o descripción" autocomplete="off"><label class="chk"><input type="checkbox" id="invLow"> Solo bajo mínimo</label><button class="btn" id="btnNewProd">+ Nuevo en Blanco</button><button class="btn mini2" id="btnImportMaster">Cargar inventario maestro</button><button class="btn mini2" id="btnFiscalOpening">Auditoría fiscal inicial</button><button class="btn mini2" id="btnGoConteo">Conteo físico masivo…</button><button class="btn mini2" id="btnGoLabels">Habladores / Etiquetas SKU</button></div><div class="dim" id="invSum"></div><div class="gridwrap tallwrap"><table class="grid" style="min-width:1040px"><thead><tr><th>SKU / Código</th><th>Descripción / Marca</th><th>Depto. / Categoría / Subcat.</th><th>Pas.</th><th class="c" style="width:68px">U.M.</th><th class="c" style="width:90px">I.V.A.</th><th class="r">Existencia</th><th class="r">Mín.</th><th class="r">CPP unit. US$</th><th class="r">Valor inventario US$</th><th class="r">Precio US$</th><th class="c">Acciones</th></tr></thead><tbody id="invBody"></tbody></table></div></div>');
   const rows=()=>{
     const q=$('#invQ',el).value,low=$('#invLow',el).checked;
     return searchProducts(q,'Todas').filter(p=>!low||p.stock<=p.min);
@@ -2540,6 +2778,8 @@ function inventoryDlg(){
   });
   el.addEventListener('click',e=>{
     if(e.target.id==='btnNewProd'){productFormDlg(null,'gen');return;}
+    if(e.target.id==='btnImportMaster'){inventoryImportDlg();return;}
+    if(e.target.id==='btnFiscalOpening'){fiscalOpeningDlg();return;}
     if(e.target.id==='btnGoConteo'){conteoDlg();return;}
     if(e.target.id==='btnGoLabels'){labelGeneratorDlg();return;}
     const ed=e.target.closest('[data-edit]');if(ed){productFormDlg(ed.dataset.edit,'gen');return;}
