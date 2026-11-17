@@ -2830,11 +2830,12 @@ function comprasDlg(initialTab){
     if(!docDateTs){msg('Indique la fecha de emisión que aparece en la factura original.','bad');return false;}
     if((S.purchases||[]).some(p=>!p.void&&String(p.supplier?.rif||'').trim().toLowerCase()===String(sup.rif).trim().toLowerCase()&&String(p.docProv||'').trim().toLowerCase()===docProv.toLowerCase())){msg('Ya existe una compra activa con ese proveedor y número de factura. Verifique el documento original.','bad');return false;}
     if(!(Number(purchaseRate)>0)||!purchaseRateRecord||purchaseRateRecord.date!==docDate){msg('No se puede registrar la compra: no se confirmó ni guardó una tasa BCV histórica para la fecha del documento. Verifique la conexión y vuelva a consultar.','bad');return false;}
-    if(pLines.some(l=>!(Number(l.qty)>0)||!(Number(l.cost)>=0))){msg('Cada renglón debe tener cantidad positiva y costo válido.','bad');return false;}
+    if(pLines.some(l=>!Number.isFinite(Number(l.qty))||Number(l.qty)<=0||!Number.isFinite(Number(l.cost))||Number(l.cost)<0)){msg('Cada renglón debe tener cantidad positiva y costo unitario sin IVA válido y finito.','bad');return false;}
     const ts=Date.now();
     let no;try{no=await nextCajaSequence('purchase',currentCaja());}catch(error){msg('No se pudo reservar el número de compra: '+error.message,'bad');return false;}
     S.purchaseSeq=Math.max(Number(S.purchaseSeq)||1,no+1);
-    const lines=pLines.map((l,lineIndex)=>{
+    let lines;
+    try{lines=pLines.map((l,lineIndex)=>{
       const p=prod(l.code);
       /* Costo Promedio Ponderado */
       const prevVal=Math.max(0,p.stock)*p.cost;
@@ -2851,7 +2852,7 @@ function comprasDlg(initialTab){
       });
       const taxRate=docType==='FACTURA_FISCAL'?Number(l.taxRate===undefined?16:l.taxRate)||0:0;
       return{code:p.code,desc:p.brand+' '+p.desc,qty:l.qty,cost:l.cost,sub:r8(l.qty*l.cost),taxRate,iva:r8(l.qty*l.cost*taxRate/100),salePrice:r8(l.price),salePriceAuto:!!l.autoPrice};
-    });
+    });}catch(error){restoreStateSnapshotIfNeeded(null,rollbackState);msg('No se pudo aplicar la compra al inventario dual; se restauró el estado anterior. '+(error&&error.message?error.message:String(error)),'bad');return false;}
     const base=r8(lines.reduce((a,x)=>a+x.sub,0));
     const iva=r8(lines.reduce((a,l)=>a+(l.iva||0),0));
     const total=r8(base+iva);
