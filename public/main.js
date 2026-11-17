@@ -7831,6 +7831,8 @@ window.addEventListener('sifer:authenticated',event=>{
 let siferUpdatePromptOpen=false;
 function showDownloadedUpdatePrompt(version){
   window.__SIFER_UPDATE_READY=true;
+  let banner=document.getElementById('sifer-update-banner');
+  if(!banner){banner=document.createElement('button');banner.id='sifer-update-banner';banner.type='button';banner.textContent='Actualización SIFER360 lista · Instalar';banner.style.cssText='position:fixed;z-index:99999;right:16px;bottom:18px;padding:12px 16px;border:1px solid #2563eb;border-radius:10px;background:#123b70;color:#fff;font-weight:700;box-shadow:0 4px 18px #0004;cursor:pointer';banner.addEventListener('click',()=>showDownloadedUpdatePrompt(version));document.body.appendChild(banner);}
   if(siferUpdatePromptOpen)return;
   siferUpdatePromptOpen=true;
   const body=h('<div class="form"><p>La actualización <b>v'+esc(version||'disponible')+'</b> se descargó y verificó correctamente en segundo plano.</p><p>Al instalar, SIFER360 cerrará la aplicación ordenadamente. La base SQLite y los datos del negocio permanecerán en su ubicación protegida.</p><p class="hint">Antes de instalar, termine cualquier venta abierta y resuelva las emisiones fiscales pendientes.</p></div>');
