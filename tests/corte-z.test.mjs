@@ -119,7 +119,7 @@ test('la vista previa 80 mm está disponible antes de confirmar el cierre y no g
   assert.match(fn, /id="zClose">Confirmar cierre e imprimir/);
   assert.ok(fn.indexOf('id="zPreview"') < fn.indexOf('id="zClose"'));
   assert.match(fn, /if\(e\.target\.id==='zPreview'\)[\s\S]*?const draft=\{/);
-  assert.match(fn, /payments:zPayTotals\(sales\)/);
+  assert.match(fn, /payments:zPayTotals\(sales,shiftStart\(\),now,box\)/);
   assert.match(fn, /reconciliation:rec/);
   assert.match(fn, /printCorteZ\(draft,false\);return;/);
   assert.match(pos, /Object\.entries\(z\.payments\)\.map\(\(\[name,amount\]\)=>line\(name,name\.includes\('\(VES\)'\)\?bsf\(amount\):usd\(amount\)\)/);
