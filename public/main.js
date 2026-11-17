@@ -7503,7 +7503,12 @@ function corteZDlg(){
       const row=map.get(code)||{code,desc:String(l.desc||l.name||'Producto sin nombre'),qty:0};
       row.qty=r2(row.qty+(Number(l.qty)||0));map.set(code,row);
     }));
-    return [...map.values()].sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
+    (S.returns||[]).filter(note=>String(note.cashbox||'')===box&&Number(note.ts)>=shiftStart()).forEach(note=>(note.lines||[]).forEach(line=>{
+      const code=String(line.code||'SIN-CODIGO');
+      const row=map.get(code)||{code,desc:String(line.desc||'Producto sin nombre'),qty:0};
+      row.qty=r2(row.qty-Number(line.qty||0));map.set(code,row);
+    }));
+    return [...map.values()].filter(row=>Math.abs(row.qty)>0.000001).sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
   };
   const getInventoryAdjustments=(start,end,box)=>(S.kardex||[]).filter(k=>{
     const ts=Number(k.ts)||0;
@@ -7552,8 +7557,8 @@ function corteZDlg(){
     $('#zOpenShift',el).disabled=opened;
     $('#zOpeningBs',el).disabled=opened;
     $('#zOpeningUsd',el).disabled=opened;
-    const period=getPeriodSales(),validSales=period.filter(s=>!s.void),voidSales=period.filter(s=>s.void);
-    $('#zSummary',el).innerHTML=[['Facturas válidas',String(validSales.length)],['Anulaciones',String(voidSales.length)],['Ventas netas USD',usd(moneyTotal(validSales,s=>Number(s.total||0)))],['Ventas netas Bs.',bsf(moneyTotal(validSales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0)))],['IVA USD',usd(moneyTotal(validSales,s=>Number(s.iva||0)))],['IGTF USD',usd(moneyTotal(validSales,s=>Number(s.igtf||0)))]] .map(r=>'<tr><td>'+esc(r[0])+'</td><td class="r"><b>'+esc(r[1])+'</b></td></tr>').join('');
+    const period=getPeriodSales(),validSales=period.filter(s=>!s.void),voidSales=period.filter(s=>s.void),returns=zReturnSummary(shiftStart(),Date.now(),box);
+    $('#zSummary',el).innerHTML=[['Facturas válidas',String(validSales.length)],['Anulaciones',String(voidSales.length)],['Notas de crédito',String(returns.count)],['Devoluciones USD',usd(returns.total)],['Ventas netas USD',usd(r2(moneyTotal(validSales,s=>Number(s.total||0))-returns.total))],['Ventas netas Bs.',bsf(r2(moneyTotal(validSales,s=>Number(s.total||0)*Number(s.rate||S.cfg.rate||0))-returns.totalBs))],['IVA neto USD',usd(r2(moneyTotal(validSales,s=>Number(s.iva||0))-returns.iva))],['IGTF USD',usd(moneyTotal(validSales,s=>Number(s.igtf||0)))]] .map(r=>'<tr><td>'+esc(r[0])+'</td><td class="r"><b>'+esc(r[1])+'</b></td></tr>').join('');
     const oldReal=readReal();
     const movements=(S.movimientosCaja||[]).filter(m=>String(m.cashbox||box)===String(box)&&Number(m.ts)>=shiftStart()&&Number(m.ts)<=Date.now()).sort((a,b)=>Number(b.ts)-Number(a.ts));
     $('#zMovRows',el).innerHTML=movements.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Movimiento</th><th>Motivo</th><th class="r">Monto</th><th>Usuario</th></tr></thead><tbody>'+movements.map(m=>'<tr><td>'+esc(fmtDT(m.ts))+'</td><td>'+esc((m.direction==='IN'?'Entrada (+)':'Salida (−)')+' · '+(m.currency==='USD'?'Efectivo USD':'Efectivo Bs.'))+'</td><td>'+esc(m.reason||'—')+'</td><td class="r">'+esc(m.currency==='USD'?usd(m.amount):bsf(m.amount))+'</td><td>'+esc(m.user||'—')+'</td></tr>').join('')+'</tbody></table></div>':'<div class="hint">Sin movimientos de efectivo registrados en este turno.</div>';
