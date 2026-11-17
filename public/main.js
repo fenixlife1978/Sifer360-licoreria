@@ -6835,7 +6835,7 @@ const MENUS={
  ],
  'Clientes':[['Seleccionar cliente…','F4',clientDlg],['Estado de cuentas por cobrar…','',()=>cxcDlg()]],
  'Configuración':[['Datos del negocio y tasa…','',()=>cfgDlg()],['Conexión de red local (LAN)…','',()=>networkSettingsDlg()]],
- 'Ayuda':[['Atajos de teclado…','',helpDlg],['Acerca del POS…','',aboutDlg]]
+ 'Ayuda':[['Licencia, prueba y planes…','',()=>window.SIFERLicensing&&window.SIFERLicensing.open()],['Atajos de teclado…','',helpDlg],['Acerca del POS…','',aboutDlg]]
 };
 let menuEl=null;
 function closeMenu(){if(menuEl){menuEl.remove();menuEl=null;}const b=$('#btnMenu');if(b){b.classList.remove('open');b.setAttribute('aria-expanded','false');}}
