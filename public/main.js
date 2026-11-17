@@ -2487,6 +2487,20 @@ function inventoryDlg(){
   openWin({title:'Inventario de Licorería',w:1080,body:el,foot:[{label:'Cerrar',primary:true}],onEnter:()=>{},onOpen:()=>{draw();}});
 }
 
+/* Último costo unitario neto (sin IVA) por proveedor y producto. */
+function getLastSupplierPurchaseCost(purchases, code, supplierRif){
+  const normalizeRif=value=>String(value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const rif=normalizeRif(supplierRif);
+  if(!rif||!code)return null;
+  const records=(Array.isArray(purchases)?purchases:[])
+    .filter(p=>!p.void&&normalizeRif(p.supplier&&p.supplier.rif)===rif&&Array.isArray(p.lines)&&p.lines.some(line=>String(line.code)===String(code)))
+    .sort((a,b)=>Number(b.docDateTs||b.ts||0)-Number(a.docDateTs||a.ts||0)||Number(b.no||0)-Number(a.no||0));
+  if(!records.length)return null;
+  const line=records[0].lines.find(item=>String(item.code)===String(code));
+  const cost=Number(line&&line.cost);
+  return Number.isFinite(cost)&&cost>=0?cost:null;
+}
+
 /* ---------- MÓDULO DE COMPRAS Y PROVEEDORES ---------- */
 function comprasDlg(initialTab){
   let tab=initialTab||'new';
@@ -2513,12 +2527,7 @@ function comprasDlg(initialTab){
     if(motor==='gap'){const bcv=Number(pricing.bcvRate)||Number(bcvRate)||Number(S.cfg.rate)||1;const parallel=Number(pricing.parallelRate)||r2(bcv*1.22);return r2(c*(1+(Number(pricing.markupCost)||40)/100)*(parallel/bcv));}
     return r2(c*(1+(Number(pricing.markupCost)||40)/100));
   };
-  const getLastPurchaseCost=(code)=>{
-    const records=(S.purchases||[]).filter(c=>!c.void&&Array.isArray(c.lines)&&c.lines.some(line=>String(line.code)===String(code))).sort((a,b)=>Number(b.ts||0)-Number(a.ts||0)||Number(b.no||0)-Number(a.no||0));
-    if(!records.length)return null;
-    const line=records[0].lines.find(x=>String(x.code)===String(code));
-    return line&&Number.isFinite(Number(line.cost))?Number(line.cost):null;
-  };
+  const getLastPurchaseCost=(code)=>getLastSupplierPurchaseCost(S.purchases,code,(S.suppliers[supIdx]||{}).rif);
   const refreshPurchaseRate=async(date,v,draw)=>{
     const token=++rateRequestToken;purchaseRate=0;purchaseRateRecord=null;rateStatus='Consultando histórico BCV…';if(draw)draw();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))){rateStatus='Fecha de documento inválida';if(draw)draw();return false;}
@@ -2566,7 +2575,7 @@ function comprasDlg(initialTab){
         '<span class="hint" style="margin-left:auto">Verifique la alícuota IVA de cada renglón contra la factura del proveedor.</span>'+
       '</div>'+
       '<div class="gridwrap invwrap"><table class="grid" style="min-width:1120px">'+
-        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Último costo US$</th><th class="r">CPP actual US$</th><th class="r">Nuevo costo US$</th><th class="r">CPP resultante US$</th><th class="r">P. Venta US$</th><th class="r">Base US$</th><th>IVA %</th><th>Auto</th><th></th></tr></thead>'+
+        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Último costo proveedor (sin IVA) US$</th><th class="r">CPP actual US$</th><th class="r">Nuevo costo de compra (sin IVA) US$</th><th class="r">CPP resultante US$</th><th class="r">P. Venta US$</th><th class="r">Base US$</th><th>IVA %</th><th>Auto</th><th></th></tr></thead>'+
         '<tbody id="cpBody"></tbody>'+
       '</table></div>'+
       '<div class="cierre" id="cpTotals"></div>';
@@ -2586,7 +2595,7 @@ function comprasDlg(initialTab){
           '<td class="r"><input class="fld cell r" data-cpf="qty" value="'+fq(l.qty)+'" inputmode="decimal"></td>'+
           '<td class="r">'+(getLastPurchaseCost(l.code)==null?'—':nf8(getLastPurchaseCost(l.code)))+'</td>'+
           '<td class="r">'+nf8(p.cost)+'</td>'+
-          '<td class="r"><input class="fld cell r" data-cpf="cost" aria-label="Nuevo costo unitario US$" value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
+          '<td class="r"><input class="fld cell r" data-cpf="cost" aria-label="Nuevo costo unitario de compra sin IVA US$" value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
           '<td class="r"><b>'+nf8(projectedCost)+'</b></td>'+
           '<td class="r"><input class="fld cell r" data-cpf="price" value="'+nf8(l.price)+'" inputmode="decimal" '+(l.autoPrice?'readonly title="Calculado por el motor de precios"':'')+'></td>'+
           '<td class="r"><b>'+nf8(sub)+'</b></td>'+
@@ -2634,7 +2643,7 @@ function comprasDlg(initialTab){
 
     v.onchange=e=>{
       const t=e.target;
-      if(t.id==='cpSup'){supIdx=+t.value;drawLines();return;}
+      if(t.id==='cpSup'){supIdx=+t.value;pLines.forEach(line=>{if(!line.costEdited){const last=getLastPurchaseCost(line.code),product=prod(line.code);line.cost=last===null?Number(product&&product.cost||0):last;}});drawLines();return;}
       if(t.id==='cpDocType'){docType=t.value;const docLabel=$('#cpDocLabel',v);if(docLabel)docLabel.textContent=docType==='FACTURA_FISCAL'?'Nº de factura del proveedor *':'Nº de documento del proveedor *';pLines.forEach(line=>{if(docType!=='FACTURA_FISCAL')line.taxRate=0;else if(Number(line.taxRate||0)===0){const product=prod(line.code);line.taxRate=product?prodTaxRate(product):16;}});$('#cpCtrlWrap',v).style.display=docType==='FACTURA_FISCAL'?'':'none';drawLines();return;}
       if(t.id==='cpDate'){refreshPurchaseRate(t.value,v,drawLines);return;}
       if(t.id==='cpRetIslrPct'){retIslrPct=Math.min(100,Math.max(0,pn(t.value)||0));t.value=nf(retIslrPct);drawLines();return;}
@@ -2648,7 +2657,7 @@ function comprasDlg(initialTab){
         const tr=t.closest('tr'), idx=+tr.dataset.pi, l=pLines[idx];
         const val=pn(t.value);
         if(t.dataset.cpf==='qty')l.qty=val?r8(val):1;
-        if(t.dataset.cpf==='cost')l.cost=r8(val);
+        if(t.dataset.cpf==='cost'){l.cost=r8(val);l.costEdited=true;}
         if(t.dataset.cpf==='price'){l.price=val?r8(val):l.price;l.autoPrice=false;}
         if(t.dataset.cpf==='taxRate')l.taxRate=Number(t.value);
         if(t.dataset.cpf==='autoPrice'){l.autoPrice=t.checked;const p=prod(l.code);if(l.autoPrice&&p){const st=Number(p.stock)||0,ns=st+l.qty,avg=ns>0?r8((st*Number(p.cost||0)+l.qty*l.cost)/ns):l.cost;l.price=calcPurchaseSalePrice(p,avg,purchaseRate);}}
@@ -2661,7 +2670,7 @@ function comprasDlg(initialTab){
         if(!p)return;
         const ex=pLines.find(x=>x.code===code);
         if(ex)ex.qty=r8(ex.qty+qty);
-        else pLines.push({code,qty,cost:p.cost,price:p.price,taxRate:docType==='FACTURA_FISCAL'?prodTaxRate(p):0,autoPrice:true});
+        else{const last=getLastPurchaseCost(code);pLines.push({code,qty,cost:last===null?Number(p.cost||0):last,costEdited:false,price:p.price,taxRate:docType==='FACTURA_FISCAL'?prodTaxRate(p):0,autoPrice:true});}
         drawLines();
       }
       const del=e.target.closest('[data-cpdel]');
