@@ -83,3 +83,12 @@ test('refuses ambiguous duplicate lines, missing products and missing refund seq
   const refund=prepareReturn({state:noCxc.state,sale:noCxc.sale,lines:[{lineIndex:0,qty:1}],method:'efUSD',reason:'x'});
   assert.throws(()=>applyReturn(noCxc.state,refund,{returnNo:6}),/consecutivo independiente/);
 });
+
+test('revalidates CxC if its balance changes after preparing the return',()=>{
+  const {sale,state}=fixture();
+  const prepared=prepareReturn({state,sale,lines:[{lineIndex:0,qty:1}],method:'efUSD',reason:'Concurrent change'});
+  state.cxc[0].paid=30;
+  assert.throws(()=>applyReturn(state,prepared,{returnNo:7,refundNo:4}),/saldo CxC cambió/);
+  assert.equal(state.products[0].stock,7);
+  assert.equal(state.returns.length,0);
+});
