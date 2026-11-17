@@ -7238,6 +7238,11 @@ function zPayTotals(sales,start,end,box){
       const m=zNormalizeMethod(p.method||p.id);if(m)add('Pago CxP · '+m.name,zPaymentAmount(p,m),m.cur);
     });
   });
+  (S.returns||[]).forEach(note=>{
+    if(String(note.cashbox||'')!==cashbox||!inPeriod(note.ts)||Number(note.refund||0)<=0)return;
+    const m=zNormalizeMethod(note.refundMethod);
+    if(m)add('Reembolso NC · '+m.name,-(m.cur==='VES'?Number(note.refundAmount||0):Number(note.refund||0)),m.cur);
+  });
   (S.purchases||[]).forEach(p=>{
     if(!p.cashbox||String(p.cashbox)!==cashbox||p.void||!inPeriod(p.ts)||Number(p.paid||0)<=0)return;
     const linked=(S.cxp||[]).some(x=>String(x.cashbox||'')===cashbox&&String(x.purchaseNo||'')===String(p.no));
