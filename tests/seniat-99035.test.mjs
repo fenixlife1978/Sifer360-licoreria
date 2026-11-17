@@ -24,7 +24,7 @@ async function harness(records, rif='J-12345678-9') {
 const validRecord={
   id:'20261000000001',ts:Date.UTC(2026,9,15,12),periodo:'202610',
   supplier:{rif:'V-12345678-9'},docProv:'FAC-100',ctrlProv:'00-0000100',
-  base:100,iva:16,pct:75,rate:100,retainedBs:1200
+  base:100,iva:16,exempt:20,pct:75,rate:100,retainedBs:1200
 };
 
 test('SENIAT 99035 exports exactly 16 TAB-delimited columns and filters the requested period',async()=>{
@@ -36,6 +36,9 @@ test('SENIAT 99035 exports exactly 16 TAB-delimited columns and filters the requ
   const fields=rows[0].split('\t');
   assert.equal(fields.length,16);
   assert.deepEqual(Array.from(fields.slice(0,8)),['J-12345678-9','202610','2026-10-15','C','01','V-12345678-9','FAC-100','00-0000100']);
+  assert.equal(fields[8],'13600.00');
+  assert.equal(fields[9],'10000.00');
+  assert.equal(fields[13],'2000.00');
   assert.equal(fields[14],'16.00');
   assert.equal(h.downloads[0].name,'RetencionesIVA_J-12345678-9_202610.txt');
 });
