@@ -62,3 +62,7 @@ test('fiscal purchase and sale voids stop when source-ledger quantities do not r
  assert.match(pos,/s\.lines\.forEach\(l=>expected\.set/);
  assert.match(pos,/No se puede anular la venta fiscal: el libro fiscal no coincide/);
 });
+
+test('sale void restores the pre-operation snapshot if a fiscal reversal throws',()=>{
+ assert.match(pos,/const rollbackState=JSON\.parse\(JSON\.stringify\(S\)\);[\s\S]*?try\{[\s\S]*?eventId:'VOID-SALE:'[\s\S]*?catch\(error\)\{[\s\S]*?restoreStateSnapshotIfNeeded\(null,rollbackState\)/);
+});
