@@ -52,7 +52,7 @@ La detección USB-Serial identifica puertos y posibles chipsets/controladores; n
 
 La impresora térmica recibe trabajos ESC/POS RAW desde la cola de Windows. Se utiliza para tickets, comandas, copias y documentos no fiscales; nunca debe configurarse como sustituto de la impresora fiscal.
 
-La configuración térmica nueva se guarda por identificador de estación y caja. Los perfiles antiguos guardados solo por caja se conservan como compatibilidad de reserva; al guardar desde cada estación se crea su perfil independiente.
+La configuración térmica nueva se guarda por identificador de estación y caja. Los perfiles antiguos guardados solo por caja se conservan como compatibilidad para instalaciones independientes. En modo LAN no se reutilizan como alternativa automática, para evitar que una estación envíe tickets a la cola Windows de otra PC.
 
 ## 5. Cómo se enrutan los documentos
 
