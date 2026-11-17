@@ -4650,6 +4650,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   if(dualMode&&documentChoice==='FISCAL'&&(!configuredFiscalProfile||configuredFiscalProfile.enabled!==true)){msg('La impresora fiscal no está configurada para esta caja. Configure el dispositivo antes de emitir una factura.','bad');return;}
   const internalTicketMode=dualMode?documentChoice==='TICKET':(printMode==='INTERNAL_THERMAL'||printMode==='NO_PRINTER');
   const fiscalMode=dualMode?documentChoice==='FISCAL':(printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL'));
+  if(fiscalMode&&(!fiscalNetworkInfo.deviceId||!['standalone','server','client'].includes(fiscalNetworkInfo.role))){msg('No se pudo verificar el rol y la identidad de esta estación. La emisión fiscal queda bloqueada para evitar ejecutar la impresora local por error. Verifique la conexión LAN.','bad');return;}
   const fiscalProfile=fiscalMode?configuredFiscalProfile:null;
   const useSharedFiscal=fiscalMode&&(fiscalNetworkInfo.role==='client'||fiscalNetworkInfo.role==='server');
   if(fiscalMode&&(!fiscalProfile||fiscalProfile.enabled!==true)){msg('La impresora fiscal no está habilitada para esta caja en la configuración compartida. Configure el dispositivo en el servidor fiscal.','bad');return;}
