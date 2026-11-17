@@ -27,8 +27,8 @@ test('fiscal sales validate fiscal availability and reduce both ledgers; interna
 });
 
 test('fiscal purchase reversals and fiscal sale voids only reverse recorded fiscal movements',()=>{
- assert.match(pos,/originalEvent=sourceId/);
- assert.match(pos,/ledger\.movements\.some\(m=>m\.eventId===originalEvent\)/);
+ assert.ok(pos.includes("movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='VENTA_FISCAL')"));
+ assert.match(pos,/eventId:'VOID-SALE:'\+original\.eventId/);
 });
 
 test('operational/fiscal inventory transaction matrix is documented without pretending legal compliance',()=>{
@@ -41,7 +41,8 @@ test('operational/fiscal inventory transaction matrix is documented without pret
 test('purchase void prevalidates physical/fiscal balances and restores the SQLite snapshot on failure',()=>{
  assert.match(pos,/const rollbackState=JSON\.parse\(JSON\.stringify\(S\)\);[\s\S]*?const fiscalLines=/);
  assert.match(pos,/const fiscalCheck=window\.SIFERInventoryLedgers\.canApplyFiscalSale\(S,fiscalLines\)/);
- assert.match(pos,/const physicalShort=c\.lines\.find/);
+ assert.match(pos,/const physicalRequired=new Map\(\)/);
+ assert.match(pos,/physicalRequired\.entries\(\)/);
  assert.match(pos,/restoreStateSnapshotIfNeeded\(null,rollbackState\)/);
  assert.match(pos,/restoreStateSnapshotIfNeeded\(persisted,rollbackState\)/);
 });
@@ -51,6 +52,6 @@ test('fiscal purchase and sale reversals target each original fiscal event and a
  assert.match(pos,/pLines\.map\(\(l,lineIndex\)=>/);
  assert.match(pos,/PURCHASE-[\s\S]*?lineIndex,type:'COMPRA_FISCAL'/);
  assert.ok(pos.includes("sale.accountingSourceId+':'+p.code+':'+lineIndex"));
- assert.ok(pos.includes("movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='COMPRA_FISCAL')"));
+ assert.ok(pos.includes("movements.filter(m=>String(m.sourceId||'')===purchaseSourceId&&m.type==='COMPRA_FISCAL')"));
  assert.ok(pos.includes("movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='VENTA_FISCAL')"));
 });
