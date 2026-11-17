@@ -22,31 +22,25 @@ jobs:
     steps:
       - name: Clonar repositorio
         uses: actions/checkout@v6
-
       - name: Configurar Node.js 22
         uses: actions/setup-node@v7
         with:
           node-version: 22
           package-manager-cache: false
-
       - name: Instalar dependencias
         run: npm install --legacy-peer-deps
-
       - name: Ejecutar pruebas de regresión
         run: npm test
-
       - name: Compilar aplicación web (Vite)
         run: npm run build
-
       - name: Construir instalador y portable de Windows (.exe)
         run: npx --yes electron-builder --win --config electron-builder.json --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Guardar ejecutable como artefacto privado de CI
         uses: actions/upload-artifact@v5
         with:
-          name: SIFER360-1.0.8-Windows-Installer-and-Portable
+          name: SIFER360-1.0.9-Windows-Installer-and-Portable
           path: dist-exe/*.exe
           if-no-files-found: error
           retention-days: 30
