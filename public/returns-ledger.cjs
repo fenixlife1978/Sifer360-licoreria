@@ -60,8 +60,8 @@ function prepareReturn({state,sale,lines,returnStock=true,method='',reference=''
   return {
     saleNo:Number(sale.no),cashbox:box,reason:String(reason).trim(),returnStock:!!returnStock,
     lines:normalized,total,creditApplied,refund,method:refund?method:'',reference:String(reference||'').trim(),
-    refundCurrency:method==='efBs'?'VES':'USD',
-    refundAmount:refund?(method==='efBs'?round2(refund*exchangeRate):refund):0,
+    refundCurrency:['efBs','punto','biopago','pmovil','transf'].includes(method)?'VES':'USD',
+    refundAmount:refund?(['efBs','punto','biopago','pmovil','transf'].includes(method)?round2(refund*exchangeRate):refund):0,
     rate:exchangeRate,receivableId:receivable&&receivable.id||null,
     receivableBefore:receivable?{total:Number(receivable.total||0),paid:Number(receivable.paid||0)}:null
   };
