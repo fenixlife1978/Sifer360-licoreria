@@ -17,12 +17,12 @@ const { getCashboxSequenceMinimum } = require('./cashbox-sequence-minimum.cjs');
 const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
 const { createPasswordHash, verifyPassword, normalizeLegacyUser, publicUser } = require('./auth-credentials.cjs');
 const FiscalPrinterManager = require('./fiscal-printer-manager.cjs');
-const { createWindowsBackupScheduler } = require('./google-drive-backup.cjs');
+const { createLegacyBackupTaskRetirer } = require('./legacy-backup-task.cjs');
 const PrinterManager = require('./printer-manager.cjs');
 const { createFiscalNetworkQueue } = require('./fiscal-network-queue.cjs');
 const { createLicensing } = require('./licensing.cjs');
 const { autoUpdater } = require('electron-updater');
-const legacyBackupScheduler = createWindowsBackupScheduler();
+const legacyBackupTaskRetirer = createLegacyBackupTaskRetirer();
 let fiscalNetworkQueue = null;
 let fiscalNetworkQueueRecovered = false;
 let licensing = null;
@@ -1183,7 +1183,7 @@ if (!hasSingleInstanceLock) {
 } else {
   app.on('second-instance', (_event, commandLine) => {
     if (commandLine.includes('--sifer-google-drive-backup')) {
-      try { legacyBackupScheduler.remove(); } catch (error) { console.warn('No se pudo retirar la antigua tarea de respaldo:', error.message); }
+      try { legacyBackupTaskRetirer.remove(); } catch (error) { console.warn('No se pudo retirar la antigua tarea de respaldo:', error.message); }
       return;
     }
     const existing = BrowserWindow.getAllWindows()[0];
@@ -1192,11 +1192,11 @@ if (!hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     readNetworkConfig();
     if (process.argv.includes('--sifer-google-drive-backup')) {
-      try { legacyBackupScheduler.remove(); } catch (error) { console.warn('No se pudo retirar la antigua tarea de respaldo:', error.message); }
+      try { legacyBackupTaskRetirer.remove(); } catch (error) { console.warn('No se pudo retirar la antigua tarea de respaldo:', error.message); }
       app.quit();
       return;
     }
-    try { legacyBackupScheduler.remove(); } catch (error) { console.warn('No se pudo retirar la antigua tarea de respaldo:', error.message); }
+    try { legacyBackupTaskRetirer.remove(); } catch (error) { console.warn('No se pudo retirar la antigua tarea de respaldo:', error.message); }
     if (networkConfig.role !== 'client') await initializeDatabase();
     licensing = createLicensing({ app, safeStorage, shell });
     await licensing.initialize();
