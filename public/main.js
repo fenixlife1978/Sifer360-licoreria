@@ -2675,7 +2675,22 @@ function comprasDlg(initialTab){
       if(!b)return;
       const c=S.purchases.find(x=>x.no===+b.dataset.voidComp&&String(x.cashbox||currentCaja())===currentCaja());
       if(!c||c.void)return;
-      const linkedPayables=(S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()));
+      const purchaseCashbox=String(c.cashbox||currentCaja());
+      const purchaseDocument='COM-'+pad(c.no);
+      const samePurchaseSupplier=x=>{
+        const supplierRif=String(c.supplier&&c.supplier.rif||'').trim();
+        const payableRif=String(x.supplier&&x.supplier.rif||'').trim();
+        if(supplierRif&&payableRif)return supplierRif===payableRif;
+        return String(x.supplier&&x.supplier.name||'').trim()===String(c.supplier&&c.supplier.name||'').trim();
+      };
+      const linkedPayables=(S.cxp||[]).filter(x=>{
+        if(Number(x.purchaseNo)!==Number(c.no))return false;
+        if(x.cashbox!==undefined&&x.cashbox!==null&&String(x.cashbox)!=='')return String(x.cashbox)===purchaseCashbox;
+        return String(x.doc||'')===String(c.docProv||'')+' ('+purchaseDocument+')'
+          &&x.ts!==undefined&&x.ts!==null&&Number.isFinite(Number(x.ts))
+          &&Math.abs(Number(x.ts)-Number(c.ts))<1000
+          &&samePurchaseSupplier(x);
+      });
       const hasRecordedPayments=Number(c.paid||0)>1e-8||linkedPayables.some(x=>Number(x.paid||0)>1e-8||(Array.isArray(x.payments)&&x.payments.length>0));
       if(hasRecordedPayments){msg('No se puede anular la compra COM-'+pad(c.no)+': existen pagos o abonos al proveedor registrados. Primero debe reversarse y conciliarse cada pago; esta anulación no puede dejar dinero entregado sin tratamiento.','bad');return;}
       const rollbackState=JSON.parse(JSON.stringify(S));
@@ -2698,7 +2713,6 @@ function comprasDlg(initialTab){
       c.lines.forEach(l=>physicalRequired.set(String(l.code),(physicalRequired.get(String(l.code))||0)+Number(l.qty)));
       const physicalShort=Array.from(physicalRequired.entries()).find(([code,qty])=>{const p=prod(code);return !p||Number(p.stock)+1e-9<qty;});
       if(physicalShort){msg('No se puede anular la compra: existencia física insuficiente de '+physicalShort[0]+'. Disponible: '+fq(prod(physicalShort[0])?.stock||0)+', requerido: '+fq(physicalShort[1])+'. Registre la devolución o ajuste correspondiente.','bad');return;}
-      const purchaseCashbox=String(c.cashbox||currentCaja());
       let voidNo;try{voidNo=await nextCajaSequence('void',purchaseCashbox);}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
       try{
       c.void=true;c.voidNo=voidNo;c.voidDoc='ANU-'+purchaseCashbox.replace(/\\W/g,'')+'-'+pad(voidNo,6);
@@ -2717,7 +2731,7 @@ function comprasDlg(initialTab){
         code:original.code,qty:original.qty,cost:original.cost,document:'COM-'+pad(c.no),
         sourceId:purchaseSourceId,timestamp:Date.now(),cashbox:purchaseCashbox,user:currentCajero()
       }));
-      (S.cxp||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja())).forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
+      linkedPayables.forEach(x=>{x.void=true;x.voidedAt=Date.now();x.voidReason='Compra COM-'+pad(c.no)+' anulada';});
       (S.retencionesIva||[]).filter(x=>(Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))||(String(x.docProv||'')===String(c.docProv||'')&&String(x.supplier&&x.supplier.rif||'')===String(c.supplier&&c.supplier.rif||'')&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja()))).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
       (S.retencionesIslr||[]).filter(x=>Number(x.purchaseNo)===Number(c.no)&&String(x.cashbox||currentCaja())===String(c.cashbox||currentCaja())).forEach(x=>{x.void=true;x.estado='Anulada junto con compra COM-'+pad(c.no);});
       }catch(error){restoreStateSnapshotIfNeeded(null,rollbackState);msg('No se pudo revertir la compra: '+error.message,'bad');return;}
