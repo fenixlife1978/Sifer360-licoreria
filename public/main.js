@@ -173,7 +173,7 @@ function seed(){
     products:[],
     clients:[{name:'Consumidor final',rif:'',tel:''}],
     suppliers:[],
-    sales:[],held:[],purchases:[],cxc:[],cxp:[],cortesZ:[],openings:[],movimientosCaja:[],kardex:[],counts:[],
+    sales:[],held:[],purchases:[],fiscalInventory:{version:1,balances:{},movements:[]},cxc:[],cxp:[],cortesZ:[],openings:[],movimientosCaja:[],kardex:[],counts:[],
     lotesSudeban:[],retencionesIva:[],retencionesIslr:[],cambiosDivisas:[],rateAudit:[],bcvRates:{},casheaMovimientos:[],casheaLiquidaciones:[],documents:[],fiscalPrinterJobs:[],accounting:{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:1,purchaseSeq:1,countSeq:1,
     cart:[],sel:-1,cat:'Todas',query:'',catSel:null
@@ -183,7 +183,7 @@ function seed(){
 function stateSnapshot(){
   return {
     v:1,cfg:S.cfg,products:S.products,clients:S.clients,suppliers:S.suppliers,
-    sales:S.sales,held:S.held,purchases:S.purchases,cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],openings:S.openings||[],movimientosCaja:S.movimientosCaja||[],
+    sales:S.sales,held:S.held,purchases:S.purchases,fiscalInventory:S.fiscalInventory||{version:1,balances:{},movements:[]},cxc:S.cxc,cxp:S.cxp,cortesZ:S.cortesZ||[],openings:S.openings||[],movimientosCaja:S.movimientosCaja||[],
     kardex:S.kardex,counts:S.counts,lotesSudeban:S.lotesSudeban,retencionesIva:S.retencionesIva,retencionesIslr:S.retencionesIslr||[],cambiosDivisas:S.cambiosDivisas,rateAudit:S.rateAudit||[],bcvRates:S.bcvRates||{},
     casheaMovimientos:S.casheaMovimientos||[],casheaLiquidaciones:S.casheaLiquidaciones||[],documents:S.documents||[],fiscalPrinterJobs:S.fiscalPrinterJobs||[],accounting:S.accounting||{version:1,accounts:[],entries:[],fixedAssets:[],nextEntry:1,nextAsset:1,initialized:false},
     invoice:S.invoice,purchaseSeq:S.purchaseSeq,countSeq:S.countSeq
@@ -731,6 +731,8 @@ function load(){
     S.held=Array.isArray(d.held)?d.held:[];
     S.heldDeletedIds=Array.isArray(d.heldDeletedIds)?d.heldDeletedIds:[];
     if(Array.isArray(d.purchases))S.purchases=d.purchases;
+    S.fiscalInventory=d.fiscalInventory&&typeof d.fiscalInventory==='object'?d.fiscalInventory:{version:1,balances:{},movements:[]};
+    if(window.SIFERInventoryLedgers)window.SIFERInventoryLedgers.ensureFiscalInventory(S);
     if(Array.isArray(d.cxc))S.cxc=d.cxc;
     if(Array.isArray(d.cxp))S.cxp=d.cxp;
     if(Array.isArray(d.kardex)&&d.kardex.length)S.kardex=d.kardex;
@@ -2655,6 +2657,7 @@ function comprasDlg(initialTab){
         const p=prod(l.code);
         if(p){
           p.stock=Math.max(0,r2(p.stock-l.qty));
+          if(c.docType==='FACTURA_FISCAL')window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'VOID-PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no)+':'+p.code,type:'ANULACION_COMPRA_FISCAL',dir:'OUT',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(c.no),sourceId:'PURCHASE-'+String(c.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(c.no),timestamp:Date.now(),cashbox:c.cashbox||currentCaja(),user:currentCajero()});
           addKardex({
             code:p.code,type:'ANULACIÓN',dir:'OUT',doc:'COM-'+pad(c.no),
             party:'Anulación compra prov. '+c.supplier.name,qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
@@ -2736,6 +2739,7 @@ function comprasDlg(initialTab){
       p.stock=nextStock;
       p.cost=nextCost;
       if(l.price>0){p.price=r8(l.price);if(p.pricing){p.pricing.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;p.pricing.markupSale=p.price>0?r2(((p.price-p.cost)/p.price)*100):0;}if(p.presentations&&p.presentations[0]&&Number(p.presentations[0].factor)===1)p.presentations[0].price=p.price;if(p.pricing&&Array.isArray(p.pricing.gaps)){p.pricing.gaps.forEach((g,idx)=>{if(idx===0){g.price=p.price;g.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;}else if(p.pricing.mode==='auto'){g.price=r2(p.price*(1-(Number(g.gapPct)||0)/100));g.markupCost=p.cost>0?r2(((g.price-p.cost)/p.cost)*100):0;}});}}
+      if(docType==='FACTURA_FISCAL')window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'PURCHASE-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(no)+':'+p.code,type:'COMPRA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(no),sourceId:'PURCHASE-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(no),timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
       addKardex({
         ts,code:p.code,type:'COMPRA',dir:'IN',doc:'COM-'+pad(no),
         party:sup.name+' (Fac. '+docProv+')',qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
@@ -4692,6 +4696,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     amount:r2(amts[m.id]),
     ref:(refs&&refs[m.id])||''
   }));
+  if(fiscalMode){const fiscalCheck=window.SIFERInventoryLedgers&&window.SIFERInventoryLedgers.canApplyFiscalSale(S,lines);if(!fiscalCheck||!fiscalCheck.ok){const code=fiscalCheck&&fiscalCheck.code||'artículo';const p=prod(code);msg('Venta fiscal bloqueada: inventario fiscal insuficiente para '+(p?p.desc:code)+'. Disponible: '+fq(fiscalCheck&&fiscalCheck.available||0)+'. Registre/valide la existencia fiscal inicial o la compra fiscal antes de facturar.','bad');return;}}
   const creditAmt=(isCred&&st.pending>=0.01)?r2(st.pending):0;
   const casheaAmt=r2(amts.cashea||0);
   let cxcNo=null,casheaNo=null;
@@ -4849,6 +4854,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
 
 S.cart.forEach(l=>{
     const p=prod(l.code);
+    if(fiscalMode)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':'+p.code,type:'VENTA_FISCAL',dir:'OUT',code:p.code,qty:l.qty,cost:p.cost,document:'FAC-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
     p.stock=Math.max(0,r2(p.stock-l.qty));
     addKardex({
       ts,code:p.code,type:'VENTA',dir:'OUT',doc:(internalTicketMode?'TKT-':'FAC-')+pad(invNo),cashbox:currentCaja(),
@@ -5053,6 +5059,7 @@ function salesDlg(){
         const p=prod(l.code);
         if(p){
           p.stock=r2(p.stock+l.qty);
+          if(isFiscalSale(s))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'VOID-SALE-'+String(s.cashbox||currentCaja()).replace(/\\W/g,'')+'-'+pad(s.no)+':'+p.code,type:'ANULACION_VENTA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.unitCost||p.cost,document:'FAC-'+pad(s.no),sourceId:s.accountingSourceId||('SALE-'+pad(s.no)),timestamp:Date.now(),cashbox:s.cashbox||currentCaja(),user:currentCajero()});
           addKardex({
             code:p.code,type:'ANULACIÓN',dir:'IN',doc:(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no),
             party:'Reingreso por anulación de venta ('+s.client.name+')',
