@@ -21,10 +21,10 @@ test('v1.0.8 package and Windows artifacts use one consistent version', async ()
   assert.equal(builder.nsis.artifactName, 'SIFER360-1.0.8-Instalador.exe');
   assert.match(buildExe, /SIFER360-1\.0\.8-Windows-Installer-and-Portable/);
   assert.match(desktop, /SIFER360-1\.0\.8-Windows-Desktop/);
-  assert.match(drive, /SIFER360-1\.0\.8-Desktop-SQLite-Windows/);
+  assert.match(validation, /SIFER360-1\.0\.8-Desktop-SQLite-Windows/);
   assert.doesNotMatch(buildExe, /SIFER360-1\.0\.[467]-/);
   assert.doesNotMatch(desktop, /SIFER360-1\.0\.[467]-/);
-  assert.doesNotMatch(drive, /SIFER360-1\.0\.[467]-/);
+  assert.doesNotMatch(validation, /SIFER360-1\.0\.[467]-/);
 });
 
 test('v1.0.8 remains local-only and cannot upload SQLite to cloud backup services', async () => {
@@ -32,7 +32,7 @@ test('v1.0.8 remains local-only and cannot upload SQLite to cloud backup service
   const preload = await read('../electron/preload.cjs');
   const renderer = await read('../public/main.js');
   const workflow = await read('../.github/workflows/sifer360-104-google-drive-validation.yml');
-  assert.match(main, /legacyBackupScheduler\\.remove\\(\\)/);
+    assert.match(main, /legacyBackupScheduler\.remove\(\)/);
   assert.doesNotMatch(main, /createGoogleDriveBackup|backup:run-now|backup:connect-google|sqliteDatabaseToJson/);
   assert.doesNotMatch(preload, /backupStatus|backupConnectGoogle|backupRunNow|backupEnableDaily/);
   assert.doesNotMatch(renderer, /Google Drive|gdrive|backupRunNow/);
