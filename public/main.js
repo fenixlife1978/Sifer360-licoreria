@@ -2681,6 +2681,14 @@ function comprasDlg(initialTab){
         ?window.SIFERInventoryLedgers.ensureFiscalInventory(S).movements.filter(m=>String(m.sourceId||'')===purchaseSourceId&&m.type==='COMPRA_FISCAL')
         :[]);
       const fiscalLines=fiscalMovements.map(m=>({code:m.code,qty:m.qty}));
+      if(c.docType==='FACTURA_FISCAL'){
+        const expected=new Map(),recorded=new Map();
+        c.lines.forEach(l=>expected.set(String(l.code),(expected.get(String(l.code))||0)+Number(l.qty)));
+        fiscalMovements.forEach(l=>recorded.set(String(l.code),(recorded.get(String(l.code))||0)+Number(l.qty)));
+        const mismatch=Array.from(expected.entries()).find(([code,qty])=>Math.abs(qty-(recorded.get(code)||0))>1e-8)
+          ||Array.from(recorded.entries()).find(([code,qty])=>Math.abs(qty-(expected.get(code)||0))>1e-8);
+        if(mismatch){msg('No se puede anular la compra fiscal: el libro fiscal no coincide con los renglones del documento para '+mismatch[0]+'. Primero debe conciliarse el movimiento faltante o sobrante.','bad');return;}
+      }
       const fiscalCheck=window.SIFERInventoryLedgers.canApplyFiscalSale(S,fiscalLines);
       if(!fiscalCheck.ok){msg('No se puede anular la compra: la existencia fiscal disponible de '+fiscalCheck.code+' es '+fq(fiscalCheck.available)+', menor que la cantidad que debe revertirse ('+fq(fiscalCheck.required)+'). Registre y concilie una nota de crédito o ajuste documentado.','bad');return;}
       const physicalRequired=new Map();
@@ -5090,6 +5098,16 @@ function salesDlg(){
     if(e.target.id==='saVoid'&&s&&!s.void){
       if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin((s.docType==='TICKET-INTERNO'?'Anular ticket ':'Anular factura ')+pad(s.no)))return;
       if(!armed||Date.now()-armed>5000){armed=Date.now();e.target.textContent='Confirmar anulación';return;}
+      if(isFiscalSale(s)){
+        const sourceId=s.accountingSourceId||('SALE-'+pad(s.no));
+        const originalMovements=window.SIFERInventoryLedgers.ensureFiscalInventory(S).movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='VENTA_FISCAL');
+        const expected=new Map(),recorded=new Map();
+        s.lines.forEach(l=>expected.set(String(l.code),(expected.get(String(l.code))||0)+Number(l.qty)));
+        originalMovements.forEach(l=>recorded.set(String(l.code),(recorded.get(String(l.code))||0)+Number(l.qty)));
+        const mismatch=Array.from(expected.entries()).find(([code,qty])=>Math.abs(qty-(recorded.get(code)||0))>1e-8)
+          ||Array.from(recorded.entries()).find(([code,qty])=>Math.abs(qty-(expected.get(code)||0))>1e-8);
+        if(mismatch){msg('No se puede anular la venta fiscal: el libro fiscal no coincide con los renglones de la factura para '+mismatch[0]+'. Primero debe conciliarse el movimiento faltante o sobrante.','bad');return;}
+      }
       let voidNo;try{voidNo=await nextCajaSequence('void',currentCaja());}catch(error){msg('No se pudo reservar el número de anulación: '+error.message,'bad');return;}
       const rollbackState=JSON.parse(JSON.stringify(S));
       s.void=true;
