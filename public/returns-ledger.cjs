@@ -71,6 +71,11 @@ function applyReturn(state,prepared,{returnNo,refundNo,now=Date.now(),user=''}={
   if(!Array.isArray(state.returns))state.returns=[];
   const sale=(state.sales||[]).find(item=>Number(item.no)===prepared.saleNo&&String(item.cashbox||'')===prepared.cashbox);
   if(!sale||sale.void)fail('La venta original ya no está disponible o fue anulada.');
+  if(prepared.receivableId){
+    const currentReceivable=(state.cxc||[]).find(item=>item.id===prepared.receivableId);
+    if(!currentReceivable||Number(currentReceivable.total||0)!==Number(prepared.receivableBefore.total)||Number(currentReceivable.paid||0)!==Number(prepared.receivableBefore.paid))
+      fail('La venta o su saldo CxC cambió después de preparar la devolución. Vuelva a calcularla.');
+  }
   // Revalidate quantities at commit time to prevent stale dialogs or duplicate submissions.
   const fresh=prepareReturn({state,sale,lines:prepared.lines.map(line=>({lineIndex:line.lineIndex,qty:line.qty})),returnStock:prepared.returnStock,method:prepared.method,reference:prepared.reference,reason:prepared.reason,rate:prepared.rate});
   if(Math.abs(fresh.total-prepared.total)>0.01||Math.abs(fresh.creditApplied-prepared.creditApplied)>0.01||Math.abs(fresh.refund-prepared.refund)>0.01)
