@@ -1,0 +1,113 @@
+name: Publicar SIFER360 LICORERÍA v1.0.4
+
+on:
+  push:
+    branches:
+      - release/v1.0.0
+    paths:
+      - '.release-trigger-v1.0.4'
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publicar Release oficial v1.0.4 con instalador y portable"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows-build:
+    if: ${{ github.event_name == 'push' || inputs.publish_release == true }}
+    name: Compilar y validar instalador y portable Windows 1.0.4
+    runs-on: windows-latest
+    steps:
+      - name: Checkout del commit integrado
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Instalar dependencias
+        run: npm install --legacy-peer-deps
+
+      - name: Validar e inyectar Google OAuth Client ID
+        env:
+          SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
+        run: |
+          node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(!id || !id.endsWith('.apps.googleusercontent.com')) throw new Error('Falta SIFER360_GOOGLE_OAUTH_CLIENT_ID o el formato es inválido.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId:id}, null, 2)); console.log('Google OAuth Client ID configurado (valor oculto).')"
+
+      - name: Ejecutar pruebas automatizadas
+        run: npm test
+
+      - name: Validar TypeScript
+        run: npm run lint
+
+      - name: Compilar interfaz
+        run: npm run build
+
+      - name: Construir instalador NSIS y portable
+        run: npx --yes electron-builder --win --config electron-builder.json --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verificar archivos versionados
+        shell: pwsh
+        run: |
+          $required = @('SIFER360-1.0.4-Instalador.exe','SIFER360-1.0.4-Portable.exe')
+          foreach ($name in $required) {
+            $file = Get-ChildItem -Path dist-exe -Filter $name -File | Select-Object -First 1
+            if (-not $file -or $file.Length -lt 1000000) { throw "No se generó un ejecutable válido: $name" }
+            Write-Host "$name ($($file.Length) bytes)"
+          }
+
+      - name: Subir instalador y portable
+        uses: actions/upload-artifact@v5
+        with:
+          name: SIFER360-1.0.4-Windows-Installer-and-Portable
+          path: |
+            dist-exe/SIFER360-1.0.4-Instalador.exe
+            dist-exe/SIFER360-1.0.4-Portable.exe
+          if-no-files-found: error
+          retention-days: 90
+
+  github-release:
+    if: ${{ github.event_name == 'push' || inputs.publish_release == true }}
+    needs: windows-build
+    name: Publicar GitHub Release v1.0.4
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del commit validado
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Descargar ejecutables validados
+        uses: actions/download-artifact@v5
+        with:
+          name: SIFER360-1.0.4-Windows-Installer-and-Portable
+          path: release-assets
+
+      - name: Verificar contenido del paquete
+        run: |
+          test -s release-assets/SIFER360-1.0.4-Instalador.exe
+          test -s release-assets/SIFER360-1.0.4-Portable.exe
+
+      - name: Crear tag y publicar Release oficial
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v1.0.4 release-assets/SIFER360-1.0.4-Instalador.exe release-assets/SIFER360-1.0.4-Portable.exe \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${GITHUB_SHA}" \
+            --title "SIFER360 LICORERÍA v1.0.4" \
+            --notes-file RELEASE_NOTES_1.0.4.md \
+            --latest
