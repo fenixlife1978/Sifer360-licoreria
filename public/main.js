@@ -2867,8 +2867,8 @@ function comprasDlg(initialTab){
       comp.retIvaDoc=retDoc;
       if(!S.retencionesIva)S.retencionesIva=[];
       S.retencionesIva.push({
-        id:retDoc,ts,periodo,cashbox:currentCaja(),sequence:retSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,
-        ctrlProv:comp.ctrlProv,base,iva,pct:retPct,rate:purchaseRate,
+        id:retDoc,ts,periodo,docDate,docDateTs,cashbox:currentCaja(),sequence:retSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,
+        ctrlProv:comp.ctrlProv,docType:'01',operationType:'C',documentTotal:total,exempt:0,base,iva,pct:retPct,rate:purchaseRate,
         retainedUsd:retUsd,retainedBs:retBs,
         estado:'Pendiente de revisión del contador',declarada:false,pagada:false,comprobanteEntregado:false,observaciones:''
       });
