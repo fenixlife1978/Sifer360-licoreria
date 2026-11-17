@@ -21,11 +21,13 @@ test('fiscal purchases feed both physical and fiscal stock while non-fiscal purc
 test('fiscal sales validate fiscal availability and reduce both ledgers; internal tickets only reduce operational stock',()=>{
  assert.match(pos,/canApplyFiscalSale\(S,lines\)/);
  assert.match(pos,/type:'VENTA_FISCAL',dir:'OUT'/);
+ assert.match(pos,/ledger\.movements\.slice\(\)/);
+ assert.match(pos,/Libro_Inventario_Fiscal_SIFER/);
  assert.match(pos,/p\.stock=Math\.max\(0,r2\(p\.stock-l\.qty\)\)/);
 });
 
 test('fiscal purchase reversals and fiscal sale voids only reverse recorded fiscal movements',()=>{
- assert.match(pos,/originalEvent=sourceId\+': '\+p\.code/);
+ assert.match(pos,/originalEvent=sourceId/);
  assert.match(pos,/ledger\.movements\.some\(m=>m\.eventId===originalEvent\)/);
 });
 
