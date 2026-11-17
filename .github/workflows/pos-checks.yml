@@ -2,7 +2,7 @@ name: POS checks
 
 on:
   push:
-    branches: [main, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-printer-auto-assistant, feature/fiscal-sdk-architecture-validation, feature/dual-printer-manager, integration/google-drive-1.0.4, integration/crm-licensing-telemetry-1.0.5]
+    branches: [main, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-printer-auto-assistant, feature/printer-duality-shared-fiscal-v1.0.6, feature/fiscal-sdk-architecture-validation, feature/dual-printer-manager, integration/google-drive-1.0.4, integration/crm-licensing-telemetry-1.0.5]
   pull_request:
     branches: [main, integration/sqlite-lan-stage-1, release/v1.0.0]
 
