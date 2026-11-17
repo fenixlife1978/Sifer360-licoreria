@@ -7512,7 +7512,7 @@ function corteZDlg(){
   };
   const getInventoryAdjustments=(start,end,box)=>(S.kardex||[]).filter(k=>{
     const ts=Number(k.ts)||0;
-    return String(k.cashbox||'')===String(box||'')&&ts>=Number(start)&&ts<=Number(end)&&['CONTEO','AJUSTE'].includes(String(k.type||'').toUpperCase());
+    return String(k.cashbox||'')===String(box||'')&&ts>=Number(start)&&ts<=Number(end)&&['CONTEO','AJUSTE','DEVOLUCION'].includes(String(k.type||'').toUpperCase());
   }).map(k=>({code:String(k.code||'SIN-CODIGO'),desc:String((prod(k.code)||{}).desc||k.party||'Producto sin nombre'),qty:Math.abs(Number(k.qty)||0),sign:k.dir==='IN'?1:-1,doc:String(k.doc||'—'),reason:String(k.party||'')})).sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true})||a.doc.localeCompare(b.doc));
   const getRows=()=>{
     const sales=getPeriodSales().filter(s=>!s.void);
