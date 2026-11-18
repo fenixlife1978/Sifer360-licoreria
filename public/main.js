@@ -5351,7 +5351,11 @@ S.cart.forEach((l,lineIndex)=>{
       const net=await window.posDesktop.networkStatus(),thermal=getThermalPrinterProfile(sale.cashbox,String(net&&net.deviceId||''),String(net&&net.role||'')==='standalone');
       if(!thermal||thermal.enabled!==true||!thermal.printerName||typeof window.posDesktop.printerPrintTicket!=='function')throw new Error('No hay una impresora térmica configurada para esta caja.');
       const columns=thermal.columns||42;
+      sale.ticketDocument.printStatus='uncertain';sale.ticketDocument.printStartedAt=Date.now();
+      const intentSaved=await save();
+      if(!intentSaved||!intentSaved.ok)throw new Error('SQLite no confirmó la intención de impresión; por seguridad el ticket no se envió. Verifique el estado antes de reintentar.');
       const result=await window.posDesktop.printerPrintTicket(thermal.printerName,ticketText(sale.ticketDocument,columns),{columns});
+      if(result&&result.ok===false)throw new Error(result.message||'La impresora rechazó el ticket.');
       sale.ticketDocument.printStatus='sent';sale.ticketDocument.printedAt=Date.now();sale.ticketDocument.printMessage=String(result&&result.message||'Enviado a la impresora térmica.');
       const printSaved=await save();
       if(!printSaved||!printSaved.ok)msg('La factura fiscal y la venta quedaron guardadas; el ticket se envió, pero SQLite no confirmó el estado de impresión. No repita el cobro.','bad');
