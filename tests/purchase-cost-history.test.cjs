@@ -132,4 +132,5 @@ test('el historial de compras del administrador incluye compras ADMIN y anula po
   assert.ok(source.includes("const list=(S.purchases||[]).slice().sort((a,b)=>Number(b.no)-Number(a.no)||Number(b.ts||0)-Number(a.ts||0));"));
   assert.ok(source.includes("data-void-box=\"'+esc(c.cashbox||'01')+'\""));
   assert.ok(source.includes("Number(x.no)===Number(b.dataset.voidComp)&&String(x.cashbox||'01')===String(b.dataset.voidBox||'01')"));
+  assert.ok(source.includes("adminMode=activeUser().role==='admin', all=(S.cxp||[]).filter(x=>!x.void&&(adminMode||String(x.cashbox||currentCaja())===currentCaja()));"));
 });
