@@ -5153,9 +5153,9 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     const fiscalCheck=window.SIFERInventoryLedgers&&window.SIFERInventoryLedgers.canApplyFiscalSale(S,fiscalSaleLines);
     if(!fiscalCheck||!fiscalCheck.ok){const code=fiscalCheck&&fiscalCheck.code||'artículo';const p=prod(code);msg('Venta fiscal bloqueada: inventario fiscal insuficiente para '+(p?p.desc:code)+'. Disponible: '+fq(fiscalCheck&&fiscalCheck.available||0)+'. Registre/valide la existencia fiscal inicial o la compra fiscal antes de facturar.','bad');return;}
   }
-  const ticketFiscalOutByCode=ticketFiscalOutPlan(lines,ticketSaleLines,fiscalSaleLines),ticketFiscalRemainingByCode=new Map(ticketFiscalOutByCode),ticketFiscalOutLines=[];
+  const ticketFiscalOutByLine=ticketFiscalOutPlan(lines,ticketSaleLines,fiscalSaleLines),ticketFiscalOutLines=[];
   ticketSaleLines.forEach((line,ticketLineIndex)=>{
-    const lineIndex=Number.isInteger(line.lineIndex)?line.lineIndex:ticketLineIndex,code=String(line.code),out=Number(ticketFiscalRemainingByCode.get(lineIndex)||0);
+    const lineIndex=Number.isInteger(line.lineIndex)?line.lineIndex:ticketLineIndex,code=String(line.code),out=Number(ticketFiscalOutByLine.get(lineIndex)||0);
     if(out>1e-9)ticketFiscalOutLines.push({lineIndex,code,qty:r8(out)});
   });
   const creditAmt=(isCred&&st.pending>=0.01)?r2(st.pending):0;
