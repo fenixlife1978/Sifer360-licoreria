@@ -60,3 +60,14 @@ test('calcula retenciones por período, conteos, CxC, CxP, Cashea, divisas y mov
 test('no permite desbordar el rango seguro de los consecutivos centrales', () => {
   assert.throws(() => getCashboxSequenceMinimum({ sales: [{ cashbox: '01', no: Number.MAX_SAFE_INTEGER }] }, '01', 'invoice'), /rango seguro/);
 });
+
+test('la secuencia de retención ISLR se recupera por período y caja administrativa',()=>{
+  const state={retencionesIslr:[
+    {cashbox:'ADMIN',periodo:'202611',sequence:7,id:'20261100000007'},
+    {cashbox:'ADMIN',periodo:'202610',sequence:88,id:'20261000000088'},
+    {cashbox:'01',periodo:'202611',sequence:99,id:'20261100000099'}
+  ]};
+  assert.equal(getCashboxSequenceMinimum(state,'ADMIN','retention-islr-202611'),8);
+  assert.equal(getCashboxSequenceMinimum(state,'ADMIN','retention-islr-202610'),89);
+  assert.equal(getCashboxSequenceMinimum(state,'ADMIN','retention-islr-202612'),1);
+});
