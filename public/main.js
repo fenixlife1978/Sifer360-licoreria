@@ -2822,6 +2822,14 @@ function inventoryDlg(){
 }
 
 /* Último costo unitario neto (sin IVA) por proveedor y producto. */
+function calcWeightedPurchaseCost(currentStock,currentCost,receivedQty,receivedCost){
+  const stock=Math.max(0,Number(currentStock)||0),qty=Math.max(0,Number(receivedQty)||0);
+  const cost=Number(currentCost),incoming=Number(receivedCost);
+  const prevCost=Number.isFinite(cost)&&cost>=0?cost:0;
+  const newCost=Number.isFinite(incoming)&&incoming>=0?incoming:0;
+  const totalQty=stock+qty;
+  return totalQty>0?r8((stock*prevCost+qty*newCost)/totalQty):newCost;
+}
 function getLastSupplierPurchaseCost(purchases, code, supplierRif){
   const normalizeRif=value=>String(value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
   const rif=normalizeRif(supplierRif);
@@ -2920,7 +2928,7 @@ function comprasDlg(initialTab){
         const p=prod(l.code);if(!p)return '';
         const sub=r8(l.qty*l.cost);
         const stock=Number(p.stock)||0, projectedStock=stock+Number(l.qty||0);
-        const projectedCost=projectedStock>0?r8((stock*Number(p.cost||0)+Number(l.qty||0)*Number(l.cost||0))/projectedStock):Number(l.cost||0);
+        const projectedCost=calcWeightedPurchaseCost(stock,p.cost,l.qty,l.cost);
         if(l.autoPrice)l.price=calcPurchaseSalePrice(p,projectedCost,purchaseRate);
         return '<tr data-pi="'+i+'">'+
           '<td class="mono">'+esc(p.code)+'</td>'+
@@ -2929,7 +2937,7 @@ function comprasDlg(initialTab){
           '<td class="r"><input class="fld cell r" data-cpf="qty" value="'+fq(l.qty)+'" inputmode="decimal"></td>'+
           '<td class="r">'+(getLastPurchaseCost(l.code)==null?'—':nf8(getLastPurchaseCost(l.code)))+'</td>'+
           '<td class="r">'+nf8(p.cost)+'</td>'+
-          '<td class="r"><input class="fld cell r" data-cpf="cost" aria-label="Nuevo precio unitario de compra sin IVA US$" title="Introduzca el precio de compra unitario actual de este proveedor" value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
+          '<td class="r"><input class="fld cell r" data-cpf="cost" aria-label="Nuevo precio unitario de compra sin IVA US$" title="Introduzca el precio de compra unitario actual de este proveedor" required value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
           '<td class="r"><b>'+nf8(projectedCost)+'</b></td>'+
           '<td class="r"><input class="fld cell r" data-cpf="price" value="'+nf8(l.price)+'" inputmode="decimal" '+(l.autoPrice?'readonly title="Calculado por el motor de precios"':'')+'></td>'+
           '<td class="r"><b>'+nf8(sub)+'</b></td>'+
@@ -2991,7 +2999,7 @@ function comprasDlg(initialTab){
         const tr=t.closest('tr'), idx=+tr.dataset.pi, l=pLines[idx];
         const val=pn(t.value);
         if(t.dataset.cpf==='qty')l.qty=val?r8(val):1;
-        if(t.dataset.cpf==='cost'){l.cost=r8(val);l.costEdited=true;}
+        if(t.dataset.cpf==='cost'){const cost=pnZero(t.value);l.cost=cost===null?null:r8(cost);l.costEdited=true;}
         if(t.dataset.cpf==='price'){l.price=val?r8(val):l.price;l.autoPrice=false;}
         if(t.dataset.cpf==='taxRate')l.taxRate=Number(t.value);
         if(t.dataset.cpf==='autoPrice'){l.autoPrice=t.checked;const p=prod(l.code);if(l.autoPrice&&p){const st=Number(p.stock)||0,ns=st+l.qty,avg=ns>0?r8((st*Number(p.cost||0)+l.qty*l.cost)/ns):l.cost;l.price=calcPurchaseSalePrice(p,avg,purchaseRate);}}
@@ -3164,7 +3172,7 @@ function comprasDlg(initialTab){
     if(!docDateTs){msg('Indique la fecha de emisión que aparece en la factura original.','bad');return false;}
     if((S.purchases||[]).some(p=>!p.void&&String(p.supplier?.rif||'').trim().toLowerCase()===String(sup.rif).trim().toLowerCase()&&String(p.docProv||'').trim().toLowerCase()===docProv.toLowerCase())){msg('Ya existe una compra activa con ese proveedor y número de factura. Verifique el documento original.','bad');return false;}
     if(!(Number(purchaseRate)>0)||!purchaseRateRecord||purchaseRateRecord.date!==docDate){msg('No se puede registrar la compra: no se confirmó ni guardó una tasa BCV histórica para la fecha del documento. Verifique la conexión y vuelva a consultar.','bad');return false;}
-    if(pLines.some(l=>!Number.isFinite(Number(l.qty))||Number(l.qty)<=0||!Number.isFinite(Number(l.cost))||Number(l.cost)<0)){msg('Cada renglón debe tener cantidad positiva y costo unitario sin IVA válido y finito.','bad');return false;}
+    if(pLines.some(l=>!Number.isFinite(Number(l.qty))||Number(l.qty)<=0||l.cost===null||l.cost===undefined||!Number.isFinite(Number(l.cost))||Number(l.cost)<0)){msg('Cada renglón debe tener cantidad positiva y costo unitario sin IVA válido y finito.','bad');return false;}
     const ts=Date.now();
     let no;try{no=await nextCajaSequence('purchase',currentCaja());}catch(error){msg('No se pudo reservar el número de compra: '+error.message,'bad');return false;}
     S.purchaseSeq=Math.max(Number(S.purchaseSeq)||1,no+1);
@@ -3172,10 +3180,8 @@ function comprasDlg(initialTab){
     try{lines=pLines.map((l,lineIndex)=>{
       const p=prod(l.code);
       /* Costo Promedio Ponderado */
-      const prevVal=Math.max(0,p.stock)*p.cost;
-      const newVal=r8(l.qty*l.cost);
       const nextStock=r2(p.stock+l.qty);
-      const nextCost=nextStock>0?r8((prevVal+newVal)/nextStock):l.cost;
+      const nextCost=calcWeightedPurchaseCost(p.stock,p.cost,l.qty,l.cost);
       p.stock=nextStock;
       p.cost=nextCost;
       if(l.price>0){p.price=r8(l.price);if(p.pricing){p.pricing.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;p.pricing.markupSale=p.price>0?r2(((p.price-p.cost)/p.price)*100):0;}if(p.presentations&&p.presentations[0]&&Number(p.presentations[0].factor)===1)p.presentations[0].price=p.price;if(p.pricing&&Array.isArray(p.pricing.gaps)){p.pricing.gaps.forEach((g,idx)=>{if(idx===0){g.price=p.price;g.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;}else if(p.pricing.mode==='auto'){g.price=r2(p.price*(1-(Number(g.gapPct)||0)/100));g.markupCost=p.cost>0?r2(((g.price-p.cost)/p.cost)*100):0;}});}}
