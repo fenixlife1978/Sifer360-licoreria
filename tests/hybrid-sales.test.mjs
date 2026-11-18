@@ -29,7 +29,7 @@ function runTicketFiscalOut(lines,ticketLines,fiscalLines,balances,physical){
   const context={
     S:{fiscalInventory:{balances}},
     window:{SIFERInventoryLedgers:{ensureFiscalInventory:state=>state.fiscalInventory}},
-    prod:code=>({stock:physical[code]||0,unit:products[code]&&products[code].unit||'und'}),
+    prod:code=>({stock:physical[code]||0}),
     r8:value=>Math.round((Number(value)+Number.EPSILON)*1e8)/1e8,
     Number,Math,Map,Set
   };
