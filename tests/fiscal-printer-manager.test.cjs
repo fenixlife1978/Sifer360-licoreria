@@ -113,20 +113,20 @@ test('el estado PNP marca fuera de línea, falta de papel y errores fiscales com
   assert.ok(nearFull.warnings.some(x=>/próxima a llenarse/.test(x)));
 });
 
-test('la emisión PNP se bloquea antes de llamar al adaptador cuando el estado fiscal no está listo', async () => {
+test('la emisión PNP se bloquea antes de transmitir comandos fiscales cuando el estado exige Reporte Z', async () => {
   const protocol = require('../electron/pnp-protocol.cjs');
+  const commands = [];
   await assert.rejects(() => manager.emitInvoice(
-    {provider:'pnp',model:'PF-220A',port:'COM4',bridgePath:path.join(os.tmpdir(),'bridge-no-ejecutado.exe')},
+    {provider:'pnp',model:'PF-220A',port:'COM4'},
     {idempotencyKey:'sale-pnp-01',customer:{name:'Cliente'},lines:[{description:'Producto',quantity:1,unitPriceVes:10,netVes:10,taxRate:0}],totals:{taxableBaseVes:10,totalVes:10},payments:[]},
-    {platform:'win32',execFileAsync:async(_command,args)=>{
-      const script=Buffer.from(args[args.length-1],'base64').toString('utf16le');
-      const match=script.match(/\$hex='([0-9a-f]+)'/i);
-      const request=protocol.decodeFrame(Buffer.from(match[1],'hex'));
-      const response=protocol.encodeCommand(0x38,
+    {platform:'win32',serialExchange:async(_profile,frame)=>{
+      const request=protocol.decodeFrame(frame);
+      commands.push(request.command);
+      return protocol.encodeCommand(0x38,
         ['0000','0000','34','04','56','260101','120000','7','0','7','0','3'],request.sequence);
-      return {stdout:response.toString('base64')};
     }}
   ),/Emisión fiscal bloqueada.*Reporte Z/);
+  assert.deepEqual(commands,[0x38],'Solo se permite la consulta de estado; no deben enviarse comandos de emisión.');
 });
 
 test('no permite consultar PNP si se seleccionó otra familia o falta el puerto', async () => {
