@@ -816,7 +816,10 @@ function load(){
     if(!S.cfg.fiscalTipo)S.cfg.fiscalTipo='FORMA_LIBRE';
     if(S.cfg.contribEspecial===undefined)S.cfg.contribEspecial=false;
     if(S.cfg.retencionHabilitadaConfirmada===undefined)S.cfg.retencionHabilitadaConfirmada=false;
-    if(!S.cfg.retIvaPct)S.cfg.retIvaPct=Number($('#fPctRet',el).value)||75;\n          S.cfg.retIslrHabilitada=$('#fRetIslr',el).checked===true;\n          S.cfg.agenteRetIva=S.cfg.retencionHabilitadaConfirmada;\n          S.cfg.agenteRetIslr=S.cfg.retIslrHabilitada;
+    if(!S.cfg.retIvaPct)S.cfg.retIvaPct=75;
+    if(S.cfg.retIslrHabilitada===undefined)S.cfg.retIslrHabilitada=false;
+    if(S.cfg.agenteRetIva===undefined)S.cfg.agenteRetIva=S.cfg.retencionHabilitadaConfirmada;
+    if(S.cfg.agenteRetIslr===undefined)S.cfg.agenteRetIslr=S.cfg.retIslrHabilitada;
     if(!S.cfg.provEspecial)S.cfg.provEspecial='';
     if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='00-';
     if(!S.cfg.ctrlNext)S.cfg.ctrlNext=1;
@@ -7308,7 +7311,9 @@ function seniatSudebanDlg(initialTab){
           S.cfg.contribEspecial=$('#fEsp',el).value==='1';
           S.cfg.retIvaPct=$('#fPctRet',el).value==='100'?100:75;
           S.cfg.retIslrHabilitada=$('#fRetIslr',el).checked===true;
+          S.cfg.agenteRetIslr=S.cfg.retIslrHabilitada;
           S.cfg.retencionHabilitadaConfirmada=$('#fRetConfirm',el).checked===true;
+          S.cfg.agenteRetIva=S.cfg.retencionHabilitadaConfirmada;
           if(!S.cfg.contribEspecial)S.cfg.retencionHabilitadaConfirmada=false;
           S.cfg.provEspecial=$('#fProvEsp',el).value.trim();
           S.cfg.ctrlPrefix=$('#fCtrlPref',el).value.trim()||'00-';
