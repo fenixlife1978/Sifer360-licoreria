@@ -7880,12 +7880,9 @@ window.SIFERAccountingBridge={getState:()=>S,save:()=>save(),setAccounting:async
 
 /* ---------- menús y barra de herramientas ---------- */
 const focusEntry=()=>$('#entry').focus();
-async function openAccountingModule(){
+function openAccountingModule(){
  if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir Contabilidad.','bad');return;}
- const app=window.SIFERAccountingApp;
- if(!app||typeof app.open!=='function'){msg('Contabilidad VEN-NIF no está disponible: no se cargó el módulo.','bad');return;}
- try{await app.open();}
- catch(e){msg('No se pudo abrir Contabilidad: '+(e&&e.message?e.message:String(e)),'bad');}
+ seniatSudebanDlg('contabilidad');
 }
 const MENUS={
  'Archivo':[['Dashboard','',showDashboardScreen],['Abrir caja (POS)','',openCashboxDlg],['Nueva venta','F2',newSale],['Suspender venta','F5',suspend],['Recuperar venta','F6',recoverDlg],'-',['Ventas del día y cierre…','F9',salesDlg],'-',['Gestión de usuarios','',usersManagementDlg],['Gestión de cajas','',cashboxesManagementDlg],['Cerrar sesión','',()=>window.SIFERAccess&&window.SIFERAccess.logout()],'-',['Restablecer datos de ejemplo…','',resetAll]],
