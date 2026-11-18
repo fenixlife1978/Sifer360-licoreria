@@ -59,3 +59,8 @@ test('La tasa BCV visible corresponde a la fecha del documento y queda asociada 
   assert.match(source,/rateDate:purchaseRateRecord\.date/);
   assert.match(source,/rateEffectiveDate:purchaseRateRecord\.effectiveDate/);
 });
+
+test('CPP proyectado y CPP aplicado al inventario comparten cálculo ponderado robusto ante stock negativo',()=>{
+  assert.match(source,/const projectedCost=calcWeightedPurchaseCost\(stock,p\.cost,l\.qty,l\.cost\);/);
+  assert.match(source,/const nextCost=calcWeightedPurchaseCost\(p\.stock,p\.cost,l\.qty,l\.cost\);/);
+});
