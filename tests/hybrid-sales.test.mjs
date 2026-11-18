@@ -39,7 +39,7 @@ function runTicketFiscalOut(lines,ticketLines,fiscalLines,balances,physical){
 test('checkout offers ticket, fiscal invoice and hybrid printing when both printers are configured',()=>{
   assert.match(main,/option value="TICKET">Ticket no fiscal · Toda la venta/);
   assert.match(main,/option value="FISCAL".*Factura fiscal · Toda la venta/);
-  assert.match(main,/option value="HYBRID".*Impresión híbrida · Factura fiscal \\+ ticket no fiscal/);
+  assert.match(main,/option value="HYBRID".*Impresión híbrida · Factura fiscal \+ ticket no fiscal/);
 });
 
 test('hybrid splits a single cart line between supported fiscal quantity and remaining thermal-ticket quantity',()=>{
@@ -96,7 +96,7 @@ test('mixed hybrid Cashea is blocked until its financing can be allocated safely
 });
 
 test('fiscal portion and ticket-backed consumption use separate per-line quantities while physical stock is deducted once',()=>{
-  assert.match(main,/const fiscalQty=hybridMode\?Number\(hybridPlan\.fiscalQtyByLine\[lineIndex\]\|\|0\)/);
+  assert.match(main,/fiscalQty=hybridMode\?Number\(hybridPlan.fiscalQtyByLine\[lineIndex\]\|\|0\)/);
   assert.match(main,/type:'SALIDA_TICKET_NO_FISCAL',dir:'OUT'/);
   assert.match(main,/p\.stock=Math\.max\(0,r2\(p\.stock-baseQty\)\)/);
 });
