@@ -112,5 +112,5 @@ test("los timestamps de operaciones conservan el día y la hora local del POS", 
   const expectedDate = [local.getFullYear(), String(local.getMonth() + 1).padStart(2, "0"), String(local.getDate()).padStart(2, "0")].join("-");
   const event = buildAccountingSourceEvents({}, { sales: [{ id: "V-LOCAL", cashbox: "01", ts: timestamp, total: 10 }] })[0];
   assert.equal(event.occurredAt.slice(0, 10), expectedDate);
-  assert.match(event.occurredAt, /(?:Z|[+-]\\d{2}:\\d{2})$/);
+  assert.match(event.occurredAt, /(?:Z|[+-]\d{2}:\d{2})$/);
 });
