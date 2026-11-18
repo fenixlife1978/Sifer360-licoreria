@@ -25,7 +25,8 @@ test('cart uses the presentation price and quantity while reserving base invento
 
 test('quantity changes and stock deduction account for every presentation factor', () => {
   assert.match(pos, /lineBaseQty\(\{\.\.\.l,qty:nq\}\)>available\+1e-9/);
-  assert.match(pos, /const baseQty=lineBaseQty\(l\);[\s\S]*?p\.stock=Math\.max\(0,r2\(p\.stock-baseQty\)\)/);
+  assert.match(pos, /baseQty=lineBaseQty\(l\),fiscalQty=hybridMode\?Number\(hybridPlan\.fiscalQtyByLine\[lineIndex\]\|\|0\)/);
+  assert.match(pos, /p\.stock=Math\.max\(0,r2\(p\.stock-baseQty\)\)/);
   assert.match(pos, /qty:baseQty,stockAfter:p\.stock/);
 });
 
