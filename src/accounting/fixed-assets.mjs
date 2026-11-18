@@ -9,6 +9,5 @@ export function calculateStraightLineDepreciation({ costMinor, residualMinor = 0
   if (completed >= life) return 0;
   const base = cost - residual;
   const regular = Math.floor(base / life);
-  const remaining = base - regular * completed;
-  return Math.min(regular, remaining);
+  return completed === life - 1 ? base - regular * (life - 1) : regular;
 }
