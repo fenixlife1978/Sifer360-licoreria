@@ -149,6 +149,9 @@ test('fiscal module expands the existing inventory book with distinct views and 
 test('main POS script parses and no longer references removed purchase IVA toggle state', () => {
   assert.doesNotThrow(() => new vm.Script(main));
   assert.doesNotMatch(main, /applyIva/);
+  assert.match(main, /S\.cfg\.retIvaPct=\$\('#fPctRet',el\)\.value==='100'\?100:75/);
+  assert.match(main, /S\.cfg\.retIslrHabilitada=\$\('#fRetIslr',el\)\.checked===true/);
+  assert.match(main, /const persisted=await save\(\);if\(!persisted\|\|!persisted\.ok\)/);
 });
 
 test('inventario integra el costo promedio ponderado y valoriza las existencias con CPP', () => {
