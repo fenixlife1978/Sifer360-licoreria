@@ -900,6 +900,7 @@ function salePortion(sale,lines,mode,residual,fiscalRatio){
     else baseG16+=Number(line.net)||0;
   });
   sub=r2(sub);base=r2(base);iva=r2(iva);
+  if(residual)sub=r2(Number(sale.sub||0)-sub);
   const ratio=Number.isFinite(fiscalRatio)?fiscalRatio:(Number(sale.total)>0?r2((base+iva)/sale.total):0);
   const pays=(sale.pays||[]).map(pay=>({...pay,amount:residual?r2(Number(pay.amount||0)-r2(Number(pay.amount||0)*ratio)):r2(Number(pay.amount||0)*ratio)}));
   const igtf=residual?r2(Number(sale.igtf||0)-r2(Number(sale.igtf||0)*ratio)):r2(Number(sale.igtf||0)*ratio);
