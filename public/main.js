@@ -7211,6 +7211,23 @@ function seniatSudebanDlg(initialTab){
       '<section class="cierre"><h3>8. Balance de comprobación</h3><p class="hint">Solo considera asientos contabilizados y sus reversos. Los borradores y aprobados no afectan este balance.</p><div id="accTrialBalance" class="hint">Calculando balance...</div></section>'+
       '<section class="cierre"><h3>9. Libro mayor por cuenta</h3><div class="newgrid"><div class="f"><label for="accLedgerAccount">Cuenta</label><select class="fld" id="accLedgerAccount"><option value="">Seleccionar cuenta imputable</option></select></div><div class="f"><label for="accLedgerStart">Desde</label><input class="fld" id="accLedgerStart" type="date"></div><div class="f"><label for="accLedgerEnd">Hasta</label><input class="fld" id="accLedgerEnd" type="date"></div></div><button class="btn" id="btnLoadGeneralLedger">Consultar mayor</button><div id="accGeneralLedger" class="hint">Selecciona cuenta y fechas para consultar el mayor.</div></section>'+
       '<section class="cierre"><h3>10. Estados financieros del período</h3><div class="newgrid"><div class="f"><label for="accStatementsPeriod">Período contable</label><select class="fld" id="accStatementsPeriod"><option value="">Seleccionar período</option></select></div></div><button class="btn primary" id="btnLoadFinancialStatements">Generar estados financieros</button><div id="accFinancialStatements" class="hint">Selecciona un período para generar situación financiera y resultados.</div><p class="hint">El resultado del período se presenta por separado; no se simula un cierre contra patrimonio. Los flujos de efectivo requieren clasificar las cuentas y movimientos antes de emitir ese estado.</p></section>'+
+      '<section class="cierre"><h3>11. Activos fijos y depreciación</h3><p class="hint">El auxiliar solo se crea contra un asiento de adquisición ya contabilizado. La depreciación mensual genera borradores en SQLite; no se contabiliza automáticamente. El mes inicial se define expresamente y los períodos anteriores deben estar contabilizados.</p>'+
+      '<div class="newgrid">'+
+      '<div class="f"><label for="accAssetCode">Código del activo</label><input class="fld" id="accAssetCode" maxlength="30" placeholder="AF-00001"></div>'+
+      '<div class="f"><label for="accAssetName">Descripción del activo</label><input class="fld" id="accAssetName" maxlength="150" placeholder="Equipo, vehículo, mobiliario..."></div>'+
+      '<div class="f"><label for="accAssetAcquisitionDate">Fecha de adquisición</label><input class="fld" id="accAssetAcquisitionDate" type="date"></div>'+
+      '<div class="f"><label for="accAssetAvailableDate">Disponible para uso</label><input class="fld" id="accAssetAvailableDate" type="date"></div>'+
+      '<div class="f"><label for="accAssetDepStartMonth">Mes inicial de depreciación</label><input class="fld" id="accAssetDepStartMonth" type="month"></div>'+
+      '<div class="f"><label for="accAssetAcquisitionEntry">Asiento de adquisición contabilizado</label><select class="fld" id="accAssetAcquisitionEntry"><option value="">Seleccionar asiento</option></select></div>'+
+      '<div class="f"><label for="accAssetCost">Costo ('+esc(settings?.functionalCurrency||'moneda funcional')+')</label><input class="fld" id="accAssetCost" inputmode="decimal" placeholder="0,00"></div>'+
+      '<div class="f"><label for="accAssetResidual">Valor residual</label><input class="fld" id="accAssetResidual" inputmode="decimal" placeholder="0,00" value="0"></div>'+
+      '<div class="f"><label for="accAssetLifeMonths">Vida útil (meses)</label><input class="fld" id="accAssetLifeMonths" type="number" min="1" max="1200" value="60"></div>'+
+      '<div class="f"><label for="accAssetAccount">Cuenta del activo</label><select class="fld" id="accAssetAccount"><option value="">Cuenta imputable de activo</option></select></div>'+
+      '<div class="f"><label for="accAssetAccumAccount">Depreciación acumulada</label><select class="fld" id="accAssetAccumAccount"><option value="">Cuenta correctora (Haber)</option></select></div>'+
+      '<div class="f"><label for="accAssetExpenseAccount">Gasto de depreciación</label><select class="fld" id="accAssetExpenseAccount"><option value="">Cuenta de gasto</option></select></div>'+
+      '</div><button class="btn primary" id="btnCreateFixedAsset">Registrar activo vinculado al asiento</button>'+
+      '<div class="newgrid" style="margin-top:12px"><div class="f"><label for="accAssetDepPeriod">Período abierto a depreciar</label><select class="fld" id="accAssetDepPeriod"><option value="">Seleccionar período</option></select></div><div class="f"><label for="accAssetRateType">Tipo de tasa de presentación</label><select class="fld" id="accAssetRateType"><option value="official">Oficial</option><option value="market">Mercado</option><option value="contractual">Contractual</option><option value="accounting_adjustment">Ajuste contable</option></select></div></div>'+
+      '<button class="btn" id="btnGenerateAssetDepreciation">Generar borradores de depreciación</button><div id="accFixedAssets" class="hint">Cargando activos fijos...</div></section>'+
       '<div class="hint">La automatización supervisada solo genera borradores a partir de reglas expresas; no aprueba ni contabiliza. Las reglas son versionadas y las modificaciones/anulaciones permanecen bajo revisión del contador.</div>'+
       '</div>';
   };
@@ -7222,7 +7239,7 @@ function seniatSudebanDlg(initialTab){
     const sessionToken=accountingSessionToken();
     if(!sessionToken){msg('La sesión autenticada expiró. Vuelve a iniciar sesión.','bad');return;}
     try{
-      const [settings,profile,periods,accounts,sourceEvents,sourceSummary,journalEntries,exchangeRates,trialBalance,automationRules]=await Promise.all([
+      const [settings,profile,periods,accounts,sourceEvents,sourceSummary,journalEntries,exchangeRates,trialBalance,automationRules,fixedAssets]=await Promise.all([
         window.posDesktop.accountingGetSettings(sessionToken),
         window.posDesktop.accountingGetProfile(sessionToken),
         window.posDesktop.accountingListPeriods(sessionToken),
@@ -7232,7 +7249,8 @@ function seniatSudebanDlg(initialTab){
         window.posDesktop.accountingListJournalEntries(sessionToken),
         window.posDesktop.accountingListExchangeRates(sessionToken),
         window.posDesktop.accountingGetTrialBalance(sessionToken),
-        window.posDesktop.accountingListAutomationRules(sessionToken)
+        window.posDesktop.accountingListAutomationRules(sessionToken),
+        window.posDesktop.accountingListFixedAssets(sessionToken)
       ]);
       const set=(id,value)=>{const node=$('#'+id,el);if(node&&value!==null&&value!==undefined)node.value=String(value);};
       const check=(id,value)=>{const node=$('#'+id,el);if(node)node.checked=!!value;};
@@ -7260,6 +7278,18 @@ function seniatSudebanDlg(initialTab){
       if(periodSelect)periodSelect.innerHTML='<option value="">Seleccionar período abierto</option>'+periods.filter(p=>p.status==='open').map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+' ('+esc(p.startDate)+' a '+esc(p.endDate)+')</option>').join('');
       const statementsPeriod=$('#accStatementsPeriod',el);
       if(statementsPeriod){const selected=statementsPeriod.value;statementsPeriod.innerHTML='<option value="">Seleccionar período</option>'+periods.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+' ('+esc(p.startDate)+' a '+esc(p.endDate)+')</option>').join('');if(selected)statementsPeriod.value=selected;}
+      const assetPeriods=$('#accAssetDepPeriod',el);
+      if(assetPeriods){const selected=assetPeriods.value;assetPeriods.innerHTML='<option value="">Seleccionar período abierto</option>'+periods.filter(p=>p.status==='open').map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+'</option>').join('');if(selected)assetPeriods.value=selected;}
+      const acquisitionSelect=$('#accAssetAcquisitionEntry',el);
+      if(acquisitionSelect){const selected=acquisitionSelect.value;acquisitionSelect.innerHTML='<option value="">Seleccionar asiento contabilizado</option>'+journalEntries.filter(e=>e.status==='posted').map(e=>'<option value="'+esc(e.id)+'">'+esc(e.entryDate+' · '+e.id.slice(0,8)+' · '+e.description)+'</option>').join('');if(selected)acquisitionSelect.value=selected;}
+      const assetSelects=[
+        ['accAssetAccount',accounts.filter(a=>a.accountType==='asset'&&a.normalBalance==='debit')],
+        ['accAssetAccumAccount',accounts.filter(a=>a.accountType==='asset'&&a.normalBalance==='credit')],
+        ['accAssetExpenseAccount',accounts.filter(a=>a.accountType==='expense'&&a.normalBalance==='debit')]
+      ];
+      for(const [id,rows] of assetSelects){const node=$('#'+id,el);if(node){const selected=node.value;node.innerHTML='<option value="">Seleccionar cuenta imputable</option>'+rows.filter(a=>Number(a.active)===1&&Number(a.acceptsPosting)===1&&(a.frameworkScope==='both'||a.frameworkScope===settings?.accountingFramework)).map(a=>'<option value="'+esc(a.code)+'">'+esc(a.code+' · '+a.name)+'</option>').join('');if(selected)node.value=selected;}}
+      const assetNode=$('#accFixedAssets',el);
+      if(assetNode)assetNode.innerHTML=fixedAssets.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Activo</th><th>Costo</th><th>Depreciación contabilizada</th><th>Borradores</th><th>Valor neto en libros</th><th>Vida útil</th></tr></thead><tbody>'+fixedAssets.map(a=>'<tr><td>'+esc(a.assetCode)+' · '+esc(a.name)+'</td><td class="r">'+esc(fmtJournalMinor(a.costMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(a.accumulatedMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(a.draftMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(a.netBookValueMinor,settings?.monetaryDecimals??2))+'</td><td>'+esc(a.usefulLifeMonths)+' meses</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay activos fijos registrados.';
       const ledgerAccount=$('#accLedgerAccount',el);
       if(ledgerAccount){const selected=ledgerAccount.value;ledgerAccount.innerHTML='<option value="">Seleccionar cuenta imputable</option>'+accounts.filter(a=>Number(a.acceptsPosting)===1).map(a=>'<option value="'+esc(a.code)+'">'+esc(a.code+' · '+a.name)+'</option>').join('');if(selected)ledgerAccount.value=selected;}
       renderAccountingJournalLines();
@@ -7525,6 +7555,20 @@ function seniatSudebanDlg(initialTab){
               '<p>Resultados anteriores sin cierre: <b>'+esc(fmtJournalMinor(bs.priorUnclosedResultMinor,decimals))+'</b> · Resultado del período: <b>'+esc(fmtJournalMinor(bs.periodResultMinor,decimals))+'</b> · Resultado acumulado no cerrado: <b>'+esc(fmtJournalMinor(bs.unclosedAccumulatedResultMinor,decimals))+'</b></p>'+
               '<p>Diferencia: <b>'+esc(fmtJournalMinor(bs.differenceMinor,decimals))+'</b> '+(bs.differenceMinor===0?'· Cuadra incluyendo el resultado del período.':'· Requiere revisión de saldos y asientos.')+'</p>'+
               '<h4>Estado de resultados</h4>'+section('Ingresos',inc.income)+section('Gastos',inc.expenses)+'<p>Resultado neto: <b>'+esc(fmtJournalMinor(inc.periodResultMinor,decimals))+'</b></p>';
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnCreateFixedAsset'){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingCreateFixedAsset({...accountingActorInput(),assetCode:$('#accAssetCode',el).value.trim(),name:$('#accAssetName',el).value.trim(),acquisitionDate:$('#accAssetAcquisitionDate',el).value,availableForUseDate:$('#accAssetAvailableDate',el).value,depreciationStartMonth:$('#accAssetDepStartMonth',el).value,acquisitionEntryId:$('#accAssetAcquisitionEntry',el).value,cost:$('#accAssetCost',el).value,residual:$('#accAssetResidual',el).value,usefulLifeMonths:$('#accAssetLifeMonths',el).value,assetAccountCode:$('#accAssetAccount',el).value,accumulatedDepreciationAccountCode:$('#accAssetAccumAccount',el).value,depreciationExpenseAccountCode:$('#accAssetExpenseAccount',el).value});
+            msg('Activo '+result.assetCode+' registrado y vinculado al asiento de adquisición.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnGenerateAssetDepreciation'){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingGenerateAssetDepreciationDrafts({...accountingActorInput(),periodId:$('#accAssetDepPeriod',el).value,exchangeRateType:$('#accAssetRateType',el).value});
+            msg('Depreciación: '+result.generated.length+' borradores · '+result.needsReview.length+' requieren revisión · '+result.skipped.length+' omitidos.');
+            await loadAccountingTab();
           }catch(error){msg(error.message||String(error),'bad');}})();
         }
         if(ev.target.id==='btnSaveAutomationRule'){

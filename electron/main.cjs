@@ -406,6 +406,10 @@ async function initializeDatabase() {
   if (!fs.existsSync(automationSchemaPath)) throw new Error('Falta el esquema de automatización contable; se conserva la base de datos y se detiene el inicio.');
   const automationMigration = applyAccountingMigration({ db, schemaSql: fs.readFileSync(automationSchemaPath, 'utf8'), migrationKey: 'accounting-automation-v1', persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
   if (automationMigration.applied) console.info('Migración de reglas contables aplicada sin eliminar datos existentes:', automationMigration.migrationKey);
+  const fixedAssetsSchemaPath = path.join(__dirname, '..', 'src', 'accounting', 'fixed-assets-schema.sql');
+  if (!fs.existsSync(fixedAssetsSchemaPath)) throw new Error('Falta el esquema de activos fijos; se conserva la base de datos y se detiene el inicio.');
+  const fixedAssetsMigration = applyAccountingMigration({ db, schemaSql: fs.readFileSync(fixedAssetsSchemaPath, 'utf8'), migrationKey: 'accounting-fixed-assets-v1', persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
+  if (fixedAssetsMigration.applied) console.info('Migración de activos fijos aplicada sin eliminar datos existentes:', fixedAssetsMigration.migrationKey);
   const stateRowForSequenceMigration = one('SELECT payload FROM app_state WHERE id=1');
   const sequenceMigrationApplied = migrateCashboxSequenceCategories({ db, state: stateRowForSequenceMigration ? JSON.parse(stateRowForSequenceMigration.payload) : {}, persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
   if (opened.recovered && !sequenceMigrationApplied) persistDb();
@@ -1397,6 +1401,8 @@ function registerAccountingIpc() {
         if(!original||original.status!=='posted')throw new Error('El asiento original ya no está disponible para reverso.');
         run("UPDATE journal_entries SET status='reversed' WHERE id=? AND status='posted'",[entry.reversesEntryId]);
       }
+      if(entry.sourceType==='asset_depreciation')run("UPDATE accounting_asset_depreciations SET status='posted' WHERE journal_entry_id=? AND status='draft'",[entry.id]);
+      if(entry.reversesEntryId)run("UPDATE accounting_asset_depreciations SET status='reversed' WHERE journal_entry_id=? AND status='posted'",[entry.reversesEntryId]);
       run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
         [crypto.randomUUID(),'journal_entry',entry.id,'post',actor.actorId,now,JSON.stringify({status:entry.status}),JSON.stringify({status:'posted',reversesEntryId:entry.reversesEntryId})]);
       db.run('COMMIT');
@@ -1440,6 +1446,138 @@ function registerAccountingIpc() {
       FROM chart_of_accounts ORDER BY code`);
   });
 
+  registerAccountingHandler('accounting:list-fixed-assets', (event, token) => {
+    assertTrustedAccountingSender(event);
+    requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
+    return all(`SELECT a.id,a.asset_code AS assetCode,a.name,a.description,a.acquisition_date AS acquisitionDate,
+      a.available_for_use_date AS availableForUseDate,a.depreciation_start_month AS depreciationStartMonth,
+      a.cost_minor AS costMinor,a.residual_minor AS residualMinor,a.useful_life_months AS usefulLifeMonths,
+      a.functional_currency AS functionalCurrency,a.asset_account_code AS assetAccountCode,
+      a.accumulated_depreciation_account_code AS accumulatedDepreciationAccountCode,
+      a.depreciation_expense_account_code AS depreciationExpenseAccountCode,
+      a.acquisition_entry_id AS acquisitionEntryId,a.status,
+      COALESCE(SUM(CASE WHEN d.status='posted' THEN d.amount_minor ELSE 0 END),0) AS accumulatedMinor,
+      COALESCE(SUM(CASE WHEN d.status='draft' THEN d.amount_minor ELSE 0 END),0) AS draftMinor
+      FROM accounting_fixed_assets a LEFT JOIN accounting_asset_depreciations d ON d.asset_id=a.id
+      GROUP BY a.id ORDER BY a.asset_code`).map(row => {
+        const costMinor=Number(row.costMinor),accumulatedMinor=Number(row.accumulatedMinor),draftMinor=Number(row.draftMinor);
+        return {...row,costMinor,accumulatedMinor,draftMinor,netBookValueMinor:Math.max(0,costMinor-accumulatedMinor)};
+      });
+  });
+  registerAccountingHandler('accounting:create-fixed-asset', async (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor=accountingActor(input);
+    if(actor.actorRole!=='contador')throw new Error('El alta de activos fijos está reservada al perfil Contador.');
+    const settings=one('SELECT accounting_framework,functional_currency,monetary_decimals FROM accounting_settings WHERE id=1');
+    if(!settings||!settings.accounting_framework||!settings.functional_currency)throw new Error('Configura primero la base contable y la moneda funcional.');
+    const assetCode=String(input.assetCode||'').trim().toUpperCase();
+    const name=String(input.name||'').trim().slice(0,150);
+    const description=String(input.description||'').trim().slice(0,500);
+    const acquisitionDate=String(input.acquisitionDate||'');
+    const availableForUseDate=String(input.availableForUseDate||'');
+    const depreciationStartMonth=String(input.depreciationStartMonth||'');
+    const acquisitionEntryId=String(input.acquisitionEntryId||'').trim();
+    const usefulLifeMonths=Number(input.usefulLifeMonths);
+    if(!/^[A-Z0-9][A-Z0-9._-]{0,29}$/.test(assetCode)||!name||!isValidIsoDate(acquisitionDate)||!isValidIsoDate(availableForUseDate)||availableForUseDate<acquisitionDate||!/^\\d{4}-(0[1-9]|1[0-2])$/.test(depreciationStartMonth)||depreciationStartMonth<availableForUseDate.slice(0,7)||!Number.isInteger(usefulLifeMonths)||usefulLifeMonths<1||usefulLifeMonths>1200||!acquisitionEntryId)throw new Error('Completa código, nombre, fechas, mes inicial, vida útil y asiento de adquisición válidos.');
+    const {decimalToMinorUnits}=await loadAccountingEngine();
+    const costMinor=decimalToMinorUnits(String(input.cost||''),Number(settings.monetary_decimals));
+    const residualMinor=decimalToMinorUnits(String(input.residual||'0'),Number(settings.monetary_decimals));
+    if(costMinor<=0||residualMinor<0||residualMinor>=costMinor)throw new Error('El costo debe ser mayor que cero y el residual debe ser inferior al costo.');
+    const assetAccountCode=String(input.assetAccountCode||'').trim();
+    const accumulatedDepreciationAccountCode=String(input.accumulatedDepreciationAccountCode||'').trim();
+    const depreciationExpenseAccountCode=String(input.depreciationExpenseAccountCode||'').trim();
+    const acquisition=one('SELECT status,functional_currency AS functionalCurrency FROM journal_entries WHERE id=?',[acquisitionEntryId]);
+    if(!acquisition||acquisition.status!=='posted'||acquisition.functionalCurrency!==settings.functional_currency)throw new Error('El activo debe vincularse a un asiento de adquisición contabilizado en la moneda funcional.');
+    const acquisitionLine=one('SELECT COUNT(*) AS total FROM journal_lines WHERE entry_id=? AND account_code=? AND debit_minor=? AND credit_minor=0',[acquisitionEntryId,assetAccountCode,costMinor]);
+    if(Number(acquisitionLine.total)!==1)throw new Error('El asiento de adquisición debe contener exactamente un renglón Debe por el costo del activo en la cuenta seleccionada.');
+    const assetAccount=one('SELECT account_type AS accountType,normal_balance AS normalBalance,active,accepts_posting AS acceptsPosting,framework_scope AS frameworkScope FROM chart_of_accounts WHERE code=?',[assetAccountCode]);
+    const accumAccount=one('SELECT account_type AS accountType,normal_balance AS normalBalance,active,accepts_posting AS acceptsPosting,framework_scope AS frameworkScope FROM chart_of_accounts WHERE code=?',[accumulatedDepreciationAccountCode]);
+    const expenseAccount=one('SELECT account_type AS accountType,normal_balance AS normalBalance,active,accepts_posting AS acceptsPosting,framework_scope AS frameworkScope FROM chart_of_accounts WHERE code=?',[depreciationExpenseAccountCode]);
+    const validAccount=(account,type,balance)=>account&&account.accountType===type&&account.normalBalance===balance&&Number(account.active)===1&&Number(account.acceptsPosting)===1&&(account.frameworkScope==='both'||account.frameworkScope===settings.accounting_framework);
+    if(!validAccount(assetAccount,'asset','debit')||!validAccount(accumAccount,'asset','credit')||!validAccount(expenseAccount,'expense','debit'))throw new Error('Selecciona cuentas activas e imputables: activo Debe, depreciación acumulada Haber y gasto Debe.');
+    const id=crypto.randomUUID(),now=new Date().toISOString(),snapshot=db.export();
+    db.run('BEGIN IMMEDIATE');
+    try{
+      const lockedSettings=one('SELECT accounting_framework,functional_currency,monetary_decimals FROM accounting_settings WHERE id=1');
+      if(!lockedSettings||lockedSettings.accounting_framework!==settings.accounting_framework||lockedSettings.functional_currency!==settings.functional_currency||Number(lockedSettings.monetary_decimals)!==Number(settings.monetary_decimals))throw new Error('La configuración contable cambió durante el alta del activo.');
+      const lockedAcquisition=one('SELECT status,functional_currency AS functionalCurrency FROM journal_entries WHERE id=?',[acquisitionEntryId]);
+      if(!lockedAcquisition||lockedAcquisition.status!=='posted'||lockedAcquisition.functionalCurrency!==lockedSettings.functional_currency)throw new Error('El asiento de adquisición dejó de estar contabilizado.');
+      const duplicate=one('SELECT id FROM accounting_fixed_assets WHERE acquisition_entry_id=? AND asset_account_code=? AND cost_minor=?',[acquisitionEntryId,assetAccountCode,costMinor]);
+      if(duplicate)throw new Error('Ese renglón de adquisición ya está vinculado a un activo fijo.');
+      run(`INSERT INTO accounting_fixed_assets(id,asset_code,name,description,acquisition_date,available_for_use_date,depreciation_start_month,cost_minor,residual_minor,useful_life_months,functional_currency,asset_account_code,accumulated_depreciation_account_code,depreciation_expense_account_code,acquisition_entry_id,status,created_at,created_by)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?)`,[id,assetCode,name,description,acquisitionDate,availableForUseDate,depreciationStartMonth,costMinor,residualMinor,usefulLifeMonths,settings.functional_currency,assetAccountCode,accumulatedDepreciationAccountCode,depreciationExpenseAccountCode,acquisitionEntryId,now,actor.actorId]);
+      run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,after_json) VALUES(?,?,?,?,?,?,?)',[crypto.randomUUID(),'fixed_asset',id,'create',actor.actorId,now,JSON.stringify({assetCode,name,acquisitionDate,availableForUseDate,depreciationStartMonth,costMinor,residualMinor,usefulLifeMonths,functionalCurrency:settings.functional_currency,assetAccountCode,accumulatedDepreciationAccountCode,depreciationExpenseAccountCode,acquisitionEntryId})]);
+      db.run('COMMIT');
+    }catch(error){try{db.run('ROLLBACK')}catch{}throw error;}
+    persistAccountingDb(snapshot);
+    return one('SELECT id,asset_code AS assetCode,name,status FROM accounting_fixed_assets WHERE id=?',[id]);
+  });
+  registerAccountingHandler('accounting:generate-asset-depreciation-drafts', async (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor=accountingActor(input);
+    if(actor.actorRole!=='contador')throw new Error('La depreciación de activos fijos está reservada al perfil Contador.');
+    const periodId=String(input.periodId||'').trim();
+    if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(periodId))throw new Error('Selecciona un período AAAA-MM válido.');
+    const period=one('SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?',[periodId]);
+    assertAccountingPeriodWritable(period);
+    const settings=one('SELECT accounting_framework,functional_currency,presentation_currency,monetary_decimals,policy_version FROM accounting_settings WHERE id=1');
+    if(!settings||!settings.accounting_framework||!settings.functional_currency||!settings.presentation_currency)throw new Error('Configura primero el marco y las monedas contables.');
+    const rateType=String(input.exchangeRateType||'official');
+    if(settings.functional_currency!==settings.presentation_currency&&!['official','market','contractual','accounting_adjustment'].includes(rateType))throw new Error('Selecciona el tipo de tasa documentada para presentar la depreciación.');
+    const {createJournalEntry}=await loadAccountingEngine();
+    const {buildBimonetaryLines}=await import('../src/accounting/bimonetary.mjs');
+    const {calculateStraightLineDepreciation}=await import('../src/accounting/fixed-assets.mjs');
+    const assets=all("SELECT * FROM accounting_fixed_assets WHERE status='active' AND depreciation_start_month<=? AND available_for_use_date<=? ORDER BY asset_code",[periodId,period.endDate]);
+    const generated=[],skipped=[],needsReview=[];
+    const monthIndex=(start,target)=>(Number(target.slice(0,4))-Number(start.slice(0,4)))*12+Number(target.slice(5,7))-Number(start.slice(5,7));
+    for(const asset of assets){
+      try{
+        const existing=one('SELECT id,status FROM accounting_asset_depreciations WHERE asset_id=? AND depreciation_month=?',[asset.id,periodId]);
+        if(existing){skipped.push({assetCode:asset.asset_code,reason:'La depreciación de este mes ya tiene registro ('+existing.status+').'});continue;}
+        const expectedMonths=monthIndex(asset.depreciation_start_month,periodId);
+        const previous=one("SELECT COUNT(*) AS total,COALESCE(SUM(amount_minor),0) AS amount FROM accounting_asset_depreciations WHERE asset_id=? AND depreciation_month<? AND status='posted'",[asset.id,periodId]);
+        const previousCount=Number(previous.total||0);
+        if(previousCount!==expectedMonths){needsReview.push({assetCode:asset.asset_code,reason:'Hay períodos anteriores sin depreciación contabilizada. Genera o regulariza primero los meses pendientes.'});continue;}
+        const amountMinor=calculateStraightLineDepreciation({costMinor:Number(asset.cost_minor),residualMinor:Number(asset.residual_minor),usefulLifeMonths:Number(asset.useful_life_months),monthsAlreadyDepreciated:previousCount});
+        if(amountMinor<=0){skipped.push({assetCode:asset.asset_code,reason:'Vida útil agotada o valor depreciable completado.'});continue;}
+        let rate={rateNumerator:1,rateDenominator:1},rateId=null,rateSource=null,rateTypeUsed=null;
+        if(settings.functional_currency!==settings.presentation_currency){
+          const rateRow=one('SELECT id,rate_numerator AS rateNumerator,rate_denominator AS rateDenominator,source_name AS sourceName,source_reference AS sourceReference,rate_type AS rateType FROM accounting_exchange_rates WHERE rate_date=? AND from_currency=? AND to_currency=? AND rate_type=? ORDER BY recorded_at DESC LIMIT 1',[period.endDate,settings.functional_currency,settings.presentation_currency,rateType]);
+          if(!rateRow){needsReview.push({assetCode:asset.asset_code,reason:'No existe una tasa '+rateType+' documentada para '+period.endDate+'.'});continue;}
+          rate={rateNumerator:Number(rateRow.rateNumerator),rateDenominator:Number(rateRow.rateDenominator)};
+          rateId=rateRow.id;rateSource=rateRow.sourceName+' · '+rateRow.sourceReference;rateTypeUsed=rateRow.rateType;
+        }
+        const lines=[
+          {accountCode:asset.depreciation_expense_account_code,debitMinor:amountMinor,creditMinor:0,description:'Depreciación '+asset.asset_code+' '+periodId},
+          {accountCode:asset.accumulated_depreciation_account_code,debitMinor:0,creditMinor:amountMinor,description:'Depreciación acumulada '+asset.asset_code+' '+periodId}
+        ];
+        const converted=buildBimonetaryLines({lines,functionalCurrency:settings.functional_currency,presentationCurrency:settings.presentation_currency,functionalDecimals:Number(settings.monetary_decimals),presentationDecimals:Number(settings.monetary_decimals),rateNumerator:rate.rateNumerator,rateDenominator:rate.rateDenominator});
+        const depreciationId=crypto.randomUUID(),entryId=crypto.randomUUID(),createdAt=new Date().toISOString();
+        const entry=createJournalEntry({id:entryId,sourceType:'asset_depreciation',sourceId:depreciationId,entryDate:period.endDate,periodId,currency:settings.functional_currency,ruleVersion:'FIXED-ASSET-SL-v1 / '+settings.policy_version,description:'Depreciación mensual '+asset.asset_code+' · '+asset.name+' · '+periodId,lines:converted.lines,createdAt,createdBy:actor.actorId});
+        Object.assign(entry,{presentationCurrency:settings.presentation_currency,exchangeRateId:rateId,exchangeRateNumerator:rate.rateNumerator,exchangeRateDenominator:rate.rateDenominator,exchangeRateType:rateTypeUsed,exchangeRateSource:rateSource,presentationDebitMinor:converted.presentationDebitMinor,presentationCreditMinor:converted.presentationCreditMinor});
+        const snapshot=db.export();db.run('BEGIN IMMEDIATE');
+        try{
+          const lockedPeriod=one('SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?',[periodId]);
+          assertAccountingPeriodWritable(lockedPeriod,period.endDate);
+          const lockedAsset=one("SELECT status FROM accounting_fixed_assets WHERE id=?",[asset.id]);
+          if(!lockedAsset||lockedAsset.status!=='active')throw new Error('El activo cambió de estado durante la generación.');
+          const duplicate=one('SELECT id FROM accounting_asset_depreciations WHERE asset_id=? AND depreciation_month=?',[asset.id,periodId]);
+          if(duplicate)throw new Error('Otra sesión ya generó la depreciación de este activo.');
+          const lockedPrevious=one("SELECT COUNT(*) AS total FROM accounting_asset_depreciations WHERE asset_id=? AND depreciation_month<? AND status='posted'",[asset.id,periodId]);
+          if(Number(lockedPrevious.total||0)!==expectedMonths)throw new Error('La depreciación anterior cambió durante la generación.');
+          const lockedSettings=one('SELECT functional_currency,presentation_currency,monetary_decimals,policy_version FROM accounting_settings WHERE id=1');
+          if(!lockedSettings||lockedSettings.functional_currency!==settings.functional_currency||lockedSettings.presentation_currency!==settings.presentation_currency||Number(lockedSettings.monetary_decimals)!==Number(settings.monetary_decimals)||lockedSettings.policy_version!==settings.policy_version)throw new Error('La política contable cambió durante la generación.');
+          insertJournalEntry(entry);
+          run("INSERT INTO accounting_asset_depreciations(id,asset_id,period_id,depreciation_month,depreciation_date,amount_minor,presentation_amount_minor,journal_entry_id,status,created_at,created_by) VALUES(?,?,?,?,?,?,?,?, 'draft',?,?)",[depreciationId,asset.id,periodId,periodId,period.endDate,amountMinor,converted.presentationDebitMinor,entryId,createdAt,actor.actorId]);
+          run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,after_json) VALUES(?,?,?,?,?,?,?)',[crypto.randomUUID(),'fixed_asset_depreciation',depreciationId,'generate_draft',actor.actorId,createdAt,JSON.stringify({assetId:asset.id,assetCode:asset.asset_code,periodId,amountMinor,journalEntryId:entryId,rateId,rateType:rateTypeUsed})]);
+          db.run('COMMIT');
+        }catch(error){try{db.run('ROLLBACK')}catch{}throw error;}
+        persistAccountingDb(snapshot);
+        generated.push({assetCode:asset.asset_code,journalEntryId:entryId,amountMinor});
+      }catch(error){needsReview.push({assetCode:asset.asset_code,reason:String(error.message||error).slice(0,400)});}
+    }
+    return {generated,skipped,needsReview};
+  });
   registerAccountingHandler('accounting:get-general-ledger', (event, input = {}) => {
     assertTrustedAccountingSender(event);
     accountingActor(input);
