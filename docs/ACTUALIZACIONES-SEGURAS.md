@@ -13,6 +13,8 @@ Toda actualización debe conservar la base SQLite y sus registros: ventas, compr
 - Las migraciones deben ser incrementales, transaccionales, idempotentes y versionadas en schema_migrations.
 - No se permiten DROP TABLE, DELETE FROM, TRUNCATE, VACUUM ni REPLACE INTO en migraciones de actualización.
 - Antes de una migración se conserva una instantánea restaurable; después se valida PRAGMA integrity_check. Si algo falla, se revierte y se conserva la base original.
+- Antes de instalar una actualización descargada, Electron guarda una copia SQLite con escritura durable (fsync), la vuelve a leer y compara byte por byte; si el respaldo no puede verificarse, cancela la actualización.
+- Si la aplicación detecta señales de una instalación previa pero no encuentra la base principal ni su respaldo, debe detener el inicio sin crear una SQLite vacía. La recuperación se realiza desde una copia válida, nunca reinicializando el negocio.
 - Los cambios de estructura deben añadir tablas, índices, columnas o restricciones mediante migraciones explícitas. No reconstruir tablas con pérdida de filas.
 - Nunca se debe marcar una migración como aplicada antes de completar y validar su transacción.
 - No se debe borrar información al desinstalar/instalar una versión nueva. Una eliminación de datos solo podría existir como función separada, explícita, autenticada y confirmada por el administrador; jamás como efecto secundario de actualizar.
