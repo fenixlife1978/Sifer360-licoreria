@@ -51,6 +51,27 @@ const requireAccountingSession = createAccountingSessionGuard({
   sessions: authSessions,
   findActiveUser: username => one('SELECT username,name,role,cashbox,active FROM app_users WHERE username=? COLLATE NOCASE AND active=1', [username])
 });
+const ACCOUNTING_READ_CHANNELS = new Set([
+  'accounting:get-settings','accounting:get-profile','accounting:list-source-events',
+  'accounting:source-event-summary','accounting:list-periods','accounting:list-journal-entries',
+  'accounting:list-exchange-rates','accounting:get-trial-balance','accounting:list-accounts'
+]);
+const accountingIpcHandlers = new Map();
+function registerAccountingHandler(channel, handler) {
+  accountingIpcHandlers.set(channel, handler);
+  ipcMain.handle(channel, async (event, ...args) => {
+    if (networkConfig.role === 'client') {
+      const payload = ACCOUNTING_READ_CHANNELS.has(channel)
+        ? { token: String(args[0] || '') }
+        : (args[0] && typeof args[0] === 'object' && !Array.isArray(args[0]) ? args[0] : {});
+      const response = await clientApi('/api/accounting/' + encodeURIComponent(channel.slice('accounting:'.length)), {
+        method: 'POST', body: JSON.stringify(payload), timeoutMs: 15000
+      });
+      return response.result;
+    }
+    return handler(event, ...args);
+  });
+}
 const initSqlJs = require('sql.js');
 
 let db;
@@ -607,6 +628,26 @@ async function startLanServer(requestedPort) {
         return sendJson(res, 200, { ok: true, state: merged, stateHash: statePayloadHash(savedRow && savedRow.payload), serverDeviceId: networkConfig.deviceId, updatedAt: new Date().toISOString() });
       } catch (error) { return sendJson(res, 400, { error: error.message || 'Error sincronizando' }); }
     }
+    if (url.pathname.startsWith('/api/accounting/') && req.method === 'POST') {
+      try {
+        const operation = decodeURIComponent(url.pathname.slice('/api/accounting/'.length));
+        const channel = 'accounting:' + operation;
+        const handler = accountingIpcHandlers.get(channel);
+        if (!handler) return sendJson(res, 404, { error: 'Operación contable no encontrada.' });
+        const payload = await readBody(req);
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return sendJson(res, 400, { error: 'Solicitud contable inválida.' });
+        const senderUrl = app.isPackaged ? 'file:///sifer/dist/index.html' : 'http://localhost:3000';
+        const sender = { senderFrame: { url: senderUrl } };
+        const result = ACCOUNTING_READ_CHANNELS.has(channel)
+          ? await handler(sender, String(payload.token || ''))
+          : await handler(sender, payload);
+        return sendJson(res, 200, { ok: true, result });
+      } catch (error) {
+        const message = error && error.message ? error.message : 'No se pudo ejecutar la operación contable.';
+        const status = /sesión|autenticad/i.test(message) ? 401 : /rol|autorizad/i.test(message) ? 403 : 400;
+        return sendJson(res, status, { error: message });
+      }
+    }
     if (url.pathname === '/api/sync/state' && req.method === 'GET') {
       const row = one('SELECT payload FROM app_state WHERE id=1');
       return sendJson(res, 200, { ok: true, state: row ? JSON.parse(row.payload) : null, stateHash: statePayloadHash(row && row.payload), serverDeviceId: networkConfig.deviceId, updatedAt: new Date().toISOString() });
@@ -910,7 +951,6 @@ function registerNetworkIpc() {
   });
 }
 function assertTrustedAccountingSender(event) {
-  if (networkConfig.role === 'client') throw new Error('Contabilidad en clientes LAN requiere el canal autenticado al servidor central; no se permite usar la SQLite local.');
   const rawUrl = event && event.senderFrame && event.senderFrame.url;
   let parsed;
   try { parsed = new URL(String(rawUrl || '')); } catch { throw new Error('Origen IPC no válido.'); }
@@ -973,12 +1013,12 @@ function formatAccountingRate(numerator, denominator) {
   return fraction?String(whole)+'.'+fraction:String(whole);
 }
 function registerAccountingIpc() {
-  ipcMain.handle('accounting:get-settings', (event, token) => {
+  registerAccountingHandler('accounting:get-settings', (event, token) => {
     assertTrustedAccountingSender(event);
     requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
     return one('SELECT accounting_framework AS accountingFramework,functional_currency AS functionalCurrency,presentation_currency AS presentationCurrency,monetary_decimals AS monetaryDecimals,automation_mode AS automationMode,policy_version AS policyVersion,updated_at AS updatedAt,updated_by AS updatedBy FROM accounting_settings WHERE id=1');
   });
-  ipcMain.handle('accounting:save-settings', (event, input = {}) => {
+  registerAccountingHandler('accounting:save-settings', (event, input = {}) => {
     assertTrustedAccountingSender(event);
     const actor = accountingActor(input);
     const framework = String(input.accountingFramework || '');
@@ -1008,12 +1048,12 @@ function registerAccountingIpc() {
     persistAccountingDb(dbSnapshot);
     return one('SELECT accounting_framework AS accountingFramework,functional_currency AS functionalCurrency,presentation_currency AS presentationCurrency,monetary_decimals AS monetaryDecimals,automation_mode AS automationMode,policy_version AS policyVersion,updated_at AS updatedAt,updated_by AS updatedBy FROM accounting_settings WHERE id=1');
   });
-  ipcMain.handle('accounting:get-profile', (event, token) => {
+  registerAccountingHandler('accounting:get-profile', (event, token) => {
     assertTrustedAccountingSender(event);
     requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
     return one('SELECT * FROM fiscal_entity_profile WHERE id=1');
   });
-  ipcMain.handle('accounting:save-profile', (event, input = {}) => {
+  registerAccountingHandler('accounting:save-profile', (event, input = {}) => {
     assertTrustedAccountingSender(event);
     const actor = accountingActor(input);
     const rif = String(input.rif || '').trim().toUpperCase();
@@ -1050,7 +1090,7 @@ function registerAccountingIpc() {
     persistAccountingDb(dbSnapshot);
     return one('SELECT * FROM fiscal_entity_profile WHERE id=1');
   });
-  ipcMain.handle('accounting:list-source-events', (event, token) => {
+  registerAccountingHandler('accounting:list-source-events', (event, token) => {
     assertTrustedAccountingSender(event);
     requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
     return all(`SELECT event_id AS eventId,source_type AS sourceType,source_id AS sourceId,event_type AS eventType,
@@ -1061,7 +1101,7 @@ function registerAccountingIpc() {
         return { ...row, payload };
       });
   });
-  ipcMain.handle('accounting:mark-source-event-review', (event, input = {}) => {
+  registerAccountingHandler('accounting:mark-source-event-review', (event, input = {}) => {
     assertTrustedAccountingSender(event);
     const actor = accountingActor(input);
     const eventId = String(input.eventId || '').trim();
@@ -1082,7 +1122,7 @@ function registerAccountingIpc() {
     persistAccountingDb(dbSnapshot);
     return one('SELECT event_id AS eventId,processing_status AS processingStatus,error_message AS errorMessage FROM accounting_source_events WHERE event_id=?',[eventId]);
   });
-  ipcMain.handle('accounting:source-event-summary', (event, token) => {
+  registerAccountingHandler('accounting:source-event-summary', (event, token) => {
     assertTrustedAccountingSender(event);
     requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
     const rows = all('SELECT processing_status AS status,COUNT(*) AS total FROM accounting_source_events GROUP BY processing_status');
@@ -1090,12 +1130,12 @@ function registerAccountingIpc() {
     for (const row of rows) { summary[row.status] = Number(row.total); summary.total += Number(row.total); }
     return summary;
   });
-  ipcMain.handle('accounting:list-periods', (event, token) => {
+  registerAccountingHandler('accounting:list-periods', (event, token) => {
     assertTrustedAccountingSender(event);
     requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
     return all('SELECT id,label,start_date AS startDate,end_date AS endDate,status,closed_at AS closedAt,closed_by AS closedBy FROM accounting_periods ORDER BY start_date');
   });
-  ipcMain.handle('accounting:save-period', (event, input = {}) => {
+  registerAccountingHandler('accounting:save-period', (event, input = {}) => {
     assertTrustedAccountingSender(event);
     const actor = accountingActor(input);
     const id = String(input.id || '').trim();
@@ -1120,7 +1160,7 @@ function registerAccountingIpc() {
     return one('SELECT id,label,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?', [id]);
   });
 
-  ipcMain.handle('accounting:list-journal-entries', (event, token) => {
+  registerAccountingHandler('accounting:list-journal-entries', (event, token) => {
     assertTrustedAccountingSender(event);
     requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
     return all(`SELECT id,source_type AS sourceType,source_id AS sourceId,entry_date AS entryDate,period_id AS periodId,
@@ -1131,7 +1171,7 @@ function registerAccountingIpc() {
       created_by AS createdBy,approved_by AS approvedBy,posted_by AS postedBy,reverses_entry_id AS reversesEntryId
       FROM journal_entries ORDER BY entry_date DESC,created_at DESC LIMIT 100`);
   });
-  ipcMain.handle('accounting:list-exchange-rates', (event, token) => {
+  registerAccountingHandler('accounting:list-exchange-rates', (event, token) => {
     assertTrustedAccountingSender(event);
     requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
     return all(`SELECT id,rate_date AS rateDate,from_currency AS fromCurrency,to_currency AS toCurrency,
@@ -1141,7 +1181,7 @@ function registerAccountingIpc() {
         ...row,rate:formatAccountingRate(row.rateNumerator,row.rateDenominator)
       }));
   });
-  ipcMain.handle('accounting:get-trial-balance', (event, token) => {
+  registerAccountingHandler('accounting:get-trial-balance', (event, token) => {
     assertTrustedAccountingSender(event);
     requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
     return all(`SELECT a.code,a.name,a.account_type AS accountType,a.normal_balance AS normalBalance,
@@ -1154,7 +1194,7 @@ function registerAccountingIpc() {
       LEFT JOIN journal_entries j ON j.id=l.entry_id
       GROUP BY a.code,a.name,a.account_type,a.normal_balance ORDER BY a.code`);
   });
-  ipcMain.handle('accounting:create-journal-entry', async (event, input = {}) => {
+  registerAccountingHandler('accounting:create-journal-entry', async (event, input = {}) => {
     assertTrustedAccountingSender(event);
     const actor = accountingActor(input);
     const settings = one('SELECT accounting_framework,functional_currency,presentation_currency,monetary_decimals,policy_version FROM accounting_settings WHERE id=1');
@@ -1224,7 +1264,7 @@ function registerAccountingIpc() {
     persistAccountingDb(dbSnapshot);
     return accountingJournalWithLines(id);
   });
-  ipcMain.handle('accounting:approve-journal-entry', async (event, input = {}) => {
+  registerAccountingHandler('accounting:approve-journal-entry', async (event, input = {}) => {
     assertTrustedAccountingSender(event);
     const actor=accountingActor(input);
     if(actor.actorRole!=='contador')throw new Error('La aprobación de asientos está reservada al perfil Contador.');
@@ -1246,7 +1286,7 @@ function registerAccountingIpc() {
     persistAccountingDb(dbSnapshot);
     return accountingJournalWithLines(entry.id);
   });
-  ipcMain.handle('accounting:post-journal-entry', async (event, input = {}) => {
+  registerAccountingHandler('accounting:post-journal-entry', async (event, input = {}) => {
     assertTrustedAccountingSender(event);
     const actor=accountingActor(input);
     if(actor.actorRole!=='contador')throw new Error('La contabilización está reservada al perfil Contador.');
@@ -1279,7 +1319,7 @@ function registerAccountingIpc() {
     persistAccountingDb(dbSnapshot);
     return accountingJournalWithLines(entry.id);
   });
-  ipcMain.handle('accounting:create-reversal-draft', async (event, input = {}) => {
+  registerAccountingHandler('accounting:create-reversal-draft', async (event, input = {}) => {
     assertTrustedAccountingSender(event);
     const actor=accountingActor(input);
     if(actor.actorRole!=='contador')throw new Error('La creación de reversos está reservada al perfil Contador.');
@@ -1305,14 +1345,14 @@ function registerAccountingIpc() {
     persistAccountingDb(dbSnapshot);
     return accountingJournalWithLines(reversal.id);
   });
-  ipcMain.handle('accounting:list-accounts', (event, token) => {
+  registerAccountingHandler('accounting:list-accounts', (event, token) => {
     assertTrustedAccountingSender(event);
     requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
     return all(`SELECT code,parent_code AS parentCode,name,account_type AS accountType,normal_balance AS normalBalance,
       accepts_posting AS acceptsPosting,active,framework_scope AS frameworkScope,updated_at AS updatedAt
       FROM chart_of_accounts ORDER BY code`);
   });
-  ipcMain.handle('accounting:save-account', (event, input = {}) => {
+  registerAccountingHandler('accounting:save-account', (event, input = {}) => {
     assertTrustedAccountingSender(event);
     const actor = accountingActor(input);
     const code = String(input.code || '').trim();
