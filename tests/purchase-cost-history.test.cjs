@@ -115,3 +115,7 @@ test('el precio unitario vacío no se interpreta como costo cero y el costo cero
   assert.match(source,/const cost=pnZero\(t\.value\);l\.cost=cost===null\?null:r8\(cost\);l\.costEdited=true;/);
   assert.match(source,/l\.cost===null\|\|l\.cost===undefined/);
 });
+
+test('un precio borrado permanece visualmente vacío hasta corregirlo',()=>{
+  assert.ok(source.includes("value=\"'+(l.cost===null?'':nf8(l.cost))+'\" inputmode=\"decimal\">"));
+});
