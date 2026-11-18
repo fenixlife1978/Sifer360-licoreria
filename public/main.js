@@ -2464,11 +2464,15 @@ function inventoryImportKey(value){
 function inventoryImportNumber(value,fallback){
   if(value===null||value===undefined||value==='')return fallback===undefined?0:fallback;
   if(typeof value==='number')return Number.isFinite(value)?value:(fallback||0);
-  let raw=String(value).trim().replace(/\s/g,'');
+  let raw=String(value).trim().replace(/\s/g,'').replace(/[^0-9,.-]/g,'');
+  if(!raw)return fallback===undefined?0:fallback;
   if(raw.includes(',')&&raw.includes('.')){
     if(raw.lastIndexOf(',')>raw.lastIndexOf('.'))raw=raw.replace(/\./g,'').replace(',','.');
     else raw=raw.replace(/,/g,'');
-  }else if(raw.includes(','))raw=raw.replace(',','.');
+  }else if(raw.includes(',')){
+    if(/^[1-9]\d{0,2}(,\d{3})+$/.test(raw))raw=raw.replace(/,/g,'');
+    else raw=raw.replace(',','.');
+  }else if(raw.includes('.')&&/^[1-9]\d{0,2}(\.\d{3})+$/.test(raw))raw=raw.replace(/\./g,'');
   const number=Number(raw);return Number.isFinite(number)?number:(fallback===undefined?0:fallback);
 }
 function inventoryParseDelimited(text){
