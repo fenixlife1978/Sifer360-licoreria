@@ -61,3 +61,8 @@ test('hybrid fiscal portions feed only fiscal books while tickets remain in comm
   assert.match(main,/const drawSudeban=\(\)=>\{\s*const sales=getFilteredAllSales\(\)/);
   assert.match(main,/\.filter\(x=>isFiscalSale\(x\)&&!x\.void&&enPeriodoSeniat\(x\.ts\)\)\.map\(fiscalSaleData\)/);
 });
+
+test('reprinting an already sent or uncertain hybrid ticket requires explicit duplicate confirmation',()=>{
+  assert.match(main,/s\.documentMode==='HYBRID'&&s\.printStatus==='sent'&&!confirm\(/);
+  assert.match(main,/s\.documentMode==='HYBRID'&&s\.printStatus==='uncertain'&&!confirm\(/);
+});
