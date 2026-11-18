@@ -6,7 +6,7 @@ function integrityStatus(db) {
 }
 
 function assertNonDestructiveSchema(schemaSql) {
-  const forbidden = [/\\bDROP\\s+TABLE\\b/i, /\\bDELETE\\s+FROM\\b/i, /\\bTRUNCATE\\b/i, /\\bVACUUM\\b/i, /\\bREPLACE\\s+INTO\\b/i];
+  const forbidden = [/\bDROP\s+TABLE\b/i, /\bDELETE\s+FROM\b/i, /\bTRUNCATE\b/i, /\bVACUUM\b/i, /\bREPLACE\s+INTO\b/i];
   if (forbidden.some(pattern => pattern.test(schemaSql))) {
     throw new Error('La migración contable contiene una instrucción que puede eliminar o reemplazar datos existentes.');
   }
