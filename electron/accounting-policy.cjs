@@ -41,7 +41,7 @@ function assertAccountingPeriodChange(existing, next, journalEntryCount = 0) {
   return true;
 }
 
-function assertAccountingPeriodCanClose({ period, draftCount = 0, unresolvedEventCount = 0, invalidEntryCount = 0, missingPresentationCount = 0 }) {
+function assertAccountingPeriodCanClose({ period, draftCount = 0, unresolvedEventCount = 0, invalidEntryCount = 0, missingPresentationCount = 0, pendingAssetDepreciationCount = 0 }) {
   if (!period) throw new Error('El período contable no existe.');
   if (period.status !== 'open') throw new Error('El período ya está cerrado.');
   const checks = [

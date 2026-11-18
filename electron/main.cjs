@@ -1245,7 +1245,7 @@ function registerAccountingIpc() {
       run("UPDATE accounting_periods SET status='closed',closed_at=?,closed_by=? WHERE id=? AND status='open'", [now,actor.actorId,periodId]);
       if (db.getRowsModified() !== 1) throw new Error('El período cambió de estado antes de confirmar el cierre.');
       run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
-        [crypto.randomUUID(),'accounting_period',periodId,'close',actor.actorId,now,JSON.stringify({status:'open'}),JSON.stringify({status:'closed',draftCount:drafts,unresolvedEventCount:unresolved,invalidEntryCount:invalidEntries,missingPresentationCount:missingPresentation})]);
+        [crypto.randomUUID(),'accounting_period',periodId,'close',actor.actorId,now,JSON.stringify({status:'open'}),JSON.stringify({status:'closed',draftCount:drafts,unresolvedEventCount:unresolved,invalidEntryCount:invalidEntries,missingPresentationCount:missingPresentation,pendingAssetDepreciationCount})]);
       db.run('COMMIT');
       persistAccountingDb(snapshot);
       return one('SELECT id,label,start_date AS startDate,end_date AS endDate,status,closed_at AS closedAt,closed_by AS closedBy FROM accounting_periods WHERE id=?', [periodId]);
