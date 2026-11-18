@@ -816,7 +816,7 @@ function load(){
     if(!S.cfg.fiscalTipo)S.cfg.fiscalTipo='FORMA_LIBRE';
     if(S.cfg.contribEspecial===undefined)S.cfg.contribEspecial=false;
     if(S.cfg.retencionHabilitadaConfirmada===undefined)S.cfg.retencionHabilitadaConfirmada=false;
-    if(!S.cfg.retIvaPct)S.cfg.retIvaPct=Number($('#fPctRet',el).value)||75;\n          S.cfg.retIslrHabilitada=$('#fRetIslr',el).checked===true;
+    if(!S.cfg.retIvaPct)S.cfg.retIvaPct=Number($('#fPctRet',el).value)||75;\n          S.cfg.retIslrHabilitada=$('#fRetIslr',el).checked===true;\n          S.cfg.agenteRetIva=S.cfg.retencionHabilitadaConfirmada;\n          S.cfg.agenteRetIslr=S.cfg.retIslrHabilitada;
     if(!S.cfg.provEspecial)S.cfg.provEspecial='';
     if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='00-';
     if(!S.cfg.ctrlNext)S.cfg.ctrlNext=1043;
@@ -7284,7 +7284,7 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnGotoVentas'){activeTab='ventas';$('.tab[data-tab="ventas"]',el)?.click();}
         if(ev.target.id==='btnGotoIgtf'){activeTab='igtf';$('.tab[data-tab="igtf"]',el)?.click();}
         if(ev.target.id==='btnPrinterSetupWizard'){printerSetupWizardDlg();return;}
-        if(ev.target.id==='btnSaveF'){\n          const legalName=$('#fEmp',el).value.trim(),taxId=$('#fRif',el).value.trim(),address=$('#fDir',el).value.trim(),email=$('#fEmail',el).value.trim();\n          if(!legalName||!taxId||!address||!email){msg('Parámetros fiscales incompletos: razón social, RIF, domicilio fiscal y correo son obligatorios para completar el perfil.','bad');return;}\n          if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){msg('El correo de la empresa no tiene un formato válido.','bad');return;}\n          if(($('#fRetConfirm',el).checked||$('#fRetIslr',el).checked)&&($('#fEsp',el).value!=='1'||!$('#fProvEsp',el).value.trim())){msg('Para activar retenciones debe confirmar Sujeto Pasivo Especial y completar la providencia de notificación.','bad');return;}
+        if(ev.target.id==='btnSaveF'){\n          const legalName=$('#fEmp',el).value.trim(),taxId=$('#fRif',el).value.trim(),address=$('#fDir',el).value.trim(),email=$('#fEmail',el).value.trim();\n          if(!legalName||!taxId||!address||!email){msg('Parámetros fiscales incompletos: razón social, RIF, domicilio fiscal y correo son obligatorios para completar el perfil.','bad');return;}\n          if(!/^[VEJPG]-?\\d{8,9}-?\\d$/.test(taxId.toUpperCase())){msg('El RIF debe tener formato venezolano válido (letra, números y dígito verificador).','bad');return;}\n          if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){msg('El correo de la empresa no tiene un formato válido.','bad');return;}\n          if(($('#fRetConfirm',el).checked||$('#fRetIslr',el).checked)&&($('#fEsp',el).value!=='1'||!$('#fProvEsp',el).value.trim())){msg('Para activar retenciones debe confirmar Sujeto Pasivo Especial y completar la providencia de notificación.','bad');return;}
           S.cfg.empresa=$('#fEmp',el).value.trim()||S.cfg.empresa;
           S.cfg.rif=$('#fRif',el).value.trim()||S.cfg.rif;
           S.cfg.dir=$('#fDir',el).value.trim();\n          S.cfg.companyEmail=$('#fEmail',el).value.trim();\n          S.cfg.companyPhone=$('#fPhone',el).value.trim();\n          S.cfg.contribuyenteFormalIva=$('#fFormalIva',el).checked===true;
