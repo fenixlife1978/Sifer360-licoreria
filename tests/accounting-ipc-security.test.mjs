@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const main = fs.readFileSync(new URL("../electron/main.cjs", import.meta.url), "utf8");
-const ui = fs.readFileSync(new URL("../public/main.js", import.meta.url), "utf8");
-const preload = fs.readFileSync(new URL("../electron/preload.cjs", import.meta.url), "utf8");
+const main = fs.readFileSync(new URL("../electron/main.cjs", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const ui = fs.readFileSync(new URL("../public/main.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const preload = fs.readFileSync(new URL("../electron/preload.cjs", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const builder = JSON.parse(fs.readFileSync(new URL("../electron-builder.json", import.meta.url), "utf8"));
 const channels = [
   "accounting:get-settings","accounting:save-settings","accounting:get-profile","accounting:save-profile",
