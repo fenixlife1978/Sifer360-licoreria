@@ -57,5 +57,5 @@ test('la pantalla contable permite mapear cuentas y generar borradores bajo acci
   assert.match(pos, /data-generate-source-draft/);
   assert.match(pos, /accountingSaveAutomationRule/);
   assert.match(pos, /accountingGenerateSourceDrafts/);
-  assert.match(pos, /solo genera borradores, nunca aprueba ni contabiliza/i);
+  assert.match(pos, /solo crea borradores, nunca aprueba ni contabiliza/i);
 });
