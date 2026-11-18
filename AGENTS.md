@@ -95,6 +95,26 @@ Verificar, según el alcance del cambio:
 8. No desplegar a producción salvo que el usuario lo solicite o autorice expresamente.
 9. Informar con precisión qué se inspeccionó, qué se cambió, pruebas ejecutadas y resultados, limitaciones, pendientes y estado real del despliegue. Nunca afirmar que algo está guardado, probado o desplegado sin evidencia.
 
+## Política de almacenamiento y respaldos (vigente)
+
+- SQLite local es la fuente primaria y autoritativa de datos operativos. Cada operación debe confirmarse y persistirse localmente antes de cualquier sincronización o respaldo remoto.
+- Google Drive es un destino secundario y opcional de copias de seguridad; nunca es requisito para iniciar, operar, vender, facturar, contabilizar o restaurar la operación local.
+- Cuando el usuario configure un correo y complete la autorización OAuth de Google Drive, habilitar respaldos remotos automáticos hacia la cuenta autorizada. La mera presencia de una dirección de correo no sustituye la autorización OAuth ni concede acceso a Drive.
+- Sin correo configurado, sin autorización, o ante fallos de red/Drive, el sistema continúa operando localmente y conserva los respaldos locales. Los envíos pendientes se encolan y reintentan al recuperar conectividad.
+- Los respaldos remotos no pueden sobrescribir ni modificar automáticamente la base local. Toda restauración debe ser explícita, validar integridad, versión, empresa/instalación y fecha, y ofrecer confirmación antes de reemplazar datos.
+- Mantener historial de respaldos, estado de subida, reintentos idempotentes, cifrado en tránsito y protección de credenciales/tokens. Nunca almacenar contraseñas de Google en texto plano.
+- Las pruebas deben cubrir modo solo-local, Drive no configurado, OAuth revocado/expirado, desconexión de red, reintentos, duplicados, corrupción y restauración controlada.
+
+## Continuidad obligatoria y resolución cronológica de Pull Requests
+
+**Ninguna PR puede abandonarse ni quedar abierta por pasar a otra tarea.** Al iniciar o retomar trabajo, listar todas las PR abiertas, incluidas Draft, y ordenarlas por fecha de creación ascendente. Comenzar por la más antigua y no avanzar a la siguiente hasta que la anterior esté corregida, verificada, fusionada y cerrada en GitHub.
+
+Las instrucciones y correcciones posteriores del usuario se registran como pendientes y no cancelan el orden cronológico. Incorporarlas a la PR en curso si corresponde o atenderlas cuando llegue su turno. No dejar PR en Draft, con conflictos o checks pendientes/fallidos; resolver defectos, ejecutar pruebas y compilaciones y verificar checks. Cerrar sin fusionar no cuenta como terminar.
+
+El usuario autoriza modificar `main` y publicar releases cuando el producto esté realmente listo. Esta autorización no permite omitir pruebas ni publicar artefactos incompletos. Antes de cada fusión, revisar el diff, resolver conflictos y comprobar los controles aplicables. Si un bloqueo externo impide fusionar, documentarlo con precisión, mantener esa PR como prioridad y reanudarla antes de cualquier otra.
+
+Mantener actualizado el registro cronológico de PR, sus ramas, bloqueos, pruebas y SHA de fusión. Después de cada fusión, volver a consultar las PR abiertas para incluir las nuevas.
+
 ## 6. Regla de diseño
 
 Ante cada control, validación o bloqueo, preguntar:
