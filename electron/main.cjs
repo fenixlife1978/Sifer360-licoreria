@@ -1194,7 +1194,7 @@ function registerAccountingIpc() {
     const actor = accountingActor(input);
     if (actor.actorRole !== 'contador') throw new Error('El cierre de períodos está reservado al perfil Contador.');
     const periodId = String(input.periodId || '').trim();
-    if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(periodId)) throw new Error('Identificador de período inválido.');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodId)) throw new Error('Identificador de período inválido.');
     const snapshot = db.export();
     db.run('BEGIN IMMEDIATE');
     try {
