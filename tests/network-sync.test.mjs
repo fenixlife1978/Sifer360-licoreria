@@ -397,9 +397,12 @@ test('SQLite y su respaldo se vacían a disco antes del reemplazo atómico', () 
   assert.match(electron, /fs\.renameSync\(temporary, target\)/);
 });
 
-test('la inicialización recupera una copia SQLite si falta o está dañada la principal', () => {
+test('la inicialización recupera SQLite sin crear una base vacía si ya existían datos', () => {
   assert.match(electron, /require\('\.\/sqlite-recovery\.cjs'\)/);
-  assert.match(electron, /openOrRecoverDatabase\(\{ SQL, file \}\)/);
+  assert.match(electron, /openOrRecoverDatabase\(\{ SQL, file, allowCreate: !priorUserDataDetected \}\)/);
+  assert.match(electron, /const priorUserDataDetected =/);
+  assert.match(electron, /La base SQLite principal está dañada/);
+  assert.match(electron, /No se creará una base vacía/);
 });
 
 test('una base recuperada persiste también el esquema actualizado antes de aceptar operaciones', () => {
