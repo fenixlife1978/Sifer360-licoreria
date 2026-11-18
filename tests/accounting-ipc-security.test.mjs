@@ -53,6 +53,11 @@ test("las operaciones POS y la sincronización LAN capturan eventos contables ju
   assert.ok(main.includes("buildAccountingSourceEvents(previousState, state"));
   assert.ok(main.includes("insertAccountingSourceEvents(accountingEvents)"));
   assert.ok(main.includes("buildAccountingSourceEvents(current, merged"));
+  const manualSyncStart = main.indexOf("ipcMain.handle('network:sync-now'");
+  const manualSyncEnd = main.indexOf("\n  ipcMain.handle(", manualSyncStart + 1);
+  const manualSync = main.slice(manualSyncStart, manualSyncEnd < 0 ? main.length : manualSyncEnd);
+  assert.ok(manualSync.includes("buildAccountingSourceEvents(previous, merged"));
+  assert.ok(manualSync.includes("insertAccountingSourceEvents(accountingEvents)"));
   assert.ok(main.includes("persistMutation(() => {\n      run('INSERT INTO app_state"));
 });
 
