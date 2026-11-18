@@ -15,7 +15,7 @@ const channels = [
 
 test("todos los IPC contables exigen origen permitido y sesión vigente", () => {
   for (const channel of channels) {
-    const start = main.indexOf("ipcMain.handle('" + channel + "'");
+    const start = main.indexOf("registerAccountingHandler('" + channel + "'");
     assert.ok(start >= 0, "Falta " + channel);
     const end = main.indexOf("\n  });", start);
     const block = main.slice(start, end < 0 ? main.length : end);
@@ -33,9 +33,9 @@ test("los métodos preload reciben el token de sesión explícitamente", () => {
   for (const method of ["accountingGetSettings: token =>","accountingListPeriods: token =>","accountingListAccounts: token =>","accountingListJournalEntries: token =>","accountingGetTrialBalance: token =>"]) {
     assert.ok(preload.includes(method), "Falta token en " + method);
   }
-  assert.ok(preload.includes("accountingSaveSettings: (token, settings)"));
-  assert.ok(preload.includes("accountingCreateJournalEntry: (token, entry)"));
-  assert.ok(preload.includes("accountingApproveJournalEntry: (token, entry)"));
+  assert.ok(preload.includes("accountingSaveSettings: settings =>"));
+  assert.ok(preload.includes("accountingCreateJournalEntry: entry =>"));
+  assert.ok(preload.includes("accountingApproveJournalEntry: entry =>"));
 });
 
 test("los clientes LAN reenvían contabilidad al servidor y nunca ejecutan el handler en SQLite local", () => {
