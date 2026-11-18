@@ -56,7 +56,7 @@ const ACCOUNTING_READ_CHANNELS = new Set([
   'accounting:get-settings','accounting:get-profile','accounting:list-source-events',
   'accounting:source-event-summary','accounting:list-periods','accounting:list-journal-entries',
   'accounting:list-exchange-rates','accounting:get-trial-balance','accounting:list-accounts',
-  'accounting:list-automation-rules','accounting:get-general-ledger','accounting:get-financial-statements'
+  'accounting:list-automation-rules','accounting:list-fixed-assets','accounting:list-asset-acquisition-entries','accounting:get-general-ledger','accounting:get-financial-statements'
 ]);
 const accountingIpcHandlers = new Map();
 function registerAccountingHandler(channel, handler) {
