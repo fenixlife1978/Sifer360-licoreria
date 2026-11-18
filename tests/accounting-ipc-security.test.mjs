@@ -55,6 +55,17 @@ test("las operaciones POS y la sincronización LAN capturan eventos contables ju
   assert.ok(main.includes("persistMutation(() => {\n      run('INSERT INTO app_state"));
 });
 
+test("la interfaz contable usa el token de sesión y no identidad enviada por renderer", () => {
+  assert.ok(main.includes("const accountingSessionToken=()=>String((activeUser()||{}).authToken||'')"));
+  assert.ok(main.includes("accountingGetSettings(sessionToken)"));
+  assert.ok(main.includes("return {token};"));
+  assert.ok(!main.includes("return {actorId,actorRole:user.role};"));
+  assert.ok(main.includes("seniatSudebanDlg('contabilidad')"));
+  assert.ok(main.includes("data-approve-journal"));
+  assert.ok(main.includes("data-post-journal"));
+  assert.ok(main.includes("data-reverse-journal"));
+});
+
 test("el instalador no elimina el directorio de datos del usuario", () => {
   assert.equal(builder.nsis.deleteAppDataOnUninstall, false);
   assert.ok(builder.files.includes("src/accounting/**/*"));
