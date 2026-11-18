@@ -3173,6 +3173,7 @@ function comprasDlg(initialTab){
     if((S.purchases||[]).some(p=>!p.void&&String(p.supplier?.rif||'').trim().toLowerCase()===String(sup.rif).trim().toLowerCase()&&String(p.docProv||'').trim().toLowerCase()===docProv.toLowerCase())){msg('Ya existe una compra activa con ese proveedor y número de factura. Verifique el documento original.','bad');return false;}
     if(!(Number(purchaseRate)>0)||!purchaseRateRecord||purchaseRateRecord.date!==docDate){msg('No se puede registrar la compra: no se confirmó ni guardó una tasa BCV histórica para la fecha del documento. Verifique la conexión y vuelva a consultar.','bad');return false;}
     if(pLines.some(l=>!Number.isFinite(Number(l.qty))||Number(l.qty)<=0||l.cost===null||l.cost===undefined||!Number.isFinite(Number(l.cost))||Number(l.cost)<0)){msg('Cada renglón debe tener cantidad positiva y costo unitario sin IVA válido y finito.','bad');return false;}
+    if(pLines.some(l=>{const p=prod(l.code);return !p||p.stock===null||p.stock===undefined||!Number.isFinite(Number(p.stock)||Number.isNaN(Number(p.stock)))||p.cost===null||p.cost===undefined||!Number.isFinite(Number(p.cost))||Number(p.cost)<0;})){msg('El producto tiene stock o CPP inválido. Corrija su ficha de inventario antes de recibir la compra.','bad');return false;}
     const ts=Date.now();
     let no;try{no=await nextCajaSequence('purchase',currentCaja());}catch(error){msg('No se pudo reservar el número de compra: '+error.message,'bad');return false;}
     S.purchaseSeq=Math.max(Number(S.purchaseSeq)||1,no+1);
