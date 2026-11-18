@@ -2619,6 +2619,7 @@ function inventoryImportProduct(row,mapping,index,usedCodes,usedSkus){
   usedCodes.add(code);usedSkus.add(sku);return{product};
 }
 async function inventoryImportDlg(){
+  if(!['admin','contador'].includes((activeUser()||{}).role)){msg('La carga del inventario maestro requiere autorización de administrador o contador.','bad');return;}
   const fields=inventoryImportFields();let records=[],headers=[],mapping={},fileName='',sourceType='',busy=false;
   const el=h('<div class="form" style="gap:10px"><div class="hint">Importador universal: detecta productos aunque el archivo contenga otras colecciones. Solo se importarán productos al inventario operativo; clientes, proveedores, ventas, compras y movimientos históricos se ignoran. No se crea saldo fiscal durante la importación.</div><div class="row" style="flex-wrap:wrap"><button class="btn primary" id="imChoose">Seleccionar CSV, Excel o JSON</button><input id="imFile" type="file" accept=".csv,.json,.xlsx" hidden><span id="imFileName" class="hint">Ningún archivo seleccionado.</span></div><div id="imMappings" class="newgrid"></div><div id="imPreview" class="hint">Seleccione un archivo para detectar productos y configurar el mapeo.</div></div>');
   const input=$('#imFile',el),mappingBox=$('#imMappings',el),preview=$('#imPreview',el);
