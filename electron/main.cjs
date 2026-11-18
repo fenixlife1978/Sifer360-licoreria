@@ -410,6 +410,10 @@ async function initializeDatabase() {
   if (!fs.existsSync(fixedAssetsSchemaPath)) throw new Error('Falta el esquema de activos fijos; se conserva la base de datos y se detiene el inicio.');
   const fixedAssetsMigration = applyAccountingMigration({ db, schemaSql: fs.readFileSync(fixedAssetsSchemaPath, 'utf8'), migrationKey: 'accounting-fixed-assets-v1', persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
   if (fixedAssetsMigration.applied) console.info('Migración de activos fijos aplicada sin eliminar datos existentes:', fixedAssetsMigration.migrationKey);
+  const reversalTransitionSchemaPath = path.join(__dirname, '..', 'src', 'accounting', 'reversal-transition-schema.sql');
+  if (!fs.existsSync(reversalTransitionSchemaPath)) throw new Error('Falta la migración de reversos contables; se conserva la base de datos y se detiene el inicio.');
+  const reversalTransitionMigration = applyAccountingMigration({ db, schemaSql: fs.readFileSync(reversalTransitionSchemaPath, 'utf8'), migrationKey: 'accounting-journal-reversal-transition-v1', persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
+  if (reversalTransitionMigration.applied) console.info('Migración de transición de reversos aplicada sin eliminar datos existentes:', reversalTransitionMigration.migrationKey);
   const stateRowForSequenceMigration = one('SELECT payload FROM app_state WHERE id=1');
   const sequenceMigrationApplied = migrateCashboxSequenceCategories({ db, state: stateRowForSequenceMigration ? JSON.parse(stateRowForSequenceMigration.payload) : {}, persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
   if (opened.recovered && !sequenceMigrationApplied) persistDb();
@@ -1400,6 +1404,7 @@ function registerAccountingIpc() {
         const original=one('SELECT status FROM journal_entries WHERE id=?',[entry.reversesEntryId]);
         if(!original||original.status!=='posted')throw new Error('El asiento original ya no está disponible para reverso.');
         run("UPDATE journal_entries SET status='reversed' WHERE id=? AND status='posted'",[entry.reversesEntryId]);
+        if (db.getRowsModified() !== 1) throw new Error('No se pudo marcar el asiento original como reversado.');
       }
       if(entry.sourceType==='asset_depreciation')run("UPDATE accounting_asset_depreciations SET status='posted' WHERE journal_entry_id=? AND status='draft'",[entry.id]);
       if(entry.reversesEntryId)run("UPDATE accounting_asset_depreciations SET status='reversed' WHERE journal_entry_id=? AND status='posted'",[entry.reversesEntryId]);
