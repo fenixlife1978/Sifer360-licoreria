@@ -106,3 +106,9 @@ Si no protege una obligación real ni la integridad, debe preferirse una adverte
 ---
 
 Estas reglas deben leerse antes de cada auditoría o modificación relevante de SIFER360-LICORERIA y prevalecen sobre convenciones genéricas que contradigan las decisiones expresas del proyecto.
+
+## Conservación de datos durante actualizaciones
+- Una instalación o actualización nunca debe borrar, reinicializar ni sobrescribir datos existentes del usuario.
+- SQLite permanece en app.getPath('userData'), fuera de la carpeta de instalación; NSIS/electron-updater no deben eliminarla.
+- Migraciones incrementales, transaccionales, idempotentes y versionadas; prohibido DROP TABLE, DELETE FROM, TRUNCATE, VACUUM o REPLACE INTO en migraciones.
+- Antes/después de cada migración: respaldo restaurable, PRAGMA integrity_check, rollback ante error y pruebas de actualización con datos representativos.
