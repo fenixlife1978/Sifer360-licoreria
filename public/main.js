@@ -819,12 +819,12 @@ function load(){
     if(!S.cfg.retIvaPct)S.cfg.retIvaPct=Number($('#fPctRet',el).value)||75;\n          S.cfg.retIslrHabilitada=$('#fRetIslr',el).checked===true;\n          S.cfg.agenteRetIva=S.cfg.retencionHabilitadaConfirmada;\n          S.cfg.agenteRetIslr=S.cfg.retIslrHabilitada;
     if(!S.cfg.provEspecial)S.cfg.provEspecial='';
     if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='00-';
-    if(!S.cfg.ctrlNext)S.cfg.ctrlNext=1043;
+    if(!S.cfg.ctrlNext)S.cfg.ctrlNext=1;
     if(!S.cfg.ctrlRangoDesde)S.cfg.ctrlRangoDesde='00-00000001';
     if(!S.cfg.ctrlRangoHasta)S.cfg.ctrlRangoHasta='00-00050000';
-    if(!S.cfg.imprentaRif)S.cfg.imprentaRif='J-31009988-4';
-    if(!S.cfg.imprentaAut)S.cfg.imprentaAut='SENIAT/DAF/2022/981';
-    if(!S.cfg.serialFiscal)S.cfg.serialFiscal='Z4A7719204';
+    if(!S.cfg.imprentaRif)S.cfg.imprentaRif='';
+    if(!S.cfg.imprentaAut)S.cfg.imprentaAut='';
+    if(!S.cfg.serialFiscal)S.cfg.serialFiscal='';
     (S.sales||[]).forEach(s=>{
       if(!s.ctrlNo)s.ctrlNo=(S.cfg.ctrlPrefix||'00-')+pad(s.no,8);
       if(!s.docType)s.docType='01-FACTURA';
@@ -6713,7 +6713,7 @@ function seniatSudebanDlg(initialTab){
         '<tr><td>RIF de la Empresa</td><td><b class="mono">'+esc(S.cfg.rif)+'</b></td></tr>'+
         '<tr><td>Condición Tributaria</td><td>'+(S.cfg.contribEspecial?'<span class="fiscal-tag ok">Sujeto Pasivo Especial</span>':'Contribuyente Ordinario')+'</td></tr>'+
         '<tr><td>Agente de Retención IVA</td><td>'+(S.cfg.contribEspecial?'Alícuota del '+S.cfg.retIvaPct+'%':'No aplica')+'</td></tr>'+
-        '<tr><td>Nº Providencia Notificación</td><td>'+esc(S.cfg.provEspecial||'SNAT/2023/000412')+'</td></tr>'+
+        '<tr><td>Nº Providencia Notificación</td><td>'+esc(S.cfg.provEspecial||'')+'</td></tr>'+
         '<tr><td>Imprenta Autorizada</td><td>'+esc(S.cfg.imprentaRif)+' ('+esc(S.cfg.imprentaAut)+')</td></tr>'+
       '</tbody></table>'+
     '</div>';
