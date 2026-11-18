@@ -34,7 +34,10 @@ test('la depreciación genera borradores en SQLite y exige aprobación del conta
   assert.match(main, /sourceType:'asset_depreciation'/);
   assert.match(main, /accounting_asset_depreciations/);
   assert.match(main, /actor\.actorRole!=='contador'/);
-  assert.match(preload, /accountingGenerateAssetDepreciationDrafts/);\n  assert.match(preload, /accountingListAssetAcquisitionEntries/);\n  assert.match(main, /accounting:list-asset-acquisition-entries/);\n  assert.match(main, /'accounting:list-fixed-assets','accounting:list-asset-acquisition-entries'/);
+  assert.match(preload, /accountingGenerateAssetDepreciationDrafts/);
+  assert.match(preload, /accountingListAssetAcquisitionEntries/);
+  assert.match(main, /accounting:list-asset-acquisition-entries/);
+  assert.match(main, /'accounting:list-fixed-assets','accounting:list-asset-acquisition-entries'/);
   assert.match(pos, /btnGenerateAssetDepreciation/);
   assert.match(pos, /accountingGenerateAssetDepreciationDrafts/);
 });
