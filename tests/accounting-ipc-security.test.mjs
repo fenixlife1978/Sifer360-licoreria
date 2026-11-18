@@ -67,7 +67,14 @@ test("la interfaz contable usa el token de sesión y no identidad enviada por re
   assert.ok(ui.includes("data-reverse-journal"));
 });
 
-test("el instalador no elimina el directorio de datos del usuario", () => {
+test("instalación y actualización preservan datos y crean respaldo durable previo", () => {
   assert.equal(builder.nsis.deleteAppDataOnUninstall, false);
   assert.ok(builder.files.includes("src/accounting/**/*"));
+  assert.ok(main.includes("path.join(app.getPath('userData'), 'sifer360-licoreria.sqlite')"));
+  assert.ok(main.includes("path.join(app.getPath('userData'), 'update-backups')"));
+  assert.ok(main.includes("fs.openSync(backupTemporary, 'wx', 0o600)"));
+  assert.ok(main.includes("fs.fsyncSync(backupFd)"));
+  assert.ok(main.includes("fs.renameSync(backupTemporary, backupPath)"));
+  assert.ok(main.includes("writtenBackup.equals(backupBytes)"));
+  assert.ok(main.includes("autoUpdater.quitAndInstall(false, true)"));
 });
