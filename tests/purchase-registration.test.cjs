@@ -77,3 +77,14 @@ test('abono inicial de compra usa la tasa actual del pago y conserva la moneda d
   assert.match(source,/initialPaymentMethod=METHODS\.find\(m=>m\.name===payMethod\)\|\|\{cur:'VES'\}/);
   assert.match(source,/cur:initialPaymentMethod\.cur,rate:initialPaymentRate,amountBs:r2\(effPaid\*initialPaymentRate\)/);
 });
+
+test('Compras es exclusivo del administrador y sus consecutivos no dependen de una caja',()=>{
+  assert.match(source,/function comprasDlg\(initialTab\)\{\s*const purchaseAdminBox='ADMIN';\s*if\(activeUser\(\)\.role!=='admin'\)/);
+  const start=source.indexOf('const processPurchase=async');
+  const end=source.indexOf('function cxcDlg',start);
+  const purchase=source.slice(start,end);
+  assert.doesNotMatch(purchase,/currentCaja\(\)/);
+  assert.match(purchase,/nextCajaSequence\('purchase',purchaseAdminBox\)/);
+  assert.match(purchase,/cashbox:purchaseAdminBox/);
+  assert.match(purchase,/String\(purchaseAdminBox\)/);
+});
