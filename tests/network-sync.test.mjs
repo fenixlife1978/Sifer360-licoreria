@@ -233,7 +233,7 @@ test('los guardados SQLite locales revierten el cambio en memoria si falla la pe
   assert.match(electron, /function persistMutation\(mutate\)/);
   assert.match(electron, /const snapshot = db\.export\(\)/);
   assert.match(electron, /restoreDatabaseSnapshot\(snapshot\)/);
-  assert.match(electron, /persistMutation\(\(\) => run\('INSERT INTO app_state/);
+  assert.match(electron, /persistMutation\(\(\) => \{[\s\S]*?INSERT INTO app_state/);
   assert.match(electron, /persistMutation\(\(\) => run\('INSERT OR REPLACE INTO fiscal_documents/);
   assert.match(electron, /persistMutation\(\(\) => run\('DELETE FROM fiscal_documents/);
 });
