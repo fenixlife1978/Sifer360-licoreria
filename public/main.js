@@ -5183,7 +5183,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     baseG16:t.baseG16,baseR8:t.baseR8,baseA31:t.baseA31,baseEx:t.baseEx,
     iva:t.iva,total:t.total,igtf:st.igtf,rate:S.cfg.rate,pays,
     change:r2(st.change),credit:creditAmt,void:false,
-    ticketFiscalOut:Array.from(ticketFiscalOutByCode.entries()).map(([code,qty])=>({code,qty})),
+    ticketFiscalOut:Array.from(ticketFiscalOutLines.reduce((byCode,line)=>byCode.set(line.code,(byCode.get(line.code)||0)+Number(line.qty||0)),new Map()).entries()).map(([code,qty])=>({code,qty})),
     ticketFiscalOutLines:ticketFiscalOutLines.map(line=>({...line}))
   };
 
