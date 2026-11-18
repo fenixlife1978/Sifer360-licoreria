@@ -131,3 +131,23 @@ test('reprinting an already sent or uncertain hybrid ticket requires explicit du
   assert.match(main,/s\.documentMode==='HYBRID'&&s\.printStatus==='sent'&&!confirm\(/);
   assert.match(main,/s\.documentMode==='HYBRID'&&s\.printStatus==='uncertain'&&!confirm\(/);
 });
+
+function runSalePortion(sale,lines,mode,residual,fiscalRatio){
+  const start=main.indexOf('function salePortion(');
+  const end=main.indexOf('\\nfunction ticketFiscalOutPlan',start);
+  assert.ok(start>=0&&end>start,'salePortion helper exists');
+  const context={r2:value=>Math.round((Number(value)+Number.EPSILON)*100)/100,Number,Math};
+  vm.runInNewContext(main.slice(start,end)+';globalThis.run=salePortion;',context);
+  return context.run(sale,lines,mode,residual,fiscalRatio);
+}
+
+test('hybrid pack subtotal uses presentation quantity instead of base-unit quantity',()=>{
+  const sale={total:232,pays:[{method:'cash',amount:232}],igtf:0,change:0};
+  const fiscalLine={code:'PACK6',price:120,presentationPrice:120,qty:6,presentationQty:1,net:100,iva:16,taxRate:16};
+  const portion=runSalePortion(sale,[fiscalLine],'FISCAL',false,0.5);
+  assert.equal(portion.sub,120);
+  assert.equal(portion.disc,20);
+  assert.equal(portion.base,100);
+  assert.equal(portion.iva,16);
+  assert.equal(portion.total,116);
+});
