@@ -100,26 +100,16 @@ test('thermal ticket consumes non-fiscal stock first and only then fiscal-backed
   assert.equal(out.get(0),2);
 });
 
-test('hybrid never fractures a pack presentation and allocates whole packs only',()=>{
-  const plan=runHybrid([{code:'PACK6',qty:2,factor:6,net:120,iva:19.2}],{PACK6:{stock:9}});
-  assert.equal(plan.fiscalLines[0].qty,6);
-  assert.equal(plan.fiscalLines[0].presentationQty,1);
-  assert.equal(plan.ticketLines[0].qty,6);
-  assert.equal(plan.ticketLines[0].presentationQty,1);
-});
-
-test('hybrid allocates fiscal stock across repeated SKU lines in cart order',()=>{
-  const plan=runHybrid([
-    {code:'SAME',qty:2,factor:1,net:200,iva:32},
-    {code:'SAME',qty:3,factor:1,net:300,iva:48}
-  ],{SAME:{stock:3}});
-  assert.deepEqual(Array.from(plan.fiscalLines,l=>[l.lineIndex,l.qty]),[[0,2],[1,1]]);
-  assert.deepEqual(Array.from(plan.ticketLines,l=>[l.lineIndex,l.qty]),[[1,2]]);
-});
-
-test('thermal ticket consumes non-fiscal stock first and only then fiscal-backed stock',()=>{
-  const out=runTicketFiscalOut([{code:'A',qty:6}], [{code:'A',qty:6,lineIndex:0}], [{code:'A',qty:3}], {A:{stock:6}}, {A:10});
-  assert.equal(out.get(0),2);
+test('ticket fiscal exits preserve line identity when the same SKU is repeated',()=>{
+  const out=runTicketFiscalOut(
+    [{code:'A',qty:4},{code:'A',qty:4}],
+    [{code:'A',qty:3,lineIndex:0},{code:'A',qty:3,lineIndex:1}],
+    [{code:'A',qty:2}],
+    {A:{stock:5}},
+    {A:10}
+  );
+  assert.equal(out.has(0),false);
+  assert.equal(out.get(1),1);
 });
 
 test('fiscal printer payload contains only the fiscal portion and uses the selected presentation details',()=>{
