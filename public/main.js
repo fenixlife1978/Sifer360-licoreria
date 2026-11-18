@@ -3612,7 +3612,7 @@ function cxpDlg(selId){
   '</div>');
 
   const draw=()=>{
-    const now=Date.now(), rate=S.cfg.rate, all=(S.cxp||[]).filter(x=>!x.void&&String(x.cashbox||currentCaja())===currentCaja());
+    const now=Date.now(), rate=S.cfg.rate, adminMode=activeUser().role==='admin', all=(S.cxp||[]).filter(x=>!x.void&&(adminMode||String(x.cashbox||currentCaja())===currentCaja()));
     const totPend=r8(all.reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
     const totOver=r8(all.filter(x=>r8(Number(x.total||0)-Number(x.paid||0))>=0.00000001&&x.dueTs<now).reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
     const totVig=r8(Math.max(0,totPend-totOver));
