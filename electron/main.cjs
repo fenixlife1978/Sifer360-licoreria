@@ -18,6 +18,7 @@ const { getCashboxSequenceMinimum } = require('./cashbox-sequence-minimum.cjs');
 const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
 const { createPasswordHash, verifyPassword, normalizeLegacyUser, publicUser } = require('./auth-credentials.cjs');
 const { createAccountingSessionGuard } = require('./accounting-auth.cjs');
+const { assertAccountingSettingsChange, assertAccountingPeriodChange } = require('./accounting-policy.cjs');
 const { buildAccountingSourceEvents } = require('../src/accounting/source-events.cjs');
 const FiscalPrinterManager = require('./fiscal-printer-manager.cjs');
 const { createLegacyBackupTaskRetirer } = require('./legacy-backup-task.cjs');
@@ -1049,6 +1050,10 @@ function registerAccountingIpc() {
     if (!policyVersion || policyVersion.length > 80) throw new Error('Indica la versión de política contable aprobada.');
     const now = new Date().toISOString();
     const before = one('SELECT * FROM accounting_settings WHERE id=1');
+    const journalEntryCount = Number(one('SELECT COUNT(*) AS total FROM journal_entries').total || 0);
+    assertAccountingSettingsChange(before, {
+      accountingFramework: framework, functionalCurrency, presentationCurrency, monetaryDecimals: decimals
+    }, journalEntryCount);
     const dbSnapshot = db.export();
     db.run('BEGIN IMMEDIATE');
     try {
@@ -1160,8 +1165,9 @@ function registerAccountingIpc() {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(id) || !isValidIsoDate(startDate) || !isValidIsoDate(endDate) || startDate > endDate || !label || startDate.slice(0,7)!==id || endDate.slice(0,7)!==id) throw new Error('Período inválido: el identificador AAAA-MM debe coincidir con las fechas de inicio y fin.');
     const overlap = one('SELECT id FROM accounting_periods WHERE id<>? AND start_date<=? AND end_date>=? LIMIT 1', [id,endDate,startDate]);
     if (overlap) throw new Error('El período se solapa con el período contable ' + overlap.id + '.');
-    const existing = one('SELECT status FROM accounting_periods WHERE id=?', [id]);
-    if (existing && existing.status === 'closed') throw new Error('Un período cerrado no puede modificarse.');
+    const existing = one('SELECT status,start_date AS startDate,end_date AS endDate FROM accounting_periods WHERE id=?', [id]);
+    const periodEntryCount = Number(one('SELECT COUNT(*) AS total FROM journal_entries WHERE period_id=?', [id]).total || 0);
+    assertAccountingPeriodChange(existing, { startDate, endDate }, periodEntryCount);
     const now = new Date().toISOString();
     const dbSnapshot = db.export();
     db.run('BEGIN IMMEDIATE');
