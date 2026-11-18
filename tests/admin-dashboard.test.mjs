@@ -161,8 +161,8 @@ test('inventario integra el costo promedio ponderado y valoriza las existencias 
   assert.match(inventory, /Valor inventario a CPP/);
   assert.match(inventory, /Math\.max\(0,p\.stock\)\*Math\.max\(0,p\.cost\)/);
   assert.doesNotMatch(inventory, /data-f="cost"/);
-  assert.match(main, /const prevVal=Math\.max\(0,p\.stock\)\*p\.cost/);
-  assert.match(main, /const nextCost=nextStock>0\?r8\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
+  assert.match(main, /function calcWeightedPurchaseCost\(currentStock,currentCost,receivedQty,receivedCost\)/);
+  assert.match(main, /const nextCost=calcWeightedPurchaseCost\(p\.stock,p\.cost,l\.qty,l\.cost\)/);
 });
 
 test('compras acepta y conserva hasta ocho decimales en costos, precios, subtotales, IVA, total y CPP', () => {
@@ -170,13 +170,13 @@ test('compras acepta y conserva hasta ocho decimales en costos, precios, subtota
   assert.match(main, /const nf8=n=>[\s\S]*?toFixed\(8\)/);
   const comprasStart = main.indexOf('function comprasDlg(initialTab)');
   const compras = main.slice(comprasStart, main.indexOf('\nfunction cxcDlg', comprasStart));
-  assert.match(compras, /data-cpf="cost"[^>]*value="\'\+nf8\(l\.cost\)/);
+  assert.match(compras, /data-cpf="cost"[^>]*required value="\'\+\(l\.cost===null\?\'\':nf8\(l\.cost\)\)/);
   assert.match(compras, /data-cpf="price" value="\'\+nf8\(l\.price\)/);
   assert.match(compras, /const base=r8\(pLines\.reduce/);
   assert.match(compras, /const iva=docType==='FACTURA_FISCAL'\?r8\(pLines\.reduce/);
   assert.match(compras, /const tot=r8\(base\+iva\)/);
-  assert.match(compras, /if\(t\.dataset\.cpf==='cost'\)\{l\.cost=r8\(val\);l\.costEdited=true;\}/);
-  assert.match(compras, /const nextCost=nextStock>0\?r8\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
+  assert.match(compras, /if\(t\.dataset\.cpf==='cost'\)\{const cost=pnZero\(t\.value\);l\.cost=cost===null\?null:r8\(cost\);l\.costEdited=true;\}/);
+  assert.match(compras, /const projectedCost=calcWeightedPurchaseCost\(stock,p\.cost,l\.qty,l\.cost\)/);
   assert.match(main, /nf8\(p\.cost\)/);
 });
 
