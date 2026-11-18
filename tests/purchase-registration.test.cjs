@@ -38,9 +38,9 @@ test('RegistrarCompra propone precio con el motor del producto y permite desacti
 
 test('RegistrarCompra muestra último costo, CPP actual y CPP proyectado antes de confirmar',()=>{
   assert.match(source,/getLastPurchaseCost/);
-  assert.match(source,/Último costo proveedor \(sin IVA\) US\$/);
+  assert.match(source,/Último precio de este proveedor \(sin IVA\) US\$/);
   assert.match(source,/CPP actual US\$/);
-  assert.match(source,/Nuevo costo de compra \(sin IVA\) US\$/);
+  assert.match(source,/Nuevo precio unitario de compra \(sin IVA\) US\$/);
   assert.match(source,/CPP resultante US\$/);
   assert.match(source,/getLastPurchaseCost\(l\.code\)/);
   assert.match(source,/nf8\(projectedCost\)/);
