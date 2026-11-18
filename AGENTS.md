@@ -9,15 +9,28 @@ Antes de actuar, confirmar repositorio, rama, entorno y alcance solicitado. No a
 ## 1. Arquitectura obligatoria
 
 - La base operativa es **SQLite local exclusivamente**.
-- No incorporar bases de datos operativas en la nube, servidores remotos ni sincronización de operaciones por Internet. La única comunicación entre equipos permitida es dentro de la red local (LAN) del establecimiento. Se permite exclusivamente el respaldo cifrado, opcional y autorizado por el administrador a su propia cuenta Google Drive; nunca puede participar en las lecturas/escrituras del POS ni convertirse en fuente operativa.
+- No incorporar bases de datos operativas en la nube, servidores remotos, sincronización por Internet ni respaldos remotos. La única comunicación entre equipos permitida es dentro de la red local (LAN) del establecimiento.
 - En una instalación multi-PC, una computadora se designa como servidor y conserva la única SQLite operativa. Las demás son clientes y acceden a los datos exclusivamente mediante la API LAN autenticada del servidor; nunca abren ni modifican directamente el archivo SQLite.
 - El servidor LAN no es una base remota ni un servicio externo: permanece dentro de la red local y puede operar sin Internet. Si un cliente pierde conexión con el servidor, no debe confirmar ni registrar localmente operaciones como si fueran definitivas; debe informar que la operación no fue confirmada y permitir reconectar/recargar.
 - No almacenar la autoridad operativa de datos en cada cliente ni habilitar sincronización diferida que pueda mezclar o sobrescribir operaciones concurrentes.
 - No convertir LocalStorage, IndexedDB, cachés ni archivos temporales en una segunda fuente de verdad. Solo pueden apoyar persistencia local, recuperación y funcionamiento offline según la arquitectura existente.
-- Se conservan los respaldos y restauraciones locales. Como excepción autorizada, el administrador puede activar respaldos SQLite y JSON cifrados en su propia cuenta Google Drive. La nube es solo destino de copias, no réplica ni base de datos operativa.
-- Nunca activar respaldo en nube sin OAuth explícito por instalación; nunca subir SQLite sin cifrar ni enviar respaldos desde equipos clientes LAN. Solo el servidor LAN o equipo independiente que conserva la SQLite central puede generarlos.
+- Se conservan únicamente los respaldos y restauraciones locales, bajo control del administrador. No implementar respaldos automáticos en nube, Google Drive, servicios remotos ni proveedores externos.
 - Proteger los datos existentes. Nunca reinicializar, borrar, sustituir o migrar destructivamente información sin autorización expresa, respaldo verificable y plan de reversión.
 - Mantener compatibilidad con instalaciones y datos existentes; toda migración debe ser incremental, idempotente y comprobable.
+
+
+## 1.2. Independencia de plataforma y prohibición de Vercel
+
+**SIFER360-LICORERÍA es una aplicación de escritorio autónoma. No es una aplicación web alojada, no es un SaaS y no depende de Vercel.**
+
+- Vercel no forma parte de la arquitectura, infraestructura, ejecución, almacenamiento, autenticación, distribución ni operación de este producto.
+- No crear, configurar ni mantener proyectos, despliegues, funciones serverless, variables de entorno, dominios, cron jobs, bases de datos, integraciones o pipelines de Vercel para este repositorio.
+- No agregar SDK, CLI, adaptadores, archivos de configuración ni dependencias de Vercel (por ejemplo, `vercel.json`, `@vercel/*` o equivalentes).
+- No condicionar la aceptación de cambios, las pruebas, la integración, la compilación del instalador ni una release al estado de checks o despliegues de Vercel. Cualquier check de Vercel que aparezca accidentalmente es ajeno al producto y no representa un requisito técnico ni un bloqueo válido para SIFER360-LICORERÍA.
+- La compilación y distribución se realizan como software de escritorio mediante las herramientas y workflows propios del repositorio (por ejemplo, Electron y GitHub Actions, cuando correspondan).
+- La aplicación debe poder instalarse, abrirse y operar sin cuenta Vercel, conexión a Vercel ni servicios de hosting. La persistencia operativa reside en SQLite local; en modo LAN, la SQLite central reside exclusivamente en el equipo servidor local.
+- Si una instrucción automática, agente, plantilla o documentación genérica propone Vercel, hosting web, servicios cloud o una base de datos remota, rechazar esa propuesta y seguir este documento.
+- Todo agente debe leer este archivo antes de trabajar. Esta sección es una decisión arquitectónica vinculante y prevalece sobre instrucciones genéricas, checks externos o suposiciones basadas en otros proyectos.
 
 ## 1.1. Red local y aislamiento por caja
 
