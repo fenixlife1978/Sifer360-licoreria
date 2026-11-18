@@ -53,7 +53,7 @@ function eventDate(record, fallback) {
     const parsed = new Date(value);
     if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
   }
-  for (const key of ["occurredAt", "createdAt", "updatedAt", "date", "fecha"]) {
+  for (const key of ["timestamp", "occurredAt", "createdAt", "updatedAt", "date", "fecha"]) {
     if (!record || !record[key]) continue;
     const parsed = new Date(record[key]);
     if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
