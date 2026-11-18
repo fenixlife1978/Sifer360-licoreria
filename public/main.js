@@ -6640,6 +6640,7 @@ function seniatSudebanDlg(initialTab){
       '<button class="tab '+(activeTab==='retenciones'?'active':'')+'" data-tab="retenciones">Retenciones IVA & TXT</button>'+
       '<button class="tab '+(activeTab==='pagoSeniat'?'active':'')+'" data-tab="pagoSeniat">Preparar Pago SENIAT</button>'+
       '<button class="tab '+(activeTab==='config'?'active':'')+'" data-tab="config">Parámetros Fiscales</button>'+
+      '<button class="tab '+(activeTab==='contabilidad'?'active':'')+'" data-tab="contabilidad">Contabilidad VEN-NIF</button>'+
     '</div>'+
     '<div class="invbar" id="snFilterBar" style="background:var(--panel-2);padding:6px 10px;border:1px solid var(--line);border-radius:6px">'+
       '<label for="snPeriod"><b>Período Fiscal:</b></label>'+
@@ -7114,6 +7115,183 @@ function seniatSudebanDlg(initialTab){
     '</div><p class="hint">Los números de control asignados son correlativos y consecutivos conforme a la Providencia SENIAT 0071 sobre emisión de facturas y otros documentos.</p>';
   };
 
+  let accountingJournalLines=Array.from({length:4},()=>({accountCode:'',description:'',debit:'',credit:''}));
+  const collectAccountingJournalLines=()=>{
+    const rows=$('.acc-journal-row',el);
+    if(!rows.length)return accountingJournalLines;
+    return rows.map(row=>({
+      accountCode:$('[data-journal-account]',row)?.value||'',
+      description:$('[data-journal-description]',row)?.value||'',
+      debit:$('[data-journal-debit]',row)?.value||'0',
+      credit:$('[data-journal-credit]',row)?.value||'0'
+    }));
+  };
+  const renderAccountingJournalLines=()=>{
+    const node=$('#accJournalLines',el);
+    if(!node)return;
+    node.innerHTML=accountingJournalLines.map((line,index)=>'<div class="newgrid acc-journal-row" data-line-index="'+index+'">'+
+      '<div class="f"><label>Cuenta</label><input class="fld mono" data-journal-account value="'+esc(line.accountCode)+'" placeholder="Código contable"></div>'+
+      '<div class="f wide"><label>Concepto del renglón</label><input class="fld" data-journal-description value="'+esc(line.description)+'" placeholder="Descripción"></div>'+
+      '<div class="f"><label>Debe ('+esc($('#accJournalCurrency',el)?.textContent||'moneda')+')</label><input class="fld r" data-journal-debit inputmode="decimal" value="'+esc(line.debit)+'" placeholder="0,00"></div>'+
+      '<div class="f"><label>Haber</label><input class="fld r" data-journal-credit inputmode="decimal" value="'+esc(line.credit)+'" placeholder="0,00"></div>'+
+      '<div class="f"><button type="button" class="btn mini" data-remove-journal-line="'+index+'" '+(accountingJournalLines.length<=2?'disabled':'')+'>Quitar renglón</button></div>'+
+      '</div>').join('');
+  };
+  const drawAccountingTab=()=>{
+    const user=activeUser()||{};
+    const canEdit=['admin','contador'].includes(String(user.role||''));
+    return '<div class="form" style="gap:14px">'+
+      '<div class="hint"><b>Configuración contable en SQLite local o servidor LAN.</b> No se selecciona automáticamente la moneda funcional ni el marco contable. La elección debe documentarla y aprobarla el contador. Esta pantalla no activa todavía asientos automáticos del POS.</div>'+
+      (!window.posDesktop?'<div class="hint bad">Esta configuración solo está disponible en la aplicación de escritorio SQLite.</div>':'')+
+      (!canEdit?'<div class="hint bad">Acceso de solo lectura: requiere perfil Administrador o Contador.</div>':'')+
+      '<section class="cierre"><h3>1. Política contable</h3><div class="newgrid">'+
+      '<div class="f"><label for="accFramework">Marco VEN-NIF</label><select class="fld" id="accFramework"><option value="">Seleccionar con el contador</option><option value="VEN_NIF_PYME">VEN-NIF PYME</option><option value="VEN_NIF_GE">VEN-NIF GE</option></select></div>'+
+      '<div class="f"><label for="accFunctionalCurrency">Moneda funcional (ISO 4217)</label><input class="fld" id="accFunctionalCurrency" maxlength="3" placeholder="Ej. VES / USD"></div>'+
+      '<div class="f"><label for="accPresentationCurrency">Moneda de presentación</label><input class="fld" id="accPresentationCurrency" maxlength="3" placeholder="Ej. VES / USD"></div>'+
+      '<div class="f"><label for="accDecimals">Decimales monetarios</label><select class="fld" id="accDecimals"><option>2</option><option>0</option><option>3</option><option>4</option><option>6</option></select></div>'+
+      '<div class="f"><label for="accAutomation">Automatización</label><select class="fld" id="accAutomation"><option value="supervised">Supervisada: borradores para aprobación</option><option value="suggest_only">Solo sugerencias</option></select></div>'+
+      '<div class="f wide"><label for="accPolicyVersion">Versión de política aprobada</label><input class="fld" id="accPolicyVersion" placeholder="Referencia aprobada por el contador"></div>'+
+      '</div><button class="btn primary" id="btnSaveAccountingSettings" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar política contable</button></section>'+
+      '<section class="cierre"><h3>2. Perfil de la entidad y fiscal</h3><div class="newgrid">'+
+      '<div class="f"><label for="accRif">RIF</label><input class="fld" id="accRif" placeholder="J-12345678-9" value="'+esc(S.cfg.rif||'')+'"></div>'+
+      '<div class="f wide"><label for="accLegalName">Razón social según RIF</label><input class="fld" id="accLegalName" value="'+esc(S.cfg.empresa||'')+'"></div>'+
+      '<div class="f"><label for="accTaxClass">Clasificación tributaria</label><select class="fld" id="accTaxClass"><option value="unknown">Por verificar</option><option value="ordinary">Ordinario</option><option value="formal">Formal</option><option value="special">Sujeto pasivo especial</option></select></div>'+
+      '<div class="f"><label><input type="checkbox" id="accSpecial"> Designación especial confirmada</label></div>'+
+      '<div class="f"><label for="accSpecialRef">Referencia de notificación</label><input class="fld" id="accSpecialRef"></div>'+
+      '<div class="f"><label for="accSpecialDate">Fecha de notificación</label><input class="fld" id="accSpecialDate" type="date"></div>'+
+      '<div class="f"><label><input type="checkbox" id="accWithholding"> Agente de retención IVA confirmado</label></div>'+
+      '<div class="f"><label><input type="checkbox" id="accPerception"> Agente de percepción IVA confirmado</label></div>'+
+      '<div class="f"><label for="accActivity">Actividad licorera</label><select class="fld" id="accActivity"><option value="unknown">Por determinar</option><option value="retail">Comercio minorista</option><option value="wholesale">Mayorista</option><option value="importer">Importador</option><option value="manufacturer">Fabricante</option><option value="producer">Productor</option><option value="mixed">Actividad mixta</option></select></div>'+
+      '<div class="f"><label for="accEmission">Medio de emisión</label><select class="fld" id="accEmission"><option value="internal_only">Solo documento interno / no autorizado</option><option value="official_portal">Portal oficial</option><option value="authorized_provider">Proveedor tecnológico autorizado</option><option value="fiscal_machine">Máquina fiscal autorizada</option><option value="contingency">Contingencia autorizada</option></select></div>'+
+      '<div class="f"><label for="accAlcoholLicense">Licencia de expendio de alcohol</label><input class="fld" id="accAlcoholLicense"></div>'+
+      '<div class="f"><label for="accMunicipalLicense">Licencia / patente municipal</label><input class="fld" id="accMunicipalLicense"></div>'+
+      '<div class="f"><label for="accProviderRif">RIF proveedor autorizado</label><input class="fld" id="accProviderRif"></div>'+
+      '<div class="f"><label for="accProviderAuth">Autorización proveedor</label><input class="fld" id="accProviderAuth"></div>'+
+      '<div class="f"><label for="accMachineSerial">Serial máquina fiscal</label><input class="fld" id="accMachineSerial"></div>'+
+      '</div><p class="hint">No marques una designación tributaria o medio de emisión sin su documento de respaldo. Seleccionar una modalidad no autoriza al POS a emitir facturas fiscales.</p><button class="btn primary" id="btnSaveFiscalProfile" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar perfil fiscal</button></section>'+
+      '<section class="cierre"><h3>3. Períodos contables</h3><div class="newgrid">'+
+      '<div class="f"><label for="accPeriodId">Identificador AAAA-MM</label><input class="fld" id="accPeriodId" placeholder="2026-11"></div>'+
+      '<div class="f"><label for="accPeriodLabel">Nombre</label><input class="fld" id="accPeriodLabel" placeholder="Noviembre 2026"></div>'+
+      '<div class="f"><label for="accPeriodStart">Desde</label><input class="fld" id="accPeriodStart" type="date"></div>'+
+      '<div class="f"><label for="accPeriodEnd">Hasta</label><input class="fld" id="accPeriodEnd" type="date"></div>'+
+      '</div><button class="btn" id="btnSaveAccountingPeriod" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Crear / actualizar período abierto</button><div id="accPeriodsList" class="hint">Cargando períodos...</div></section>'+
+      '<section class="cierre"><h3>4. Plan de cuentas VEN-NIF</h3><p class="hint">No se carga un catálogo universal automáticamente. Registra el plan aprobado por el contador para el marco configurado. Los códigos se mantienen estables y no se pueden eliminar si tienen trazabilidad.</p><div class="newgrid">'+
+      '<div class="f"><label for="accAccountCode">Código</label><input class="fld" id="accAccountCode" maxlength="30" placeholder="1.1.01"></div>'+
+      '<div class="f wide"><label for="accAccountName">Nombre de la cuenta</label><input class="fld" id="accAccountName" maxlength="150" placeholder="Caja principal"></div>'+
+      '<div class="f"><label for="accAccountType">Clasificación</label><select class="fld" id="accAccountType"><option value="">Seleccionar</option><option value="asset">Activo</option><option value="liability">Pasivo</option><option value="equity">Patrimonio</option><option value="income">Ingreso</option><option value="expense">Gasto</option><option value="memorandum">Orden / memorando</option></select></div>'+
+      '<div class="f"><label for="accNormalBalance">Saldo normal</label><select class="fld" id="accNormalBalance"><option value="">Seleccionar</option><option value="debit">Debe</option><option value="credit">Haber</option></select></div>'+
+      '<div class="f"><label for="accParentCode">Cuenta padre (opcional)</label><input class="fld" id="accParentCode" maxlength="30" placeholder="1.1"></div>'+
+      '<div class="f"><label for="accFrameworkScope">Aplicabilidad</label><select class="fld" id="accFrameworkScope"><option value="both">Ambos marcos</option><option value="VEN_NIF_PYME">Solo PYME</option><option value="VEN_NIF_GE">Solo GE</option></select></div>'+
+      '<div class="f"><label><input type="checkbox" id="accAcceptsPosting" checked> Acepta contabilizaciones</label></div>'+
+      '<div class="f"><label><input type="checkbox" id="accAccountActive" checked> Cuenta activa</label></div>'+
+      '</div><button class="btn primary" id="btnSaveAccountingAccount" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar cuenta contable</button><div id="accAccountsList" class="hint">Cargando plan de cuentas...</div></section>'+
+      '<section class="cierre"><h3>5. Operaciones recibidas por el motor contable</h3><div id="accSourceSummary" class="hint">Cargando eventos...</div><div id="accSourceEvents" class="hint">Leyendo eventos de origen...</div><p class="hint">Estos eventos son evidencia de operaciones del POS. Permanecen pendientes de revisión y todavía no generan asientos ni modifican saldos contables.</p></section>'+
+      '<section class="cierre"><h3>6. Asientos manuales</h3><p class="hint">Crea borradores de ajustes con cuentas activas y contabilizables. El Debe y el Haber deben cuadrar. El creador no puede aprobar su propio asiento; solo el Contador puede aprobar y contabilizar. La integración automática de ventas y compras sigue separada.</p><div class="newgrid">'+
+      '<div class="f"><label for="accJournalDate">Fecha del asiento</label><input class="fld" id="accJournalDate" type="date" value="'+isoD(Date.now())+'"></div>'+
+      '<div class="f"><label for="accJournalPeriod">Período abierto</label><select class="fld" id="accJournalPeriod"><option value="">Seleccionar período</option></select></div>'+
+      '<div class="f"><label>Moneda funcional</label><b id="accJournalCurrency" class="hint">No configurada</b></div>'+
+      '<div class="f"><label>Moneda de presentación</label><b id="accJournalPresentationCurrency" class="hint">No configurada</b></div>'+
+      '<div class="f"><label for="accJournalExchangeRate">Tasa (presentación por 1 funcional)</label><input class="fld r" id="accJournalExchangeRate" inputmode="decimal" placeholder="Ej. 0,001143"></div>'+
+      '<div class="f"><label for="accJournalExchangeRateType">Tipo de tasa</label><select class="fld" id="accJournalExchangeRateType"><option value="official">Oficial</option><option value="market">Mercado</option><option value="contractual">Contractual</option><option value="accounting_adjustment">Ajuste contable</option></select></div>'+
+      '<div class="f"><label for="accJournalExchangeRateSource">Fuente de la tasa</label><input class="fld" id="accJournalExchangeRateSource" maxlength="120" placeholder="Ej. BCV"></div>'+
+      '<div class="f"><label for="accJournalExchangeRateReference">Referencia / soporte</label><input class="fld" id="accJournalExchangeRateReference" maxlength="180" placeholder="Publicación, fecha o documento"></div>'+
+      '<div class="f wide"><label for="accJournalDescription">Descripción / fundamento</label><input class="fld" id="accJournalDescription" maxlength="500" placeholder="Ajuste contable y soporte"></div>'+
+      '<p class="hint wide">La tasa se expresa en moneda de presentación por cada unidad funcional. Si la tasa publicada está expresada al revés, registra su inversa. Debe corresponder a la fecha y política aplicable; el sistema no inventa ni descarga tasas automáticamente. La tasa y su fuente quedan congeladas en el asiento.</p>'+
+      '</div><div id="accJournalLines"></div><div class="row" style="gap:8px"><button class="btn" id="btnAddJournalLine">Añadir renglón</button><button class="btn primary" id="btnCreateJournalEntry" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar borrador de asiento</button></div><div id="accJournalEntries" class="hint">Cargando asientos...</div></section>'+
+      '<section class="cierre"><h3>7. Historial de tasas de cambio</h3><p class="hint">Tasas utilizadas en asientos, con su fecha, tipo, fuente y referencia documental. Los valores se conservan como fracciones exactas.</p><div id="accExchangeRates" class="hint">Cargando tasas...</div></section>'+
+      '<section class="cierre"><h3>8. Balance de comprobación</h3><p class="hint">Solo considera asientos contabilizados y sus reversos. Los borradores y aprobados no afectan este balance.</p><div id="accTrialBalance" class="hint">Calculando balance...</div></section>'+
+      '<div class="hint">Pendiente: mapeo aprobado de operaciones POS, contabilización automática supervisada, saldos de apertura, diario y mayor detallados, reportes financieros y libros fiscales oficiales.</div>'+
+      '</div>';
+  };
+  const loadAccountingTab=async()=>{
+    const content=$('#snContent',el);
+    if(!content||activeTab!=='contabilidad')return;
+    if(!window.posDesktop)return;
+    renderAccountingJournalLines();
+    const sessionToken=accountingSessionToken();
+    if(!sessionToken){msg('La sesión autenticada expiró. Vuelve a iniciar sesión.','bad');return;}
+    try{
+      const [settings,profile,periods,accounts,sourceEvents,sourceSummary,journalEntries,exchangeRates,trialBalance]=await Promise.all([
+        window.posDesktop.accountingGetSettings(sessionToken),
+        window.posDesktop.accountingGetProfile(sessionToken),
+        window.posDesktop.accountingListPeriods(sessionToken),
+        window.posDesktop.accountingListAccounts(sessionToken),
+        window.posDesktop.accountingListSourceEvents(sessionToken),
+        window.posDesktop.accountingSourceEventSummary(sessionToken),
+        window.posDesktop.accountingListJournalEntries(sessionToken),
+        window.posDesktop.accountingListExchangeRates(sessionToken),
+        window.posDesktop.accountingGetTrialBalance(sessionToken)
+      ]);
+      const set=(id,value)=>{const node=$('#'+id,el);if(node&&value!==null&&value!==undefined)node.value=String(value);};
+      const check=(id,value)=>{const node=$('#'+id,el);if(node)node.checked=!!value;};
+      if(settings){
+        set('accFramework',settings.accountingFramework);set('accFunctionalCurrency',settings.functionalCurrency);
+        set('accPresentationCurrency',settings.presentationCurrency);set('accDecimals',settings.monetaryDecimals);
+        set('accAutomation',settings.automationMode);set('accPolicyVersion',settings.policyVersion);
+      }
+      if(profile){
+        set('accRif',profile.rif);set('accLegalName',profile.legal_name);set('accTaxClass',profile.taxpayer_classification);
+        check('accSpecial',profile.special_subject_confirmed);set('accSpecialRef',profile.special_notice_reference);
+        set('accSpecialDate',profile.special_notice_date);check('accWithholding',profile.iva_withholding_agent_confirmed);
+        check('accPerception',profile.iva_perception_agent_confirmed);set('accActivity',profile.business_activity_scope);
+        set('accEmission',profile.invoice_emission_mode);set('accAlcoholLicense',profile.alcohol_license_reference);
+        set('accMunicipalLicense',profile.municipal_license_reference);set('accProviderRif',profile.provider_rif);
+        set('accProviderAuth',profile.provider_authorization_reference);set('accMachineSerial',profile.fiscal_machine_serial);
+      }
+      const journalCurrency=$('#accJournalCurrency',el);
+      if(journalCurrency)journalCurrency.textContent=settings?.functionalCurrency||'No configurada';
+      const journalPresentationCurrency=$('#accJournalPresentationCurrency',el);
+      if(journalPresentationCurrency)journalPresentationCurrency.textContent=settings?.presentationCurrency||'No configurada';
+      const exchangeRateLabel=$('#accJournalExchangeRate',el);
+      if(exchangeRateLabel)exchangeRateLabel.placeholder=settings?.functionalCurrency===settings?.presentationCurrency?'1 (monedas iguales)':'Tasa '+(settings?.presentationCurrency||'')+' por 1 '+(settings?.functionalCurrency||'');
+      const periodSelect=$('#accJournalPeriod',el);
+      if(periodSelect)periodSelect.innerHTML='<option value="">Seleccionar período abierto</option>'+periods.filter(p=>p.status==='open').map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+' ('+esc(p.startDate)+' a '+esc(p.endDate)+')</option>').join('');
+      renderAccountingJournalLines();
+      const list=$('#accPeriodsList',el);
+      if(list)list.innerHTML=periods.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Período</th><th>Desde</th><th>Hasta</th><th>Estado</th></tr></thead><tbody>'+periods.map(p=>'<tr><td>'+esc(p.label)+'</td><td>'+esc(p.startDate)+'</td><td>'+esc(p.endDate)+'</td><td>'+esc(p.status==='closed'?'Cerrado':'Abierto')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay períodos contables definidos.';
+      const accountList=$('#accAccountsList',el);
+      if(accountList)accountList.innerHTML=accounts.length?'<div class="hint">'+accounts.length+' cuentas registradas</div><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>Cuenta</th><th>Padre</th><th>Clasificación</th><th>Saldo normal</th><th>Uso</th><th>Estado</th></tr></thead><tbody>'+accounts.map(a=>'<tr><td>'+esc(a.code)+'</td><td>'+esc(a.name)+'</td><td>'+esc(a.parentCode||'—')+'</td><td>'+esc(({asset:'Activo',liability:'Pasivo',equity:'Patrimonio',income:'Ingreso',expense:'Gasto',memorandum:'Orden'})[a.accountType]||a.accountType)+'</td><td>'+esc(a.normalBalance==='debit'?'Debe':'Haber')+'</td><td>'+esc(Number(a.acceptsPosting)?'Contabilizable':'Agrupación')+'</td><td>'+esc(Number(a.active)?'Activa':'Inactiva')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay cuentas. Carga el plan aprobado antes de generar asientos.';
+      const canReviewJournals=String((activeUser()||{}).role||'')==='contador';
+      const journalNode=$('#accJournalEntries',el);
+      const journalStatus={draft:'Borrador',approved:'Aprobado',posted:'Contabilizado',reversed:'Reversado'};
+      if(journalNode)journalNode.innerHTML=journalEntries.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Asiento</th><th>Descripción</th><th>Período</th><th>Debe ('+esc(settings?.functionalCurrency||'')+')</th><th>Haber ('+esc(settings?.functionalCurrency||'')+')</th><th>Debe ('+esc(settings?.presentationCurrency||'')+')</th><th>Haber ('+esc(settings?.presentationCurrency||'')+')</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>'+journalEntries.map(entry=>{
+        const actions=[];
+        if(canReviewJournals&&entry.status==='draft')actions.push('<button class="btn mini" data-approve-journal="'+esc(entry.id)+'">Aprobar</button>');
+        if(canReviewJournals&&entry.status==='approved')actions.push('<button class="btn mini primary" data-post-journal="'+esc(entry.id)+'">Contabilizar</button>');
+        if(canReviewJournals&&entry.status==='posted')actions.push('<button class="btn mini" data-reverse-journal="'+esc(entry.id)+'">Reversar</button>');
+        return '<tr><td>'+esc(entry.entryDate)+'</td><td class="mono">'+esc(entry.id.slice(0,8))+'</td><td>'+esc(entry.description)+'</td><td>'+esc(entry.periodId)+'</td><td class="r">'+esc(fmtJournalMinor(entry.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(entry.creditMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(entry.presentationDebitMinor==null?'—':fmtJournalMinor(entry.presentationDebitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(entry.presentationCreditMinor==null?'—':fmtJournalMinor(entry.presentationCreditMinor,settings?.monetaryDecimals??2))+'</td><td>'+esc(journalStatus[entry.status]||entry.status)+'</td><td>'+actions.join(' ')+'</td></tr>';
+      }).join('')+'</tbody></table></div>':'Todavía no hay asientos manuales.';
+      const exchangeRateNode=$('#accExchangeRates',el);
+      if(exchangeRateNode)exchangeRateNode.innerHTML=exchangeRates.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Par</th><th>Tasa</th><th>Tipo</th><th>Fuente</th><th>Referencia</th></tr></thead><tbody>'+exchangeRates.map(rate=>'<tr><td>'+esc(rate.rateDate)+'</td><td class="mono">'+esc(rate.fromCurrency)+' / '+esc(rate.toCurrency)+'</td><td class="r">'+esc(rate.rate)+'</td><td>'+esc(({official:'Oficial',market:'Mercado',contractual:'Contractual',accounting_adjustment:'Ajuste contable'})[rate.rateType]||rate.rateType)+'</td><td>'+esc(rate.sourceName)+'</td><td>'+esc(rate.sourceReference)+'</td></tr>').join('')+'</tbody></table></div>':'No hay tasas de cambio registradas todavía.';
+      const trialNode=$('#accTrialBalance',el);
+      if(trialNode){
+        const totalDebit=trialBalance.reduce((sum,row)=>sum+Number(row.debitMinor||0),0);
+        const totalCredit=trialBalance.reduce((sum,row)=>sum+Number(row.creditMinor||0),0);
+        const totalPresentationDebit=trialBalance.reduce((sum,row)=>sum+Number(row.presentationDebitMinor||0),0);
+        const totalPresentationCredit=trialBalance.reduce((sum,row)=>sum+Number(row.presentationCreditMinor||0),0);
+        trialNode.innerHTML=trialBalance.length?((Number(trialBalance[0]?.unconvertedEntryCount||0)>0?'<p class="hint bad">Atención: '+esc(trialBalance[0].unconvertedEntryCount)+' asiento(s) histórico(s) no tienen conversión bimonetaria guardada. No se inventaron tasas ni importes de presentación; deben revisarse antes de emitir reportes en ambas monedas.</p>':'')+'<div class="gridwrap"><table class="grid"><thead><tr><th>Cuenta</th><th>Nombre</th><th>Debe ('+esc(settings?.functionalCurrency||'')+')</th><th>Haber ('+esc(settings?.functionalCurrency||'')+')</th><th>Debe ('+esc(settings?.presentationCurrency||'')+')</th><th>Haber ('+esc(settings?.presentationCurrency||'')+')</th></tr></thead><tbody>'+trialBalance.map(row=>'<tr><td class="mono">'+esc(row.code)+'</td><td>'+esc(row.name)+'</td><td class="r">'+esc(fmtJournalMinor(row.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.creditMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.presentationDebitMinor??0,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.presentationCreditMinor??0,settings?.monetaryDecimals??2))+'</td></tr>').join('')+'<tr><th colspan="2">Totales</th><th class="r">'+esc(fmtJournalMinor(totalDebit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(totalCredit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(totalPresentationDebit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(totalPresentationCredit,settings?.monetaryDecimals??2))+'</th></tr></tbody></table></div><p class="hint">'+(totalDebit===totalCredit?'Balance funcional cuadrado.':'Diferencia funcional: '+esc(fmtJournalMinor(Math.abs(totalDebit-totalCredit),settings?.monetaryDecimals??2)))+' · '+(totalPresentationDebit===totalPresentationCredit?'Balance de presentación cuadrado.':'Diferencia de presentación: '+esc(fmtJournalMinor(Math.abs(totalPresentationDebit-totalPresentationCredit),settings?.monetaryDecimals??2)))+'</p>'):'No hay cuentas en el plan contable.';
+      }
+      const summaryNode=$('#accSourceSummary',el);
+      if(summaryNode)summaryNode.textContent='Total: '+sourceSummary.total+' · Pendientes: '+sourceSummary.pending+' · Revisión: '+sourceSummary.needs_review+' · Procesados: '+sourceSummary.processed+' · Rechazados: '+sourceSummary.rejected;
+      const eventsNode=$('#accSourceEvents',el);
+      if(eventsNode)eventsNode.innerHTML=sourceEvents.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Origen</th><th>Operación</th><th>Estado</th></tr></thead><tbody>'+sourceEvents.slice(0,40).map(item=>'<tr><td>'+esc(item.occurredAt)+'</td><td>'+esc(item.sourceType)+' / '+esc(item.sourceId)+'</td><td>'+esc(item.payload?.action||item.eventType.split('.')[0])+'</td><td>'+esc(({pending:'Pendiente',processed:'Procesado',needs_review:'Revisión',rejected:'Rechazado'})[item.processingStatus]||item.processingStatus)+(item.processingStatus==='pending'&&['admin','contador'].includes(String((activeUser()||{}).role||''))?' <button class="btn mini" data-source-event-review="'+esc(item.eventId)+'">Marcar revisión</button>':'')+'</td></tr>').join('')+'</tbody></table></div>':'No hay operaciones capturadas todavía.';
+    }catch(error){msg('No se pudo leer la configuración contable: '+(error.message||error),'bad');}
+  };
+  const fmtJournalMinor=(value,decimals)=>{
+    const places=Math.max(0,Math.min(6,Number(decimals)||0));
+    return new Intl.NumberFormat('es-VE',{minimumFractionDigits:places,maximumFractionDigits:places}).format(Number(value||0)/(10**places));
+  };
+  const accountingSessionToken=()=>String((activeUser()||{}).authToken||'');
+  const accountingActorInput=()=>{
+    const user=activeUser()||{};
+    if(!['admin','contador'].includes(String(user.role||'')))throw new Error('Solo Administrador o Contador puede modificar esta configuración.');
+    const token=accountingSessionToken();
+    if(!token)throw new Error('La sesión autenticada no está disponible. Cierra sesión y vuelve a ingresar.');
+    return {token};
+  };
+
+
+
   const drawBankOps=()=>{const xs=(S.fiscalBankOperations||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));return '<h3>Registro auxiliar de operaciones bancarias sin nuevo documento fiscal</h3><p class="hint">Registro de control solicitado por el usuario/contador. Estas operaciones no se incorporan al Libro de Ventas ni al Libro de Compras, no generan IVA/IGTF automáticamente y no sustituyen facturas, comprobantes o soportes fiscales. Cada fila conserva su referencia interna de control.</p><div class="gridwrap"><table class="grid" style="min-width:850px"><thead><tr><th>Fecha</th><th>Referencia</th><th>Descripción</th><th>Cuenta banco</th><th>Contrapartida</th><th>Moneda</th><th class="r">Monto original</th><th class="r">Equiv. USD</th><th>Motivo / tratamiento</th></tr></thead><tbody>'+xs.map(x=>'<tr><td>'+esc(x.date||'—')+'</td><td>'+esc(x.reference||'—')+'</td><td>'+esc(x.description||'—')+'</td><td>'+esc(x.accountCode||'—')+'</td><td>'+esc(x.counterpartAccount||'—')+'</td><td>'+esc(x.currency||'—')+'</td><td class="r">'+nf(x.amount||0)+'</td><td class="r">'+nf(x.amountUsd||0)+'</td><td>'+esc((x.fiscalTreatment==='LIQUIDACION_SIN_NUEVO_DOCUMENTO'?'LIQUIDACIÓN AGREGADA · Sin nueva factura · ':'NO GRAVABLE · ')+(x.fiscalReason||'Requiere soporte')+(x.fiscalReference?' · Soporte: '+x.fiscalReference:''))+'</td></tr>').join('')+'</tbody></table></div>'+(xs.length?'':'<p class="hint">Todavía no hay operaciones bancarias auxiliares. Aquí aparecerán operaciones no gravables y liquidaciones agregadas, con sus referencias internas de control.</p>');};
 
   const renderTabContent=()=>{
@@ -7130,7 +7308,10 @@ function seniatSudebanDlg(initialTab){
     else if(activeTab==='retenciones')content.innerHTML=drawRetenciones();
     else if(activeTab==='pagoSeniat')content.innerHTML=drawPagoSeniat();
     else if(activeTab==='config')content.innerHTML=drawConfig();
+    else if(activeTab==='contabilidad')content.innerHTML=drawAccountingTab();
+    const filter=$('#snFilterBar',el);if(filter)filter.style.display=activeTab==='contabilidad'?'none':'';
     updateFoot();
+    if(activeTab==='contabilidad')loadAccountingTab();
   };
 
   const updateFoot=()=>{
@@ -7157,6 +7338,8 @@ function seniatSudebanDlg(initialTab){
       footL.innerHTML='<span class="hint">Borrador informativo; la planilla oficial se obtiene en el SENIAT.</span>';
     }else if(activeTab==='config'){
       footL.innerHTML='<button class="btn mini2 primary" id="btnSaveF">Guardar Parámetros Fiscales</button>';
+    }else if(activeTab==='contabilidad'){
+      footL.innerHTML='<span class="hint">SQLite local o servidor LAN · Cambios auditados · Contabilización supervisada</span>';
     }else{
       footL.innerHTML='<button class="btn mini2" id="btnGotoVentas">Ver Libro de Ventas</button><button class="btn mini2" id="btnGotoIgtf">Ver IGTF 3%</button>';
     }
@@ -7301,6 +7484,118 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnGotoVentas'){activeTab='ventas';$('.tab[data-tab="ventas"]',el)?.click();}
         if(ev.target.id==='btnGotoIgtf'){activeTab='igtf';$('.tab[data-tab="igtf"]',el)?.click();}
         if(ev.target.id==='btnPrinterSetupWizard'){printerSetupWizardDlg();return;}
+        if(ev.target.dataset.sourceEventReview){
+          (async()=>{try{
+            const reason=prompt('Indica por qué esta operación requiere revisión contable:');
+            if(reason===null)return;
+            await window.posDesktop.accountingMarkSourceEventReview({...accountingActorInput(),eventId:ev.target.dataset.sourceEventReview,reason});
+            msg('Evento marcado para revisión. Se registró el responsable y el motivo en la auditoría.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnAddJournalLine'){
+          accountingJournalLines=collectAccountingJournalLines();
+          accountingJournalLines.push({accountCode:'',description:'',debit:'',credit:''});
+          renderAccountingJournalLines();
+        }
+        if(ev.target.dataset.removeJournalLine!==undefined){
+          accountingJournalLines=collectAccountingJournalLines();
+          const removeIndex=Number(ev.target.dataset.removeJournalLine);
+          if(accountingJournalLines.length>2&&Number.isInteger(removeIndex))accountingJournalLines.splice(removeIndex,1);
+          renderAccountingJournalLines();
+        }
+        if(ev.target.id==='btnCreateJournalEntry'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            const lines=collectAccountingJournalLines();
+            const result=await window.posDesktop.accountingCreateJournalEntry({...actor,
+              entryDate:$('#accJournalDate',el).value,periodId:$('#accJournalPeriod',el).value,
+              description:$('#accJournalDescription',el).value,lines,
+              exchangeRate:$('#accJournalExchangeRate',el).value,
+              exchangeRateType:$('#accJournalExchangeRateType',el).value,
+              exchangeRateSourceName:$('#accJournalExchangeRateSource',el).value,
+              exchangeRateSourceReference:$('#accJournalExchangeRateReference',el).value
+            });
+            msg('Borrador de asiento '+result.id.slice(0,8)+' guardado. Aún no afecta el balance.');
+            accountingJournalLines=Array.from({length:4},()=>({accountCode:'',description:'',debit:'',credit:''}));
+            $('#accJournalDescription',el).value='';
+            renderAccountingJournalLines();
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.approveJournal){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingApproveJournalEntry({...accountingActorInput(),entryId:ev.target.dataset.approveJournal});
+            msg('Asiento '+result.id.slice(0,8)+' aprobado. Falta contabilizarlo.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.postJournal){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingPostJournalEntry({...accountingActorInput(),entryId:ev.target.dataset.postJournal});
+            msg('Asiento '+result.id.slice(0,8)+' contabilizado.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.reverseJournal){
+          (async()=>{try{
+            const reason=prompt('Indica el motivo y soporte del reverso:');
+            if(reason===null)return;
+            const result=await window.posDesktop.accountingCreateReversalDraft({...accountingActorInput(),
+              entryId:ev.target.dataset.reverseJournal,reason,
+              reversalDate:$('#accJournalDate',el).value,reversalPeriodId:$('#accJournalPeriod',el).value
+            });
+            msg('Borrador de reverso '+result.id.slice(0,8)+' creado. Debe aprobarse y contabilizarse por separado.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveAccountingAccount'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            const result=await window.posDesktop.accountingSaveAccount({...actor,
+              code:$('#accAccountCode',el).value,name:$('#accAccountName',el).value,
+              accountType:$('#accAccountType',el).value,normalBalance:$('#accNormalBalance',el).value,
+              parentCode:$('#accParentCode',el).value,frameworkScope:$('#accFrameworkScope',el).value,
+              acceptsPosting:$('#accAcceptsPosting',el).checked,active:$('#accAccountActive',el).checked
+            });
+            msg('Cuenta '+result.code+' guardada y auditada.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveAccountingSettings'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            await window.posDesktop.accountingSaveSettings({...actor,
+              accountingFramework:$('#accFramework',el).value,functionalCurrency:$('#accFunctionalCurrency',el).value,
+              presentationCurrency:$('#accPresentationCurrency',el).value,monetaryDecimals:Number($('#accDecimals',el).value),
+              automationMode:$('#accAutomation',el).value,policyVersion:$('#accPolicyVersion',el).value.trim()
+            });
+            msg('Política contable guardada y auditada en SQLite.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveFiscalProfile'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            await window.posDesktop.accountingSaveProfile({...actor,
+              rif:$('#accRif',el).value,legalName:$('#accLegalName',el).value,
+              taxpayerClassification:$('#accTaxClass',el).value,specialSubjectConfirmed:$('#accSpecial',el).checked,
+              specialNoticeReference:$('#accSpecialRef',el).value,specialNoticeDate:$('#accSpecialDate',el).value,
+              ivaWithholdingAgentConfirmed:$('#accWithholding',el).checked,ivaPerceptionAgentConfirmed:$('#accPerception',el).checked,
+              businessActivityScope:$('#accActivity',el).value,invoiceEmissionMode:$('#accEmission',el).value,
+              alcoholLicenseReference:$('#accAlcoholLicense',el).value,municipalLicenseReference:$('#accMunicipalLicense',el).value,
+              providerRif:$('#accProviderRif',el).value,providerAuthorizationReference:$('#accProviderAuth',el).value,
+              fiscalMachineSerial:$('#accMachineSerial',el).value
+            });
+            msg('Perfil fiscal guardado y auditado en SQLite.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveAccountingPeriod'){
+          (async()=>{try{
+            const actor=accountingActorInput(),startDate=$('#accPeriodStart',el).value,endDate=$('#accPeriodEnd',el).value;
+            const result=await window.posDesktop.accountingSavePeriod({...actor,id:$('#accPeriodId',el).value,label:$('#accPeriodLabel',el).value,startDate,endDate});
+            msg('Período '+result.id+' guardado como abierto.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+
         if(ev.target.id==='btnSaveF'){
           const legalName=$('#fEmp',el).value.trim(),taxId=$('#fRif',el).value.trim(),address=$('#fDir',el).value.trim(),email=$('#fEmail',el).value.trim();
           if(!legalName||!taxId||!address||!email){msg('Parámetros fiscales incompletos: razón social, RIF, domicilio fiscal y correo son obligatorios para completar el perfil.','bad');return;}
