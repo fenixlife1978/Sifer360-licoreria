@@ -401,8 +401,8 @@ test('la inicialización recupera SQLite sin crear una base vacía si ya existí
   assert.match(electron, /require\('\.\/sqlite-recovery\.cjs'\)/);
   assert.match(electron, /openOrRecoverDatabase\(\{ SQL, file, allowCreate: !priorUserDataDetected \}\)/);
   assert.match(electron, /let priorUserDataDetected = false/);
-  assert.match(electron, /La base SQLite principal está dañada/);
-  assert.match(electron, /No se creará una base vacía/);
+  assert.match(sqliteRecovery, /La base SQLite principal está dañada/);
+  assert.match(sqliteRecovery, /No se creará una base vacía/);
 });
 
 test('una base recuperada persiste también el esquema actualizado antes de aceptar operaciones', () => {
