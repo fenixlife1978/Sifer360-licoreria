@@ -232,3 +232,14 @@ test('Corte Z consolida ventas por SKU/código y ajustes de inventario positivos
   assert.ok(main.includes("(p.cashbox&&String(p.cashbox)!==box)||!inShift(p.ts)"));
   assert.ok(main.includes("p.void||!inShift(p.ts)||Number(p.paid||0)<=0"));
 });
+
+test('compras muestra precio anterior por proveedor y permite editar nuevo precio unitario', () => {
+  const comprasStart = main.indexOf('function comprasDlg(initialTab)');
+  const compras = main.slice(comprasStart, main.indexOf('\nfunction cxcDlg', comprasStart));
+  assert.match(main, /function getLastSupplierPurchaseCost\(purchases, code, supplierRif\)/);
+  assert.match(compras, /Último precio de este proveedor \(sin IVA\) US\$/);
+  assert.match(compras, /Nuevo precio unitario de compra \(sin IVA\) US\$/);
+  assert.match(compras, /data-cpf="cost" aria-label="Nuevo precio unitario de compra sin IVA US\$"/);
+  assert.match(compras, /if\(t\.id==='cpSup'\)\{supIdx=\+t\.value;pLines\.forEach\(line=>\{line\.costEdited=false;/);
+  assert.match(compras, /const last=getLastPurchaseCost\(line\.code\),product=prod\(line\.code\);line\.cost=last===null\?Number\(product&&product\.cost\|\|0\):last;/);
+});
