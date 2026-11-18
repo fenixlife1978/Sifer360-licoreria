@@ -95,13 +95,24 @@ function buildFinancialStatements({ accounts, rows, periodStart, periodEnd }) {
   const totalIncomeMinor = movementTotals('income');
   const totalExpensesMinor = movementTotals('expense');
   const periodResultMinor = totalIncomeMinor-totalExpensesMinor;
+  // A balance sheet date must include every unclosed P&L balance from inception,
+  // not only the selected month's result. Prior periods may not yet have a
+  // formal closing entry to retained earnings.
+  const accumulatedIncomeMinor = byType.income.filter(row=>!row.isGroup).reduce((sum,row)=>safeAdd(sum,
+    safeAdd(totals.get(String(row.code)).creditAll,-totals.get(String(row.code)).debitAll)),0);
+  const accumulatedExpensesMinor = byType.expense.filter(row=>!row.isGroup).reduce((sum,row)=>safeAdd(sum,
+    safeAdd(totals.get(String(row.code)).debitAll,-totals.get(String(row.code)).creditAll)),0);
+  const unclosedAccumulatedResultMinor = safeAdd(accumulatedIncomeMinor,-accumulatedExpensesMinor);
+  const priorUnclosedResultMinor = safeAdd(unclosedAccumulatedResultMinor,-periodResultMinor);
   return {
     periodStart,periodEnd,
     balanceSheet:{assets:byType.asset,liabilities:byType.liability,equity:byType.equity,
       totalAssetsMinor,totalLiabilitiesMinor,totalEquityMinor,
-      periodResultMinor,liabilitiesEquityAndResultMinor:totalLiabilitiesMinor+totalEquityMinor+periodResultMinor,
-      differenceMinor:totalAssetsMinor-totalLiabilitiesMinor-totalEquityMinor-periodResultMinor},
-    incomeStatement:{income:byType.income,expenses:byType.expense,totalIncomeMinor,totalExpensesMinor,periodResultMinor}
+      priorUnclosedResultMinor,periodResultMinor,unclosedAccumulatedResultMinor,
+      liabilitiesEquityAndResultMinor:totalLiabilitiesMinor+totalEquityMinor+unclosedAccumulatedResultMinor,
+      differenceMinor:totalAssetsMinor-totalLiabilitiesMinor-totalEquityMinor-unclosedAccumulatedResultMinor},
+    incomeStatement:{income:byType.income,expenses:byType.expense,totalIncomeMinor,totalExpensesMinor,periodResultMinor,
+      accumulatedIncomeMinor,accumulatedExpensesMinor,unclosedAccumulatedResultMinor}
   };
 }
 
