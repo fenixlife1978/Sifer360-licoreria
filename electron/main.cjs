@@ -1670,7 +1670,20 @@ function registerIpc() {
       const backupCheck = new SqlDatabase(new Uint8Array(backupBytes));
       if (databaseIntegrityStatus(backupCheck) !== 'ok') { try { backupCheck.close(); } catch {} throw new Error('El respaldo previo a la actualización no superó la verificación de integridad.'); }
       try { backupCheck.close(); } catch {}
-      fs.writeFileSync(backupPath, backupBytes, { flag: 'wx' });
+      const backupTemporary = backupPath + '.tmp';
+      let backupFd;
+      try {
+        backupFd = fs.openSync(backupTemporary, 'wx', 0o600);
+        fs.writeFileSync(backupFd, backupBytes);
+        fs.fsyncSync(backupFd);
+        fs.closeSync(backupFd);
+        backupFd = undefined;
+        fs.renameSync(backupTemporary, backupPath);
+      } catch (backupError) {
+        if (backupFd !== undefined) { try { fs.closeSync(backupFd); } catch {} }
+        try { if (fs.existsSync(backupTemporary)) fs.unlinkSync(backupTemporary); } catch {}
+        throw new Error('No se pudo escribir de forma durable el respaldo previo a la actualización. La actualización fue cancelada. ' + (backupError.message || String(backupError)));
+      }
       const writtenBackup = fs.readFileSync(backupPath);
       if (!writtenBackup.equals(backupBytes)) throw new Error('No se pudo verificar el respaldo previo a la actualización.');
     }
