@@ -2937,7 +2937,7 @@ function comprasDlg(initialTab){
           '<td class="r"><input class="fld cell r" data-cpf="qty" value="'+fq(l.qty)+'" inputmode="decimal"></td>'+
           '<td class="r">'+(getLastPurchaseCost(l.code)==null?'—':nf8(getLastPurchaseCost(l.code)))+'</td>'+
           '<td class="r">'+nf8(p.cost)+'</td>'+
-          '<td class="r"><input class="fld cell r" data-cpf="cost" aria-label="Nuevo precio unitario de compra sin IVA US$" title="Introduzca el precio de compra unitario actual de este proveedor" required value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
+          '<td class="r"><input class="fld cell r" data-cpf="cost" aria-label="Nuevo precio unitario de compra sin IVA US$" title="Introduzca el precio de compra unitario actual de este proveedor" required value="'+(l.cost===null?'':nf8(l.cost))+'" inputmode="decimal"></td>'+
           '<td class="r"><b>'+nf8(projectedCost)+'</b></td>'+
           '<td class="r"><input class="fld cell r" data-cpf="price" value="'+nf8(l.price)+'" inputmode="decimal" '+(l.autoPrice?'readonly title="Calculado por el motor de precios"':'')+'></td>'+
           '<td class="r"><b>'+nf8(sub)+'</b></td>'+
