@@ -891,7 +891,8 @@ function hybridCartPlan(){
 function salePortion(sale,lines,mode,residual,fiscalRatio){
   let sub=0,base=0,iva=0,baseG16=0,baseR8=0,baseA31=0,baseEx=0;
   lines.forEach(line=>{
-    sub+=r2(Number(line.price||0)*Number(line.qty||0));base+=Number(line.net)||0;iva+=Number(line.iva)||0;
+    const unitPrice=Number(line.presentationPrice||line.price||0),presentationQty=Number(line.presentationQty??line.qty??0);
+    sub+=r2(unitPrice*presentationQty);base+=Number(line.net)||0;iva+=Number(line.iva)||0;
     if(Number(line.taxRate)===16)baseG16+=Number(line.net)||0;
     else if(Number(line.taxRate)===8)baseR8+=Number(line.net)||0;
     else if(Number(line.taxRate)===31)baseA31+=Number(line.net)||0;
@@ -5203,7 +5204,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     baseG16:t.baseG16,baseR8:t.baseR8,baseA31:t.baseA31,baseEx:t.baseEx,
     iva:t.iva,total:t.total,igtf:st.igtf,rate:S.cfg.rate,pays,
     change:r2(st.change),credit:creditAmt,void:false,
-    ticketFiscalOut:Array.from(ticketFiscalOutByCode.entries()).map(([code,qty])=>({code,qty})),
+    ticketFiscalOut:Array.from(ticketFiscalOutLines.reduce((byCode,line)=>byCode.set(line.code,(byCode.get(line.code)||0)+Number(line.qty||0)),new Map()).entries()).map(([code,qty])=>({code,qty})),
     ticketFiscalOutLines:ticketFiscalOutLines.map(line=>({...line}))
   };
 
