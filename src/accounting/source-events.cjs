@@ -32,7 +32,8 @@ function digest(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 function stableIdentity(record, collection) {
-  const raw = ID_FIELDS.map(key => record && record[key]).find(value => value !== undefined && value !== null && String(value).trim() !== "");
+  const identityField = ID_FIELDS.find(key => record && record[key] !== undefined && record[key] !== null && String(record[key]).trim() !== "");
+  const raw = identityField ? record[identityField] : undefined;
   if (raw === undefined) {
     // Suspended sales in the current POS schema are identified by timestamp and cart snapshot.
     if (collection === "held" && record && record.ts !== undefined) {
@@ -44,7 +45,9 @@ function stableIdentity(record, collection) {
     return "snapshot:" + digest(JSON.stringify(record)).slice(0, 32);
   }
   const id = String(raw).trim();
-  return BOX_SCOPED.has(collection) ? String(record.cashbox || "sin-caja") + ":" + id : id;
+  return BOX_SCOPED.has(collection) && identityField !== "eventId" && identityField !== "uuid"
+    ? String(record.cashbox || "sin-caja") + ":" + id
+    : id;
 }
 function eventDate(record, fallback) {
   if (record && record.ts !== undefined && record.ts !== null && record.ts !== "" && Number.isFinite(Number(record.ts))) {
