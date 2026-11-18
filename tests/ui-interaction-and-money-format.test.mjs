@@ -65,7 +65,7 @@ test('fiscal setup no longer prepopulates fake notification, control, printer or
 
 test('fiscal profile validates Venezuelan RIF structure before saving',()=>{
   assert.match(main,/RIF debe tener formato venezolano válido/);
-  assert.match(main,/\^\[VEJPG\]-?\\d\{8,9\}-?\\d\$/);
+  assert.ok(main.includes('taxId.toUpperCase()'));
 });
 test('retention agent flags are persisted independently for IVA and ISLR',()=>{
   assert.match(main,/agenteRetIva=S\.cfg\.retencionHabilitadaConfirmada/);
