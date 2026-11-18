@@ -1452,8 +1452,16 @@ function registerAccountingIpc() {
         if (sourceEvent.processing_status === 'processed') { results.skipped.push({eventId:sourceEvent.event_id,reason:'Ya procesado'}); continue; }
         const existingEntry = one('SELECT id,status FROM journal_entries WHERE source_type=? AND source_id=?', ['automation:'+sourceEvent.source_type,sourceEvent.event_id]);
         if (existingEntry) {
-          run("UPDATE accounting_source_events SET processing_status='processed',journal_entry_id=?,processed_at=?,error_message='' WHERE event_id=?",
-            [existingEntry.id,new Date().toISOString(),sourceEvent.event_id]);
+          const snapshot = db.export();
+          db.run('BEGIN IMMEDIATE');
+          try {
+            run("UPDATE accounting_source_events SET processing_status='processed',journal_entry_id=?,processed_at=?,error_message='' WHERE event_id=?",
+              [existingEntry.id,new Date().toISOString(),sourceEvent.event_id]);
+            run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,after_json) VALUES(?,?,?,?,?,?,?)',
+              [crypto.randomUUID(),'accounting_source_event',sourceEvent.event_id,'reconcile_existing_draft',actor.actorId,new Date().toISOString(),JSON.stringify({journalEntryId:existingEntry.id})]);
+            db.run('COMMIT');
+          } catch(error) { try { db.run('ROLLBACK'); } catch {} throw error; }
+          persistAccountingDb(snapshot);
           results.skipped.push({eventId:sourceEvent.event_id,reason:'El borrador ya existe',journalEntryId:existingEntry.id});
           continue;
         }
