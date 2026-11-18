@@ -7209,6 +7209,8 @@ function seniatSudebanDlg(initialTab){
       '</div><div id="accJournalLines"></div><div class="row" style="gap:8px"><button class="btn" id="btnAddJournalLine">Añadir renglón</button><button class="btn primary" id="btnCreateJournalEntry" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar borrador de asiento</button></div><div id="accJournalEntries" class="hint">Cargando asientos...</div></section>'+
       '<section class="cierre"><h3>7. Historial de tasas de cambio</h3><p class="hint">Tasas utilizadas en asientos, con su fecha, tipo, fuente y referencia documental. Los valores se conservan como fracciones exactas.</p><div id="accExchangeRates" class="hint">Cargando tasas...</div></section>'+
       '<section class="cierre"><h3>8. Balance de comprobación</h3><p class="hint">Solo considera asientos contabilizados y sus reversos. Los borradores y aprobados no afectan este balance.</p><div id="accTrialBalance" class="hint">Calculando balance...</div></section>'+
+      '<section class="cierre"><h3>9. Libro mayor por cuenta</h3><div class="newgrid"><div class="f"><label for="accLedgerAccount">Cuenta</label><select class="fld" id="accLedgerAccount"><option value="">Seleccionar cuenta imputable</option></select></div><div class="f"><label for="accLedgerStart">Desde</label><input class="fld" id="accLedgerStart" type="date"></div><div class="f"><label for="accLedgerEnd">Hasta</label><input class="fld" id="accLedgerEnd" type="date"></div></div><button class="btn" id="btnLoadGeneralLedger">Consultar mayor</button><div id="accGeneralLedger" class="hint">Selecciona cuenta y fechas para consultar el mayor.</div></section>'+
+      '<section class="cierre"><h3>10. Estados financieros del período</h3><div class="newgrid"><div class="f"><label for="accStatementsPeriod">Período contable</label><select class="fld" id="accStatementsPeriod"><option value="">Seleccionar período</option></select></div></div><button class="btn primary" id="btnLoadFinancialStatements">Generar estados financieros</button><div id="accFinancialStatements" class="hint">Selecciona un período para generar situación financiera y resultados.</div><p class="hint">El resultado del período se presenta por separado; no se simula un cierre contra patrimonio. Los flujos de efectivo requieren clasificar las cuentas y movimientos antes de emitir ese estado.</p></section>'+
       '<div class="hint">La automatización supervisada solo genera borradores a partir de reglas expresas; no aprueba ni contabiliza. Las reglas son versionadas y las modificaciones/anulaciones permanecen bajo revisión del contador.</div>'+
       '</div>';
   };
@@ -7256,6 +7258,10 @@ function seniatSudebanDlg(initialTab){
       if(exchangeRateLabel)exchangeRateLabel.placeholder=settings?.functionalCurrency===settings?.presentationCurrency?'1 (monedas iguales)':'Tasa '+(settings?.presentationCurrency||'')+' por 1 '+(settings?.functionalCurrency||'');
       const periodSelect=$('#accJournalPeriod',el);
       if(periodSelect)periodSelect.innerHTML='<option value="">Seleccionar período abierto</option>'+periods.filter(p=>p.status==='open').map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+' ('+esc(p.startDate)+' a '+esc(p.endDate)+')</option>').join('');
+      const statementsPeriod=$('#accStatementsPeriod',el);
+      if(statementsPeriod){const selected=statementsPeriod.value;statementsPeriod.innerHTML='<option value="">Seleccionar período</option>'+periods.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+' ('+esc(p.startDate)+' a '+esc(p.endDate)+')</option>').join('');if(selected)statementsPeriod.value=selected;}
+      const ledgerAccount=$('#accLedgerAccount',el);
+      if(ledgerAccount){const selected=ledgerAccount.value;ledgerAccount.innerHTML='<option value="">Seleccionar cuenta imputable</option>'+accounts.filter(a=>Number(a.acceptsPosting)===1).map(a=>'<option value="'+esc(a.code)+'">'+esc(a.code+' · '+a.name)+'</option>').join('');if(selected)ledgerAccount.value=selected;}
       renderAccountingJournalLines();
       const list=$('#accPeriodsList',el);
       if(list)list.innerHTML=periods.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Período</th><th>Desde</th><th>Hasta</th><th>Estado</th></tr></thead><tbody>'+periods.map(p=>'<tr><td>'+esc(p.label)+'</td><td>'+esc(p.startDate)+'</td><td>'+esc(p.endDate)+'</td><td>'+esc(p.status==='closed'?'Cerrado':'Abierto')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay períodos contables definidos.';
@@ -7499,6 +7505,26 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnGotoVentas'){activeTab='ventas';$('.tab[data-tab="ventas"]',el)?.click();}
         if(ev.target.id==='btnGotoIgtf'){activeTab='igtf';$('.tab[data-tab="igtf"]',el)?.click();}
         if(ev.target.id==='btnPrinterSetupWizard'){printerSetupWizardDlg();return;}
+        if(ev.target.id==='btnLoadGeneralLedger'){
+          (async()=>{try{
+            const accountCode=$('#accLedgerAccount',el).value,startDate=$('#accLedgerStart',el).value,endDate=$('#accLedgerEnd',el).value;
+            const result=await window.posDesktop.accountingGetGeneralLedger({...accountingActorInput(),accountCode,startDate,endDate});
+            const node=$('#accGeneralLedger',el),decimals=Number($('#accDecimals',el).value||2);
+            node.innerHTML='<p><b>'+esc(result.account.code+' · '+result.account.name)+'</b> · Apertura: '+esc(fmtJournalMinor(result.openingBalanceMinor,decimals))+' · Cierre: '+esc(fmtJournalMinor(result.closingBalanceMinor,decimals))+'</p><div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Asiento</th><th>Descripción</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead><tbody>'+result.rows.map(row=>'<tr><td>'+esc(row.entryDate)+'</td><td class="mono">'+esc(row.entryId.slice(0,8))+'</td><td>'+esc(row.lineDescription||row.entryDescription)+'</td><td class="r">'+esc(fmtJournalMinor(row.debitMinor,decimals))+'</td><td class="r">'+esc(fmtJournalMinor(row.creditMinor,decimals))+'</td><td class="r">'+esc(fmtJournalMinor(row.runningBalanceMinor,decimals))+'</td></tr>').join('')+'</tbody></table></div>'+(result.presentationComplete?'':'<p class="hint bad">Hay asientos históricos sin conversión de presentación; el mayor funcional sí está disponible.</p>');
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnLoadFinancialStatements'){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingGetFinancialStatements({...accountingActorInput(),periodId:$('#accStatementsPeriod',el).value});
+            const node=$('#accFinancialStatements',el),decimals=Number($('#accDecimals',el).value||2);
+            const section=(title,rows)=>'<h4>'+title+'</h4><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>Cuenta</th><th>Saldo</th></tr></thead><tbody>'+rows.map(row=>'<tr><td class="mono">'+esc(row.code)+'</td><td>'+esc(row.name)+'</td><td class="r">'+esc(fmtJournalMinor(row.balanceMinor,decimals))+'</td></tr>').join('')+'</tbody></table></div>';
+            const bs=result.balanceSheet,inc=result.incomeStatement;
+            node.innerHTML='<p><b>Estado de situación financiera</b> · '+esc(result.period.startDate)+' a '+esc(result.period.endDate)+'</p>'+section('Activos',bs.assets)+section('Pasivos',bs.liabilities)+section('Patrimonio',bs.equity)+
+              '<p>Total activos: <b>'+esc(fmtJournalMinor(bs.totalAssetsMinor,decimals))+'</b> · Pasivos: <b>'+esc(fmtJournalMinor(bs.totalLiabilitiesMinor,decimals))+'</b> · Patrimonio: <b>'+esc(fmtJournalMinor(bs.totalEquityMinor,decimals))+'</b> · Resultado del período: <b>'+esc(fmtJournalMinor(bs.periodResultMinor,decimals))+'</b></p>'+
+              '<p>Diferencia: <b>'+esc(fmtJournalMinor(bs.differenceMinor,decimals))+'</b> '+(bs.differenceMinor===0?'· Cuadra incluyendo el resultado del período.':'· Requiere revisión de saldos y asientos.')+'</p>'+
+              '<h4>Estado de resultados</h4>'+section('Ingresos',inc.income)+section('Gastos',inc.expenses)+'<p>Resultado neto: <b>'+esc(fmtJournalMinor(inc.periodResultMinor,decimals))+'</b></p>';
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
         if(ev.target.id==='btnSaveAutomationRule'){
           (async()=>{try{
             const result=await window.posDesktop.accountingSaveAutomationRule({...accountingActorInput(),

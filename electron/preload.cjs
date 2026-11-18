@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld('posDesktop', {
   accountingListAutomationRules: token => ipcRenderer.invoke('accounting:list-automation-rules', token),
   accountingSaveAutomationRule: rule => ipcRenderer.invoke('accounting:save-automation-rule', rule),
   accountingGenerateSourceDrafts: input => ipcRenderer.invoke('accounting:generate-source-drafts', input),
+  accountingGetGeneralLedger: input => ipcRenderer.invoke('accounting:get-general-ledger', input),
+  accountingGetFinancialStatements: input => ipcRenderer.invoke('accounting:get-financial-statements', input),
   accountingCreateJournalEntry: entry => ipcRenderer.invoke('accounting:create-journal-entry', entry),
   accountingApproveJournalEntry: entry => ipcRenderer.invoke('accounting:approve-journal-entry', entry),
   accountingPostJournalEntry: entry => ipcRenderer.invoke('accounting:post-journal-entry', entry),

@@ -56,16 +56,19 @@ const ACCOUNTING_READ_CHANNELS = new Set([
   'accounting:get-settings','accounting:get-profile','accounting:list-source-events',
   'accounting:source-event-summary','accounting:list-periods','accounting:list-journal-entries',
   'accounting:list-exchange-rates','accounting:get-trial-balance','accounting:list-accounts',
-  'accounting:list-automation-rules'
+  'accounting:list-automation-rules','accounting:get-general-ledger','accounting:get-financial-statements'
 ]);
 const accountingIpcHandlers = new Map();
 function registerAccountingHandler(channel, handler) {
   accountingIpcHandlers.set(channel, handler);
   ipcMain.handle(channel, async (event, ...args) => {
     if (networkConfig.role === 'client') {
-      const payload = ACCOUNTING_READ_CHANNELS.has(channel)
-        ? { token: String(args[0] || '') }
-        : (args[0] && typeof args[0] === 'object' && !Array.isArray(args[0]) ? args[0] : {});
+      const filteredRead = ['accounting:get-general-ledger','accounting:get-financial-statements'].includes(channel);
+      const payload = filteredRead
+        ? (args[0] && typeof args[0] === 'object' && !Array.isArray(args[0]) ? args[0] : {})
+        : ACCOUNTING_READ_CHANNELS.has(channel)
+          ? { token: String(args[0] || '') }
+          : (args[0] && typeof args[0] === 'object' && !Array.isArray(args[0]) ? args[0] : {});
       const response = await clientApi('/api/accounting/' + encodeURIComponent(channel.slice('accounting:'.length)), {
         method: 'POST', body: JSON.stringify(payload), timeoutMs: 15000
       });
@@ -1379,6 +1382,44 @@ function registerAccountingIpc() {
       FROM chart_of_accounts ORDER BY code`);
   });
 
+  registerAccountingHandler('accounting:get-general-ledger', (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    accountingActor(input);
+    const accountCode = String(input.accountCode || '').trim();
+    const startDate = String(input.startDate || '');
+    const endDate = String(input.endDate || '');
+    if (!accountCode || !isValidIsoDate(startDate) || !isValidIsoDate(endDate) || startDate > endDate) throw new Error('Selecciona una cuenta y un rango de fechas válido para consultar el mayor.');
+    const account = one('SELECT code,name,account_type AS accountType,normal_balance AS normalBalance FROM chart_of_accounts WHERE code=?', [accountCode]);
+    if (!account) throw new Error('La cuenta seleccionada no existe en el plan contable.');
+    const rows = all(`SELECT j.entry_date AS entryDate,j.id AS entryId,j.source_type AS sourceType,j.source_id AS sourceId,
+      j.description AS entryDescription,l.line_no AS lineNo,l.description AS lineDescription,
+      l.debit_minor AS debitMinor,l.credit_minor AS creditMinor,
+      l.presentation_debit_minor AS presentationDebitMinor,l.presentation_credit_minor AS presentationCreditMinor
+      FROM journal_lines l JOIN journal_entries j ON j.id=l.entry_id
+      WHERE l.account_code=? AND j.status IN ('posted','reversed') AND j.entry_date<=?
+      ORDER BY j.entry_date,j.created_at,j.id,l.line_no`, [accountCode,endDate]).map(row => ({
+        ...row,debitMinor:Number(row.debitMinor),creditMinor:Number(row.creditMinor),
+        presentationDebitMinor:row.presentationDebitMinor==null?null:Number(row.presentationDebitMinor),
+        presentationCreditMinor:row.presentationCreditMinor==null?null:Number(row.presentationCreditMinor),
+        lineNo:Number(row.lineNo)
+      }));
+    const { buildGeneralLedger } = require('./accounting-reports.cjs');
+    return { account, ...buildGeneralLedger({ rows,startDate,endDate,normalBalance:account.normalBalance }) };
+  });
+  registerAccountingHandler('accounting:get-financial-statements', (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    accountingActor(input);
+    const periodId = String(input.periodId || '').trim();
+    const period = one('SELECT id,label,start_date AS startDate,end_date AS endDate FROM accounting_periods WHERE id=?', [periodId]);
+    if (!period) throw new Error('Selecciona un período contable existente para emitir los estados financieros.');
+    const accounts = all('SELECT code,parent_code AS parentCode,name,account_type AS accountType,normal_balance AS normalBalance,accepts_posting AS acceptsPosting FROM chart_of_accounts ORDER BY code');
+    const rows = all(`SELECT l.account_code AS accountCode,l.debit_minor AS debitMinor,l.credit_minor AS creditMinor,j.entry_date AS entryDate
+      FROM journal_lines l JOIN journal_entries j ON j.id=l.entry_id
+      WHERE j.status IN ('posted','reversed') AND j.entry_date<=?
+      ORDER BY j.entry_date,j.id,l.line_no`, [period.endDate]).map(row => ({...row,debitMinor:Number(row.debitMinor),creditMinor:Number(row.creditMinor)}));
+    const { buildFinancialStatements } = require('./accounting-reports.cjs');
+    return { period, ...buildFinancialStatements({accounts,rows,periodStart:period.startDate,periodEnd:period.endDate}) };
+  });
   registerAccountingHandler('accounting:list-automation-rules', (event, token) => {
     assertTrustedAccountingSender(event);
     requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
