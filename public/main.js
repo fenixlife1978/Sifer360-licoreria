@@ -213,8 +213,8 @@ function renderFiscalInventoryReport(products,ledger){
 function seed(){
   S={
     cfg:{
-      empresa:'',rif:'',dir:'',cajero:'',caja:'01',rate:0,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
-      fiscalTipo:'FORMA_LIBRE',printMode:'NOT_CONFIGURED',printSetupCompleted:false,contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:75,provEspecial:'',
+      empresa:'',rif:'',dir:'',companyEmail:'',companyPhone:'',contribuyenteFormalIva:false,agenteRetIva:false,agenteRetIslr:false,cajero:'',caja:'01',rate:0,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
+      fiscalTipo:'FORMA_LIBRE',printMode:'NOT_CONFIGURED',printSetupCompleted:false,contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:75,retIslrHabilitada:false,provEspecial:'',
       ctrlPrefix:'00-',ctrlNext:1,ctrlRangoDesde:'',ctrlRangoHasta:'',
       imprentaRif:'',imprentaAut:'',serialFiscal:'',fiscalPrinters:{}
     },
@@ -816,7 +816,7 @@ function load(){
     if(!S.cfg.fiscalTipo)S.cfg.fiscalTipo='FORMA_LIBRE';
     if(S.cfg.contribEspecial===undefined)S.cfg.contribEspecial=false;
     if(S.cfg.retencionHabilitadaConfirmada===undefined)S.cfg.retencionHabilitadaConfirmada=false;
-    if(!S.cfg.retIvaPct)S.cfg.retIvaPct=75;
+    if(!S.cfg.retIvaPct)S.cfg.retIvaPct=Number($('#fPctRet',el).value)||75;\n          S.cfg.retIslrHabilitada=$('#fRetIslr',el).checked===true;
     if(!S.cfg.provEspecial)S.cfg.provEspecial='';
     if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='00-';
     if(!S.cfg.ctrlNext)S.cfg.ctrlNext=1043;
@@ -7079,12 +7079,12 @@ function seniatSudebanDlg(initialTab){
     return '<div class="newgrid">'+
       '<div class="f wide"><label for="fEmp">Razón Social</label><input class="fld" id="fEmp" value="'+esc(c.empresa)+'"></div>'+
       '<div class="f"><label for="fRif">RIF de la Empresa</label><input class="fld" id="fRif" value="'+esc(c.rif)+'"></div>'+
-      '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
-      '<div class="f"><label for="fTipo">Modalidad de Facturación Fiscal</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option><option value="NO_FISCAL_INTERNAL" '+(c.fiscalTipo==='NO_FISCAL_INTERNAL'?'selected':'')+'>Sin emisión fiscal · Ticket interno no fiscal</option></select></div>'+
+      '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+\n      '<div class="f"><label for="fEmail">Correo de la empresa</label><input class="fld" type="email" id="fEmail" value="'+esc(c.companyEmail||'')+'" placeholder="correo@empresa.com"></div>'+\n      '<div class="f"><label for="fPhone">Teléfono de contacto</label><input class="fld" id="fPhone" value="'+esc(c.companyPhone||'')+'" placeholder="+58"></div>'+\n      '<div class="f wide"><label><input type="checkbox" id="fFormalIva" '+(c.contribuyenteFormalIva===true?'checked':'')+'> Contribuyente formal del IVA (cuando corresponda)</label></div>'+
+      '<div class="f"><label for="fTipo">Medio de emisión (preparación 2027)</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Régimen actual · formato libre (solo transición)</option><option value="DIGITAL_2027" '+(c.fiscalTipo==='DIGITAL_2027'?'selected':'')+'>Digital / electrónico · régimen 2027</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Máquina fiscal</option><option value="CONTINGENCIA_2027" '+(c.fiscalTipo==='CONTINGENCIA_2027'?'selected':'')+'>Formato de contingencia · régimen 2027</option><option value="NO_FISCAL_INTERNAL" '+(c.fiscalTipo==='NO_FISCAL_INTERNAL'?'selected':'')+'>Ticket interno no fiscal · no emite factura</option></select><p class="hint">Providencia SNAT/2026/00093: preparar medios digitales o máquina fiscal desde el 19/04/2027. Formatos de contingencia no son el medio ordinario.</p></div>'+
       '<div class="f wide"><label for="fPrintMode">Modo de impresión del POS</label><select class="fld" id="fPrintMode"><option value="FISCAL_PRINTER" '+((c.printMode||'LEGACY')==='FISCAL_PRINTER'?'selected':'')+'>Impresora fiscal homologada</option><option value="INTERNAL_THERMAL" '+(c.printMode==='INTERNAL_THERMAL'?'selected':'')+'>Impresora térmica genérica · Ticket interno</option><option value="NO_PRINTER" '+(c.printMode==='NO_PRINTER'?'selected':'')+'>Sin impresora · Solo registro en SQLite</option><option value="DUAL_PRINTER" '+(c.printMode==='DUAL_PRINTER'?'selected':'')+'>Sistema dual · Ticket, factura fiscal o impresión híbrida en cada cobro</option><option value="LEGACY" '+((c.printMode||'LEGACY')==='LEGACY'?'selected':'')+'>Conservar configuración anterior</option></select><p class="hint">Los modos de ticket interno no emiten documentos fiscales. Cada comprobante llevará la leyenda “Ticket de Venta - No válido como factura fiscal”.</p><button class="btn" type="button" id="btnPrinterSetupWizard">Abrir asistente de instalación de impresoras</button></div>'+
       '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" type="button" id="btnThermalPrinterManager">Configurar impresora térmica no fiscal</button><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button><button class="btn" type="button" id="btnFiscalNetworkQueue">Ver cola fiscal compartida LAN</button></div></div>'+
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
-      '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
+      '<div class="f"><label for="fPctRet">Retención IVA de referencia</label><select class="fld" id="fPctRet"><option value="75" '+(Number(c.retIvaPct||75)===75?'selected':'')+'>75 % del IVA (referencial)</option><option value="100" '+(Number(c.retIvaPct||75)===100?'selected':'')+'>100 % del IVA (referencial)</option></select></div>'+\n      '<div class="f"><label><input type="checkbox" id="fRetIslr" '+(c.retIslrHabilitada===true?'checked':'')+'> Agente de retención ISLR (si está designado)</label></div>'+
       '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
       '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'SNAT/2023/000412')+'"></div>'+
       '<div class="f"><label for="fCtrlPref">Prefijo Nº Control Fiscal</label><input class="fld mono" id="fCtrlPref" value="'+esc(c.ctrlPrefix||'00-')+'"></div>'+
@@ -7284,10 +7284,10 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnGotoVentas'){activeTab='ventas';$('.tab[data-tab="ventas"]',el)?.click();}
         if(ev.target.id==='btnGotoIgtf'){activeTab='igtf';$('.tab[data-tab="igtf"]',el)?.click();}
         if(ev.target.id==='btnPrinterSetupWizard'){printerSetupWizardDlg();return;}
-        if(ev.target.id==='btnSaveF'){
+        if(ev.target.id==='btnSaveF'){\n          const legalName=$('#fEmp',el).value.trim(),taxId=$('#fRif',el).value.trim(),address=$('#fDir',el).value.trim(),email=$('#fEmail',el).value.trim();\n          if(!legalName||!taxId||!address||!email){msg('Parámetros fiscales incompletos: razón social, RIF, domicilio fiscal y correo son obligatorios para completar el perfil.','bad');return;}\n          if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){msg('El correo de la empresa no tiene un formato válido.','bad');return;}\n          if(($('#fRetConfirm',el).checked||$('#fRetIslr',el).checked)&&($('#fEsp',el).value!=='1'||!$('#fProvEsp',el).value.trim())){msg('Para activar retenciones debe confirmar Sujeto Pasivo Especial y completar la providencia de notificación.','bad');return;}
           S.cfg.empresa=$('#fEmp',el).value.trim()||S.cfg.empresa;
           S.cfg.rif=$('#fRif',el).value.trim()||S.cfg.rif;
-          S.cfg.dir=$('#fDir',el).value.trim();
+          S.cfg.dir=$('#fDir',el).value.trim();\n          S.cfg.companyEmail=$('#fEmail',el).value.trim();\n          S.cfg.companyPhone=$('#fPhone',el).value.trim();\n          S.cfg.contribuyenteFormalIva=$('#fFormalIva',el).checked===true;
           S.cfg.fiscalTipo=$('#fTipo',el).value;
           S.cfg.printMode=$('#fPrintMode',el).value;
           if(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER')S.cfg.fiscalTipo='NO_FISCAL_INTERNAL';
@@ -7299,7 +7299,7 @@ function seniatSudebanDlg(initialTab){
           if(!S.cfg.contribEspecial)S.cfg.retencionHabilitadaConfirmada=false;
           S.cfg.provEspecial=$('#fProvEsp',el).value.trim();
           S.cfg.ctrlPrefix=$('#fCtrlPref',el).value.trim()||'00-';
-          S.cfg.ctrlNext=parseInt($('#fCtrlNext',el).value)||1043;
+          S.cfg.ctrlNext=parseInt($('#fCtrlNext',el).value)||1;
           S.cfg.ctrlRangoDesde=$('#fRangoD',el).value.trim();
           S.cfg.ctrlRangoHasta=$('#fRangoH',el).value.trim();
           S.cfg.imprentaRif=$('#fImpRif',el).value.trim();
