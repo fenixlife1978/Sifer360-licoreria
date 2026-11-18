@@ -589,18 +589,20 @@ async function startLanServer(requestedPort) {
     if (url.pathname === '/api/sync/state' && req.method === 'POST') {
       try {
         const body = await readBody(req);
-        if (!body || typeof body.state !== 'object' || !body.deviceId || typeof body.expectedHash !== 'string') return sendJson(res, 400, { error: 'Paquete incompleto o sin versión de origen' });
+        if (!body || !body.state || typeof body.state !== 'object' || Array.isArray(body.state) || !body.deviceId || typeof body.expectedHash !== 'string') return sendJson(res, 400, { error: 'Paquete incompleto o sin versión de origen' });
         const incoming = body.state;
         const existing = one('SELECT payload FROM app_state WHERE id=1');
         const currentHash = statePayloadHash(existing ? existing.payload : '');
         if (body.expectedHash !== currentHash) return sendJson(res, 409, { error: 'La base central cambió desde la última lectura. Recargue los datos del servidor antes de volver a guardar.', conflict: true, stateHash: currentHash });
-        const databaseBefore = db.export();
-        const current = existing ? JSON.parse(existing.payload) : null;
+        const current = existing ? JSON.parse(existing.payload) : {};
         const merged = mergeStateRecords(current, incoming);
-        run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(merged)]);
+        const accountingEvents = buildAccountingSourceEvents(current, merged, { deviceId: String(body.deviceId) });
         const eventId = String(body.deviceId) + '-' + crypto.createHash('sha256').update(JSON.stringify(incoming)).digest('hex');
-        run('INSERT OR IGNORE INTO network_sync_events(event_id,device_id,created_at,payload) VALUES(?,?,?,?)', [eventId, String(body.deviceId), new Date().toISOString(), JSON.stringify({ state: incoming })]);
-        try { persistDb(); } catch (error) { restoreDatabaseSnapshot(databaseBefore); throw error; }
+        persistMutation(() => {
+          run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(merged)]);
+          insertAccountingSourceEvents(accountingEvents);
+          run('INSERT OR IGNORE INTO network_sync_events(event_id,device_id,created_at,payload) VALUES(?,?,?,?)', [eventId, String(body.deviceId), new Date().toISOString(), JSON.stringify({ state: incoming })]);
+        });
         const savedRow = one('SELECT payload FROM app_state WHERE id=1');
         return sendJson(res, 200, { ok: true, state: merged, stateHash: statePayloadHash(savedRow && savedRow.payload), serverDeviceId: networkConfig.deviceId, updatedAt: new Date().toISOString() });
       } catch (error) { return sendJson(res, 400, { error: error.message || 'Error sincronizando' }); }
@@ -1520,13 +1522,19 @@ function registerIpc() {
       networkConfig.serverStateHash = result.stateHash;
       return { ok: true, durable: 'server-sqlite', serverDeviceId: result.serverDeviceId };
     }
+    if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('Estado POS inválido.');
     const payload = JSON.stringify(state);
-    // El cambio en memoria se revierte si el archivo no puede persistirse.
-    // Así una operación rechazada no reaparece más tarde por un guardado posterior.
-    persistMutation(() => run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, updated_at=CURRENT_TIMESTAMP', [payload]));
+    const currentRow = one('SELECT payload FROM app_state WHERE id=1');
+    const previousState = currentRow ? JSON.parse(currentRow.payload) : {};
+    const accountingEvents = buildAccountingSourceEvents(previousState, state, { deviceId: networkConfig.deviceId });
+    // El estado comercial y sus eventos contables se guardan juntos; no se confirma uno sin el otro.
+    persistMutation(() => {
+      run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, updated_at=CURRENT_TIMESTAMP', [payload]);
+      insertAccountingSourceEvents(accountingEvents);
+    });
     clearTimeout(saveTimer);
     saveTimer = null;
-    return { ok: true, durable: 'sqlite-file' };
+    return { ok: true, durable: 'sqlite-file', accountingEventsCaptured: accountingEvents.length };
   });
   ipcMain.handle('posdb:list-documents', async (_e, filter = {}) => {
     if (networkConfig.role === 'client') {
@@ -1691,6 +1699,7 @@ if (!hasSingleInstanceLock) {
     licensing = createLicensing({ app, safeStorage, shell });
     await licensing.initialize();
     registerIpc();
+    registerAccountingIpc();
     registerNetworkIpc();
     if (networkConfig.role === 'server') { try { await startLanServer(networkConfig.port); } catch (error) { throw new Error('No se pudo reanudar el servidor LAN. SIFER no iniciará en modo local para evitar crear una base de datos paralela. ' + (error && error.message ? error.message : String(error))); } }
     createWindow();
