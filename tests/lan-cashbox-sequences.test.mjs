@@ -46,7 +46,8 @@ test('ventas, números de control, anulaciones y cortes Z solicitan correlativos
   assert.match(pos, /nextCajaSequence\('void',saleCashbox\)/);
   assert.match(pos, /nextCajaSequence\('void',purchaseCashbox\)/);
   assert.match(pos, /nextCajaSequence\('z',box\)/);
-  assert.match(pos, /nextCajaSequence\('purchase',currentCaja\(\)\)/);
+  assert.match(pos, /const purchaseAdminBox='ADMIN'/);
+  assert.match(pos, /nextCajaSequence\('purchase',purchaseAdminBox\)/);
   assert.match(pos, /nextCajaSequence\('count',currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('cxc',currentCaja\(\)\)/);
   assert.match(pos, /nextCajaSequence\('cxp',currentCaja\(\)\)/);
