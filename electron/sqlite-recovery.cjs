@@ -26,7 +26,7 @@ function writeDurable(file, bytes, fsImpl = fs) {
   }
 }
 
-function openOrRecoverDatabase({ SQL, file, fsImpl = fs }) {
+function openOrRecoverDatabase({ SQL, file, fsImpl = fs, allowCreate = true }) {
   if (!SQL || typeof SQL.Database !== 'function' || !file) throw new Error('Falta el motor SQLite o la ruta de base de datos.');
   const backup = file + '.bak';
   if (fsImpl.existsSync(file)) {
@@ -58,6 +58,9 @@ function openOrRecoverDatabase({ SQL, file, fsImpl = fs }) {
     return { database: restored, recovered: true, source: 'backup', corruptFile: null };
   }
 
+  if (!allowCreate) {
+    throw new Error('Se detectó una instalación anterior, pero faltan la base SQLite y su respaldo. No se creará una base vacía para evitar pérdida de información. Conserve los archivos de usuario y restaure una copia válida antes de continuar.');
+  }
   return { database: new SQL.Database(), recovered: false, source: 'new', corruptFile: null };
 }
 
