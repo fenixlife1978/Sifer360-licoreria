@@ -18,10 +18,15 @@ const SOURCE_COLLECTIONS = Object.freeze({
   casheaLiquidaciones: "cashea_settlement",
   cambiosDivisas: "currency_movement",
   retencionesIva: "iva_retention",
+  retencionesIslr: "islr_retention",
+  fiscalBankOperations: "bank_operation",
+  lotesSudeban: "bank_settlement_batch",
+  rateAudit: "exchange_rate_update",
+  fiscalInventoryMovements: "fiscal_inventory_movement",
   retentions: "retention"
-});;
+});
 const BOX_SCOPED = new Set(["sales", "cxc", "cortesZ", "openings", "movements", "movimientosCaja", "kardex", "returns", "voids"]);
-const ID_FIELDS = ["id", "uuid", "eventId", "no", "number", "ctrlNo", "code"];
+const ID_FIELDS = ["eventId", "uuid", "id", "no", "number", "ctrlNo"];
 
 function digest(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -33,7 +38,10 @@ function stableIdentity(record, collection) {
     if (collection === "held" && record && record.ts !== undefined) {
       return "held:" + String(record.ts) + ":" + digest(JSON.stringify(record)).slice(0, 16);
     }
-    return null;
+    // Cuando el registro no trae identificador, usa su contenido completo como identidad.
+    // Un cambio se representará como baja + alta, pero nunca se perderán movimientos
+    // distintos por compartir el mismo SKU/código de producto.
+    return "snapshot:" + digest(JSON.stringify(record)).slice(0, 32);
   }
   const id = String(raw).trim();
   return BOX_SCOPED.has(collection) ? String(record.cashbox || "sin-caja") + ":" + id : id;
@@ -52,6 +60,15 @@ function eventDate(record, fallback) {
   }
   return fallback;
 }
+function collectionItems(state, collection) {
+  if (collection === "fiscalInventoryMovements") {
+    return state.fiscalInventory && Array.isArray(state.fiscalInventory.movements)
+      ? state.fiscalInventory.movements
+      : [];
+  }
+  return state[collection];
+}
+
 function asMap(items, collection) {
   const map = new Map();
   for (const item of Array.isArray(items) ? items : []) {
@@ -74,8 +91,8 @@ function buildAccountingSourceEvents(previousState, nextState, options = {}) {
   const events = [];
 
   for (const [collection, sourceType] of Object.entries(SOURCE_COLLECTIONS)) {
-    const before = asMap(previous[collection], collection);
-    const after = asMap(next[collection], collection);
+    const before = asMap(collectionItems(previous, collection), collection);
+    const after = asMap(collectionItems(next, collection), collection);
     const identities = new Set([...before.keys(), ...after.keys()]);
     for (const sourceId of identities) {
       const previousRecord = before.get(sourceId) || null;
