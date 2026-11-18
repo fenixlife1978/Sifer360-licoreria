@@ -85,7 +85,7 @@ function eventDate(record, fallback) {
     const local = localIsoWithOffset(value);
     if (local) return local;
   }
-  for (const key of ["createdAt", "updatedAt"]) {
+  for (const key of ["ts", "timestamp", "createdAt", "updatedAt"]) {
     if (!record || !record[key]) continue;
     const parsed = new Date(record[key]);
     if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
