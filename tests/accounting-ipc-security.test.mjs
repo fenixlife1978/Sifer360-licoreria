@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const main = fs.readFileSync(new URL("../electron/main.cjs", import.meta.url), "utf8");
+const ui = fs.readFileSync(new URL("../public/main.js", import.meta.url), "utf8");
 const preload = fs.readFileSync(new URL("../electron/preload.cjs", import.meta.url), "utf8");
 const builder = JSON.parse(fs.readFileSync(new URL("../electron-builder.json", import.meta.url), "utf8"));
 const channels = [
@@ -56,14 +57,14 @@ test("las operaciones POS y la sincronización LAN capturan eventos contables ju
 });
 
 test("la interfaz contable usa el token de sesión y no identidad enviada por renderer", () => {
-  assert.ok(main.includes("const accountingSessionToken=()=>String((activeUser()||{}).authToken||'')"));
-  assert.ok(main.includes("accountingGetSettings(sessionToken)"));
-  assert.ok(main.includes("return {token};"));
-  assert.ok(!main.includes("return {actorId,actorRole:user.role};"));
-  assert.ok(main.includes("seniatSudebanDlg('contabilidad')"));
-  assert.ok(main.includes("data-approve-journal"));
-  assert.ok(main.includes("data-post-journal"));
-  assert.ok(main.includes("data-reverse-journal"));
+  assert.ok(ui.includes("const accountingSessionToken=()=>String((activeUser()||{}).authToken||'')"));
+  assert.ok(ui.includes("accountingGetSettings(sessionToken)"));
+  assert.ok(ui.includes("return {token};"));
+  assert.ok(!ui.includes("return {actorId,actorRole:user.role};"));
+  assert.ok(ui.includes("seniatSudebanDlg('contabilidad')"));
+  assert.ok(ui.includes("data-approve-journal"));
+  assert.ok(ui.includes("data-post-journal"));
+  assert.ok(ui.includes("data-reverse-journal"));
 });
 
 test("el instalador no elimina el directorio de datos del usuario", () => {
