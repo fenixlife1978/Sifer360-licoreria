@@ -362,9 +362,7 @@ async function runAutomaticDepreciation(){
  finally{automaticDepreciationBusy=false;}
 }
 function startAutomaticDepreciation(){return false;}
- window.removeEventListener('focus',runAutomaticDepreciation);
- window.addEventListener('focus',runAutomaticDepreciation);
-}
+
 
 function exportStatement(){
  const date=$('#acStatementDate',dialog)?.value||today(),entries=validEntries().filter(e=>e.date<=date),rows=allMovementAccounts().map(a=>({a,t:totalsFor(entries,a.code)}));
