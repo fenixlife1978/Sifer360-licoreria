@@ -821,21 +821,21 @@ function load(){
     if(S.cfg.agenteRetIva===undefined)S.cfg.agenteRetIva=S.cfg.retencionHabilitadaConfirmada;
     if(S.cfg.agenteRetIslr===undefined)S.cfg.agenteRetIslr=S.cfg.retIslrHabilitada;
     if(!S.cfg.provEspecial)S.cfg.provEspecial='';
-    if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='00-';
-    if(!S.cfg.ctrlNext)S.cfg.ctrlNext=1;
-    if(!S.cfg.ctrlRangoDesde)S.cfg.ctrlRangoDesde='00-00000001';
-    if(!S.cfg.ctrlRangoHasta)S.cfg.ctrlRangoHasta='00-00050000';
+    if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='';
+    if(!Number.isSafeInteger(Number(S.cfg.ctrlNext))||Number(S.cfg.ctrlNext)<1)S.cfg.ctrlNext=0;
+    if(!S.cfg.ctrlRangoDesde)S.cfg.ctrlRangoDesde='';
+    if(!S.cfg.ctrlRangoHasta)S.cfg.ctrlRangoHasta='';
     if(!S.cfg.imprentaRif)S.cfg.imprentaRif='';
     if(!S.cfg.imprentaAut)S.cfg.imprentaAut='';
     if(!S.cfg.serialFiscal)S.cfg.serialFiscal='';
     (S.sales||[]).forEach(s=>{
-      if(!s.ctrlNo)s.ctrlNo=(S.cfg.ctrlPrefix||'00-')+pad(s.no,8);
-      if(!s.docType)s.docType='01-FACTURA';
-      if(!s.transType)s.transType=s.void?'03-ANUL':'01-REG';
+      if(!s.ctrlNo)s.ctrlNo='';
+      if(!s.docType)s.docType='NO_CLASIFICADO';
+      if(!s.transType)s.transType=s.void?'03-ANUL':'NO_CLASIFICADO';
       if(s.baseG16===undefined)s.baseG16=s.base||0;
     });
     (S.purchases||[]).forEach(p=>{
-      if(!p.ctrlProv)p.ctrlProv='00-'+pad(p.no+4400,8);
+      if(!p.ctrlProv||p.ctrlProv==='00-'+pad(p.no+4400,8))p.ctrlProv='';
     });
     S.invoice=d.invoice||S.invoice;
     S.purchaseSeq=d.purchaseSeq||S.purchaseSeq;
@@ -5772,12 +5772,12 @@ function printFiscalReport(title,html){
       '<div style="text-align:right">'+
         '<div style="font-weight:700;font-size:14px;color:#1842B8">'+esc(title)+'</div>'+
         '<div style="font-size:11px;color:#555">Fecha de Emisión: '+fmtDT(Date.now())+'</div>'+
-        '<div style="font-size:11px;color:#555">Control Fiscal: '+esc(S.cfg.ctrlPrefix||'00-')+' &middot; Rango Aut. Imprenta</div>'+
+        '<div style="font-size:11px;color:#92400E">Numeración fiscal: no configurada ni validada en esta instalación. Este reporte es auxiliar.</div>'+
       '</div>'+
     '</div>'+
     html+
     '<div style="margin-top:24px;border-top:1px dashed #888;padding-top:10px;display:flex;justify-content:space-between;font-size:10.5px;color:#555">'+
-      '<div>Documento generado por SIFER 360 &middot; Sistema Administrativo y de Control Fiscal</div>'+
+      '<div>Documento auxiliar generado por SIFER 360 &middot; No sustituye factura emitida por medio autorizado</div>'+
       '<div>Firma Contador / Administrador: _____________________________</div>'+
     '</div>'+
   '</div>';
@@ -6060,7 +6060,7 @@ function printVoucherLoteSudeban(l){
     '</div>'+
     '<div style="display:flex;justify-content:space-between;font-size:11px;color:#555"><span>Equiv. Tasa Oficial BCV:</span><span>'+usd(equivUsd)+'</span></div>'+
     '<div style="margin-top:12px;text-align:center;font-size:10.5px;color:#333;border-top:1px dashed #666;padding-top:8px">'+
-      'ESTADO: <b>'+esc(l.estado)+'</b> CON REGISTROS POS<br>CONCILIACIÓN FÍSICA Y ELECTRÓNICA CONFORME<br>CONSERVACIÓN LEGAL 10 AÑOS (SUDEBAN)'+
+      'ESTADO: <b>'+esc(l.estado)+'</b> CON REGISTROS POS<br>CONCILIACIÓN FÍSICA Y ELECTRÓNICA PENDIENTE DE VALIDACIÓN<br>CONSERVAR SEGÚN EL PLAZO LEGAL APLICABLE'+
     '</div>'+
   '</div>';
   printFiscalReport('Voucher de Cierre de Lote — '+l.refLote,html);
@@ -6625,8 +6625,8 @@ function seniatSudebanDlg(initialTab){
   const el=h('<div class="form" style="gap:10px">'+
     '<div class="semaforo-bar">'+
       '<div class="semaforo-dot"></div>'+
-      '<div class="semaforo-text"><b>CONTROL FISCAL & SUDEBAN CONFORME</b> &middot; Tasa Oficial BCV en vigencia ('+nf(S.cfg.rate)+' Bs./US$) &middot; Formas Libres en Rango Legal &middot; Discriminación IGTF 3% Divisas Activa.</div>'+
-      '<span class="fiscal-seal">SENIAT &middot; SUDEBAN OK</span>'+
+      '<div class="semaforo-text"><b>CONTROL FISCAL & SUDEBAN: REVISIÓN PENDIENTE</b> &middot; La documentación, autorizaciones y conciliaciones deben verificarse para esta instalación.</div>'+
+      '<span class="fiscal-seal">PENDIENTE DE VALIDACIÓN</span>'+
     '</div>'+
     '<div class="tabs" id="snTabs">'+
       '<button class="tab '+(activeTab==='resumen'?'active':'')+'" data-tab="resumen">Panel de Control Fiscal</button>'+
