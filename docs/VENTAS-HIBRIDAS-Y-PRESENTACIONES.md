@@ -14,7 +14,7 @@ Rama de trabajo de la evolución 1.1.0. Ya están integrados el selector de pres
 ## Opciones del POS
 1. **Ticket no fiscal:** comprobante interno por impresora térmica genérica. No se presenta como factura fiscal.
 2. **Factura fiscal:** emisión por la máquina fiscal habilitada para la caja. Se valida la disponibilidad y trazabilidad fiscal de las cantidades.
-3. **Impresión híbrida:** una venta comercial padre con un identificador común y dos documentos hijos cuando existan renglones respaldados y no respaldados. La factura fiscal contiene únicamente renglones cuya cantidad completa tenga respaldo fiscal suficiente; el ticket térmico contiene el resto. Los documentos conservan sus importes, impuestos, pagos distribuidos y relación con la venta padre. Si todos los renglones pertenecen a un solo grupo, solo se genera el documento que corresponda.
+3. **Impresión híbrida:** una venta comercial padre con un identificador común y dos documentos hijos cuando existan cantidades respaldadas y no respaldadas. La factura fiscal contiene la cantidad respaldada que pueda asignarse en presentaciones completas; el ticket térmico contiene el remanente. Un mismo renglón puede dividirse entre ambos documentos, sin fraccionar arbitrariamente una presentación indivisible (por ejemplo, un pack de 6). Los documentos conservan sus importes, impuestos, pagos distribuidos y relación con la venta padre. Si todos los renglones pertenecen a un solo grupo, solo se genera el documento que corresponda.
 
 La primera implementación de modo híbrido no permite una venta mixta cuando se usa Cashea como medio de pago, porque falta una distribución contractual por documento. En ese caso el POS bloquea la confirmación y pide usar un solo tipo de comprobante o separar la operación. Los pagos, vuelto e IGTF restantes se distribuyen proporcionalmente entre documentos hijos y se reconcilian contra la venta padre. Las devoluciones internas de ventas híbridas que ya emitieron factura fiscal quedan bloqueadas hasta disponer del flujo de nota de crédito fiscal; las ventas internas sin factura pueden devolverse y restauran el saldo fiscal de las unidades respaldadas que se consumieron. Los libros fiscales y el cálculo mensual de débito IVA toman solo la porción fiscal; IGTF, caja y conciliación bancaria conservan la venta comercial completa, incluidos los tickets internos.
 
@@ -39,7 +39,7 @@ La emisión fiscal debe finalizar antes de considerar confirmada la venta. Si la
 
 ## Criterios de aceptación
 - Venta ticket, factura fiscal e híbrida se registran una sola vez y mantienen una sola relación de cobro.
-- El modo híbrido nunca emite un renglón sin respaldo en la factura fiscal y nunca duplica cantidades entre sus documentos.
+- El modo híbrido asigna cantidades respaldadas a factura fiscal y el remanente al ticket. Cuando hay varias presentaciones, la separación conserva presentaciones completas y nunca duplica cantidades entre documentos.
 - Fallos de impresora, timeout, reinicio o pérdida de LAN no duplican venta, cobro, número fiscal ni movimiento de inventario.
 - Los totales de documentos hijos reconcilian con la venta padre, incluyendo IVA, IGTF, descuentos, pagos, crédito y vuelto. Cashea mixto permanece bloqueado explícitamente hasta su conciliación.
 - El stock operativo final coincide con las unidades base vendidas; los movimientos del libro fiscal coinciden con las cantidades asignadas y sustentadas.
