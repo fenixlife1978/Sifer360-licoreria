@@ -10,7 +10,7 @@
     ],
     "icon": "public/favicon.ico"
   },
-  "portable": { "artifactName": "SIFER360-1.0.9-Portable.exe" },
+  "portable": { "artifactName": "SIFER360-1.1.0-Portable.exe" },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
@@ -20,7 +20,7 @@
     "installerIcon": "public/favicon.ico",
     "uninstallerIcon": "public/favicon.ico",
     "installerHeaderIcon": "public/favicon.ico",
-    "artifactName": "SIFER360-1.0.9-Instalador.exe"
+    "artifactName": "SIFER360-1.1.0-Instalador.exe"
   },
   "publish": [{ "provider": "github", "owner": "fenixlife1978", "repo": "Sifer360-licoreria", "releaseType": "release" }]
 }
