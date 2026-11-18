@@ -1068,6 +1068,12 @@ function closeWin(silent){
   const appRoot=$('#win');
   if(appRoot)appRoot.inert=false;
   if(current&&current.el&&current.el.isConnected)current.el.remove();
+  // Recovery guard: remove orphaned modal backdrops left by interrupted flows.
+  // A pending cashier may remain locked, but an authenticated non-cashier must never
+  // inherit the global interaction block after an unrelated modal closes.
+  document.querySelectorAll('.backdrop').forEach(el=>el.remove());
+  const session=activeUser();
+  if(session&&session.role!=='cajero')document.body.classList.remove('cashier-pending');
   const prev=current&&current.prev;
   if(!silent&&prev&&prev.focus&&document.contains(prev))prev.focus();
 }
