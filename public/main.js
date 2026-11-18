@@ -866,13 +866,24 @@ function lineInfo(l){
   return{p,pr,factor,price,basePrice:r8(price/factor),baseQty:lineBaseQty(l),gross,net,rate,iva,total:r2(net+iva)};
 }
 function hybridCartPlan(){
-  const ledger=window.SIFERInventoryLedgers?window.SIFERInventoryLedgers.ensureFiscalInventory(S):{balances:{}},used={},fiscalIndexes=[],ticketIndexes=[];
+  const ledger=window.SIFERInventoryLedgers?window.SIFERInventoryLedgers.ensureFiscalInventory(S):{balances:{}},used={},fiscalLines=[],ticketLines=[],fiscalQtyByLine={},ticketQtyByLine={};
   S.cart.forEach((line,index)=>{
-    const code=String(line.code),qty=lineBaseQty(line),available=Math.max(0,Number(ledger.balances[code]&&ledger.balances[code].stock||0)-Number(used[code]||0));
-    if(available+1e-9>=qty){fiscalIndexes.push(index);used[code]=(Number(used[code])||0)+qty;}
-    else ticketIndexes.push(index);
+    const code=String(line.code),baseQty=lineBaseQty(line),factor=Math.max(1e-8,Number(line.factor)||1),presentationQty=Math.max(0,Number(line.qty)||0);
+    const available=Math.max(0,Number(ledger.balances[code]&&ledger.balances[code].stock||0)-Number(used[code]||0));
+    const fiscalPresentationQty=Math.min(presentationQty,Math.floor((available+1e-9)/factor));
+    const fiscalBaseQty=r8(Math.min(baseQty,fiscalPresentationQty*factor)),ticketBaseQty=r8(Math.max(0,baseQty-fiscalBaseQty)),ticketPresentationQty=r8(Math.max(0,presentationQty-fiscalPresentationQty));
+    const fiscalRatio=baseQty>0?fiscalBaseQty/baseQty:0;
+    const fiscalNet=r2(Number(line.net||0)*fiscalRatio),fiscalIva=r2(Number(line.iva||0)*fiscalRatio);
+    if(fiscalBaseQty>1e-9){
+      fiscalQtyByLine[index]=fiscalBaseQty;used[code]=(Number(used[code])||0)+fiscalBaseQty;
+      fiscalLines.push({...line,lineIndex:index,qty:fiscalBaseQty,presentationQty:fiscalPresentationQty,net:fiscalNet,iva:fiscalIva});
+    }
+    if(ticketBaseQty>1e-9){
+      ticketQtyByLine[index]=ticketBaseQty;
+      ticketLines.push({...line,lineIndex:index,qty:ticketBaseQty,presentationQty:ticketPresentationQty,net:r2(Number(line.net||0)-fiscalNet),iva:r2(Number(line.iva||0)-fiscalIva)});
+    }
   });
-  return{fiscalIndexes,ticketIndexes};
+  return{fiscalIndexes:Object.keys(fiscalQtyByLine).map(Number),ticketIndexes:Object.keys(ticketQtyByLine).map(Number),fiscalLines,ticketLines,fiscalQtyByLine,ticketQtyByLine};
 }
 function salePortion(sale,lines,mode,residual,fiscalRatio){
   let sub=0,base=0,iva=0,baseG16=0,baseR8=0,baseA31=0,baseEx=0;
@@ -892,16 +903,21 @@ function salePortion(sale,lines,mode,residual,fiscalRatio){
   return{...sale,lines,sub,disc:r2(sub-base),base,baseG16:r2(baseG16),baseR8:r2(baseR8),baseA31:r2(baseA31),baseEx:r2(baseEx),iva,total:r2(base+iva),igtf,pays,change,documentMode:mode,docType:mode==='HYBRID'?'TICKET-INTERNO':'01-FACTURA'};
 }
 function ticketFiscalOutPlan(lines,ticketLines,fiscalLines){
-  const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S),physical=new Map(),fiscal=new Map(),ticket=new Map(),fiscalUsed=new Map(),result=new Map();
+  const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S),physical=new Map(),fiscalUsed=new Map(),nonFiscalRemaining=new Map(),fiscalRemaining=new Map(),result=new Map();
   (lines||[]).forEach(line=>physical.set(String(line.code),Number(prod(line.code)&&prod(line.code).stock||0)));
   (fiscalLines||[]).forEach(line=>fiscalUsed.set(String(line.code),(fiscalUsed.get(String(line.code))||0)+Number(line.qty||0)));
-  (ticketLines||[]).forEach(line=>ticket.set(String(line.code),(ticket.get(String(line.code))||0)+Number(line.qty||0)));
-  ticket.forEach((qty,code)=>{
-    const supported=Math.max(0,Number(ledger.balances[code]&&ledger.balances[code].stock||0));
-    const operational=Number(physical.get(code)||0),nonFiscalAvailable=Math.max(0,operational-supported);
-    const fiscalRemaining=Math.max(0,supported-Number(fiscalUsed.get(code)||0));
-    const consume=Math.min(fiscalRemaining,Math.max(0,qty-nonFiscalAvailable));
-    if(consume>1e-9)result.set(code,r8(consume));
+  const codes=new Set([...(lines||[]).map(line=>String(line.code)),...(ticketLines||[]).map(line=>String(line.code)),...(fiscalLines||[]).map(line=>String(line.code))]);
+  codes.forEach(code=>{
+    const fiscalStock=Math.max(0,Number(ledger.balances[code]&&ledger.balances[code].stock||0));
+    nonFiscalRemaining.set(code,Math.max(0,Number(physical.get(code)||0)-fiscalStock));
+    fiscalRemaining.set(code,Math.max(0,fiscalStock-Number(fiscalUsed.get(code)||0)));
+  });
+  (ticketLines||[]).forEach((line,index)=>{
+    const code=String(line.code),lineIndex=Number.isInteger(line.lineIndex)?line.lineIndex:index,qty=Math.max(0,Number(line.qty||0));
+    const nonFiscalUsed=Math.min(qty,Number(nonFiscalRemaining.get(code)||0)),consume=Math.min(Number(fiscalRemaining.get(code)||0),Math.max(0,qty-nonFiscalUsed));
+    nonFiscalRemaining.set(code,Math.max(0,Number(nonFiscalRemaining.get(code)||0)-nonFiscalUsed));
+    fiscalRemaining.set(code,Math.max(0,Number(fiscalRemaining.get(code)||0)-consume));
+    if(consume>1e-9)result.set(lineIndex,r8(consume));
   });
   return result;
 }
@@ -5127,8 +5143,8 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     ref:(refs&&refs[m.id])||''
   }));
   const fiscalLineIndexes=hybridMode?new Set(hybridPlan.fiscalIndexes):(fiscalMode?new Set(lines.map((_,i)=>i)):new Set());
-  const fiscalSaleLines=lines.filter((_,i)=>fiscalLineIndexes.has(i));
-  const ticketSaleLines=hybridMode?lines.filter((_,i)=>hybridPlan.ticketIndexes.includes(i)):(internalTicketMode?lines:[]);
+  const fiscalSaleLines=hybridMode?hybridPlan.fiscalLines:lines.filter((_,i)=>fiscalLineIndexes.has(i));
+  const ticketSaleLines=hybridMode?hybridPlan.ticketLines:(internalTicketMode?lines:[]);
   const physicalRequired=new Map();
   lines.forEach(line=>physicalRequired.set(String(line.code),(physicalRequired.get(String(line.code))||0)+Number(line.qty)));
   const physicalShort=Array.from(physicalRequired.entries()).find(([code,qty])=>{const p=prod(code);return !p||Number(p.stock)+1e-9<qty;});
@@ -5138,10 +5154,9 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     if(!fiscalCheck||!fiscalCheck.ok){const code=fiscalCheck&&fiscalCheck.code||'artículo';const p=prod(code);msg('Venta fiscal bloqueada: inventario fiscal insuficiente para '+(p?p.desc:code)+'. Disponible: '+fq(fiscalCheck&&fiscalCheck.available||0)+'. Registre/valide la existencia fiscal inicial o la compra fiscal antes de facturar.','bad');return;}
   }
   const ticketFiscalOutByCode=ticketFiscalOutPlan(lines,ticketSaleLines,fiscalSaleLines),ticketFiscalRemainingByCode=new Map(ticketFiscalOutByCode),ticketFiscalOutLines=[];
-  S.cart.forEach((line,lineIndex)=>{
-    if(fiscalLineIndexes.has(lineIndex))return;
-    const code=String(line.code),out=Math.min(lineBaseQty(line),Number(ticketFiscalRemainingByCode.get(code)||0));
-    if(out>1e-9){ticketFiscalOutLines.push({lineIndex,code,qty:r8(out)});ticketFiscalRemainingByCode.set(code,Math.max(0,Number(ticketFiscalRemainingByCode.get(code)||0)-out));}
+  ticketSaleLines.forEach((line,ticketLineIndex)=>{
+    const lineIndex=Number.isInteger(line.lineIndex)?line.lineIndex:ticketLineIndex,code=String(line.code),out=Number(ticketFiscalRemainingByCode.get(lineIndex)||0);
+    if(out>1e-9)ticketFiscalOutLines.push({lineIndex,code,qty:r8(out)});
   });
   const creditAmt=(isCred&&st.pending>=0.01)?r2(st.pending):0;
   const casheaAmt=r2(amts.cashea||0);
@@ -5314,15 +5329,11 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   }
 
 const ticketFiscalByLine=new Map(ticketFiscalOutLines.map(line=>[line.lineIndex,line.qty]));
-S.cart.forEach((l,lineIndex)=>{
-    const p=prod(l.code);
-    const baseQty=lineBaseQty(l);
-    if(fiscalLineIndexes.has(lineIndex))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':'+p.code+':'+lineIndex,type:'VENTA_FISCAL',dir:'OUT',code:p.code,qty:baseQty,cost:p.cost,document:'FAC-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
-    else{
-      const fiscalOut=Number(ticketFiscalByLine.get(lineIndex)||0);
-      if(fiscalOut>1e-9)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':TICKET:'+p.code+':'+lineIndex,type:'SALIDA_TICKET_NO_FISCAL',dir:'OUT',code:p.code,qty:fiscalOut,cost:p.cost,document:'TKT-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
-    }
-    p.stock=Math.max(0,r2(p.stock-baseQty));
+ S.cart.forEach((l,lineIndex)=>{
+    const p=prod(l.code),baseQty=lineBaseQty(l),fiscalQty=hybridMode?Number(hybridPlan.fiscalQtyByLine[lineIndex]||0):(fiscalLineIndexes.has(lineIndex)?baseQty:0),fiscalOut=Number(ticketFiscalByLine.get(lineIndex)||0);
+    if(fiscalQty>1e-9)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':'+p.code+':'+lineIndex,type:'VENTA_FISCAL',dir:'OUT',code:p.code,qty:fiscalQty,cost:p.cost,document:'FAC-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
+    if(fiscalOut>1e-9)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':TICKET:'+p.code+':'+lineIndex,type:'SALIDA_TICKET_NO_FISCAL',dir:'OUT',code:p.code,qty:fiscalOut,cost:p.cost,document:'TKT-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
+     p.stock=Math.max(0,r2(p.stock-baseQty));
     addKardex({
       ts,code:p.code,type:'VENTA',dir:'OUT',doc:(internalTicketMode?'TKT-':'FAC-')+pad(invNo),cashbox:currentCaja(),
       party:S.client.name,qty:baseQty,stockAfter:p.stock,cost:p.cost,user:currentCajero()
