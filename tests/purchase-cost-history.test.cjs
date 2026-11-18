@@ -129,7 +129,7 @@ test('compras del mismo día en cajas distintas desempatan por hora de registro 
 });
 
 test('el historial de compras del administrador incluye compras ADMIN y anula por número más caja de origen',()=>{
-  assert.ok(source.includes("const list=(S.purchases||[]).slice().sort((a,b)=>Number(b.no)-Number(a.no)||Number(b.ts||0)-Number(a.ts||0);"));
+  assert.ok(source.includes("const list=(S.purchases||[]).slice().sort((a,b)=>Number(b.no)-Number(a.no)||Number(b.ts||0)-Number(a.ts||0));"));
   assert.ok(source.includes("data-void-box=\"'+esc(c.cashbox||'01')+'\""));
   assert.ok(source.includes("Number(x.no)===Number(b.dataset.voidComp)&&String(x.cashbox||'01')===String(b.dataset.voidBox||'01')"));
 });
