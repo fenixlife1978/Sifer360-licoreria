@@ -16,9 +16,9 @@ test('v1.1.0 package and Windows artifacts use one consistent version', async ()
   assert.equal(pkg.version, '1.1.0');
   assert.equal(builder.portable.artifactName, 'SIFER360-1.1.0-Portable.exe');
   assert.equal(builder.nsis.artifactName, 'SIFER360-1.1.0-Instalador.exe');
-  assert.match(buildExe, /SIFER360-1\.0\.9-Windows-Installer-and-Portable/);
-  assert.match(desktop, /SIFER360-1\.0\.9-Windows-Desktop/);
-  assert.match(validation, /SIFER360-1\.0\.9-Desktop-SQLite-Windows/);
+  assert.match(buildExe, /SIFER360-1\.1\.0-Windows-Installer-and-Portable/);
+  assert.match(desktop, /SIFER360-1\.1\.0-Windows-Desktop/);
+  assert.match(validation, /SIFER360-1\.1\.0-Desktop-SQLite-Windows/);
   assert.doesNotMatch(buildExe, /SIFER360-1\.0\.[4678]-/);
   assert.doesNotMatch(desktop, /SIFER360-1\.0\.[4678]-/);
   assert.doesNotMatch(validation, /SIFER360-1\.0\.[4678]-/);
