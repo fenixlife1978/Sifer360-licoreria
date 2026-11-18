@@ -3180,7 +3180,7 @@ function comprasDlg(initialTab){
     try{lines=pLines.map((l,lineIndex)=>{
       const p=prod(l.code);
       /* Costo Promedio Ponderado */
-      const nextStock=r2(p.stock+l.qty);
+      const nextStock=r2(Number(p.stock||0)+Number(l.qty));
       const nextCost=calcWeightedPurchaseCost(p.stock,p.cost,l.qty,l.cost);
       p.stock=nextStock;
       p.cost=nextCost;
