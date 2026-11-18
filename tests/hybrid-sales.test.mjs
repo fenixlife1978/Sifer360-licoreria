@@ -178,20 +178,20 @@ test('reprinting an already sent or uncertain hybrid ticket requires explicit du
   assert.match(main,/s\.documentMode==='HYBRID'&&s\.printStatus==='uncertain'&&!confirm\(/);
 });
 
-function runSalePortion(sale,lines,mode,residual,fiscalRatio){
+function runSalePortion(sale,lines,mode,residual,fiscalRatio,fiscalSub){
   const start=main.indexOf('function salePortion(');
   const end=main.indexOf('\nfunction ticketFiscalOutPlan',start);
   assert.ok(start>=0&&end>start,'salePortion helper exists');
   const context={r2:value=>Math.round((Number(value)+Number.EPSILON)*100)/100,Number,Math};
   vm.runInNewContext(main.slice(start,end)+';globalThis.run=salePortion;',context);
-  return context.run(sale,lines,mode,residual,fiscalRatio);
+  return context.run(sale,lines,mode,residual,fiscalRatio,fiscalSub);
 }
 
 test('hybrid pack subtotal uses presentation quantity instead of base-unit quantity',()=>{
   const sale={sub:240,total:232,pays:[{method:'cash',amount:100.01},{method:'zelle',amount:131.99}],igtf:6.96,change:0.01};
   const fiscalLine={code:'PACK6',price:120,presentationPrice:120,qty:6,presentationQty:1,net:100,iva:16,taxRate:16};
   const portion=runSalePortion(sale,[fiscalLine],'FISCAL',false,0.5);
-  const residual=runSalePortion(sale,[fiscalLine],'HYBRID',true,0.5);
+  const residual=runSalePortion(sale,[fiscalLine],'HYBRID',true,0.5,portion.sub);
   assert.equal(portion.sub,120);
   assert.equal(portion.disc,20);
   assert.equal(portion.base,100);
@@ -213,7 +213,7 @@ test('hybrid fractional-unit subtotals conserve parent gross after cent rounding
   const fiscalLine={code:'LITRO',price:0.05,presentationPrice:0.05,qty:0.3,presentationQty:0.3,net:0.02,iva:0,taxRate:0};
   const ticketLine={code:'LITRO',price:0.05,presentationPrice:0.05,qty:0.7,presentationQty:0.7,net:0.03,iva:0,taxRate:0};
   const fiscal=runSalePortion(sale,[fiscalLine],'FISCAL',false,0.3);
-  const ticket=runSalePortion(sale,[ticketLine],'HYBRID',true,0.3);
+  const ticket=runSalePortion(sale,[ticketLine],'HYBRID',true,0.3,fiscal.sub);
   assert.equal(fiscal.sub,0.02);
   assert.equal(ticket.sub,0.03);
   assert.equal(fiscal.sub+ticket.sub,sale.sub);
