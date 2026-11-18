@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import initSqlJs from 'sql.js';
+const require=createRequire(import.meta.url);
 import { calculateStraightLineDepreciation } from '../src/accounting/fixed-assets.mjs';
 
 const schema = readFileSync(new URL('../src/accounting/fixed-assets-schema.sql', import.meta.url), 'utf8');
@@ -40,4 +43,27 @@ test('la depreciación genera borradores en SQLite y exige aprobación del conta
   assert.match(main, /'accounting:list-fixed-assets','accounting:list-asset-acquisition-entries'/);
   assert.match(pos, /btnGenerateAssetDepreciation/);
   assert.match(pos, /accountingGenerateAssetDepreciationDrafts/);
+});
+
+test('el cierre detecta depreciaciones de activos faltantes, revertidas o con meses previos pendientes', async () => {
+  const match=main.match(/const pendingAssetDepreciations = period \? Number\(one\(`([\s\S]*?)`, \[periodId/);
+  assert.ok(match, 'la consulta de depreciación debe permanecer conectada al cierre de períodos');
+  const SQL=await initSqlJs({locateFile:file=>require.resolve('sql.js/dist/'+file)});
+  const db=new SQL.Database();
+  db.run('CREATE TABLE accounting_fixed_assets(id TEXT,status TEXT,depreciation_start_month TEXT,available_for_use_date TEXT,useful_life_months INTEGER)');
+  db.run('CREATE TABLE accounting_asset_depreciations(id TEXT,asset_id TEXT,depreciation_month TEXT,status TEXT)');
+  db.run("INSERT INTO accounting_fixed_assets VALUES('A1','active','2026-10','2026-10-01',60)");
+  const params=['2026-11','2026-11','2026-11-30','2026-11','2026-11','2026-11','2026-11','2026-11'];
+  const pending=()=>Number(db.exec(match[1],{bind:params})[0].values[0][0]);
+  assert.equal(pending(),1,'sin borrador o contabilización no se puede cerrar');
+  db.run("INSERT INTO accounting_asset_depreciations VALUES('D1','A1','2026-10','posted')");
+  assert.equal(pending(),1,'falta la depreciación del mes actual');
+  db.run("INSERT INTO accounting_asset_depreciations VALUES('D2','A1','2026-11','posted')");
+  assert.equal(pending(),0,'mes actual y meses previos contabilizados');
+  db.run("UPDATE accounting_asset_depreciations SET status='reversed' WHERE id='D2'");
+  assert.equal(pending(),1,'una depreciación reversada requiere regularización');
+  db.run("UPDATE accounting_asset_depreciations SET status='posted' WHERE id='D2'");
+  db.run("DELETE FROM accounting_asset_depreciations WHERE id='D1'");
+  assert.equal(pending(),1,'no permite saltar meses anteriores');
+  db.close();
 });
