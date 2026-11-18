@@ -98,3 +98,20 @@ test('anular una venta fiscal repone el libro fiscal y el inventario operativo',
   assert.match(flow, /p\.stock=r2\(p\.stock\+l\.qty\)/);
   assert.match(flow, /type:'ANULACION_VENTA_FISCAL',dir:'IN'/);
 });
+
+test('CPP ponderado usa inventario positivo valorado y no distorsiona recepciones con stock negativo',()=>{
+  const start=source.indexOf('function calcWeightedPurchaseCost(');
+  const end=source.indexOf('function getLastSupplierPurchaseCost(',start);
+  assert.ok(start>=0&&end>start,'Debe existir helper CPP de compra');
+  const helper=source.slice(start,end);
+  const calc=runInNewContext(helper+'; calcWeightedPurchaseCost',{r8:n=>Math.round((Number(n)+Number.EPSILON)*1e8)/1e8});
+  assert.equal(calc(10,4,5,7),5);
+  assert.equal(calc(-3,10,5,6),6);
+  assert.equal(calc(2,5,2,0),2.5);
+});
+
+test('el precio unitario vacío no se interpreta como costo cero y el costo cero real sí se acepta',()=>{
+  assert.match(source,/data-cpf="cost" aria-label="Nuevo precio unitario de compra sin IVA US\$"[^>]*required/);
+  assert.match(source,/const cost=pnZero\(t\.value\);l\.cost=cost===null\?null:r8\(cost\);l\.costEdited=true;/);
+  assert.match(source,/l\.cost===null\|\|l\.cost===undefined/);
+});
