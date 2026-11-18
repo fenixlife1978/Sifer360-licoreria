@@ -142,12 +142,22 @@ function runSalePortion(sale,lines,mode,residual,fiscalRatio){
 }
 
 test('hybrid pack subtotal uses presentation quantity instead of base-unit quantity',()=>{
-  const sale={total:232,pays:[{method:'cash',amount:232}],igtf:0,change:0};
+  const sale={total:232,pays:[{method:'cash',amount:100.01},{method:'zelle',amount:131.99}],igtf:6.96,change:0.01};
   const fiscalLine={code:'PACK6',price:120,presentationPrice:120,qty:6,presentationQty:1,net:100,iva:16,taxRate:16};
   const portion=runSalePortion(sale,[fiscalLine],'FISCAL',false,0.5);
+  const residual=runSalePortion(sale,[fiscalLine],'HYBRID',true,0.5);
   assert.equal(portion.sub,120);
   assert.equal(portion.disc,20);
   assert.equal(portion.base,100);
   assert.equal(portion.iva,16);
   assert.equal(portion.total,116);
+  assert.equal(residual.sub,120);
+  assert.equal(residual.disc,20);
+  assert.equal(residual.total,116);
+  assert.deepEqual(Array.from(portion.pays,p=>p.amount),[50.01,66]);
+  assert.deepEqual(Array.from(residual.pays,p=>p.amount),[50,65.99]);
+  assert.equal(portion.pays[0].amount+residual.pays[0].amount,sale.pays[0].amount);
+  assert.equal(portion.pays[1].amount+residual.pays[1].amount,sale.pays[1].amount);
+  assert.equal(portion.igtf+residual.igtf,sale.igtf);
+  assert.equal(portion.change+residual.change,sale.change);
 });
