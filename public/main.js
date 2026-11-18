@@ -7086,14 +7086,14 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
       '<div class="f"><label for="fPctRet">Retención IVA de referencia</label><select class="fld" id="fPctRet"><option value="75" '+(Number(c.retIvaPct||75)===75?'selected':'')+'>75 % del IVA (referencial)</option><option value="100" '+(Number(c.retIvaPct||75)===100?'selected':'')+'>100 % del IVA (referencial)</option></select></div>'+\n      '<div class="f"><label><input type="checkbox" id="fRetIslr" '+(c.retIslrHabilitada===true?'checked':'')+'> Agente de retención ISLR (si está designado)</label></div>'+
       '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
-      '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'SNAT/2023/000412')+'"></div>'+
+      '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'')+'"></div>'+
       '<div class="f"><label for="fCtrlPref">Prefijo Nº Control Fiscal</label><input class="fld mono" id="fCtrlPref" value="'+esc(c.ctrlPrefix||'00-')+'"></div>'+
-      '<div class="f"><label for="fCtrlNext">Próximo Nº de Control</label><input class="fld mono r" id="fCtrlNext" value="'+(c.ctrlNext||1043)+'"></div>'+
-      '<div class="f"><label for="fRangoD">Rango Autorizado (Desde)</label><input class="fld mono" id="fRangoD" value="'+esc(c.ctrlRangoDesde||'00-00000001')+'"></div>'+
-      '<div class="f"><label for="fRangoH">Rango Autorizado (Hasta)</label><input class="fld mono" id="fRangoH" value="'+esc(c.ctrlRangoHasta||'00-00050000')+'"></div>'+
-      '<div class="f"><label for="fImpRif">RIF Imprenta Digital Autorizada</label><input class="fld" id="fImpRif" value="'+esc(c.imprentaRif||'J-31009988-4')+'"></div>'+
-      '<div class="f"><label for="fImpAut">Nº Providencia Imprenta</label><input class="fld" id="fImpAut" value="'+esc(c.imprentaAut||'SENIAT/DAF/2022/981')+'"></div>'+
-      '<div class="f"><label for="fSerial">Serial Máquina / Memoria Fiscal</label><input class="fld mono" id="fSerial" value="'+esc(c.serialFiscal||'Z4A7719204')+'"></div>'+
+      '<div class="f"><label for="fCtrlNext">Próximo Nº de Control</label><input class="fld mono r" id="fCtrlNext" value="'+(c.ctrlNext||1)+'"></div>'+
+      '<div class="f"><label for="fRangoD">Rango Autorizado (Desde)</label><input class="fld mono" id="fRangoD" value="'+esc(c.ctrlRangoDesde||'')+'"></div>'+
+      '<div class="f"><label for="fRangoH">Rango Autorizado (Hasta)</label><input class="fld mono" id="fRangoH" value="'+esc(c.ctrlRangoHasta||'')+'"></div>'+
+      '<div class="f"><label for="fImpRif">RIF Imprenta Digital Autorizada</label><input class="fld" id="fImpRif" value="'+esc(c.imprentaRif||'')+'"></div>'+
+      '<div class="f"><label for="fImpAut">Nº Providencia Imprenta</label><input class="fld" id="fImpAut" value="'+esc(c.imprentaAut||'')+'"></div>'+
+      '<div class="f"><label for="fSerial">Serial Máquina / Memoria Fiscal</label><input class="fld mono" id="fSerial" value="'+esc(c.serialFiscal||'')+'"></div>'+
     '</div><p class="hint">Los números de control asignados son correlativos y consecutivos conforme a la Providencia SENIAT 0071 sobre emisión de facturas y otros documentos.</p>';
   };
 
