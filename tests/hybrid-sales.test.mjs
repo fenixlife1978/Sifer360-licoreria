@@ -129,7 +129,7 @@ test('fiscal printer payload contains only the fiscal portion and uses the selec
 });
 
 test('hybrid documents share one sale identity and allocate tax, payments and change without duplicating amounts',()=>{
-  assert.match(main,/function salePortion\(sale,lines,mode,residual,fiscalRatio\)/);
+  assert.match(main,/function salePortion\(sale,lines,mode,residual,fiscalRatio,fiscalSub\)/);
   assert.match(main,/residual\?r2\(Number\(pay\.amount\|\|0\)-r2\(Number\(pay\.amount\|\|0\)\*ratio\)\)/);
   assert.match(main,/residual\?r2\(Number\(sale\.igtf\|\|0\)-r2\(Number\(sale\.igtf\|\|0\)\*ratio\)\)/);
   assert.match(main,/ticketDocumentSale\.ticketReference='TKT-'/);
