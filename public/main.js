@@ -2845,6 +2845,8 @@ function getLastSupplierPurchaseCost(purchases, code, supplierRif){
 
 /* ---------- MÓDULO DE COMPRAS Y PROVEEDORES ---------- */
 function comprasDlg(initialTab){
+  const purchaseAdminBox='ADMIN';
+  if(activeUser().role!=='admin'){msg('El módulo Compras y Recepción de Mercancía es exclusivo del administrador.','bad');return;}
   let tab=initialTab||'new';
   let supIdx=0;
   let pLines=[];
@@ -3175,7 +3177,7 @@ function comprasDlg(initialTab){
     if(pLines.some(l=>!Number.isFinite(Number(l.qty))||Number(l.qty)<=0||l.cost===null||l.cost===undefined||!Number.isFinite(Number(l.cost))||Number(l.cost)<0)){msg('Cada renglón debe tener cantidad positiva y costo unitario sin IVA válido y finito.','bad');return false;}
     if(pLines.some(l=>{const p=prod(l.code);return !p||p.stock===null||p.stock===undefined||!Number.isFinite(Number(p.stock))||p.cost===null||p.cost===undefined||!Number.isFinite(Number(p.cost))||Number(p.cost)<0;})){msg('El producto tiene stock o CPP inválido. Corrija su ficha de inventario antes de recibir la compra.','bad');return false;}
     const ts=Date.now();
-    let no;try{no=await nextCajaSequence('purchase',currentCaja());}catch(error){msg('No se pudo reservar el número de compra: '+error.message,'bad');return false;}
+    let no;try{no=await nextCajaSequence('purchase',purchaseAdminBox);}catch(error){msg('No se pudo reservar el número de compra: '+error.message,'bad');return false;}
     S.purchaseSeq=Math.max(Number(S.purchaseSeq)||1,no+1);
     let lines;
     try{lines=pLines.map((l,lineIndex)=>{
@@ -3186,7 +3188,7 @@ function comprasDlg(initialTab){
       p.stock=nextStock;
       p.cost=nextCost;
       if(l.price>0){p.price=r8(l.price);if(p.pricing){p.pricing.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;p.pricing.markupSale=p.price>0?r2(((p.price-p.cost)/p.price)*100):0;}if(p.presentations&&p.presentations[0]&&Number(p.presentations[0].factor)===1)p.presentations[0].price=p.price;if(p.pricing&&Array.isArray(p.pricing.gaps)){p.pricing.gaps.forEach((g,idx)=>{if(idx===0){g.price=p.price;g.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;}else if(p.pricing.mode==='auto'){g.price=r2(p.price*(1-(Number(g.gapPct)||0)/100));g.markupCost=p.cost>0?r2(((g.price-p.cost)/p.cost)*100):0;}});}}
-      if(docType==='FACTURA_FISCAL')window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'PURCHASE-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(no)+':'+p.code+':'+lineIndex,type:'COMPRA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(no),sourceId:'PURCHASE-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(no),timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
+      if(docType==='FACTURA_FISCAL')window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'PURCHASE-'+String(purchaseAdminBox).replace(/\\W/g,'')+'-'+pad(no)+':'+p.code+':'+lineIndex,type:'COMPRA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(no),sourceId:'PURCHASE-'+String(purchaseAdminBox).replace(/\\W/g,'')+'-'+pad(no),timestamp:ts,cashbox:purchaseAdminBox,user:currentCajero()});
       addKardex({
         ts,code:p.code,type:'COMPRA',dir:'IN',doc:'COM-'+pad(no),
         party:sup.name+' (Fac. '+docProv+')',qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
@@ -3208,10 +3210,10 @@ function comprasDlg(initialTab){
     const periodoRetencion=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
     let retSeq=null,cxpNo=null;
     let retIslrSeq=null;
-    if(aplicarRetencion){try{retSeq=await nextCajaSequence('retention-'+periodoRetencion,currentCaja());}catch(error){msg('No se pudo reservar el número de la retención IVA: '+error.message,'bad');return false;}}
-    if(retIslrUsd>0){try{retIslrSeq=await nextCajaSequence('retention-islr-'+periodoRetencion,currentCaja());}catch(error){msg('No se pudo reservar el número de la retención ISLR: '+error.message,'bad');return false;}}
-    if(payableTotal-effPaid>=0.01){try{cxpNo=await nextCajaSequence('cxp',currentCaja());}catch(error){msg('No se pudo reservar el número de CxP: '+error.message,'bad');return false;}}
-    const comp={accountingSourceId:'PURCHASE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(no),no,cashbox:currentCaja(),docProv,ctrlProv,docType,isFiscalDocument:docType==='FACTURA_FISCAL',taxCreditEligible:docType==='FACTURA_FISCAL',docDate,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,ivaCreditable:docType==='FACTURA_FISCAL'?iva:0,total,payableTotal,retIva:retUsd,retIslr:retIslrUsd,retIslrPct:retIslrRate,retIslrBase,rate:purchaseRate,rateDate:purchaseRateRecord.date,rateEffectiveDate:purchaseRateRecord.effectiveDate,rateSource:purchaseRateRecord.source,rateUpdatedAt:purchaseRateRecord.updatedAt,paid:effPaid,payMethod,void:false};
+    if(aplicarRetencion){try{retSeq=await nextCajaSequence('retention-'+periodoRetencion,purchaseAdminBox);}catch(error){msg('No se pudo reservar el número de la retención IVA: '+error.message,'bad');return false;}}
+    if(retIslrUsd>0){try{retIslrSeq=await nextCajaSequence('retention-islr-'+periodoRetencion,purchaseAdminBox);}catch(error){msg('No se pudo reservar el número de la retención ISLR: '+error.message,'bad');return false;}}
+    if(payableTotal-effPaid>=0.01){try{cxpNo=await nextCajaSequence('cxp',purchaseAdminBox);}catch(error){msg('No se pudo reservar el número de CxP: '+error.message,'bad');return false;}}
+    const comp={accountingSourceId:'PURCHASE-'+String(purchaseAdminBox).replace(/\W/g,'')+'-'+pad(no),no,cashbox:purchaseAdminBox,docProv,ctrlProv,docType,isFiscalDocument:docType==='FACTURA_FISCAL',taxCreditEligible:docType==='FACTURA_FISCAL',docDate,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,ivaCreditable:docType==='FACTURA_FISCAL'?iva:0,total,payableTotal,retIva:retUsd,retIslr:retIslrUsd,retIslrPct:retIslrRate,retIslrBase,rate:purchaseRate,rateDate:purchaseRateRecord.date,rateEffectiveDate:purchaseRateRecord.effectiveDate,rateSource:purchaseRateRecord.source,rateUpdatedAt:purchaseRateRecord.updatedAt,paid:effPaid,payMethod,void:false};
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
       const periodo=periodoRetencion;
@@ -3219,20 +3221,20 @@ function comprasDlg(initialTab){
       comp.retIvaDoc=retDoc;
       if(!S.retencionesIva)S.retencionesIva=[];
       S.retencionesIva.push({
-        id:retDoc,ts,periodo,docDate,docDateTs,cashbox:currentCaja(),sequence:retSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,
+        id:retDoc,ts,periodo,docDate,docDateTs,cashbox:purchaseAdminBox,sequence:retSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,
         ctrlProv:comp.ctrlProv,docType:'01',operationType:'C',documentTotal:total,exempt:0,base,iva,pct:retPct,rate:purchaseRate,
         retainedUsd:retUsd,retainedBs:retBs,
         estado:'Pendiente de revisión del contador',declarada:false,pagada:false,comprobanteEntregado:false,observaciones:''
       });
     }
-    if(retIslrUsd>0){const retDoc=periodoRetencion+pad(retIslrSeq,8);comp.retIslrDoc=retDoc;if(!Array.isArray(S.retencionesIslr))S.retencionesIslr=[];S.retencionesIslr.push({id:retDoc,ts,periodo:periodoRetencion,cashbox:currentCaja(),sequence:retIslrSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,base:retIslrBase,pct:retIslrRate,rate:purchaseRate,retainedUsd:retIslrUsd,retainedBs:retIslrBs,estado:'Pendiente de revisión del contador',declarada:false,pagada:false,comprobanteEntregado:false,observaciones:''});}
+    if(retIslrUsd>0){const retDoc=periodoRetencion+pad(retIslrSeq,8);comp.retIslrDoc=retDoc;if(!Array.isArray(S.retencionesIslr))S.retencionesIslr=[];S.retencionesIslr.push({id:retDoc,ts,periodo:periodoRetencion,cashbox:purchaseAdminBox,sequence:retIslrSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,base:retIslrBase,pct:retIslrRate,rate:purchaseRate,retainedUsd:retIslrUsd,retainedBs:retIslrBs,estado:'Pendiente de revisión del contador',declarada:false,pagada:false,comprobanteEntregado:false,observaciones:''});}
     S.purchases.push(comp);
     if(payableTotal-effPaid>=0.01){
-      const cxpId='CXP-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxpNo,6);
+      const cxpId='CXP-'+String(purchaseAdminBox).replace(/\W/g,'')+'-'+pad(cxpNo,6);
       const initialPaymentRate=Number(S.cfg.rate)>0?Number(S.cfg.rate):purchaseRate,initialPaymentMethod=METHODS.find(m=>m.name===payMethod)||{cur:'VES'};
       const payments=effPaid>0?[{ts,method:payMethod,cur:initialPaymentMethod.cur,rate:initialPaymentRate,amountBs:r2(effPaid*initialPaymentRate),amountUsd:effPaid,ref:'INI-'+no,note:'Abono inicial en compra'}]:[];
       S.cxp.push({
-        id:cxpId,sequence:cxpNo,purchaseNo:no,cashbox:currentCaja(),doc:docProv+' (COM-'+pad(no)+')',
+        id:cxpId,sequence:cxpNo,purchaseNo:no,cashbox:purchaseAdminBox,doc:docProv+' (COM-'+pad(no)+')',
         supplier:Object.assign({},sup),
         concept:'Compra mercancía ('+lines.length+' reng.)'+(retUsd>0?' — retención IVA '+usd(retUsd):'')+(retIslrUsd>0?' — retención ISLR '+usd(retIslrUsd):''),
         ts,dueTs,total:payableTotal,invoiceTotal:total,retIva:retUsd,retIslr:retIslrUsd,paid:effPaid,payments
