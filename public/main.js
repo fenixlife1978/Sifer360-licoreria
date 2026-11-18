@@ -213,8 +213,8 @@ function renderFiscalInventoryReport(products,ledger){
 function seed(){
   S={
     cfg:{
-      empresa:'',rif:'',dir:'',cajero:'',caja:'01',rate:0,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
-      fiscalTipo:'FORMA_LIBRE',printMode:'NOT_CONFIGURED',printSetupCompleted:false,contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:75,provEspecial:'',
+      empresa:'',rif:'',dir:'',companyEmail:'',companyPhone:'',contribuyenteFormalIva:false,agenteRetIva:false,agenteRetIslr:false,cajero:'',caja:'01',rate:0,ticketFont:'ibm',ticketSize:'12',ticketBold:false,
+      fiscalTipo:'FORMA_LIBRE',printMode:'NOT_CONFIGURED',printSetupCompleted:false,contribEspecial:false,retencionHabilitadaConfirmada:false,retIvaPct:75,retIslrHabilitada:false,provEspecial:'',
       ctrlPrefix:'00-',ctrlNext:1,ctrlRangoDesde:'',ctrlRangoHasta:'',
       imprentaRif:'',imprentaAut:'',serialFiscal:'',fiscalPrinters:{}
     },
@@ -817,14 +817,17 @@ function load(){
     if(S.cfg.contribEspecial===undefined)S.cfg.contribEspecial=false;
     if(S.cfg.retencionHabilitadaConfirmada===undefined)S.cfg.retencionHabilitadaConfirmada=false;
     if(!S.cfg.retIvaPct)S.cfg.retIvaPct=75;
+    if(S.cfg.retIslrHabilitada===undefined)S.cfg.retIslrHabilitada=false;
+    if(S.cfg.agenteRetIva===undefined)S.cfg.agenteRetIva=S.cfg.retencionHabilitadaConfirmada;
+    if(S.cfg.agenteRetIslr===undefined)S.cfg.agenteRetIslr=S.cfg.retIslrHabilitada;
     if(!S.cfg.provEspecial)S.cfg.provEspecial='';
     if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='00-';
-    if(!S.cfg.ctrlNext)S.cfg.ctrlNext=1043;
+    if(!S.cfg.ctrlNext)S.cfg.ctrlNext=1;
     if(!S.cfg.ctrlRangoDesde)S.cfg.ctrlRangoDesde='00-00000001';
     if(!S.cfg.ctrlRangoHasta)S.cfg.ctrlRangoHasta='00-00050000';
-    if(!S.cfg.imprentaRif)S.cfg.imprentaRif='J-31009988-4';
-    if(!S.cfg.imprentaAut)S.cfg.imprentaAut='SENIAT/DAF/2022/981';
-    if(!S.cfg.serialFiscal)S.cfg.serialFiscal='Z4A7719204';
+    if(!S.cfg.imprentaRif)S.cfg.imprentaRif='';
+    if(!S.cfg.imprentaAut)S.cfg.imprentaAut='';
+    if(!S.cfg.serialFiscal)S.cfg.serialFiscal='';
     (S.sales||[]).forEach(s=>{
       if(!s.ctrlNo)s.ctrlNo=(S.cfg.ctrlPrefix||'00-')+pad(s.no,8);
       if(!s.docType)s.docType='01-FACTURA';
@@ -866,13 +869,24 @@ function lineInfo(l){
   return{p,pr,factor,price,basePrice:r8(price/factor),baseQty:lineBaseQty(l),gross,net,rate,iva,total:r2(net+iva)};
 }
 function hybridCartPlan(){
-  const ledger=window.SIFERInventoryLedgers?window.SIFERInventoryLedgers.ensureFiscalInventory(S):{balances:{}},used={},fiscalIndexes=[],ticketIndexes=[];
+  const ledger=window.SIFERInventoryLedgers?window.SIFERInventoryLedgers.ensureFiscalInventory(S):{balances:{}},used={},fiscalLines=[],ticketLines=[],fiscalQtyByLine={},ticketQtyByLine={};
   S.cart.forEach((line,index)=>{
-    const code=String(line.code),qty=lineBaseQty(line),available=Math.max(0,Number(ledger.balances[code]&&ledger.balances[code].stock||0)-Number(used[code]||0));
-    if(available+1e-9>=qty){fiscalIndexes.push(index);used[code]=(Number(used[code])||0)+qty;}
-    else ticketIndexes.push(index);
+    const code=String(line.code),baseQty=lineBaseQty(line),factor=Math.max(1e-8,Number(line.factor)||1),presentationQty=Math.max(0,Number(line.qty)||0);
+    const available=Math.max(0,Number(ledger.balances[code]&&ledger.balances[code].stock||0)-Number(used[code]||0));
+    const fractionalUnit=factor===1&&['L','kg','g','m'].includes(String(prod(code)&&prod(code).unit||'')),fiscalPresentationQty=Math.min(presentationQty,fractionalUnit?Math.max(0,r8(available)):Math.floor((available+1e-9)/factor));
+    const fiscalBaseQty=r8(Math.min(baseQty,fiscalPresentationQty*factor)),ticketBaseQty=r8(Math.max(0,baseQty-fiscalBaseQty)),ticketPresentationQty=r8(Math.max(0,presentationQty-fiscalPresentationQty));
+    const fiscalRatio=baseQty>0?fiscalBaseQty/baseQty:0;
+    const fiscalNet=r2(Number(line.net||0)*fiscalRatio),fiscalIva=r2(Number(line.iva||0)*fiscalRatio);
+    if(fiscalBaseQty>1e-9){
+      fiscalQtyByLine[index]=fiscalBaseQty;used[code]=(Number(used[code])||0)+fiscalBaseQty;
+      fiscalLines.push({...line,lineIndex:index,qty:fiscalBaseQty,presentationQty:fiscalPresentationQty,net:fiscalNet,iva:fiscalIva});
+    }
+    if(ticketBaseQty>1e-9){
+      ticketQtyByLine[index]=ticketBaseQty;
+      ticketLines.push({...line,lineIndex:index,qty:ticketBaseQty,presentationQty:ticketPresentationQty,net:r2(Number(line.net||0)-fiscalNet),iva:r2(Number(line.iva||0)-fiscalIva)});
+    }
   });
-  return{fiscalIndexes,ticketIndexes};
+  return{fiscalIndexes:Object.keys(fiscalQtyByLine).map(Number),ticketIndexes:Object.keys(ticketQtyByLine).map(Number),fiscalLines,ticketLines,fiscalQtyByLine,ticketQtyByLine};
 }
 function salePortion(sale,lines,mode,residual,fiscalRatio){
   let sub=0,base=0,iva=0,baseG16=0,baseR8=0,baseA31=0,baseEx=0;
@@ -892,16 +906,21 @@ function salePortion(sale,lines,mode,residual,fiscalRatio){
   return{...sale,lines,sub,disc:r2(sub-base),base,baseG16:r2(baseG16),baseR8:r2(baseR8),baseA31:r2(baseA31),baseEx:r2(baseEx),iva,total:r2(base+iva),igtf,pays,change,documentMode:mode,docType:mode==='HYBRID'?'TICKET-INTERNO':'01-FACTURA'};
 }
 function ticketFiscalOutPlan(lines,ticketLines,fiscalLines){
-  const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S),physical=new Map(),fiscal=new Map(),ticket=new Map(),fiscalUsed=new Map(),result=new Map();
+  const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S),physical=new Map(),fiscalUsed=new Map(),nonFiscalRemaining=new Map(),fiscalRemaining=new Map(),result=new Map();
   (lines||[]).forEach(line=>physical.set(String(line.code),Number(prod(line.code)&&prod(line.code).stock||0)));
   (fiscalLines||[]).forEach(line=>fiscalUsed.set(String(line.code),(fiscalUsed.get(String(line.code))||0)+Number(line.qty||0)));
-  (ticketLines||[]).forEach(line=>ticket.set(String(line.code),(ticket.get(String(line.code))||0)+Number(line.qty||0)));
-  ticket.forEach((qty,code)=>{
-    const supported=Math.max(0,Number(ledger.balances[code]&&ledger.balances[code].stock||0));
-    const operational=Number(physical.get(code)||0),nonFiscalAvailable=Math.max(0,operational-supported);
-    const fiscalRemaining=Math.max(0,supported-Number(fiscalUsed.get(code)||0));
-    const consume=Math.min(fiscalRemaining,Math.max(0,qty-nonFiscalAvailable));
-    if(consume>1e-9)result.set(code,r8(consume));
+  const codes=new Set([...(lines||[]).map(line=>String(line.code)),...(ticketLines||[]).map(line=>String(line.code)),...(fiscalLines||[]).map(line=>String(line.code))]);
+  codes.forEach(code=>{
+    const fiscalStock=Math.max(0,Number(ledger.balances[code]&&ledger.balances[code].stock||0));
+    nonFiscalRemaining.set(code,Math.max(0,Number(physical.get(code)||0)-fiscalStock));
+    fiscalRemaining.set(code,Math.max(0,fiscalStock-Number(fiscalUsed.get(code)||0)));
+  });
+  (ticketLines||[]).forEach((line,index)=>{
+    const code=String(line.code),lineIndex=Number.isInteger(line.lineIndex)?line.lineIndex:index,qty=Math.max(0,Number(line.qty||0));
+    const nonFiscalUsed=Math.min(qty,Number(nonFiscalRemaining.get(code)||0)),consume=Math.min(Number(fiscalRemaining.get(code)||0),Math.max(0,qty-nonFiscalUsed));
+    nonFiscalRemaining.set(code,Math.max(0,Number(nonFiscalRemaining.get(code)||0)-nonFiscalUsed));
+    fiscalRemaining.set(code,Math.max(0,Number(fiscalRemaining.get(code)||0)-consume));
+    if(consume>1e-9)result.set(lineIndex,r8(consume));
   });
   return result;
 }
@@ -1052,6 +1071,12 @@ function closeWin(silent){
   const appRoot=$('#win');
   if(appRoot)appRoot.inert=false;
   if(current&&current.el&&current.el.isConnected)current.el.remove();
+  // Recovery guard: remove orphaned modal backdrops left by interrupted flows.
+  // A pending cashier may remain locked, but an authenticated non-cashier must never
+  // inherit the global interaction block after an unrelated modal closes.
+  document.querySelectorAll('.backdrop').forEach(el=>el.remove());
+  const session=activeUser();
+  if(session&&session.role!=='cajero')document.body.classList.remove('cashier-pending');
   const prev=current&&current.prev;
   if(!silent&&prev&&prev.focus&&document.contains(prev))prev.focus();
 }
@@ -1120,14 +1145,15 @@ async function suspend(){
   const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la suspensión; la venta permanece en el estado durable anterior.','bad');return;}
   renderAll();msg('Venta suspendida. Hay '+S.held.length+' en espera.');
 }
+function heldCartTotal(cart){return r2((cart||[]).reduce((sum,line)=>{const p=prod(line.code),factor=Math.max(1e-8,Number(line.factor)||1),price=Number(line.presentationPrice)>0?Number(line.presentationPrice):r2(Number(p&&p.price||0)*factor),gross=r2(price*Number(line.qty||0)),net=r2(gross*(1-Number(line.disc||0)/100)),rate=prodTaxRate(p);return sum+r2(net+r2(net*(rate/100)));},0));}
 function recoverDlg(){
   if(!S.held.length){msg('No hay ventas en espera.');return;}
   const busy=S.cart.length>0;
   const el=h('<div class="form"><div class="gridwrap heldwrap"><table class="grid"><thead><tr><th>Cliente</th><th class="r">Renglones</th><th class="r">Total US$</th><th>Hora</th><th></th></tr></thead><tbody></tbody></table></div>'+(busy?'<p class="hint">Cobre o suspenda la venta actual antes de recuperar otra.</p>':'')+'</div>');
   const tb=$('tbody',el);
   S.held.forEach((hd,i)=>{
-    const sub=r2(hd.cart.reduce((a,l)=>a+r2(r2(prod(l.code).price*l.qty)*(1-l.disc/100)),0));
-    const tr=h('<table><tbody><tr><td>'+esc(hd.client.name)+'</td><td class="r">'+hd.cart.length+'</td><td class="r">'+nf(r2(sub*(1+IVA)))+'</td><td>'+fmtT(new Date(hd.ts))+'</td><td class="c"><button class="btn mini2" '+(busy?'disabled':'')+'>Recuperar</button></td></tr></tbody></table>').querySelector('tr');
+    const sub=heldCartTotal(hd.cart);
+    const tr=h('<table><tbody><tr><td>'+esc(hd.client.name)+'</td><td class="r">'+hd.cart.length+'</td><td class="r">'+nf(sub)+'</td><td>'+fmtT(new Date(hd.ts))+'</td><td class="c"><button class="btn mini2" '+(busy?'disabled':'')+'>Recuperar</button></td></tr></tbody></table>').querySelector('tr');
     $('button',tr).addEventListener('click',async()=>{
       S.cart=hd.cart;S.client=hd.client;S.sel=0;if(!Array.isArray(S.heldDeletedIds))S.heldDeletedIds=[];S.heldDeletedIds.push({id:String(hd.id||('HOLD-LEGACY-'+hd.ts)),cashbox:String(hd.cashbox||currentCaja()),ts:Date.now()});S.held.splice(i,1);
       const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la recuperación; se conservó el estado durable anterior.','bad');return;}
@@ -2732,7 +2758,7 @@ function inventoryDlg(){
       '</select></td>'+
       '<td class="r"><input class="fld cell r" data-f="stock" value="'+fq(p.stock)+'" inputmode="decimal" aria-label="Existencia de '+esc(p.desc)+'"></td>'+
       '<td class="r"><input class="fld cell r" data-f="min" value="'+fq(p.min)+'" inputmode="decimal" aria-label="Mínimo de '+esc(p.desc)+'"></td>'+
-      '<td class="r"><span title="Costo promedio ponderado calculado por entradas de inventario">'+nf8(p.cost)+'</span></td>'+
+      '<td class="r"><span title="Costo promedio ponderado calculado por entradas de inventario">'+nf(p.cost)+'</span></td>'+
       '<td class="r"><b>'+nf(r2(Math.max(0,p.stock)*Math.max(0,p.cost)))+'</b></td>'+
       '<td class="r"><input class="fld cell r" data-f="price" value="'+nf(p.price)+'" inputmode="decimal" aria-label="Precio de '+esc(p.desc)+'"></td>'+
       '<td class="c" style="white-space:nowrap"><button class="btn mini2" data-edit="'+esc(p.code)+'" title="Editar ficha, costos, presentaciones, proveedores y kit">Ficha</button> <button class="btn mini2" data-lbl="'+esc(p.code)+'" title="Generar hablador / etiqueta SKU">SKU</button> <button class="btn mini2" data-kx="'+esc(p.code)+'">Kardex</button></td>'+
@@ -2796,13 +2822,21 @@ function inventoryDlg(){
 }
 
 /* Último costo unitario neto (sin IVA) por proveedor y producto. */
+function calcWeightedPurchaseCost(currentStock,currentCost,receivedQty,receivedCost){
+  const stock=Math.max(0,Number(currentStock)||0),qty=Math.max(0,Number(receivedQty)||0);
+  const cost=Number(currentCost),incoming=Number(receivedCost);
+  const prevCost=Number.isFinite(cost)&&cost>=0?cost:0;
+  const newCost=Number.isFinite(incoming)&&incoming>=0?incoming:0;
+  const totalQty=stock+qty;
+  return totalQty>0?r8((stock*prevCost+qty*newCost)/totalQty):newCost;
+}
 function getLastSupplierPurchaseCost(purchases, code, supplierRif){
   const normalizeRif=value=>String(value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
   const rif=normalizeRif(supplierRif);
   if(!rif||!code)return null;
   const records=(Array.isArray(purchases)?purchases:[])
     .filter(p=>!p.void&&normalizeRif(p.supplier&&p.supplier.rif)===rif&&Array.isArray(p.lines)&&p.lines.some(line=>String(line.code)===String(code)))
-    .sort((a,b)=>Number(b.docDateTs||b.ts||0)-Number(a.docDateTs||a.ts||0)||Number(b.no||0)-Number(a.no||0));
+    .sort((a,b)=>Number(b.docDateTs||0)-Number(a.docDateTs||0)||Number(b.ts||0)-Number(a.ts||0)||Number(b.no||0)-Number(a.no||0));
   if(!records.length)return null;
   const line=records[0].lines.find(item=>String(item.code)===String(code));
   const cost=Number(line&&line.cost);
@@ -2811,6 +2845,8 @@ function getLastSupplierPurchaseCost(purchases, code, supplierRif){
 
 /* ---------- MÓDULO DE COMPRAS Y PROVEEDORES ---------- */
 function comprasDlg(initialTab){
+  const purchaseAdminBox='ADMIN';
+  if(activeUser().role!=='admin'){msg('El módulo Compras y Recepción de Mercancía es exclusivo del administrador.','bad');return;}
   let tab=initialTab||'new';
   let supIdx=0;
   let pLines=[];
@@ -2883,7 +2919,7 @@ function comprasDlg(initialTab){
         '<span class="hint" style="margin-left:auto">Verifique la alícuota IVA de cada renglón contra la factura del proveedor.</span>'+
       '</div>'+
       '<div class="gridwrap invwrap"><table class="grid" style="min-width:1120px">'+
-        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Último costo proveedor (sin IVA) US$</th><th class="r">CPP actual US$</th><th class="r">Nuevo costo de compra (sin IVA) US$</th><th class="r">CPP resultante US$</th><th class="r">P. Venta US$</th><th class="r">Base US$</th><th>IVA %</th><th>Auto</th><th></th></tr></thead>'+
+        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Último precio de este proveedor (sin IVA) US$</th><th class="r">CPP actual US$</th><th class="r">Nuevo precio unitario de compra (sin IVA) US$</th><th class="r">CPP resultante US$</th><th class="r">P. Venta US$</th><th class="r">Base US$</th><th>IVA %</th><th>Auto</th><th></th></tr></thead>'+
         '<tbody id="cpBody"></tbody>'+
       '</table></div>'+
       '<div class="cierre" id="cpTotals"></div>';
@@ -2894,7 +2930,7 @@ function comprasDlg(initialTab){
         const p=prod(l.code);if(!p)return '';
         const sub=r8(l.qty*l.cost);
         const stock=Number(p.stock)||0, projectedStock=stock+Number(l.qty||0);
-        const projectedCost=projectedStock>0?r8((stock*Number(p.cost||0)+Number(l.qty||0)*Number(l.cost||0))/projectedStock):Number(l.cost||0);
+        const projectedCost=calcWeightedPurchaseCost(stock,p.cost,l.qty,l.cost);
         if(l.autoPrice)l.price=calcPurchaseSalePrice(p,projectedCost,purchaseRate);
         return '<tr data-pi="'+i+'">'+
           '<td class="mono">'+esc(p.code)+'</td>'+
@@ -2903,7 +2939,7 @@ function comprasDlg(initialTab){
           '<td class="r"><input class="fld cell r" data-cpf="qty" value="'+fq(l.qty)+'" inputmode="decimal"></td>'+
           '<td class="r">'+(getLastPurchaseCost(l.code)==null?'—':nf8(getLastPurchaseCost(l.code)))+'</td>'+
           '<td class="r">'+nf8(p.cost)+'</td>'+
-          '<td class="r"><input class="fld cell r" data-cpf="cost" aria-label="Nuevo costo unitario de compra sin IVA US$" value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
+          '<td class="r"><input class="fld cell r" data-cpf="cost" aria-label="Nuevo precio unitario de compra sin IVA US$" title="Introduzca el precio de compra unitario actual de este proveedor" required value="'+(l.cost===null?'':nf8(l.cost))+'" inputmode="decimal"></td>'+
           '<td class="r"><b>'+nf8(projectedCost)+'</b></td>'+
           '<td class="r"><input class="fld cell r" data-cpf="price" value="'+nf8(l.price)+'" inputmode="decimal" '+(l.autoPrice?'readonly title="Calculado por el motor de precios"':'')+'></td>'+
           '<td class="r"><b>'+nf8(sub)+'</b></td>'+
@@ -2951,7 +2987,7 @@ function comprasDlg(initialTab){
 
     v.onchange=e=>{
       const t=e.target;
-      if(t.id==='cpSup'){supIdx=+t.value;pLines.forEach(line=>{if(!line.costEdited){const last=getLastPurchaseCost(line.code),product=prod(line.code);line.cost=last===null?Number(product&&product.cost||0):last;}});drawLines();return;}
+      if(t.id==='cpSup'){supIdx=+t.value;pLines.forEach(line=>{line.costEdited=false;const last=getLastPurchaseCost(line.code),product=prod(line.code);line.cost=last===null?Number(product&&product.cost||0):last;});drawLines();return;}
       if(t.id==='cpDocType'){docType=t.value;const docLabel=$('#cpDocLabel',v);if(docLabel)docLabel.textContent=docType==='FACTURA_FISCAL'?'Nº de factura del proveedor *':'Nº de documento del proveedor *';pLines.forEach(line=>{if(docType!=='FACTURA_FISCAL')line.taxRate=0;else if(Number(line.taxRate||0)===0){const product=prod(line.code);line.taxRate=product?prodTaxRate(product):16;}});$('#cpCtrlWrap',v).style.display=docType==='FACTURA_FISCAL'?'':'none';drawLines();return;}
       if(t.id==='cpDate'){refreshPurchaseRate(t.value,v,drawLines);return;}
       if(t.id==='cpRetIslrPct'){retIslrPct=Math.min(100,Math.max(0,pn(t.value)||0));t.value=nf(retIslrPct);drawLines();return;}
@@ -2965,7 +3001,7 @@ function comprasDlg(initialTab){
         const tr=t.closest('tr'), idx=+tr.dataset.pi, l=pLines[idx];
         const val=pn(t.value);
         if(t.dataset.cpf==='qty')l.qty=val?r8(val):1;
-        if(t.dataset.cpf==='cost'){l.cost=r8(val);l.costEdited=true;}
+        if(t.dataset.cpf==='cost'){const cost=pnZero(t.value);l.cost=cost===null?null:r8(cost);l.costEdited=true;}
         if(t.dataset.cpf==='price'){l.price=val?r8(val):l.price;l.autoPrice=false;}
         if(t.dataset.cpf==='taxRate')l.taxRate=Number(t.value);
         if(t.dataset.cpf==='autoPrice'){l.autoPrice=t.checked;const p=prod(l.code);if(l.autoPrice&&p){const st=Number(p.stock)||0,ns=st+l.qty,avg=ns>0?r8((st*Number(p.cost||0)+l.qty*l.cost)/ns):l.cost;l.price=calcPurchaseSalePrice(p,avg,purchaseRate);}}
@@ -2990,7 +3026,7 @@ function comprasDlg(initialTab){
   };
 
   const renderPurchaseHist=v=>{
-    const list=(S.purchases||[]).filter(x=>String(x.cashbox||currentCaja())===currentCaja()).slice().sort((a,b)=>b.no-a.no);
+    const list=(S.purchases||[]).slice().sort((a,b)=>Number(b.no)-Number(a.no)||Number(b.ts||0)-Number(a.ts||0));
     v.innerHTML=
       '<div class="gridwrap tallwrap"><table class="grid" style="min-width:820px">'+
         '<thead><tr><th>Compra Nº</th><th>Documento Prov.</th><th>Fecha</th><th>Proveedor</th><th>Tipo doc.</th><th>Condición</th><th class="r">Total US$</th><th class="r">Retenciones US$</th><th class="r">Pagado US$</th><th class="r">Saldo CxP</th><th>Acción</th></tr></thead>'+
@@ -3005,18 +3041,18 @@ function comprasDlg(initialTab){
             '<td>'+esc(c.supplier.name)+'</td>'+
             '<td>'+esc(c.docType==='FACTURA_FISCAL'?'Fiscal':c.docType==='NOTA_ENTREGA'?'Nota entrega':'No fiscal')+'</td>'+
             '<td>'+esc(c.cond)+'</td>'+
-            '<td class="r">'+nf8(c.total)+'</td>'+
-            '<td class="r">'+nf8(Number(c.retIva||0)+Number(c.retIslr||0))+'</td>'+
-            '<td class="r">'+nf8(paidTotal)+'</td>'+
-            '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA'+(c.voidDoc?' · '+esc(c.voidDoc):''):nf8(pend))+'</td>'+
-            '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'">Anular</button>')+'</td>'+
+            '<td class="r">'+nf(c.total)+'</td>'+
+            '<td class="r">'+nf(Number(c.retIva||0)+Number(c.retIslr||0))+'</td>'+
+            '<td class="r">'+nf(paidTotal)+'</td>'+
+            '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA'+(c.voidDoc?' · '+esc(c.voidDoc):''):nf(pend))+'</td>'+
+            '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'" data-void-box="'+esc(c.cashbox||'01')+'">Anular</button>')+'</td>'+
           '</tr>';
         }).join(''):'<tr class="empty"><td colspan="11">Sin compras registradas.</td></tr>')+'</tbody>'+
       '</table></div>';
     v.onclick=async e=>{
       const b=e.target.closest('[data-void-comp]');
       if(!b)return;
-      const c=S.purchases.find(x=>x.no===+b.dataset.voidComp&&String(x.cashbox||currentCaja())===currentCaja());
+      const c=S.purchases.find(x=>Number(x.no)===Number(b.dataset.voidComp)&&String(x.cashbox||'01')===String(b.dataset.voidBox||'01'));
       if(!c||c.void)return;
       const purchaseCashbox=String(c.cashbox||currentCaja());
       const purchaseDocument='COM-'+pad(c.no);
@@ -3138,22 +3174,21 @@ function comprasDlg(initialTab){
     if(!docDateTs){msg('Indique la fecha de emisión que aparece en la factura original.','bad');return false;}
     if((S.purchases||[]).some(p=>!p.void&&String(p.supplier?.rif||'').trim().toLowerCase()===String(sup.rif).trim().toLowerCase()&&String(p.docProv||'').trim().toLowerCase()===docProv.toLowerCase())){msg('Ya existe una compra activa con ese proveedor y número de factura. Verifique el documento original.','bad');return false;}
     if(!(Number(purchaseRate)>0)||!purchaseRateRecord||purchaseRateRecord.date!==docDate){msg('No se puede registrar la compra: no se confirmó ni guardó una tasa BCV histórica para la fecha del documento. Verifique la conexión y vuelva a consultar.','bad');return false;}
-    if(pLines.some(l=>!Number.isFinite(Number(l.qty))||Number(l.qty)<=0||!Number.isFinite(Number(l.cost))||Number(l.cost)<0)){msg('Cada renglón debe tener cantidad positiva y costo unitario sin IVA válido y finito.','bad');return false;}
+    if(pLines.some(l=>!Number.isFinite(Number(l.qty))||Number(l.qty)<=0||l.cost===null||l.cost===undefined||!Number.isFinite(Number(l.cost))||Number(l.cost)<0)){msg('Cada renglón debe tener cantidad positiva y costo unitario sin IVA válido y finito.','bad');return false;}
+    if(pLines.some(l=>{const p=prod(l.code);return !p||p.stock===null||p.stock===undefined||!Number.isFinite(Number(p.stock))||p.cost===null||p.cost===undefined||!Number.isFinite(Number(p.cost))||Number(p.cost)<0;})){msg('El producto tiene stock o CPP inválido. Corrija su ficha de inventario antes de recibir la compra.','bad');return false;}
     const ts=Date.now();
-    let no;try{no=await nextCajaSequence('purchase',currentCaja());}catch(error){msg('No se pudo reservar el número de compra: '+error.message,'bad');return false;}
+    let no;try{no=await nextCajaSequence('purchase',purchaseAdminBox);}catch(error){msg('No se pudo reservar el número de compra: '+error.message,'bad');return false;}
     S.purchaseSeq=Math.max(Number(S.purchaseSeq)||1,no+1);
     let lines;
     try{lines=pLines.map((l,lineIndex)=>{
       const p=prod(l.code);
       /* Costo Promedio Ponderado */
-      const prevVal=Math.max(0,p.stock)*p.cost;
-      const newVal=r8(l.qty*l.cost);
-      const nextStock=r2(p.stock+l.qty);
-      const nextCost=nextStock>0?r8((prevVal+newVal)/nextStock):l.cost;
+      const nextStock=r2(Number(p.stock||0)+Number(l.qty));
+      const nextCost=calcWeightedPurchaseCost(p.stock,p.cost,l.qty,l.cost);
       p.stock=nextStock;
       p.cost=nextCost;
       if(l.price>0){p.price=r8(l.price);if(p.pricing){p.pricing.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;p.pricing.markupSale=p.price>0?r2(((p.price-p.cost)/p.price)*100):0;}if(p.presentations&&p.presentations[0]&&Number(p.presentations[0].factor)===1)p.presentations[0].price=p.price;if(p.pricing&&Array.isArray(p.pricing.gaps)){p.pricing.gaps.forEach((g,idx)=>{if(idx===0){g.price=p.price;g.markupCost=p.cost>0?r2(((p.price-p.cost)/p.cost)*100):0;}else if(p.pricing.mode==='auto'){g.price=r2(p.price*(1-(Number(g.gapPct)||0)/100));g.markupCost=p.cost>0?r2(((g.price-p.cost)/p.cost)*100):0;}});}}
-      if(docType==='FACTURA_FISCAL')window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'PURCHASE-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(no)+':'+p.code+':'+lineIndex,type:'COMPRA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(no),sourceId:'PURCHASE-'+String(currentCaja()).replace(/\\W/g,'')+'-'+pad(no),timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
+      if(docType==='FACTURA_FISCAL')window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:'PURCHASE-'+String(purchaseAdminBox).replace(/\\W/g,'')+'-'+pad(no)+':'+p.code+':'+lineIndex,type:'COMPRA_FISCAL',dir:'IN',code:p.code,qty:l.qty,cost:l.cost,document:'COM-'+pad(no),sourceId:'PURCHASE-'+String(purchaseAdminBox).replace(/\\W/g,'')+'-'+pad(no),timestamp:ts,cashbox:purchaseAdminBox,user:currentCajero()});
       addKardex({
         ts,code:p.code,type:'COMPRA',dir:'IN',doc:'COM-'+pad(no),
         party:sup.name+' (Fac. '+docProv+')',qty:l.qty,stockAfter:p.stock,cost:l.cost,user:S.cfg.cajero
@@ -3175,10 +3210,10 @@ function comprasDlg(initialTab){
     const periodoRetencion=(()=>{const d=new Date(ts);return String(d.getFullYear())+String(d.getMonth()+1).padStart(2,'0');})();
     let retSeq=null,cxpNo=null;
     let retIslrSeq=null;
-    if(aplicarRetencion){try{retSeq=await nextCajaSequence('retention-'+periodoRetencion,currentCaja());}catch(error){msg('No se pudo reservar el número de la retención IVA: '+error.message,'bad');return false;}}
-    if(retIslrUsd>0){try{retIslrSeq=await nextCajaSequence('retention-islr-'+periodoRetencion,currentCaja());}catch(error){msg('No se pudo reservar el número de la retención ISLR: '+error.message,'bad');return false;}}
-    if(payableTotal-effPaid>=0.01){try{cxpNo=await nextCajaSequence('cxp',currentCaja());}catch(error){msg('No se pudo reservar el número de CxP: '+error.message,'bad');return false;}}
-    const comp={accountingSourceId:'PURCHASE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(no),no,cashbox:currentCaja(),docProv,ctrlProv,docType,isFiscalDocument:docType==='FACTURA_FISCAL',taxCreditEligible:docType==='FACTURA_FISCAL',docDate,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,ivaCreditable:docType==='FACTURA_FISCAL'?iva:0,total,payableTotal,retIva:retUsd,retIslr:retIslrUsd,retIslrPct:retIslrRate,retIslrBase,rate:purchaseRate,rateDate:purchaseRateRecord.date,rateEffectiveDate:purchaseRateRecord.effectiveDate,rateSource:purchaseRateRecord.source,rateUpdatedAt:purchaseRateRecord.updatedAt,paid:effPaid,payMethod,void:false};
+    if(aplicarRetencion){try{retSeq=await nextCajaSequence('retention-'+periodoRetencion,purchaseAdminBox);}catch(error){msg('No se pudo reservar el número de la retención IVA: '+error.message,'bad');return false;}}
+    if(retIslrUsd>0){try{retIslrSeq=await nextCajaSequence('retention-islr-'+periodoRetencion,purchaseAdminBox);}catch(error){msg('No se pudo reservar el número de la retención ISLR: '+error.message,'bad');return false;}}
+    if(payableTotal-effPaid>=0.01){try{cxpNo=await nextCajaSequence('cxp',purchaseAdminBox);}catch(error){msg('No se pudo reservar el número de CxP: '+error.message,'bad');return false;}}
+    const comp={accountingSourceId:'PURCHASE-'+String(purchaseAdminBox).replace(/\W/g,'')+'-'+pad(no),no,cashbox:purchaseAdminBox,docProv,ctrlProv,docType,isFiscalDocument:docType==='FACTURA_FISCAL',taxCreditEligible:docType==='FACTURA_FISCAL',docDate,docDateTs,ts,dueTs,supplier:Object.assign({},sup),cond,lines,base,iva,ivaCreditable:docType==='FACTURA_FISCAL'?iva:0,total,payableTotal,retIva:retUsd,retIslr:retIslrUsd,retIslrPct:retIslrRate,retIslrBase,rate:purchaseRate,rateDate:purchaseRateRecord.date,rateEffectiveDate:purchaseRateRecord.effectiveDate,rateSource:purchaseRateRecord.source,rateUpdatedAt:purchaseRateRecord.updatedAt,paid:effPaid,payMethod,void:false};
     comp.ctrlProv=ctrlProv;
     if(aplicarRetencion){
       const periodo=periodoRetencion;
@@ -3186,19 +3221,20 @@ function comprasDlg(initialTab){
       comp.retIvaDoc=retDoc;
       if(!S.retencionesIva)S.retencionesIva=[];
       S.retencionesIva.push({
-        id:retDoc,ts,periodo,docDate,docDateTs,cashbox:currentCaja(),sequence:retSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,
+        id:retDoc,ts,periodo,docDate,docDateTs,cashbox:purchaseAdminBox,sequence:retSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,
         ctrlProv:comp.ctrlProv,docType:'01',operationType:'C',documentTotal:total,exempt:0,base,iva,pct:retPct,rate:purchaseRate,
         retainedUsd:retUsd,retainedBs:retBs,
         estado:'Pendiente de revisión del contador',declarada:false,pagada:false,comprobanteEntregado:false,observaciones:''
       });
     }
-    if(retIslrUsd>0){const retDoc=periodoRetencion+pad(retIslrSeq,8);comp.retIslrDoc=retDoc;if(!Array.isArray(S.retencionesIslr))S.retencionesIslr=[];S.retencionesIslr.push({id:retDoc,ts,periodo:periodoRetencion,cashbox:currentCaja(),sequence:retIslrSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,base:retIslrBase,pct:retIslrRate,rate:purchaseRate,retainedUsd:retIslrUsd,retainedBs:retIslrBs,estado:'Pendiente de revisión del contador',declarada:false,pagada:false,comprobanteEntregado:false,observaciones:''});}
+    if(retIslrUsd>0){const retDoc=periodoRetencion+pad(retIslrSeq,8);comp.retIslrDoc=retDoc;if(!Array.isArray(S.retencionesIslr))S.retencionesIslr=[];S.retencionesIslr.push({id:retDoc,ts,periodo:periodoRetencion,cashbox:purchaseAdminBox,sequence:retIslrSeq,supplier:Object.assign({},sup),purchaseNo:no,docProv,base:retIslrBase,pct:retIslrRate,rate:purchaseRate,retainedUsd:retIslrUsd,retainedBs:retIslrBs,estado:'Pendiente de revisión del contador',declarada:false,pagada:false,comprobanteEntregado:false,observaciones:''});}
     S.purchases.push(comp);
     if(payableTotal-effPaid>=0.01){
-      const cxpId='CXP-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxpNo,6);
-      const payments=effPaid>0?[{ts,method:payMethod,cur:'VES',amountBs:r2(effPaid*purchaseRate),amountUsd:effPaid,ref:'INI-'+no,note:'Abono inicial en compra'}]:[];
+      const cxpId='CXP-'+String(purchaseAdminBox).replace(/\W/g,'')+'-'+pad(cxpNo,6);
+      const initialPaymentRate=Number(S.cfg.rate)>0?Number(S.cfg.rate):purchaseRate,initialPaymentMethod=METHODS.find(m=>m.name===payMethod)||{cur:'VES'};
+      const payments=effPaid>0?[{ts,method:payMethod,cur:initialPaymentMethod.cur,rate:initialPaymentRate,amountBs:r2(effPaid*initialPaymentRate),amountUsd:effPaid,ref:'INI-'+no,note:'Abono inicial en compra'}]:[];
       S.cxp.push({
-        id:cxpId,sequence:cxpNo,purchaseNo:no,cashbox:currentCaja(),doc:docProv+' (COM-'+pad(no)+')',
+        id:cxpId,sequence:cxpNo,purchaseNo:no,cashbox:purchaseAdminBox,doc:docProv+' (COM-'+pad(no)+')',
         supplier:Object.assign({},sup),
         concept:'Compra mercancía ('+lines.length+' reng.)'+(retUsd>0?' — retención IVA '+usd(retUsd):'')+(retIslrUsd>0?' — retención ISLR '+usd(retIslrUsd):''),
         ts,dueTs,total:payableTotal,invoiceTotal:total,retIva:retUsd,retIslr:retIslrUsd,paid:effPaid,payments
@@ -3576,7 +3612,7 @@ function cxpDlg(selId){
   '</div>');
 
   const draw=()=>{
-    const now=Date.now(), rate=S.cfg.rate, all=(S.cxp||[]).filter(x=>!x.void&&String(x.cashbox||currentCaja())===currentCaja());
+    const now=Date.now(), rate=S.cfg.rate, adminMode=activeUser().role==='admin', all=(S.cxp||[]).filter(x=>!x.void&&(adminMode||String(x.cashbox||currentCaja())===currentCaja()));
     const totPend=r8(all.reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
     const totOver=r8(all.filter(x=>r8(Number(x.total||0)-Number(x.paid||0))>=0.00000001&&x.dueTs<now).reduce((a,x)=>a+Math.max(0,Number(x.total||0)-Number(x.paid||0)),0));
     const totVig=r8(Math.max(0,totPend-totOver));
@@ -3615,9 +3651,9 @@ function cxpDlg(selId){
         '<td>'+fmtD(x.ts)+'</td>'+
         '<td>'+fmtD(x.dueTs)+'</td>'+
         '<td class="'+stCls+'">'+stTxt+'</td>'+
-        '<td class="r">'+nf8(x.total)+'</td>'+
-        '<td class="r">'+nf8(x.paid)+'</td>'+
-        '<td class="r"><b>'+nf8(bal)+'</b></td>'+
+        '<td class="r">'+nf(x.total)+'</td>'+
+        '<td class="r">'+nf(x.paid)+'</td>'+
+        '<td class="r"><b>'+nf(bal)+'</b></td>'+
         '<td class="r">'+nf(bal*rate)+'</td>'+
       '</tr>';
     }).join(''):'<tr class="empty"><td colspan="10">No hay cuentas por pagar para el filtro seleccionado.</td></tr>';
@@ -3644,7 +3680,7 @@ function cxpDlg(selId){
       statusHtml='<b class="warn">Pago parcial · Resta por pagar: '+usd(remUsd)+' ('+bsf(remUsd*rate)+')</b>';
     }
     sumEl.innerHTML=
-      '<span>Total Pago Mixto: <b>US$ '+nf8(sumUsd)+'</b> ('+bsf(sumUsd*rate)+')</span>'+
+      '<span>Total Pago Mixto: <b>US$ '+nf(sumUsd)+'</b> ('+bsf(sumUsd*rate)+')</span>'+
       '<span style="margin-left:14px">'+statusHtml+'</span>';
   };
 
@@ -3654,7 +3690,7 @@ function cxpDlg(selId){
     const bal=r8(Math.max(0,Number(item.total||0)-Number(item.paid||0))), rate=S.cfg.rate;
     const mOpts='<option value="MIXTO"'+(payMode==='MIXTO'?' selected':'')+'>★ Pago Mixto (Múltiples métodos de pago)</option>'+
       METHODS.map(m=>'<option value="'+esc(m.id)+'"'+(payMode===m.id?' selected':'')+'>'+esc(m.name)+' ('+m.cur+')</option>').join('');
-    const hist=(item.payments||[]).map(p=>'<tr><td>'+fmtDT(p.ts)+'</td><td>'+esc(p.method)+'</td><td class="mono">'+esc(p.ref||'-')+'</td><td class="r">'+nf8(p.amountUsd)+'</td><td class="r">'+nf(p.amountBs)+'</td><td>'+esc(p.note||'')+'</td></tr>').join('')||'<tr><td colspan="6" class="dim">Sin pagos registrados todavía.</td></tr>';
+    const hist=(item.payments||[]).map(p=>'<tr><td>'+fmtDT(p.ts)+'</td><td>'+esc(p.method)+'</td><td class="mono">'+esc(p.ref||'-')+'</td><td class="r">'+nf(p.amountUsd)+'</td><td class="r">'+nf(p.amountBs)+'</td><td>'+esc(p.note||'')+'</td></tr>').join('')||'<tr><td colspan="6" class="dim">Sin pagos registrados todavía.</td></tr>';
 
     let formHtml='';
     if(bal<0.00000001){
@@ -3663,7 +3699,7 @@ function cxpDlg(selId){
       formHtml=
         '<div class="invbar" style="margin-bottom:6px">'+
           '<label>Medio de pago</label><select class="fld" id="pgMethod" style="max-width:235px">'+mOpts+'</select>'+
-          '<label>Monto US$</label><input class="fld r" id="pgUsd" value="'+nf8(bal)+'" style="max-width:92px" inputmode="decimal">'+
+          '<label>Monto US$</label><input class="fld r" id="pgUsd" value="'+nf(bal)+'" style="max-width:92px" inputmode="decimal">'+
           '<label>Equiv. Bs.</label><input class="fld r" id="pgBs" value="'+nf(bal*rate)+'" style="max-width:105px" inputmode="decimal">'+
           '<label>Comprobante</label><input class="fld" id="pgRef" placeholder="Nº transf. / ref." style="max-width:115px">'+
           '<label>Nota</label><input class="fld" id="pgNote" placeholder="Pago a proveedor">'+
@@ -3678,7 +3714,7 @@ function cxpDlg(selId){
         return '<tr>'+
           '<td><b>'+esc(m.name)+'</b></td>'+
           '<td class="c"><span class="sku-tag">'+(isUsd?'US$':'Bs.')+'</span></td>'+
-          '<td class="r" style="width:125px"><input class="fld r cxp-mix-usd" data-m="'+esc(m.id)+'" value="'+(st.usd>0?nf8(st.usd):'')+'" placeholder="0,00" inputmode="decimal"></td>'+
+          '<td class="r" style="width:125px"><input class="fld r cxp-mix-usd" data-m="'+esc(m.id)+'" value="'+(st.usd>0?nf(st.usd):'')+'" placeholder="0,00" inputmode="decimal"></td>'+
           '<td class="r" style="width:135px"><input class="fld r cxp-mix-bs" data-m="'+esc(m.id)+'" value="'+(st.bs>0?nf(st.bs):'')+'" placeholder="0,00" inputmode="decimal"></td>'+
           '<td style="width:155px"><input class="fld mono cxp-mix-ref" data-m="'+esc(m.id)+'" value="'+esc(st.ref||'')+'" placeholder="Nº op. / ref. / recibo"></td>'+
           '<td class="c" style="width:85px"><button class="btn mini2" data-cxp-fill="'+esc(m.id)+'" title="Asignar el saldo restante a este medio de pago">Restante</button></td>'+
@@ -3725,7 +3761,7 @@ function cxpDlg(selId){
     }
     if(e.target.id==='pgBs'){
       const v=pn(e.target.value);
-      const usdInp=$('#pgUsd',el);if(usdInp)usdInp.value=v>0?nf8(r8(v/rate)):'';
+      const usdInp=$('#pgUsd',el);if(usdInp)usdInp.value=v>0?nf(r8(v/rate)):'';
       return;
     }
     if(e.target.classList.contains('cxp-mix-usd')){
@@ -5127,8 +5163,8 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     ref:(refs&&refs[m.id])||''
   }));
   const fiscalLineIndexes=hybridMode?new Set(hybridPlan.fiscalIndexes):(fiscalMode?new Set(lines.map((_,i)=>i)):new Set());
-  const fiscalSaleLines=lines.filter((_,i)=>fiscalLineIndexes.has(i));
-  const ticketSaleLines=hybridMode?lines.filter((_,i)=>hybridPlan.ticketIndexes.includes(i)):(internalTicketMode?lines:[]);
+  const fiscalSaleLines=hybridMode?hybridPlan.fiscalLines:lines.filter((_,i)=>fiscalLineIndexes.has(i));
+  const ticketSaleLines=hybridMode?hybridPlan.ticketLines:(internalTicketMode?lines:[]);
   const physicalRequired=new Map();
   lines.forEach(line=>physicalRequired.set(String(line.code),(physicalRequired.get(String(line.code))||0)+Number(line.qty)));
   const physicalShort=Array.from(physicalRequired.entries()).find(([code,qty])=>{const p=prod(code);return !p||Number(p.stock)+1e-9<qty;});
@@ -5137,11 +5173,10 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     const fiscalCheck=window.SIFERInventoryLedgers&&window.SIFERInventoryLedgers.canApplyFiscalSale(S,fiscalSaleLines);
     if(!fiscalCheck||!fiscalCheck.ok){const code=fiscalCheck&&fiscalCheck.code||'artículo';const p=prod(code);msg('Venta fiscal bloqueada: inventario fiscal insuficiente para '+(p?p.desc:code)+'. Disponible: '+fq(fiscalCheck&&fiscalCheck.available||0)+'. Registre/valide la existencia fiscal inicial o la compra fiscal antes de facturar.','bad');return;}
   }
-  const ticketFiscalOutByCode=ticketFiscalOutPlan(lines,ticketSaleLines,fiscalSaleLines),ticketFiscalRemainingByCode=new Map(ticketFiscalOutByCode),ticketFiscalOutLines=[];
-  S.cart.forEach((line,lineIndex)=>{
-    if(fiscalLineIndexes.has(lineIndex))return;
-    const code=String(line.code),out=Math.min(lineBaseQty(line),Number(ticketFiscalRemainingByCode.get(code)||0));
-    if(out>1e-9){ticketFiscalOutLines.push({lineIndex,code,qty:r8(out)});ticketFiscalRemainingByCode.set(code,Math.max(0,Number(ticketFiscalRemainingByCode.get(code)||0)-out));}
+  const ticketFiscalOutByLine=ticketFiscalOutPlan(lines,ticketSaleLines,fiscalSaleLines),ticketFiscalOutLines=[];
+  ticketSaleLines.forEach((line,ticketLineIndex)=>{
+    const lineIndex=Number.isInteger(line.lineIndex)?line.lineIndex:ticketLineIndex,code=String(line.code),out=Number(ticketFiscalOutByLine.get(lineIndex)||0);
+    if(out>1e-9)ticketFiscalOutLines.push({lineIndex,code,qty:r8(out)});
   });
   const creditAmt=(isCred&&st.pending>=0.01)?r2(st.pending):0;
   const casheaAmt=r2(amts.cashea||0);
@@ -5314,15 +5349,11 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   }
 
 const ticketFiscalByLine=new Map(ticketFiscalOutLines.map(line=>[line.lineIndex,line.qty]));
-S.cart.forEach((l,lineIndex)=>{
-    const p=prod(l.code);
-    const baseQty=lineBaseQty(l);
-    if(fiscalLineIndexes.has(lineIndex))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':'+p.code+':'+lineIndex,type:'VENTA_FISCAL',dir:'OUT',code:p.code,qty:baseQty,cost:p.cost,document:'FAC-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
-    else{
-      const fiscalOut=Number(ticketFiscalByLine.get(lineIndex)||0);
-      if(fiscalOut>1e-9)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':TICKET:'+p.code+':'+lineIndex,type:'SALIDA_TICKET_NO_FISCAL',dir:'OUT',code:p.code,qty:fiscalOut,cost:p.cost,document:'TKT-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
-    }
-    p.stock=Math.max(0,r2(p.stock-baseQty));
+ S.cart.forEach((l,lineIndex)=>{
+    const p=prod(l.code),baseQty=lineBaseQty(l),fiscalQty=hybridMode?Number(hybridPlan.fiscalQtyByLine[lineIndex]||0):(fiscalLineIndexes.has(lineIndex)?baseQty:0),fiscalOut=Number(ticketFiscalByLine.get(lineIndex)||0);
+    if(fiscalQty>1e-9)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':'+p.code+':'+lineIndex,type:'VENTA_FISCAL',dir:'OUT',code:p.code,qty:fiscalQty,cost:p.cost,document:'FAC-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
+    if(fiscalOut>1e-9)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':TICKET:'+p.code+':'+lineIndex,type:'SALIDA_TICKET_NO_FISCAL',dir:'OUT',code:p.code,qty:fiscalOut,cost:p.cost,document:'TKT-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
+     p.stock=Math.max(0,r2(p.stock-baseQty));
     addKardex({
       ts,code:p.code,type:'VENTA',dir:'OUT',doc:(internalTicketMode?'TKT-':'FAC-')+pad(invNo),cashbox:currentCaja(),
       party:S.client.name,qty:baseQty,stockAfter:p.stock,cost:p.cost,user:currentCajero()
@@ -6695,7 +6726,7 @@ function seniatSudebanDlg(initialTab){
         '<tr><td>RIF de la Empresa</td><td><b class="mono">'+esc(S.cfg.rif)+'</b></td></tr>'+
         '<tr><td>Condición Tributaria</td><td>'+(S.cfg.contribEspecial?'<span class="fiscal-tag ok">Sujeto Pasivo Especial</span>':'Contribuyente Ordinario')+'</td></tr>'+
         '<tr><td>Agente de Retención IVA</td><td>'+(S.cfg.contribEspecial?'Alícuota del '+S.cfg.retIvaPct+'%':'No aplica')+'</td></tr>'+
-        '<tr><td>Nº Providencia Notificación</td><td>'+esc(S.cfg.provEspecial||'SNAT/2023/000412')+'</td></tr>'+
+        '<tr><td>Nº Providencia Notificación</td><td>'+esc(S.cfg.provEspecial||'')+'</td></tr>'+
         '<tr><td>Imprenta Autorizada</td><td>'+esc(S.cfg.imprentaRif)+' ('+esc(S.cfg.imprentaAut)+')</td></tr>'+
       '</tbody></table>'+
     '</div>';
@@ -7062,20 +7093,24 @@ function seniatSudebanDlg(initialTab){
       '<div class="f wide"><label for="fEmp">Razón Social</label><input class="fld" id="fEmp" value="'+esc(c.empresa)+'"></div>'+
       '<div class="f"><label for="fRif">RIF de la Empresa</label><input class="fld" id="fRif" value="'+esc(c.rif)+'"></div>'+
       '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
-      '<div class="f"><label for="fTipo">Modalidad de Facturación Fiscal</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option><option value="NO_FISCAL_INTERNAL" '+(c.fiscalTipo==='NO_FISCAL_INTERNAL'?'selected':'')+'>Sin emisión fiscal · Ticket interno no fiscal</option></select></div>'+
+      '<div class="f"><label for="fEmail">Correo de la empresa</label><input class="fld" type="email" id="fEmail" value="'+esc(c.companyEmail||'')+'" placeholder="correo@empresa.com"></div>'+
+      '<div class="f"><label for="fPhone">Teléfono de contacto</label><input class="fld" id="fPhone" value="'+esc(c.companyPhone||'')+'" placeholder="+58"></div>'+
+      '<div class="f wide"><label><input type="checkbox" id="fFormalIva" '+(c.contribuyenteFormalIva===true?'checked':'')+'> Contribuyente formal del IVA (cuando corresponda)</label></div>'+
+      '<div class="f"><label for="fTipo">Medio de emisión (preparación 2027)</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Régimen actual · formato libre (solo transición)</option><option value="DIGITAL_2027" '+(c.fiscalTipo==='DIGITAL_2027'?'selected':'')+'>Digital / electrónico · régimen 2027</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Máquina fiscal</option><option value="CONTINGENCIA_2027" '+(c.fiscalTipo==='CONTINGENCIA_2027'?'selected':'')+'>Formato de contingencia · régimen 2027</option><option value="NO_FISCAL_INTERNAL" '+(c.fiscalTipo==='NO_FISCAL_INTERNAL'?'selected':'')+'>Ticket interno no fiscal · no emite factura</option></select><p class="hint">Providencia SNAT/2026/00093: preparar medios digitales o máquina fiscal desde el 19/04/2027. Formatos de contingencia no son el medio ordinario.</p></div>'+
       '<div class="f wide"><label for="fPrintMode">Modo de impresión del POS</label><select class="fld" id="fPrintMode"><option value="FISCAL_PRINTER" '+((c.printMode||'LEGACY')==='FISCAL_PRINTER'?'selected':'')+'>Impresora fiscal homologada</option><option value="INTERNAL_THERMAL" '+(c.printMode==='INTERNAL_THERMAL'?'selected':'')+'>Impresora térmica genérica · Ticket interno</option><option value="NO_PRINTER" '+(c.printMode==='NO_PRINTER'?'selected':'')+'>Sin impresora · Solo registro en SQLite</option><option value="DUAL_PRINTER" '+(c.printMode==='DUAL_PRINTER'?'selected':'')+'>Sistema dual · Ticket, factura fiscal o impresión híbrida en cada cobro</option><option value="LEGACY" '+((c.printMode||'LEGACY')==='LEGACY'?'selected':'')+'>Conservar configuración anterior</option></select><p class="hint">Los modos de ticket interno no emiten documentos fiscales. Cada comprobante llevará la leyenda “Ticket de Venta - No válido como factura fiscal”.</p><button class="btn" type="button" id="btnPrinterSetupWizard">Abrir asistente de instalación de impresoras</button></div>'+
       '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" type="button" id="btnThermalPrinterManager">Configurar impresora térmica no fiscal</button><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button><button class="btn" type="button" id="btnFiscalNetworkQueue">Ver cola fiscal compartida LAN</button></div></div>'+
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
-      '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
+      '<div class="f"><label for="fPctRet">Retención IVA de referencia</label><select class="fld" id="fPctRet"><option value="75" '+(Number(c.retIvaPct||75)===75?'selected':'')+'>75 % del IVA (referencial)</option><option value="100" '+(Number(c.retIvaPct||75)===100?'selected':'')+'>100 % del IVA (referencial)</option></select></div>'+
+      '<div class="f"><label><input type="checkbox" id="fRetIslr" '+(c.retIslrHabilitada===true?'checked':'')+'> Agente de retención ISLR (si está designado)</label></div>'+
       '<div class="f wide"><label><input type="checkbox" id="fRetConfirm" '+(c.retencionHabilitadaConfirmada===true?'checked':'')+'> Confirmo que el negocio fue designado como Sujeto Pasivo Especial/agente de retención y verifiqué su notificación vigente.</label><p class="muted">Sin esta confirmación, el POS no calculará retenciones automáticamente. El contador debe verificar la designación, la operación y las excepciones aplicables.</p></div>'+ 
-      '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'SNAT/2023/000412')+'"></div>'+
+      '<div class="f"><label for="fProvEsp">Nº Providencia Notificación</label><input class="fld" id="fProvEsp" value="'+esc(c.provEspecial||'')+'"></div>'+
       '<div class="f"><label for="fCtrlPref">Prefijo Nº Control Fiscal</label><input class="fld mono" id="fCtrlPref" value="'+esc(c.ctrlPrefix||'00-')+'"></div>'+
-      '<div class="f"><label for="fCtrlNext">Próximo Nº de Control</label><input class="fld mono r" id="fCtrlNext" value="'+(c.ctrlNext||1043)+'"></div>'+
-      '<div class="f"><label for="fRangoD">Rango Autorizado (Desde)</label><input class="fld mono" id="fRangoD" value="'+esc(c.ctrlRangoDesde||'00-00000001')+'"></div>'+
-      '<div class="f"><label for="fRangoH">Rango Autorizado (Hasta)</label><input class="fld mono" id="fRangoH" value="'+esc(c.ctrlRangoHasta||'00-00050000')+'"></div>'+
-      '<div class="f"><label for="fImpRif">RIF Imprenta Digital Autorizada</label><input class="fld" id="fImpRif" value="'+esc(c.imprentaRif||'J-31009988-4')+'"></div>'+
-      '<div class="f"><label for="fImpAut">Nº Providencia Imprenta</label><input class="fld" id="fImpAut" value="'+esc(c.imprentaAut||'SENIAT/DAF/2022/981')+'"></div>'+
-      '<div class="f"><label for="fSerial">Serial Máquina / Memoria Fiscal</label><input class="fld mono" id="fSerial" value="'+esc(c.serialFiscal||'Z4A7719204')+'"></div>'+
+      '<div class="f"><label for="fCtrlNext">Próximo Nº de Control</label><input class="fld mono r" id="fCtrlNext" value="'+(c.ctrlNext||1)+'"></div>'+
+      '<div class="f"><label for="fRangoD">Rango Autorizado (Desde)</label><input class="fld mono" id="fRangoD" value="'+esc(c.ctrlRangoDesde||'')+'"></div>'+
+      '<div class="f"><label for="fRangoH">Rango Autorizado (Hasta)</label><input class="fld mono" id="fRangoH" value="'+esc(c.ctrlRangoHasta||'')+'"></div>'+
+      '<div class="f"><label for="fImpRif">RIF Imprenta Digital Autorizada</label><input class="fld" id="fImpRif" value="'+esc(c.imprentaRif||'')+'"></div>'+
+      '<div class="f"><label for="fImpAut">Nº Providencia Imprenta</label><input class="fld" id="fImpAut" value="'+esc(c.imprentaAut||'')+'"></div>'+
+      '<div class="f"><label for="fSerial">Serial Máquina / Memoria Fiscal</label><input class="fld mono" id="fSerial" value="'+esc(c.serialFiscal||'')+'"></div>'+
     '</div><p class="hint">Los números de control asignados son correlativos y consecutivos conforme a la Providencia SENIAT 0071 sobre emisión de facturas y otros documentos.</p>';
   };
 
@@ -7267,21 +7302,32 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnGotoIgtf'){activeTab='igtf';$('.tab[data-tab="igtf"]',el)?.click();}
         if(ev.target.id==='btnPrinterSetupWizard'){printerSetupWizardDlg();return;}
         if(ev.target.id==='btnSaveF'){
+          const legalName=$('#fEmp',el).value.trim(),taxId=$('#fRif',el).value.trim(),address=$('#fDir',el).value.trim(),email=$('#fEmail',el).value.trim();
+          if(!legalName||!taxId||!address||!email){msg('Parámetros fiscales incompletos: razón social, RIF, domicilio fiscal y correo son obligatorios para completar el perfil.','bad');return;}
+          if(!/^[VEJPG]-?\\d{8,9}-?\\d$/.test(taxId.toUpperCase())){msg('El RIF debe tener formato venezolano válido (letra, números y dígito verificador).','bad');return;}
+          if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){msg('El correo de la empresa no tiene un formato válido.','bad');return;}
+          if(($('#fRetConfirm',el).checked||$('#fRetIslr',el).checked)&&($('#fEsp',el).value!=='1'||!$('#fProvEsp',el).value.trim())){msg('Para activar retenciones debe confirmar Sujeto Pasivo Especial y completar la providencia de notificación.','bad');return;}
           S.cfg.empresa=$('#fEmp',el).value.trim()||S.cfg.empresa;
           S.cfg.rif=$('#fRif',el).value.trim()||S.cfg.rif;
           S.cfg.dir=$('#fDir',el).value.trim();
+          S.cfg.companyEmail=$('#fEmail',el).value.trim();
+          S.cfg.companyPhone=$('#fPhone',el).value.trim();
+          S.cfg.contribuyenteFormalIva=$('#fFormalIva',el).checked===true;
           S.cfg.fiscalTipo=$('#fTipo',el).value;
           S.cfg.printMode=$('#fPrintMode',el).value;
           if(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER')S.cfg.fiscalTipo='NO_FISCAL_INTERNAL';
           else if(S.cfg.printMode==='FISCAL_PRINTER')S.cfg.fiscalTipo='MAQUINA_FISCAL';
           S.cfg.printSetupCompleted=true;
           S.cfg.contribEspecial=$('#fEsp',el).value==='1';
-          S.cfg.retIvaPct=75;
+          S.cfg.retIvaPct=$('#fPctRet',el).value==='100'?100:75;
+          S.cfg.retIslrHabilitada=$('#fRetIslr',el).checked===true;
+          S.cfg.agenteRetIslr=S.cfg.retIslrHabilitada;
           S.cfg.retencionHabilitadaConfirmada=$('#fRetConfirm',el).checked===true;
+          S.cfg.agenteRetIva=S.cfg.retencionHabilitadaConfirmada;
           if(!S.cfg.contribEspecial)S.cfg.retencionHabilitadaConfirmada=false;
           S.cfg.provEspecial=$('#fProvEsp',el).value.trim();
           S.cfg.ctrlPrefix=$('#fCtrlPref',el).value.trim()||'00-';
-          S.cfg.ctrlNext=parseInt($('#fCtrlNext',el).value)||1043;
+          S.cfg.ctrlNext=parseInt($('#fCtrlNext',el).value)||1;
           S.cfg.ctrlRangoDesde=$('#fRangoD',el).value.trim();
           S.cfg.ctrlRangoHasta=$('#fRangoH',el).value.trim();
           S.cfg.imprentaRif=$('#fImpRif',el).value.trim();

@@ -38,9 +38,9 @@ test('RegistrarCompra propone precio con el motor del producto y permite desacti
 
 test('RegistrarCompra muestra último costo, CPP actual y CPP proyectado antes de confirmar',()=>{
   assert.match(source,/getLastPurchaseCost/);
-  assert.match(source,/Último costo proveedor \(sin IVA\) US\$/);
+  assert.match(source,/Último precio de este proveedor \(sin IVA\) US\$/);
   assert.match(source,/CPP actual US\$/);
-  assert.match(source,/Nuevo costo de compra \(sin IVA\) US\$/);
+  assert.match(source,/Nuevo precio unitario de compra \(sin IVA\) US\$/);
   assert.match(source,/CPP resultante US\$/);
   assert.match(source,/getLastPurchaseCost\(l\.code\)/);
   assert.match(source,/nf8\(projectedCost\)/);
@@ -58,4 +58,33 @@ test('La tasa BCV visible corresponde a la fecha del documento y queda asociada 
   assert.match(source,/Tasa BCV del día del documento/);
   assert.match(source,/rateDate:purchaseRateRecord\.date/);
   assert.match(source,/rateEffectiveDate:purchaseRateRecord\.effectiveDate/);
+});
+
+test('CPP proyectado y CPP aplicado al inventario comparten cálculo ponderado robusto ante stock negativo',()=>{
+  assert.match(source,/const projectedCost=calcWeightedPurchaseCost\(stock,p\.cost,l\.qty,l\.cost\);/);
+  assert.match(source,/const nextCost=calcWeightedPurchaseCost\(p\.stock,p\.cost,l\.qty,l\.cost\);/);
+  assert.match(source,/const nextStock=r2\(Number\(p\.stock\|\|0\)\+Number\(l\.qty\)\);/);
+});
+
+test('recepción rechaza fichas con stock o CPP corruptos antes de mutar inventario',()=>{
+  assert.match(source,/!Number\.isFinite\(Number\(p\.stock\)\)/);
+  assert.match(source,/p\.cost===null\|\|p\.cost===undefined\|\|!Number\.isFinite\(Number\(p\.cost\)\)\|\|Number\(p\.cost\)<0/);
+  assert.match(source,/Corrija su ficha de inventario antes de recibir la compra/);
+});
+
+test('abono inicial de compra usa la tasa actual del pago y conserva la moneda del medio',()=>{
+  assert.match(source,/const initialPaymentRate=Number\(S\.cfg\.rate\)>0\?Number\(S\.cfg\.rate\):purchaseRate/);
+  assert.match(source,/initialPaymentMethod=METHODS\.find\(m=>m\.name===payMethod\)\|\|\{cur:'VES'\}/);
+  assert.match(source,/cur:initialPaymentMethod\.cur,rate:initialPaymentRate,amountBs:r2\(effPaid\*initialPaymentRate\)/);
+});
+
+test('Compras es exclusivo del administrador y sus consecutivos no dependen de una caja',()=>{
+  assert.match(source,/function comprasDlg\(initialTab\)\{\s*const purchaseAdminBox='ADMIN';\s*if\(activeUser\(\)\.role!=='admin'\)/);
+  const start=source.indexOf('const processPurchase=async');
+  const end=source.indexOf('function cxcDlg',start);
+  const purchase=source.slice(start,end);
+  assert.doesNotMatch(purchase,/currentCaja\(\)/);
+  assert.match(purchase,/nextCajaSequence\('purchase',purchaseAdminBox\)/);
+  assert.match(purchase,/cashbox:purchaseAdminBox/);
+  assert.match(purchase,/String\(purchaseAdminBox\)/);
 });

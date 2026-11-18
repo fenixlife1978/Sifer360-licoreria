@@ -149,6 +149,9 @@ test('fiscal module expands the existing inventory book with distinct views and 
 test('main POS script parses and no longer references removed purchase IVA toggle state', () => {
   assert.doesNotThrow(() => new vm.Script(main));
   assert.doesNotMatch(main, /applyIva/);
+  assert.match(main, /S\.cfg\.retIvaPct=\$\('#fPctRet',el\)\.value==='100'\?100:75/);
+  assert.match(main, /S\.cfg\.retIslrHabilitada=\$\('#fRetIslr',el\)\.checked===true/);
+  assert.match(main, /const persisted=await save\(\);if\(!persisted\|\|!persisted\.ok\)/);
 });
 
 test('inventario integra el costo promedio ponderado y valoriza las existencias con CPP', () => {
@@ -158,8 +161,8 @@ test('inventario integra el costo promedio ponderado y valoriza las existencias 
   assert.match(inventory, /Valor inventario a CPP/);
   assert.match(inventory, /Math\.max\(0,p\.stock\)\*Math\.max\(0,p\.cost\)/);
   assert.doesNotMatch(inventory, /data-f="cost"/);
-  assert.match(main, /const prevVal=Math\.max\(0,p\.stock\)\*p\.cost/);
-  assert.match(main, /const nextCost=nextStock>0\?r8\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
+  assert.match(main, /function calcWeightedPurchaseCost\(currentStock,currentCost,receivedQty,receivedCost\)/);
+  assert.match(main, /const nextCost=calcWeightedPurchaseCost\(p\.stock,p\.cost,l\.qty,l\.cost\)/);
 });
 
 test('compras acepta y conserva hasta ocho decimales en costos, precios, subtotales, IVA, total y CPP', () => {
@@ -167,18 +170,18 @@ test('compras acepta y conserva hasta ocho decimales en costos, precios, subtota
   assert.match(main, /const nf8=n=>[\s\S]*?toFixed\(8\)/);
   const comprasStart = main.indexOf('function comprasDlg(initialTab)');
   const compras = main.slice(comprasStart, main.indexOf('\nfunction cxcDlg', comprasStart));
-  assert.match(compras, /data-cpf="cost"[^>]*value="\'\+nf8\(l\.cost\)/);
+  assert.match(compras, /data-cpf="cost"[^>]*required value="\'\+\(l\.cost===null\?\'\':nf8\(l\.cost\)\)/);
   assert.match(compras, /data-cpf="price" value="\'\+nf8\(l\.price\)/);
   assert.match(compras, /const base=r8\(pLines\.reduce/);
   assert.match(compras, /const iva=docType==='FACTURA_FISCAL'\?r8\(pLines\.reduce/);
   assert.match(compras, /const tot=r8\(base\+iva\)/);
-  assert.match(compras, /if\(t\.dataset\.cpf==='cost'\)\{l\.cost=r8\(val\);l\.costEdited=true;\}/);
-  assert.match(compras, /const nextCost=nextStock>0\?r8\(\(prevVal\+newVal\)\/nextStock\):l\.cost/);
+  assert.match(compras, /if\(t\.dataset\.cpf==='cost'\)\{const cost=pnZero\(t\.value\);l\.cost=cost===null\?null:r8\(cost\);l\.costEdited=true;\}/);
+  assert.match(compras, /const projectedCost=calcWeightedPurchaseCost\(stock,p\.cost,l\.qty,l\.cost\)/);
   assert.match(main, /nf8\(p\.cost\)/);
 });
 
 
-test('CxP de compras conserva ocho decimales en saldos y pagos y mantiene el historial al anular', () => {
+test('CxP conserva precisión interna y muestra importes con dos decimales; mantiene historial al anular', () => {
   const purchaseStart = main.indexOf('const renderPurchaseHist=v=>{');
   const purchaseEnd = main.indexOf('const renderSuppliersTab=v=>', purchaseStart);
   const purchaseHistory = main.slice(purchaseStart, purchaseEnd);
@@ -186,8 +189,8 @@ test('CxP de compras conserva ocho decimales en saldos y pagos y mantiene el his
   assert.match(purchaseHistory, /const paidTotal=r8\(Number\(c\.paid\|\|0\)\)/);
   assert.match(purchaseHistory, /Retenciones US\$/);
   assert.match(purchaseHistory, /Pagado US\$/);
-  assert.match(purchaseHistory, /nf8\(c\.total\)/);
-  assert.match(purchaseHistory, /nf8\(pend\)/);
+  assert.match(purchaseHistory, /nf\(c\.total\)/);
+  assert.match(purchaseHistory, /nf\(pend\)/);
   assert.match(purchaseHistory, /x\.void=true;x\.voidedAt=Date\.now\(\)/);
   assert.match(purchaseHistory, /Anulada junto con compra COM-/);
 
@@ -196,7 +199,7 @@ test('CxP de compras conserva ocho decimales en saldos y pagos y mantiene el his
   const cxp = main.slice(cxpStart, cxpEnd);
   assert.match(cxp, /const bal=r8\(Math\.max\(0,Number\(item\.total\|\|0\)-Number\(item\.paid\|\|0\)\)\)/);
   assert.match(cxp, /item\.paid=r8\(Math\.min\(Number\(item\.total\)\|\|0/);
-  assert.match(cxp, /nf8\(p\.amountUsd\)/);
+  assert.match(cxp, /nf\(p\.amountUsd\)/);
   assert.match(cxp, /if\(rawAmt-bal>0\.00000001\)/);
   assert.match(cxp, /mixState\[mid\]\.usd=r8\(b\/rate\)/);
 });
@@ -228,4 +231,15 @@ test('Corte Z consolida ventas por SKU/código y ajustes de inventario positivos
   assert.ok(main.includes("const inShift=ts=>Number(ts)>=openedAt&&Number(ts)<=Date.now()"));
   assert.ok(main.includes("(p.cashbox&&String(p.cashbox)!==box)||!inShift(p.ts)"));
   assert.ok(main.includes("p.void||!inShift(p.ts)||Number(p.paid||0)<=0"));
+});
+
+test('compras muestra precio anterior por proveedor y permite editar nuevo precio unitario', () => {
+  const comprasStart = main.indexOf('function comprasDlg(initialTab)');
+  const compras = main.slice(comprasStart, main.indexOf('\nfunction cxcDlg', comprasStart));
+  assert.match(main, /function getLastSupplierPurchaseCost\(purchases, code, supplierRif\)/);
+  assert.match(compras, /Último precio de este proveedor \(sin IVA\) US\$/);
+  assert.match(compras, /Nuevo precio unitario de compra \(sin IVA\) US\$/);
+  assert.match(compras, /data-cpf="cost" aria-label="Nuevo precio unitario de compra sin IVA US\$"/);
+  assert.match(compras, /if\(t\.id==='cpSup'\)\{supIdx=\+t\.value;pLines\.forEach\(line=>\{line\.costEdited=false;/);
+  assert.match(compras, /const last=getLastPurchaseCost\(line\.code\),product=prod\(line\.code\);line\.cost=last===null\?Number\(product&&product\.cost\|\|0\):last;/);
 });

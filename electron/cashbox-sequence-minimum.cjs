@@ -41,6 +41,11 @@ function getCashboxSequenceMinimum(state = {}, cashboxId, operationType) {
   if (operation === 'currency-exchange') return maxPlusOne(rows('cambiosDivisas'), item => item.sequence);
   if (operation === 'movement') return maxPlusOne(rows('movimientosCaja'), item => item.sequence);
   if (operation === 'refund' || operation === 'return') return maxPlusOne(rows('returns'), item => Number(item.returnNo) || Number(item.sequence));
+  const retentionIslr = /^retention-islr-(\d{6})$/.exec(operation);
+  if (retentionIslr) {
+    const period = retentionIslr[1];
+    return maxPlusOne(rows('retencionesIslr').filter(item => String(item.periodo || '') === period), item => Number(item.sequence) || Number(String(item.id || '').slice(-8)));
+  }
   const retention = /^retention-(\d{6})$/.exec(operation);
   if (retention) {
     const period = retention[1];

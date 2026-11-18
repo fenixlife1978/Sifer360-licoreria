@@ -23,7 +23,8 @@ test('fiscal sales validate fiscal availability and reduce both ledgers; interna
  assert.match(pos,/type:'VENTA_FISCAL',dir:'OUT'/);
  assert.match(pos,/ledger\.movements\.slice\(\)/);
  assert.match(pos,/Libro_Inventario_Fiscal_SIFER/);
- assert.match(pos,/const baseQty=lineBaseQty\(l\);[\s\S]*?p\.stock=Math\.max\(0,r2\(p\.stock-baseQty\)\)/);
+ assert.match(pos,/baseQty=lineBaseQty\(l\),fiscalQty=hybridMode\?Number\(hybridPlan\.fiscalQtyByLine\[lineIndex\]\|\|0\)/);
+ assert.match(pos,/p\.stock=Math\.max\(0,r2\(p\.stock-baseQty\)\)/);
 });
 
 test('fiscal purchase reversals and fiscal sale voids only reverse recorded fiscal movements',()=>{
