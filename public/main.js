@@ -2552,7 +2552,7 @@ function inventoryExtractProductRows(root){
   if(Array.isArray(root))return root.filter(inventoryIsProductRecord);
   if(inventoryIsProductRecord(root))return [root];
   const recognized=new Set(['products','product','productos','inventario','inventory','articulos','catalogo','catalog','maestroproductos','inventariomaestro']);
-  const containers=[root,root&&root.data,root&&root.state,root&&root.backup,root&&root.database,root&&root.collections,root&&root.payload];
+  const containers=[root,root&&root.data,root&&root.data&&root.data.collections,root&&root.state,root&&root.state&&root.state.collections,root&&root.backup,root&&root.backup&&root.backup.collections,root&&root.database,root&&root.db,root&&root.collections,root&&root.payload];
   const candidates=[];
   containers.forEach(container=>{
     if(!container||typeof container!=='object'||Array.isArray(container))return;
@@ -2578,7 +2578,7 @@ function inventoryImportFields(){
     {id:'subcat',label:'Subcategoría',aliases:['subcategoria','subcat','subcategory','subfamilia']},
     {id:'unit',label:'Unidad base',aliases:['unidad','unidadmedida','um','unit','medida']},
     {id:'stock',label:'Existencia',aliases:['existencia','stock','cantidad','cantidadactual','qty','quantity','existenciaactual']},
-    {id:'min',label:'Stock mínimo',aliases:['minimo','stockminimo','min','minstock']},
+    {id:'min',label:'Stock mínimo',aliases:['minimo','stockminimo','stockmin','min','minstock']},
     {id:'cost',label:'Costo unitario',aliases:['costo','cost','costounitario','cpp','costopromedio']},
     {id:'price',label:'Precio de venta',aliases:['precio','price','precioventa','pvp','preciodetalle']},
     {id:'taxRate',label:'Alícuota IVA %',aliases:['iva','alicuota','taxrate','tasaiva','porcentajeiva']}
@@ -2599,7 +2599,7 @@ function inventoryImportProduct(row,mapping,index,usedCodes,usedSkus){
   if(usedCodes.has(code)||usedSkus.has(sku))return{duplicate:true,code,sku};
   const stock=inventoryImportNumber(value('stock'),0),min=inventoryImportNumber(value('min'),0),cost=inventoryImportNumber(value('cost'),0),price=inventoryImportNumber(value('price'),0);
   if(![stock,min,cost,price].every(Number.isFinite)||stock<0||min<0||cost<0||price<0)return{error:'Existencia, mínimo, costo o precio inválido.'};
-  const unit=String(value('unit')||'und').trim()||'und',rawTax=value('taxRate'),taxRate=inventoryImportNumber(rawTax!==''&&rawTax!==null?rawTax:(row.tax&&row.tax.rate!==undefined?row.tax.rate:row.taxType==='E'?0:row.taxType==='R'?8:row.taxType==='A'?31:16),16);
+  const unit=String(value('unit')||'und').trim()||'und',rawTax=value('taxRate'),taxRate=inventoryImportNumber(rawTax!==''&&rawTax!==null?rawTax:(row.tax&&row.tax.rate!==undefined?row.tax.rate:((row.tax&&row.tax.type)||row.taxType)==='E'?0:((row.tax&&row.tax.type)||row.taxType)==='R'?8:((row.tax&&row.tax.type)||row.taxType)==='A'?31:16),16);
   const taxType=taxRate===0?'E':taxRate===8?'R':taxRate===31?'A':'G';
   const tax=row.tax&&typeof row.tax==='object'?{...row.tax,type:taxType,rate:taxRate,igtf:row.tax.igtf!==false,percRate:inventoryImportNumber(row.tax.percRate,0),codeSeniat:String(row.tax.codeSeniat|| (taxType==='E'?'EXENTO-0':taxType==='R'?'RED-08':taxType==='A'?'ADIC-31':'GRAV-16'))}:{type:taxType,rate:taxRate,igtf:true,percRate:0,codeSeniat:taxType==='E'?'EXENTO-0':taxType==='R'?'RED-08':taxType==='A'?'ADIC-31':'GRAV-16'};
   let presentations=Array.isArray(row.presentations)?row.presentations:null;
