@@ -97,7 +97,7 @@ test("captura movimientos del submayor fiscal, retenciones ISLR y operaciones ba
   assert.deepEqual(new Set(events.map(event => event.sourceType)), new Set([
     "fiscal_inventory_movement", "islr_retention", "bank_operation"
   ]));
-  assert.equal(events.find(event => event.sourceType === "fiscal_inventory_movement").occurredAt, new Date(1793700000000).toISOString());
+  assert.equal(new Date(events.find(event => event.sourceType === "fiscal_inventory_movement").occurredAt).toISOString(), new Date(1793700000000).toISOString());
 });
 test("la fecha contable del documento prevalece sobre la hora de captura", () => {
   const event = buildAccountingSourceEvents({}, {
