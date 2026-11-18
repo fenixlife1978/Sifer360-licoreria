@@ -1,16 +1,35 @@
 {
   "appId": "com.sifer360.licoreria",
   "productName": "SIFER 360 Licorería",
-  "directories": { "output": "dist-exe" },
-  "files": ["dist/**/*", "electron/**/*", "package.json"],
+  "directories": {
+    "output": "dist-exe"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*",
+    "package.json",
+    "src/accounting/**/*"
+  ],
   "win": {
     "target": [
-      { "target": "portable", "arch": ["x64"] },
-      { "target": "nsis", "arch": ["x64"] }
+      {
+        "target": "portable",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
     ],
     "icon": "public/favicon.ico"
   },
-  "portable": { "artifactName": "SIFER360-1.1.2-Portable.exe" },
+  "portable": {
+    "artifactName": "SIFER360-1.1.2-Portable.exe"
+  },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
@@ -20,7 +39,15 @@
     "installerIcon": "public/favicon.ico",
     "uninstallerIcon": "public/favicon.ico",
     "installerHeaderIcon": "public/favicon.ico",
-    "artifactName": "SIFER360-1.1.2-Instalador.exe"
+    "artifactName": "SIFER360-1.1.2-Instalador.exe",
+    "deleteAppDataOnUninstall": false
   },
-  "publish": [{ "provider": "github", "owner": "fenixlife1978", "repo": "Sifer360-licoreria", "releaseType": "release" }]
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "fenixlife1978",
+      "repo": "Sifer360-licoreria",
+      "releaseType": "release"
+    }
+  ]
 }
