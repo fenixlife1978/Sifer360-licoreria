@@ -3026,7 +3026,7 @@ function comprasDlg(initialTab){
   };
 
   const renderPurchaseHist=v=>{
-    const list=(S.purchases||[]).filter(x=>String(x.cashbox||currentCaja())===currentCaja()).slice().sort((a,b)=>b.no-a.no);
+    const list=(S.purchases||[]).slice().sort((a,b)=>Number(b.no)-Number(a.no)||Number(b.ts||0)-Number(a.ts||0));
     v.innerHTML=
       '<div class="gridwrap tallwrap"><table class="grid" style="min-width:820px">'+
         '<thead><tr><th>Compra Nº</th><th>Documento Prov.</th><th>Fecha</th><th>Proveedor</th><th>Tipo doc.</th><th>Condición</th><th class="r">Total US$</th><th class="r">Retenciones US$</th><th class="r">Pagado US$</th><th class="r">Saldo CxP</th><th>Acción</th></tr></thead>'+
@@ -3045,14 +3045,14 @@ function comprasDlg(initialTab){
             '<td class="r">'+nf(Number(c.retIva||0)+Number(c.retIslr||0))+'</td>'+
             '<td class="r">'+nf(paidTotal)+'</td>'+
             '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA'+(c.voidDoc?' · '+esc(c.voidDoc):''):nf(pend))+'</td>'+
-            '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'">Anular</button>')+'</td>'+
+            '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'" data-void-box="'+esc(c.cashbox||'01')+'">Anular</button>')+'</td>'+
           '</tr>';
         }).join(''):'<tr class="empty"><td colspan="11">Sin compras registradas.</td></tr>')+'</tbody>'+
       '</table></div>';
     v.onclick=async e=>{
       const b=e.target.closest('[data-void-comp]');
       if(!b)return;
-      const c=S.purchases.find(x=>x.no===+b.dataset.voidComp&&String(x.cashbox||currentCaja())===currentCaja());
+      const c=S.purchases.find(x=>Number(x.no)===Number(b.dataset.voidComp)&&String(x.cashbox||'01')===String(b.dataset.voidBox||'01'));
       if(!c||c.void)return;
       const purchaseCashbox=String(c.cashbox||currentCaja());
       const purchaseDocument='COM-'+pad(c.no);
