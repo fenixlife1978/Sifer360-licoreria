@@ -1,21 +1,79 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 
 const main=readFileSync(new URL('../public/main.js',import.meta.url),'utf8');
+
+function runHybrid(cart,balances){
+  const start=main.indexOf('function hybridCartPlan(){');
+  const end=main.indexOf('\nfunction salePortion',start);
+  assert.ok(start>=0&&end>start,'hybridCartPlan helper exists');
+  const context={
+    S:{cart,fiscalInventory:{balances}},
+    window:{SIFERInventoryLedgers:{ensureFiscalInventory:state=>state.fiscalInventory}},
+    lineBaseQty:line=>Number(line.qty||0)*Math.max(1e-8,Number(line.factor)||1),
+    r8:value=>Math.round((Number(value)+Number.EPSILON)*1e8)/1e8,
+    r2:value=>Math.round((Number(value)+Number.EPSILON)*100)/100,
+    Number,Math
+  };
+  vm.runInNewContext(main.slice(start,end)+';globalThis.run=hybridCartPlan;',context);
+  return context.run();
+}
+
+function runTicketFiscalOut(lines,ticketLines,fiscalLines,balances,physical){
+  const start=main.indexOf('function ticketFiscalOutPlan(');
+  const end=main.indexOf('\nfunction totals',start);
+  assert.ok(start>=0&&end>start,'ticketFiscalOutPlan helper exists');
+  const context={
+    S:{fiscalInventory:{balances}},
+    window:{SIFERInventoryLedgers:{ensureFiscalInventory:state=>state.fiscalInventory}},
+    prod:code=>({stock:physical[code]||0}),
+    r8:value=>Math.round((Number(value)+Number.EPSILON)*1e8)/1e8,
+    Number,Math,Map,Set
+  };
+  vm.runInNewContext(main.slice(start,end)+';globalThis.run=ticketFiscalOutPlan;',context);
+  return context.run(lines,ticketLines,fiscalLines);
+}
 
 test('checkout offers ticket, fiscal invoice and hybrid printing when both printers are configured',()=>{
   assert.match(main,/option value="TICKET">Ticket no fiscal · Toda la venta/);
   assert.match(main,/option value="FISCAL".*Factura fiscal · Toda la venta/);
-  assert.match(main,/option value="HYBRID".*Impresión híbrida · Factura fiscal \+ ticket no fiscal/);
+  assert.match(main,/option value="HYBRID".*Impresión híbrida · Factura fiscal \\+ ticket no fiscal/);
 });
 
-test('hybrid planning assigns only complete cart lines with sufficient fiscal balance to the fiscal document',()=>{
-  assert.match(main,/function hybridCartPlan\(\)/);
-  assert.match(main,/available\+1e-9>=qty\)\{fiscalIndexes\.push\(index\)/);
-  assert.match(main,/else ticketIndexes\.push\(index\)/);
-  assert.match(main,/const fiscalSaleLines=lines\.filter\(\(_,i\)=>fiscalLineIndexes\.has\(i\)\)/);
-  assert.match(main,/const ticketSaleLines=hybridMode\?lines\.filter\(\(_,i\)=>hybridPlan\.ticketIndexes\.includes\(i\)\)/);
+test('hybrid splits a single cart line between supported fiscal quantity and remaining thermal-ticket quantity',()=>{
+  const plan=runHybrid([{code:'BOTTLE',qty:5,factor:1,net:500,iva:80}],{BOTTLE:{stock:3}});
+  assert.deepEqual(Array.from(plan.fiscalIndexes),[0]);
+  assert.deepEqual(Array.from(plan.ticketIndexes),[0]);
+  assert.equal(plan.fiscalLines[0].qty,3);
+  assert.equal(plan.fiscalLines[0].presentationQty,3);
+  assert.equal(plan.ticketLines[0].qty,2);
+  assert.equal(plan.ticketLines[0].presentationQty,2);
+  assert.equal(plan.fiscalLines[0].net+plan.ticketLines[0].net,500);
+  assert.equal(plan.fiscalLines[0].iva+plan.ticketLines[0].iva,80);
+});
+
+test('hybrid never fractures a pack presentation and allocates whole packs only',()=>{
+  const plan=runHybrid([{code:'PACK6',qty:2,factor:6,net:120,iva:19.2}],{PACK6:{stock:9}});
+  assert.equal(plan.fiscalLines[0].qty,6);
+  assert.equal(plan.fiscalLines[0].presentationQty,1);
+  assert.equal(plan.ticketLines[0].qty,6);
+  assert.equal(plan.ticketLines[0].presentationQty,1);
+});
+
+test('hybrid allocates fiscal stock across repeated SKU lines in cart order',()=>{
+  const plan=runHybrid([
+    {code:'SAME',qty:2,factor:1,net:200,iva:32},
+    {code:'SAME',qty:3,factor:1,net:300,iva:48}
+  ],{SAME:{stock:3}});
+  assert.deepEqual(Array.from(plan.fiscalLines,l=>[l.lineIndex,l.qty]),[[0,2],[1,1]]);
+  assert.deepEqual(Array.from(plan.ticketLines,l=>[l.lineIndex,l.qty]),[[1,2]]);
+});
+
+test('thermal ticket consumes non-fiscal stock first and only then fiscal-backed stock',()=>{
+  const out=runTicketFiscalOut([{code:'A',qty:6}], [{code:'A',qty:6,lineIndex:0}], [{code:'A',qty:3}], {A:{stock:6}}, {A:10});
+  assert.equal(out.get(0),2);
 });
 
 test('fiscal printer payload contains only the fiscal portion and uses the selected presentation details',()=>{
@@ -37,9 +95,8 @@ test('mixed hybrid Cashea is blocked until its financing can be allocated safely
   assert.match(main,/La impresión híbrida con Cashea requiere una distribución/);
 });
 
-test('only the fiscal allocation consumes the fiscal ledger while every sale line consumes physical stock once',()=>{
-  assert.match(main,/if\(fiscalLineIndexes\.has\(lineIndex\)\)window\.SIFERInventoryLedgers\.applyFiscalMovement/);
-  assert.match(main,/if\(fiscalLineIndexes\.has\(lineIndex\)\)window\.SIFERInventoryLedgers\.applyFiscalMovement/);
+test('fiscal portion and ticket-backed consumption use separate per-line quantities while physical stock is deducted once',()=>{
+  assert.match(main,/const fiscalQty=hybridMode\?Number\(hybridPlan\.fiscalQtyByLine\[lineIndex\]\|\|0\)/);
   assert.match(main,/type:'SALIDA_TICKET_NO_FISCAL',dir:'OUT'/);
   assert.match(main,/p\.stock=Math\.max\(0,r2\(p\.stock-baseQty\)\)/);
 });
