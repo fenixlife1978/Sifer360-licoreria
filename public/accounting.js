@@ -361,12 +361,7 @@ async function runAutomaticDepreciation(){
  }catch(error){console.error('No se pudo completar la depreciación automática:',error);}
  finally{automaticDepreciationBusy=false;}
 }
-function startAutomaticDepreciation(){
- if(automaticDepreciationTimer)clearInterval(automaticDepreciationTimer);
- runAutomaticDepreciation();
- automaticDepreciationTimer=setInterval(runAutomaticDepreciation,60000);
- document.removeEventListener('visibilitychange',runAutomaticDepreciation);
- document.addEventListener('visibilitychange',()=>{if(!document.hidden)runAutomaticDepreciation();});
+function startAutomaticDepreciation(){return false;}
  window.removeEventListener('focus',runAutomaticDepreciation);
  window.addEventListener('focus',runAutomaticDepreciation);
 }
