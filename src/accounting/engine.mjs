@@ -2,7 +2,7 @@
  * Núcleo contable puro de SIFER360-LICORERIA.
  * Importes expresados como unidades menores enteras; tasas siempre explícitas.
  */
-const ROLES = new Set(["contador", "admin"]);
+const ROLES = new Set(["contador"]);
 function assert(ok, message) { if (!ok) throw new Error(message); }
 function text(value, label) { assert(typeof value === "string" && value.trim(), label + ": es obligatorio."); }
 function minor(value, label = "Importe") { assert(Number.isSafeInteger(value) && value >= 0, label + ": debe ser entero no negativo."); }
@@ -64,7 +64,7 @@ export function createJournalEntry(input) {
 }
 export function approveJournalEntry(entry, { actorId, actorRole, approvedAt = new Date().toISOString() }) {
   assert(entry && entry.status === "draft", "Solo se aprueban asientos en borrador.");
-  text(actorId, "Usuario aprobador"); assert(ROLES.has(actorRole), "La aprobación requiere rol contador o super-admin.");
+  text(actorId, "Usuario aprobador"); assert(ROLES.has(actorRole), "La aprobación requiere el rol Contador.");
   validateJournalLines(entry.lines);
   return { ...entry, status: "approved", approvedAt, approvedBy: actorId };
 }
