@@ -3229,7 +3229,8 @@ function comprasDlg(initialTab){
     S.purchases.push(comp);
     if(payableTotal-effPaid>=0.01){
       const cxpId='CXP-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(cxpNo,6);
-      const payments=effPaid>0?[{ts,method:payMethod,cur:'VES',amountBs:r2(effPaid*purchaseRate),amountUsd:effPaid,ref:'INI-'+no,note:'Abono inicial en compra'}]:[];
+      const initialPaymentRate=Number(S.cfg.rate)>0?Number(S.cfg.rate):purchaseRate,initialPaymentMethod=METHODS.find(m=>m.name===payMethod)||{cur:'VES'};
+      const payments=effPaid>0?[{ts,method:payMethod,cur:initialPaymentMethod.cur,rate:initialPaymentRate,amountBs:r2(effPaid*initialPaymentRate),amountUsd:effPaid,ref:'INI-'+no,note:'Abono inicial en compra'}]:[];
       S.cxp.push({
         id:cxpId,sequence:cxpNo,purchaseNo:no,cashbox:currentCaja(),doc:docProv+' (COM-'+pad(no)+')',
         supplier:Object.assign({},sup),
