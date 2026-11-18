@@ -97,4 +97,5 @@ test("captura movimientos del submayor fiscal, retenciones ISLR y operaciones ba
   assert.deepEqual(new Set(events.map(event => event.sourceType)), new Set([
     "fiscal_inventory_movement", "islr_retention", "bank_operation"
   ]));
+  assert.equal(events.find(event => event.sourceType === "fiscal_inventory_movement").occurredAt, new Date(1793700000000).toISOString());
 });
