@@ -2473,7 +2473,7 @@ function inventoryImportNumber(value,fallback){
     if(/^[1-9]\d{0,2}(,\d{3})+$/.test(raw))raw=raw.replace(/,/g,'');
     else raw=raw.replace(',','.');
   }else if(raw.includes('.')&&/^[1-9]\d{0,2}(\.\d{3})+$/.test(raw))raw=raw.replace(/\./g,'');
-  const number=Number(raw);return Number.isFinite(number)?number:(fallback===undefined?0:fallback);
+  const number=Number(raw);return Number.isFinite(number)?number:NaN;
 }
 function inventoryParseDelimited(text){
   const sample=String(text||'').split(/\r?\n/).slice(0,5).join('\n');
@@ -2604,6 +2604,7 @@ function inventoryImportProduct(row,mapping,index,usedCodes,usedSkus){
   const stock=inventoryImportNumber(value('stock'),0),min=inventoryImportNumber(value('min'),0),cost=inventoryImportNumber(value('cost'),0),price=inventoryImportNumber(value('price'),0);
   if(![stock,min,cost,price].every(Number.isFinite)||stock<0||min<0||cost<0||price<0)return{error:'Existencia, mínimo, costo o precio inválido.'};
   const unit=String(value('unit')||'und').trim()||'und',rawTax=value('taxRate'),taxRate=inventoryImportNumber(rawTax!==''&&rawTax!==null?rawTax:(row.tax&&row.tax.rate!==undefined?row.tax.rate:((row.tax&&row.tax.type)||row.taxType)==='E'?0:((row.tax&&row.tax.type)||row.taxType)==='R'?8:((row.tax&&row.tax.type)||row.taxType)==='A'?31:16),16);
+  if(!Number.isFinite(taxRate)||![0,8,16,31].includes(taxRate))return{error:'Alícuota IVA inválida; use 0, 8, 16 o 31 %.'};
   const taxType=taxRate===0?'E':taxRate===8?'R':taxRate===31?'A':'G';
   const tax=row.tax&&typeof row.tax==='object'?{...row.tax,type:taxType,rate:taxRate,igtf:row.tax.igtf!==false,percRate:inventoryImportNumber(row.tax.percRate,0),codeSeniat:String(row.tax.codeSeniat|| (taxType==='E'?'EXENTO-0':taxType==='R'?'RED-08':taxType==='A'?'ADIC-31':'GRAV-16'))}:{type:taxType,rate:taxRate,igtf:true,percRate:0,codeSeniat:taxType==='E'?'EXENTO-0':taxType==='R'?'RED-08':taxType==='A'?'ADIC-31':'GRAV-16'};
   let presentations=Array.isArray(row.presentations)?row.presentations:null;
