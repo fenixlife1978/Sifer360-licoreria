@@ -888,7 +888,8 @@ function hybridCartPlan(){
 function salePortion(sale,lines,mode,residual,fiscalRatio){
   let sub=0,base=0,iva=0,baseG16=0,baseR8=0,baseA31=0,baseEx=0;
   lines.forEach(line=>{
-    sub+=r2(Number(line.price||0)*Number(line.qty||0));base+=Number(line.net)||0;iva+=Number(line.iva)||0;
+    const unitPrice=Number(line.presentationPrice||line.price||0),presentationQty=Number(line.presentationQty??line.qty??0);
+    sub+=r2(unitPrice*presentationQty);base+=Number(line.net)||0;iva+=Number(line.iva)||0;
     if(Number(line.taxRate)===16)baseG16+=Number(line.net)||0;
     else if(Number(line.taxRate)===8)baseR8+=Number(line.net)||0;
     else if(Number(line.taxRate)===31)baseA31+=Number(line.net)||0;
