@@ -5485,6 +5485,8 @@ function showTicket(s){
   openWin({title:(noPrinter?'Comprobante interno — Nº ':'Ticket de Venta — Nº ')+pad(s.no),w:500,body:el,foot:[
     {label:noPrinter?'Sin impresora configurada':'Imprimir 80mm',left:true,fn:async()=>{
       if(noPrinter){msg('Esta instalación está configurada sin impresora. El comprobante queda guardado en SQLite y puede imprimirse después de configurar un dispositivo.');return false;}
+      if(s.documentMode==='HYBRID'&&s.printStatus==='sent'&&!confirm('Este ticket ya fue enviado a la impresora. Reimprimir puede generar un duplicado físico. ¿Desea continuar?'))return false;
+      if(s.documentMode==='HYBRID'&&s.printStatus==='uncertain'&&!confirm('La impresora no confirmó el envío anterior. Revise primero el papel/salida física. ¿Desea intentar imprimir otra copia?'))return false;
       let stationId='',stationRole='unknown';try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'');stationRole=String(net&&net.role||'unknown');}catch{}
       const thermal=getThermalPrinterProfile(s.cashbox,stationId,stationRole==='standalone');
       if((s.documentMode==='DUAL_PRINTER'||s.documentMode==='HYBRID')&&(!stationId||!['standalone','server','client'].includes(stationRole)||!thermal||thermal.enabled!==true||!thermal.printerName||!window.posDesktop||typeof window.posDesktop.printerPrintTicket!=='function')){
