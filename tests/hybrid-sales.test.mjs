@@ -47,7 +47,8 @@ test('only the fiscal allocation consumes the fiscal ledger while every sale lin
 test('hybrid completion offers a separate thermal ticket without repeating the fiscal invoice or sale',()=>{
   assert.match(main,/if\(hybrid&&ticketDocument&&ticketDocument\.lines\.length\)foot\.push/);
   assert.match(main,/showTicket\(ticketDocument\)/);
-  assert.match(main,/printerPrintTicket\(thermal\.printerName,ticketText\(sale\.ticketDocument,columns\)/);
+  assert.match(main,/sale\.ticketDocument\.printStatus='uncertain';sale\.ticketDocument\.printStartedAt=Date\.now\(\)/);
+  assert.match(main,/const intentSaved=await save\(\);[\s\S]*?printerPrintTicket\(thermal\.printerName,ticketText\(sale\.ticketDocument,columns\)/);
   assert.match(main,/s\.documentMode==='HYBRID'/);
 });
 
