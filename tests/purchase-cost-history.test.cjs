@@ -119,3 +119,11 @@ test('el precio unitario vacío no se interpreta como costo cero y el costo cero
 test('un precio borrado permanece visualmente vacío hasta corregirlo',()=>{
   assert.ok(source.includes("value=\"'+(l.cost===null?'':nf8(l.cost))+'\" inputmode=\"decimal\">"));
 });
+
+test('compras del mismo día en cajas distintas desempatan por hora de registro real',()=>{
+  const purchases=[
+    {no:1,cashbox:'CAJA-01',docDateTs:5000,ts:100,supplier:{rif:'J-11111111-1'},lines:[{code:'SKU-1',cost:4}]},
+    {no:1,cashbox:'CAJA-02',docDateTs:5000,ts:300,supplier:{rif:'J-11111111-1'},lines:[{code:'SKU-1',cost:9}]}
+  ];
+  assert.equal(resolveCost(purchases,'SKU-1','J-11111111-1'),9);
+});
