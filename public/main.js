@@ -5510,8 +5510,11 @@ async function registerSaleReturn(s,refresh){
   if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin('Autorizar devolución / nota de crédito de la venta '+pad(s.no)))return false;
   const box=String(s.cashbox||'');
   const already=(index)=>window.SIFERReturnsLedger.returnedQuantity(S,s,index);
-  const choices=(s.lines||[]).map((line,index)=>(index+1)+'. '+line.desc+' · SKU '+line.code+' · Vendido '+fq(line.qty)+' · Devuelto '+fq(already(index))+' · Disponible '+fq(Math.max(0,Number(line.qty)-already(index)))+' · '+usd(Number(line.net||0)+Number(line.iva||0))).join('\n');
-  const raw=window.prompt('Renglones y cantidades a devolver (separe con punto y coma; ejemplo 1=1; 2=0.5):\n\n'+choices,'');
+  const choices=(s.lines||[]).map((line,index)=>{
+    const factor=Math.max(1e-8,Number(line.presentationFactor)||1),presentationQty=Number(line.presentationQty)>0?Number(line.presentationQty):Number(line.qty||0)/factor,returnedBase=already(index),availableBase=Math.max(0,Number(line.qty)-returnedBase),unit=String(line.presentationUnit||line.unit||'und');
+    return(index+1)+'. '+line.desc+' · SKU '+line.code+' · Vendido '+fq(presentationQty)+' '+unit+' ('+fq(line.qty)+' '+(line.unit||'und')+' base) · Devuelto '+fq(returnedBase)+' '+(line.unit||'und')+' base · Disponible '+fq(availableBase)+' '+(line.unit||'und')+' base · '+usd(Number(line.net||0)+Number(line.iva||0));
+  }).join('\n');
+  const raw=window.prompt('Renglones y cantidades a devolver en UNIDADES BASE (no en cajas/paquetes). Separe con punto y coma; ejemplo 1=12; 2=0.5:\n\n'+choices,'');
   if(raw===null||!raw.trim())return false;
   const lines=[];
   for(const part of raw.split(';')){
