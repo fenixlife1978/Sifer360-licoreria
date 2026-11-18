@@ -1400,7 +1400,7 @@ function registerAccountingIpc() {
     const descriptionTemplate = String(input.descriptionTemplate || '').trim().slice(0, 180);
     const exchangeRateType = String(input.exchangeRateType || '').trim();
     const allowedSources = new Set(['sale','purchase','receivable','payable','cash_close','cash_opening','cash_movement','inventory_movement','held_sale','inventory_count','return','void','cashea_operation','cashea_settlement','currency_movement','iva_retention','islr_retention','bank_operation','bank_settlement_batch','exchange_rate_update','fiscal_inventory_movement','retention']);
-    const safePath = value => !value || (/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*){0,5}$/.test(value) && !value.split('.').some(part => ['__proto__','prototype','constructor'].includes(part)));
+    const safePath = value => !value || isSafeAutomationPath(value);
     if (!allowedSources.has(sourceType)) throw new Error('Tipo de operación contable no reconocido.');
     if (eventAction !== 'created') throw new Error('Por seguridad, la generación automática inicial solo admite altas. Las modificaciones y eliminaciones requieren revisión y ajuste manual.');
     if (!safePath(amountPath) || !amountPath) throw new Error('Indica una ruta de importe válida, por ejemplo total o totals.grandTotal.');
@@ -1445,7 +1445,7 @@ function registerAccountingIpc() {
     if (requestedId && !pending.length) throw new Error('El evento no existe o ya fue procesado.');
     const { createJournalEntry, decimalToMinorUnits } = await loadAccountingEngine();
     const { buildBimonetaryLines } = await import('../src/accounting/bimonetary.mjs');
-    const { extractAutomationValue } = require('./accounting-automation.cjs');
+    const { extractAutomationValue, isSafeAutomationPath } = require('./accounting-automation.cjs');
     const results = { generated: [], needsReview: [], skipped: [] };
     for (const sourceEvent of pending) {
       try {

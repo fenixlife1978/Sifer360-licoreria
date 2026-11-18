@@ -1,12 +1,15 @@
 'use strict';
 
+function isSafeAutomationPath(path) {
+  return typeof path === 'string' &&
+    /^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,5}$/.test(path) &&
+    !path.split('.').some(part => ['__proto__','prototype','constructor'].includes(part));
+}
+
 function extractAutomationValue(record, path) {
   if (!record || typeof record !== 'object' || Array.isArray(record)) return undefined;
-  if (typeof path !== 'string' || !/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*){0,5}$/.test(path)) {
-    throw new Error('La ruta del dato contable no es válida.');
-  }
+  if (!isSafeAutomationPath(path)) throw new Error('La ruta del dato contable no es válida.');
   const parts = path.split('.');
-  if (parts.some(part => ['__proto__','prototype','constructor'].includes(part))) throw new Error('La ruta del dato contable contiene un segmento prohibido.');
   let value = record;
   for (const part of parts) {
     if (!value || typeof value !== 'object' || Array.isArray(value) || !Object.prototype.hasOwnProperty.call(value, part)) return undefined;
@@ -16,4 +19,4 @@ function extractAutomationValue(record, path) {
   return value;
 }
 
-module.exports = { extractAutomationValue };
+module.exports = { extractAutomationValue, isSafeAutomationPath };
