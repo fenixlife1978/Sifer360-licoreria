@@ -18,7 +18,7 @@ const { getCashboxSequenceMinimum } = require('./cashbox-sequence-minimum.cjs');
 const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
 const { createPasswordHash, verifyPassword, normalizeLegacyUser, publicUser } = require('./auth-credentials.cjs');
 const { createAccountingSessionGuard } = require('./accounting-auth.cjs');
-const { assertAccountingSettingsChange, assertAccountingPeriodChange, assertAccountingPeriodCanClose } = require('./accounting-policy.cjs');
+const { assertAccountingSettingsChange, assertAccountingPeriodChange, assertAccountingPeriodCanClose, assertAccountingPeriodWritable } = require('./accounting-policy.cjs');
 const { buildAccountingSourceEvents } = require('../src/accounting/source-events.cjs');
 const FiscalPrinterManager = require('./fiscal-printer-manager.cjs');
 const { createLegacyBackupTaskRetirer } = require('./legacy-backup-task.cjs');
@@ -1065,12 +1065,15 @@ function registerAccountingIpc() {
     const dbSnapshot = db.export();
     db.run('BEGIN IMMEDIATE');
     try {
+      const lockedBefore = one('SELECT * FROM accounting_settings WHERE id=1');
+      const lockedEntryCount = Number(one('SELECT COUNT(*) AS total FROM journal_entries').total || 0);
+      assertAccountingSettingsChange(lockedBefore, { accountingFramework: framework, functionalCurrency, presentationCurrency, monetaryDecimals: decimals }, lockedEntryCount);
       run(`INSERT INTO accounting_settings(id,accounting_framework,functional_currency,presentation_currency,monetary_decimals,automation_mode,policy_version,updated_at,updated_by)
         VALUES(1,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET accounting_framework=excluded.accounting_framework,functional_currency=excluded.functional_currency,presentation_currency=excluded.presentation_currency,monetary_decimals=excluded.monetary_decimals,automation_mode=excluded.automation_mode,policy_version=excluded.policy_version,updated_at=excluded.updated_at,updated_by=excluded.updated_by`,
         [framework, functionalCurrency, presentationCurrency, decimals, automation, policyVersion, now, actor.actorId]);
       run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
-        [crypto.randomUUID(), 'accounting_settings', '1', 'update', actor.actorId, now, before ? JSON.stringify(before) : null, JSON.stringify({ accountingFramework: framework, functionalCurrency, presentationCurrency, monetaryDecimals: decimals, automationMode: automation, policyVersion })]);
+        [crypto.randomUUID(), 'accounting_settings', '1', 'update', actor.actorId, now, lockedBefore ? JSON.stringify(lockedBefore) : null, JSON.stringify({ accountingFramework: framework, functionalCurrency, presentationCurrency, monetaryDecimals: decimals, automationMode: automation, policyVersion })]);
       db.run('COMMIT');
     } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
     persistAccountingDb(dbSnapshot);
@@ -1180,9 +1183,14 @@ function registerAccountingIpc() {
     const dbSnapshot = db.export();
     db.run('BEGIN IMMEDIATE');
     try {
+      const lockedOverlap = one('SELECT id FROM accounting_periods WHERE id<>? AND start_date<=? AND end_date>=? LIMIT 1', [id,endDate,startDate]);
+      if (lockedOverlap) throw new Error('El período se solapa con el período contable ' + lockedOverlap.id + '.');
+      const lockedExisting = one('SELECT status,start_date AS startDate,end_date AS endDate FROM accounting_periods WHERE id=?', [id]);
+      const lockedEntryCount = Number(one('SELECT COUNT(*) AS total FROM journal_entries WHERE period_id=?', [id]).total || 0);
+      assertAccountingPeriodChange(lockedExisting, { startDate, endDate }, lockedEntryCount);
       run('INSERT INTO accounting_periods(id,label,start_date,end_date,status) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,start_date=excluded.start_date,end_date=excluded.end_date', [id,label,startDate,endDate,'open']);
       run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
-        [crypto.randomUUID(),'accounting_period',id,existing?'update':'create',actor.actorId,now,existing?JSON.stringify(existing):null,JSON.stringify({label,startDate,endDate})]);
+        [crypto.randomUUID(),'accounting_period',id,lockedExisting?'update':'create',actor.actorId,now,lockedExisting?JSON.stringify(lockedExisting):null,JSON.stringify({label,startDate,endDate})]);
       db.run('COMMIT');
     } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
     persistAccountingDb(dbSnapshot);
@@ -1320,6 +1328,14 @@ function registerAccountingIpc() {
     const dbSnapshot = db.export();
     db.run('BEGIN IMMEDIATE');
     try {
+      const lockedSettings = one('SELECT accounting_framework,functional_currency,presentation_currency,monetary_decimals,policy_version FROM accounting_settings WHERE id=1');
+      if (!lockedSettings || lockedSettings.accounting_framework !== settings.accounting_framework || lockedSettings.functional_currency !== settings.functional_currency || lockedSettings.presentation_currency !== settings.presentation_currency || Number(lockedSettings.monetary_decimals) !== Number(settings.monetary_decimals) || lockedSettings.policy_version !== settings.policy_version) throw new Error('La configuración contable cambió durante la preparación del asiento. Vuelve a intentarlo.');
+      const lockedPeriod = one('SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?', [periodId]);
+      assertAccountingPeriodWritable(lockedPeriod, entryDate);
+      for (const line of lines) {
+        const account = one('SELECT active,accepts_posting,framework_scope FROM chart_of_accounts WHERE code=?', [line.accountCode]);
+        if (!account || Number(account.active)!==1 || Number(account.accepts_posting)!==1 || (account.framework_scope!=='both' && account.framework_scope!==lockedSettings.accounting_framework)) throw new Error('La cuenta '+line.accountCode+' cambió o dejó de estar habilitada durante la preparación del asiento.');
+      }
       if(rateId&&!rateRecordExists)run('INSERT INTO accounting_exchange_rates(id,rate_date,from_currency,to_currency,rate_numerator,rate_denominator,rate_type,source_name,source_reference,recorded_at,recorded_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
         [rateId,entryDate,settings.functional_currency,presentationCurrency,rate.rateNumerator,rate.rateDenominator,rateType,
           String(input.exchangeRateSourceName).trim().slice(0,120),String(input.exchangeRateSourceReference).trim().slice(0,180),entry.createdAt,actor.actorId]);
@@ -1372,6 +1388,8 @@ function registerAccountingIpc() {
     const dbSnapshot = db.export();
     db.run('BEGIN IMMEDIATE');
     try {
+      const lockedPeriod = one('SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?', [entry.periodId]);
+      assertAccountingPeriodWritable(lockedPeriod, entry.entryDate);
       run("UPDATE journal_entries SET status='posted',posted_at=?,posted_by=? WHERE id=? AND status='approved'",[now,actor.actorId,entry.id]);
       if (db.getRowsModified() !== 1) throw new Error('El asiento cambió de estado antes de ser contabilizado.');
       if(entry.reversesEntryId){
@@ -1402,6 +1420,8 @@ function registerAccountingIpc() {
     const dbSnapshot = db.export();
     db.run('BEGIN IMMEDIATE');
     try {
+      const lockedPeriod = one('SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?', [reversalPeriodId]);
+      assertAccountingPeriodWritable(lockedPeriod, reversalDate);
       const currentOriginal=one('SELECT status FROM journal_entries WHERE id=?',[original.id]);
       if(!currentOriginal||currentOriginal.status!=='posted')throw new Error('El asiento original ya no está contabilizado.');
       insertJournalEntry(reversal);
@@ -1591,6 +1611,12 @@ function registerAccountingIpc() {
         try {
           const stillPending = one("SELECT processing_status FROM accounting_source_events WHERE event_id=?", [sourceEvent.event_id]);
           if (!stillPending || !['pending','needs_review'].includes(stillPending.processing_status)) throw new Error('El evento fue procesado por otra sesión.');
+          const lockedPeriod = one('SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?', [period.id]);
+          assertAccountingPeriodWritable(lockedPeriod, entryDate);
+          const lockedSettings = one('SELECT functional_currency,presentation_currency,monetary_decimals,policy_version FROM accounting_settings WHERE id=1');
+          if (!lockedSettings || lockedSettings.functional_currency !== settings.functional_currency || lockedSettings.presentation_currency !== settings.presentation_currency || Number(lockedSettings.monetary_decimals) !== Number(settings.monetary_decimals) || lockedSettings.policy_version !== settings.policy_version) throw new Error('La política contable cambió durante la preparación del borrador. Vuelve a revisar el evento.');
+          const lockedRule = one('SELECT status FROM accounting_automation_rules WHERE id=?', [rule.id]);
+          if (!lockedRule || lockedRule.status !== 'active') throw new Error('La regla cambió mientras se preparaba el borrador. Revisa y vuelve a procesar el evento.');
           insertJournalEntry(entry);
           run("UPDATE accounting_source_events SET processing_status='processed',journal_entry_id=?,processed_at=?,error_message='' WHERE event_id=?",
             [entry.id,createdAt,sourceEvent.event_id]);

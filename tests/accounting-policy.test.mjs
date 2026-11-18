@@ -6,7 +6,8 @@ const require = createRequire(import.meta.url);
 const {
   assertAccountingSettingsChange,
   assertAccountingPeriodChange,
-  assertAccountingPeriodCanClose
+  assertAccountingPeriodCanClose,
+  assertAccountingPeriodWritable
 } = require('../electron/accounting-policy.cjs');
 
 const before = {
@@ -60,4 +61,12 @@ test('solo permite cerrar períodos abiertos y sin pendientes contables', () => 
   assert.equal(assertAccountingPeriodCanClose({ period: { id: '2026-11', status: 'open' } }), true);
   assert.throws(() => assertAccountingPeriodCanClose({ period: null }), /no existe/);
   assert.throws(() => assertAccountingPeriodCanClose({ period: { id: '2026-11', status: 'closed' } }), /ya está cerrado/);
+});
+
+test('revalida dentro de la transacción que el período siga abierto y contenga la fecha', () => {
+  const period = { id: '2026-11', status: 'open', startDate: '2026-11-01', endDate: '2026-11-30' };
+  assert.equal(assertAccountingPeriodWritable(period, '2026-11-18'), true);
+  assert.throws(() => assertAccountingPeriodWritable({ ...period, status: 'closed' }, '2026-11-18'), /está cerrado/);
+  assert.throws(() => assertAccountingPeriodWritable(period, '2026-12-01'), /fuera del período/);
+  assert.throws(() => assertAccountingPeriodWritable(null, '2026-11-18'), /no existe/);
 });

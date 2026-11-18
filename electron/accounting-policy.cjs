@@ -54,4 +54,14 @@ function assertAccountingPeriodCanClose({ period, draftCount = 0, unresolvedEven
   return true;
 }
 
-module.exports = { assertAccountingSettingsChange, assertAccountingPeriodChange, assertAccountingPeriodCanClose };
+function assertAccountingPeriodWritable(period, entryDate) {
+  if (!period) throw new Error('El período contable no existe.');
+  if (period.status !== 'open') throw new Error('El período contable está cerrado; no admite nuevos asientos.');
+  if (entryDate) {
+    const startDate = String(period.startDate ?? period.start_date ?? '');
+    const endDate = String(period.endDate ?? period.end_date ?? '');
+    if (String(entryDate) < startDate || String(entryDate) > endDate) throw new Error('La fecha del asiento está fuera del período contable abierto.');
+  }
+  return true;
+}
+module.exports = { assertAccountingSettingsChange, assertAccountingPeriodChange, assertAccountingPeriodCanClose, assertAccountingPeriodWritable };
