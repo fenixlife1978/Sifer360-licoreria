@@ -2836,7 +2836,7 @@ function getLastSupplierPurchaseCost(purchases, code, supplierRif){
   if(!rif||!code)return null;
   const records=(Array.isArray(purchases)?purchases:[])
     .filter(p=>!p.void&&normalizeRif(p.supplier&&p.supplier.rif)===rif&&Array.isArray(p.lines)&&p.lines.some(line=>String(line.code)===String(code)))
-    .sort((a,b)=>Number(b.docDateTs||b.ts||0)-Number(a.docDateTs||a.ts||0)||Number(b.no||0)-Number(a.no||0));
+    .sort((a,b)=>Number(b.docDateTs||0)-Number(a.docDateTs||0)||Number(b.ts||0)-Number(a.ts||0)||Number(b.no||0)-Number(a.no||0));
   if(!records.length)return null;
   const line=records[0].lines.find(item=>String(item.code)===String(code));
   const cost=Number(line&&line.cost);
