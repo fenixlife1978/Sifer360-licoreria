@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('posDesktop', {
   accountingGetTrialBalance: token => ipcRenderer.invoke('accounting:get-trial-balance', token),
   accountingListAutomationRules: token => ipcRenderer.invoke('accounting:list-automation-rules', token),
   accountingListFixedAssets: token => ipcRenderer.invoke('accounting:list-fixed-assets', token),
+  accountingListAssetAcquisitionEntries: token => ipcRenderer.invoke('accounting:list-asset-acquisition-entries', token),
   accountingCreateFixedAsset: asset => ipcRenderer.invoke('accounting:create-fixed-asset', asset),
   accountingGenerateAssetDepreciationDrafts: input => ipcRenderer.invoke('accounting:generate-asset-depreciation-drafts', input),
   accountingSaveAutomationRule: rule => ipcRenderer.invoke('accounting:save-automation-rule', rule),

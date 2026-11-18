@@ -7239,7 +7239,7 @@ function seniatSudebanDlg(initialTab){
     const sessionToken=accountingSessionToken();
     if(!sessionToken){msg('La sesión autenticada expiró. Vuelve a iniciar sesión.','bad');return;}
     try{
-      const [settings,profile,periods,accounts,sourceEvents,sourceSummary,journalEntries,exchangeRates,trialBalance,automationRules,fixedAssets]=await Promise.all([
+      const [settings,profile,periods,accounts,sourceEvents,sourceSummary,journalEntries,exchangeRates,trialBalance,automationRules,fixedAssets,assetAcquisitionEntries]=await Promise.all([
         window.posDesktop.accountingGetSettings(sessionToken),
         window.posDesktop.accountingGetProfile(sessionToken),
         window.posDesktop.accountingListPeriods(sessionToken),
@@ -7250,7 +7250,8 @@ function seniatSudebanDlg(initialTab){
         window.posDesktop.accountingListExchangeRates(sessionToken),
         window.posDesktop.accountingGetTrialBalance(sessionToken),
         window.posDesktop.accountingListAutomationRules(sessionToken),
-        window.posDesktop.accountingListFixedAssets(sessionToken)
+        window.posDesktop.accountingListFixedAssets(sessionToken),
+        window.posDesktop.accountingListAssetAcquisitionEntries(sessionToken)
       ]);
       const set=(id,value)=>{const node=$('#'+id,el);if(node&&value!==null&&value!==undefined)node.value=String(value);};
       const check=(id,value)=>{const node=$('#'+id,el);if(node)node.checked=!!value;};
@@ -7281,7 +7282,7 @@ function seniatSudebanDlg(initialTab){
       const assetPeriods=$('#accAssetDepPeriod',el);
       if(assetPeriods){const selected=assetPeriods.value;assetPeriods.innerHTML='<option value="">Seleccionar período abierto</option>'+periods.filter(p=>p.status==='open').map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+'</option>').join('');if(selected)assetPeriods.value=selected;}
       const acquisitionSelect=$('#accAssetAcquisitionEntry',el);
-      if(acquisitionSelect){const selected=acquisitionSelect.value;acquisitionSelect.innerHTML='<option value="">Seleccionar asiento contabilizado</option>'+journalEntries.filter(e=>e.status==='posted').map(e=>'<option value="'+esc(e.id)+'">'+esc(e.entryDate+' · '+e.id.slice(0,8)+' · '+e.description)+'</option>').join('');if(selected)acquisitionSelect.value=selected;}
+      if(acquisitionSelect){const selected=acquisitionSelect.value;acquisitionSelect.innerHTML='<option value="">Seleccionar asiento contabilizado</option>'+assetAcquisitionEntries.map(e=>'<option value="'+esc(e.id)+'">'+esc(e.entryDate+' · '+e.id.slice(0,8)+' · '+e.description)+'</option>').join('');if(selected)acquisitionSelect.value=selected;}
       const assetSelects=[
         ['accAssetAccount',accounts.filter(a=>a.accountType==='asset'&&a.normalBalance==='debit')],
         ['accAssetAccumAccount',accounts.filter(a=>a.accountType==='asset'&&a.normalBalance==='credit')],

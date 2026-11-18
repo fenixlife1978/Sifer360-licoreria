@@ -1446,6 +1446,16 @@ function registerAccountingIpc() {
       FROM chart_of_accounts ORDER BY code`);
   });
 
+  registerAccountingHandler('accounting:list-asset-acquisition-entries', (event, token) => {
+    assertTrustedAccountingSender(event);
+    requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
+    return all(`SELECT DISTINCT j.id,j.entry_date AS entryDate,j.description
+      FROM journal_entries j JOIN journal_lines l ON l.entry_id=j.id
+      JOIN chart_of_accounts a ON a.code=l.account_code
+      WHERE j.status='posted' AND a.account_type='asset' AND a.normal_balance='debit'
+        AND l.debit_minor>0 AND l.credit_minor=0
+      ORDER BY j.entry_date DESC,j.id`);
+  });
   registerAccountingHandler('accounting:list-fixed-assets', (event, token) => {
     assertTrustedAccountingSender(event);
     requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
