@@ -54,7 +54,11 @@ test('el cierre detecta depreciaciones de activos faltantes, revertidas o con me
   db.run('CREATE TABLE accounting_asset_depreciations(id TEXT,asset_id TEXT,depreciation_month TEXT,status TEXT)');
   db.run("INSERT INTO accounting_fixed_assets VALUES('A1','active','2026-10','2026-10-01',60)");
   const params=['2026-11','2026-11','2026-11-30','2026-11','2026-11','2026-11','2026-11','2026-11'];
-  const pending=()=>Number(db.exec(match[1],{bind:params})[0].values[0][0]);
+  const pending=()=>{
+    const statement=db.prepare(match[1]);
+    try{statement.bind(params);return statement.step()?Number(statement.getAsObject().total):0;}
+    finally{statement.free();}
+  };
   assert.equal(pending(),1,'sin borrador o contabilización no se puede cerrar');
   db.run("INSERT INTO accounting_asset_depreciations VALUES('D1','A1','2026-10','posted')");
   assert.equal(pending(),1,'falta la depreciación del mes actual');
