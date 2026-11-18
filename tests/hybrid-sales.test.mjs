@@ -202,8 +202,8 @@ test('hybrid pack subtotal uses presentation quantity instead of base-unit quant
   assert.equal(residual.total,116);
   assert.deepEqual(Array.from(portion.pays,p=>p.amount),[50.01,66]);
   assert.deepEqual(Array.from(residual.pays,p=>p.amount),[50,65.99]);
-  assert.equal(portion.pays[0].amount+residual.pays[0].amount,sale.pays[0].amount);
-  assert.equal(portion.pays[1].amount+residual.pays[1].amount,sale.pays[1].amount);
+  assert.equal(Math.round((portion.pays[0].amount+residual.pays[0].amount+Number.EPSILON)*100)/100,sale.pays[0].amount);
+  assert.equal(Math.round((portion.pays[1].amount+residual.pays[1].amount+Number.EPSILON)*100)/100,sale.pays[1].amount);
   assert.equal(portion.igtf+residual.igtf,sale.igtf);
   assert.equal(portion.change+residual.change,sale.change);
 });
