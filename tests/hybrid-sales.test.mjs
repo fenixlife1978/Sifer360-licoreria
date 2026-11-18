@@ -134,7 +134,7 @@ test('reprinting an already sent or uncertain hybrid ticket requires explicit du
 
 function runSalePortion(sale,lines,mode,residual,fiscalRatio){
   const start=main.indexOf('function salePortion(');
-  const end=main.indexOf('\\nfunction ticketFiscalOutPlan',start);
+  const end=main.indexOf('\nfunction ticketFiscalOutPlan',start);
   assert.ok(start>=0&&end>start,'salePortion helper exists');
   const context={r2:value=>Math.round((Number(value)+Number.EPSILON)*100)/100,Number,Math};
   vm.runInNewContext(main.slice(start,end)+';globalThis.run=salePortion;',context);
