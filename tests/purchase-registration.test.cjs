@@ -65,3 +65,9 @@ test('CPP proyectado y CPP aplicado al inventario comparten cálculo ponderado r
   assert.match(source,/const nextCost=calcWeightedPurchaseCost\(p\.stock,p\.cost,l\.qty,l\.cost\);/);
   assert.match(source,/const nextStock=r2\(Number\(p\.stock\|\|0\)\+Number\(l\.qty\)\);/);
 });
+
+test('recepción rechaza fichas con stock o CPP corruptos antes de mutar inventario',()=>{
+  assert.match(source,/!Number\.isFinite\(Number\(p\.stock\)\)/);
+  assert.match(source,/p\.cost===null\|\|p\.cost===undefined\|\|!Number\.isFinite\(Number\(p\.cost\)\)\|\|Number\(p\.cost\)<0/);
+  assert.match(source,/Corrija su ficha de inventario antes de recibir la compra/);
+});
