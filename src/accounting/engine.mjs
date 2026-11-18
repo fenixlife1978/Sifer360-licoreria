@@ -2,7 +2,7 @@
  * Núcleo contable puro de SIFER360-LICORERIA.
  * Importes expresados como unidades menores enteras; tasas siempre explícitas.
  */
-const ROLES = new Set(["contador", "super-admin"]);
+const ROLES = new Set(["contador", "admin"]);
 function assert(ok, message) { if (!ok) throw new Error(message); }
 function text(value, label) { assert(typeof value === "string" && value.trim(), label + ": es obligatorio."); }
 function minor(value, label = "Importe") { assert(Number.isSafeInteger(value) && value >= 0, label + ": debe ser entero no negativo."); }
