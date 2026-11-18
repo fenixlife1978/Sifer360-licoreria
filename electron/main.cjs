@@ -55,7 +55,8 @@ const requireAccountingSession = createAccountingSessionGuard({
 const ACCOUNTING_READ_CHANNELS = new Set([
   'accounting:get-settings','accounting:get-profile','accounting:list-source-events',
   'accounting:source-event-summary','accounting:list-periods','accounting:list-journal-entries',
-  'accounting:list-exchange-rates','accounting:get-trial-balance','accounting:list-accounts'
+  'accounting:list-exchange-rates','accounting:get-trial-balance','accounting:list-accounts',
+  'accounting:list-automation-rules'
 ]);
 const accountingIpcHandlers = new Map();
 function registerAccountingHandler(channel, handler) {
@@ -398,6 +399,10 @@ async function initializeDatabase() {
   if (!fs.existsSync(accountingSchemaPath)) throw new Error('Falta el esquema contable de la instalación; se conserva la base de datos y se detiene el inicio.');
   const accountingMigration = applyAccountingMigration({ db, schemaSql: fs.readFileSync(accountingSchemaPath, 'utf8'), persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
   if (accountingMigration.applied) console.info('Migración contable aplicada sin eliminar datos existentes:', accountingMigration.migrationKey);
+  const automationSchemaPath = path.join(__dirname, '..', 'src', 'accounting', 'automation-schema.sql');
+  if (!fs.existsSync(automationSchemaPath)) throw new Error('Falta el esquema de automatización contable; se conserva la base de datos y se detiene el inicio.');
+  const automationMigration = applyAccountingMigration({ db, schemaSql: fs.readFileSync(automationSchemaPath, 'utf8'), migrationKey: 'accounting-automation-v1', persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
+  if (automationMigration.applied) console.info('Migración de reglas contables aplicada sin eliminar datos existentes:', automationMigration.migrationKey);
   const stateRowForSequenceMigration = one('SELECT payload FROM app_state WHERE id=1');
   const sequenceMigrationApplied = migrateCashboxSequenceCategories({ db, state: stateRowForSequenceMigration ? JSON.parse(stateRowForSequenceMigration.payload) : {}, persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
   if (opened.recovered && !sequenceMigrationApplied) persistDb();
@@ -1372,6 +1377,157 @@ function registerAccountingIpc() {
     return all(`SELECT code,parent_code AS parentCode,name,account_type AS accountType,normal_balance AS normalBalance,
       accepts_posting AS acceptsPosting,active,framework_scope AS frameworkScope,updated_at AS updatedAt
       FROM chart_of_accounts ORDER BY code`);
+  });
+
+  registerAccountingHandler('accounting:list-automation-rules', (event, token) => {
+    assertTrustedAccountingSender(event);
+    requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
+    return all(`SELECT id,source_type AS sourceType,event_action AS eventAction,amount_path AS amountPath,
+      currency_path AS currencyPath,debit_account_code AS debitAccountCode,credit_account_code AS creditAccountCode,
+      description_template AS descriptionTemplate,exchange_rate_type AS exchangeRateType,rule_version AS ruleVersion,
+      status,created_at AS createdAt,created_by AS createdBy
+      FROM accounting_automation_rules ORDER BY source_type,event_action,rule_version DESC`);
+  });
+  registerAccountingHandler('accounting:save-automation-rule', (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor = accountingActor(input);
+    const sourceType = String(input.sourceType || '').trim();
+    const eventAction = String(input.eventAction || 'created');
+    const amountPath = String(input.amountPath || '').trim();
+    const currencyPath = String(input.currencyPath || '').trim();
+    const debitAccountCode = String(input.debitAccountCode || '').trim();
+    const creditAccountCode = String(input.creditAccountCode || '').trim();
+    const descriptionTemplate = String(input.descriptionTemplate || '').trim().slice(0, 180);
+    const exchangeRateType = String(input.exchangeRateType || '').trim();
+    const allowedSources = new Set(['sale','purchase','receivable','payable','cash_close','cash_opening','cash_movement','inventory_movement','held_sale','inventory_count','return','void','cashea_operation','cashea_settlement','currency_movement','iva_retention','islr_retention','bank_operation','bank_settlement_batch','exchange_rate_update','fiscal_inventory_movement','retention']);
+    const safePath = value => !value || (/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*){0,5}$/.test(value) && !value.split('.').some(part => ['__proto__','prototype','constructor'].includes(part)));
+    if (!allowedSources.has(sourceType)) throw new Error('Tipo de operación contable no reconocido.');
+    if (eventAction !== 'created') throw new Error('Por seguridad, la generación automática inicial solo admite altas. Las modificaciones y eliminaciones requieren revisión y ajuste manual.');
+    if (!safePath(amountPath) || !amountPath) throw new Error('Indica una ruta de importe válida, por ejemplo total o totals.grandTotal.');
+    if (!safePath(currencyPath)) throw new Error('La ruta de moneda no es válida.');
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(debitAccountCode) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(creditAccountCode) || debitAccountCode === creditAccountCode) throw new Error('Selecciona dos cuentas imputables distintas.');
+    if (!descriptionTemplate) throw new Error('La descripción del asiento es obligatoria.');
+    if (exchangeRateType && !['official','market','contractual','accounting_adjustment'].includes(exchangeRateType)) throw new Error('Tipo de tasa bimonetaria no válido.');
+    const settings = one('SELECT accounting_framework,presentation_currency,functional_currency FROM accounting_settings WHERE id=1');
+    if (!settings || !settings.accounting_framework) throw new Error('Configura primero el marco VEN-NIF y las monedas.');
+    for (const code of [debitAccountCode, creditAccountCode]) {
+      const account = one('SELECT active,accepts_posting,framework_scope FROM chart_of_accounts WHERE code=?', [code]);
+      if (!account || Number(account.active)!==1 || Number(account.accepts_posting)!==1 || (account.framework_scope!=='both' && account.framework_scope!==settings.accounting_framework)) throw new Error('La cuenta '+code+' no está habilitada para contabilizaciones en el marco configurado.');
+    }
+    const current = one("SELECT MAX(rule_version) AS version FROM accounting_automation_rules WHERE source_type=? AND event_action=?", [sourceType,eventAction]);
+    const version = Number(current && current.version || 0) + 1;
+    const id = crypto.randomUUID(), now = new Date().toISOString();
+    const snapshot = db.export();
+    db.run('BEGIN IMMEDIATE');
+    try {
+      run("UPDATE accounting_automation_rules SET status='retired' WHERE source_type=? AND event_action=? AND status='active'", [sourceType,eventAction]);
+      run(`INSERT INTO accounting_automation_rules(id,source_type,event_action,amount_path,currency_path,debit_account_code,credit_account_code,description_template,exchange_rate_type,rule_version,status,created_at,created_by)
+        VALUES(?,?,?,?,?,?,?,?,?,?, 'active',?,?)`,
+        [id,sourceType,eventAction,amountPath,currencyPath,debitAccountCode,creditAccountCode,descriptionTemplate,exchangeRateType||null,version,now,actor.actorId]);
+      run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,after_json) VALUES(?,?,?,?,?,?,?)',
+        [crypto.randomUUID(),'accounting_automation_rule',id,'create_version',actor.actorId,now,JSON.stringify({sourceType,eventAction,amountPath,currencyPath,debitAccountCode,creditAccountCode,descriptionTemplate,exchangeRateType,version})]);
+      db.run('COMMIT');
+    } catch(error) { try { db.run('ROLLBACK'); } catch {} throw error; }
+    persistAccountingDb(snapshot);
+    return one('SELECT id,source_type AS sourceType,event_action AS eventAction,amount_path AS amountPath,currency_path AS currencyPath,debit_account_code AS debitAccountCode,credit_account_code AS creditAccountCode,description_template AS descriptionTemplate,exchange_rate_type AS exchangeRateType,rule_version AS ruleVersion,status FROM accounting_automation_rules WHERE id=?',[id]);
+  });
+  registerAccountingHandler('accounting:generate-source-drafts', async (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor = accountingActor(input);
+    const settings = one('SELECT accounting_framework,functional_currency,presentation_currency,monetary_decimals,automation_mode,policy_version FROM accounting_settings WHERE id=1');
+    if (!settings || !settings.accounting_framework || !settings.functional_currency || !settings.presentation_currency) throw new Error('Configura primero el marco VEN-NIF y las monedas.');
+    if (settings.automation_mode !== 'supervised') throw new Error('La generación de borradores está desactivada en modo «solo sugerencias». Cambia el modo a supervisado para crear borradores revisables.');
+    const requestedId = String(input.eventId || '').trim();
+    const limit = Math.max(1, Math.min(100, Number(input.limit) || 50));
+    const pending = requestedId
+      ? all("SELECT * FROM accounting_source_events WHERE event_id=? AND processing_status IN ('pending','needs_review')", [requestedId])
+      : all("SELECT * FROM accounting_source_events WHERE processing_status='pending' ORDER BY occurred_at,event_id LIMIT ?", [limit]);
+    if (requestedId && !pending.length) throw new Error('El evento no existe o ya fue procesado.');
+    const { createJournalEntry, decimalToMinorUnits } = await loadAccountingEngine();
+    const { buildBimonetaryLines } = await import('../src/accounting/bimonetary.mjs');
+    const { extractAutomationValue } = require('./accounting-automation.cjs');
+    const results = { generated: [], needsReview: [], skipped: [] };
+    for (const sourceEvent of pending) {
+      try {
+        if (sourceEvent.processing_status === 'processed') { results.skipped.push({eventId:sourceEvent.event_id,reason:'Ya procesado'}); continue; }
+        const existingEntry = one('SELECT id,status FROM journal_entries WHERE source_type=? AND source_id=?', ['automation:'+sourceEvent.source_type,sourceEvent.event_id]);
+        if (existingEntry) {
+          run("UPDATE accounting_source_events SET processing_status='processed',journal_entry_id=?,processed_at=?,error_message='' WHERE event_id=?",
+            [existingEntry.id,new Date().toISOString(),sourceEvent.event_id]);
+          results.skipped.push({eventId:sourceEvent.event_id,reason:'El borrador ya existe',journalEntryId:existingEntry.id});
+          continue;
+        }
+        let payload;
+        try { payload = JSON.parse(sourceEvent.payload_json); } catch { throw new Error('El evento contiene datos no legibles.'); }
+        if (payload.action !== 'created') throw new Error('Las modificaciones y eliminaciones requieren ajuste contable revisado; no se automatizan.');
+        const rule = one("SELECT * FROM accounting_automation_rules WHERE source_type=? AND event_action='created' AND status='active' ORDER BY rule_version DESC LIMIT 1", [sourceEvent.source_type]);
+        if (!rule) throw new Error('No existe una regla activa para esta operación. Configura la asignación de cuentas e importe.');
+        const record = payload.record;
+        const rawAmount = extractAutomationValue(record, rule.amount_path);
+        if (rawAmount === undefined || rawAmount === null || String(rawAmount).trim() === '') throw new Error('La ruta de importe configurada no existe en el documento de origen.');
+        const amountMinor = decimalToMinorUnits(String(rawAmount), Number(settings.monetary_decimals));
+        if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new Error('El importe de origen debe ser mayor que cero.');
+        const currency = rule.currency_path ? String(extractAutomationValue(record, rule.currency_path) || '').trim().toUpperCase() : settings.functional_currency;
+        if (currency !== settings.functional_currency) throw new Error('La moneda del documento ('+currency+') no coincide con la moneda funcional. Requiere conversión y revisión explícita.');
+        const entryDate = String(sourceEvent.occurred_at || '').slice(0,10);
+        if (!isValidIsoDate(entryDate)) throw new Error('El evento no tiene una fecha contable válida.');
+        const period = one("SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE start_date<=? AND end_date>=? ORDER BY start_date LIMIT 1", [entryDate,entryDate]);
+        if (!period || period.status !== 'open') throw new Error('No existe un período contable abierto para la fecha del evento.');
+        const lines = [
+          {accountCode:rule.debit_account_code,debitMinor:amountMinor,creditMinor:0,description:rule.description_template.slice(0,180)},
+          {accountCode:rule.credit_account_code,debitMinor:0,creditMinor:amountMinor,description:rule.description_template.slice(0,180)}
+        ];
+        const presentationCurrency = settings.presentation_currency;
+        let rate = {rateNumerator:1,rateDenominator:1}, rateId=null, rateType=null, rateSource=null;
+        if (settings.functional_currency !== presentationCurrency) {
+          if (!rule.exchange_rate_type) throw new Error('La regla no especifica el tipo de tasa para convertir a moneda de presentación.');
+          const rateRow = one("SELECT id,rate_numerator AS rateNumerator,rate_denominator AS rateDenominator,rate_type AS rateType,source_name AS sourceName,source_reference AS sourceReference FROM accounting_exchange_rates WHERE rate_date=? AND from_currency=? AND to_currency=? AND rate_type=? ORDER BY recorded_at DESC LIMIT 1",
+            [entryDate,settings.functional_currency,presentationCurrency,rule.exchange_rate_type]);
+          if (!rateRow) throw new Error('No existe una tasa '+rule.exchange_rate_type+' documentada para la fecha del evento. Regístrala antes de generar el borrador.');
+          rate = {rateNumerator:Number(rateRow.rateNumerator),rateDenominator:Number(rateRow.rateDenominator)};
+          rateId = rateRow.id; rateType=rateRow.rateType; rateSource=rateRow.sourceName+' · '+rateRow.sourceReference;
+        }
+        const converted = buildBimonetaryLines({lines,functionalCurrency:settings.functional_currency,presentationCurrency,
+          functionalDecimals:Number(settings.monetary_decimals),presentationDecimals:Number(settings.monetary_decimals),
+          rateNumerator:rate.rateNumerator,rateDenominator:rate.rateDenominator});
+        const description = rule.description_template.replace(/\{sourceId\}/g,String(sourceEvent.source_id)).replace(/\{date\}/g,entryDate).slice(0,500);
+        const id = crypto.randomUUID(), createdAt = new Date().toISOString();
+        const entry = createJournalEntry({id,sourceType:'automation:'+sourceEvent.source_type,sourceId:sourceEvent.event_id,
+          entryDate,periodId:period.id,currency:settings.functional_currency,
+          ruleVersion:'AUTO-'+rule.id+'-v'+rule.rule_version+' / '+settings.policy_version,
+          description,lines:converted.lines,createdAt,createdBy:actor.actorId});
+        Object.assign(entry,{presentationCurrency,exchangeRateId:rateId,exchangeRateNumerator:rate.rateNumerator,
+          exchangeRateDenominator:rate.rateDenominator,exchangeRateType:rateType,exchangeRateSource:rateSource,
+          presentationDebitMinor:converted.presentationDebitMinor,presentationCreditMinor:converted.presentationCreditMinor});
+        const snapshot = db.export();
+        db.run('BEGIN IMMEDIATE');
+        try {
+          const stillPending = one("SELECT processing_status FROM accounting_source_events WHERE event_id=?", [sourceEvent.event_id]);
+          if (!stillPending || !['pending','needs_review'].includes(stillPending.processing_status)) throw new Error('El evento fue procesado por otra sesión.');
+          insertJournalEntry(entry);
+          run("UPDATE accounting_source_events SET processing_status='processed',journal_entry_id=?,processed_at=?,error_message='' WHERE event_id=?",
+            [entry.id,createdAt,sourceEvent.event_id]);
+          run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,after_json) VALUES(?,?,?,?,?,?,?)',
+            [crypto.randomUUID(),'accounting_source_event',sourceEvent.event_id,'generate_draft',actor.actorId,createdAt,JSON.stringify({journalEntryId:entry.id,ruleId:rule.id,ruleVersion:rule.rule_version,amountMinor,currency,entryDate})]);
+          db.run('COMMIT');
+        } catch(error) { try { db.run('ROLLBACK'); } catch {} throw error; }
+        persistAccountingDb(snapshot);
+        results.generated.push({eventId:sourceEvent.event_id,journalEntryId:entry.id,entryDate,amountMinor,currency});
+      } catch(error) {
+        const reason = String(error && error.message || error).slice(0,500);
+        const snapshot = db.export();
+        db.run('BEGIN IMMEDIATE');
+        try {
+          run("UPDATE accounting_source_events SET processing_status='needs_review',error_message=? WHERE event_id=? AND processing_status IN ('pending','needs_review')", [reason,sourceEvent.event_id]);
+          run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,reason) VALUES(?,?,?,?,?,?,?)',
+            [crypto.randomUUID(),'accounting_source_event',sourceEvent.event_id,'automation_needs_review',actor.actorId,new Date().toISOString(),reason]);
+          db.run('COMMIT');
+        } catch(auditError) { try { db.run('ROLLBACK'); } catch {} throw auditError; }
+        persistAccountingDb(snapshot);
+        results.needsReview.push({eventId:sourceEvent.event_id,reason});
+      }
+    }
+    return results;
   });
   registerAccountingHandler('accounting:save-account', (event, input = {}) => {
     assertTrustedAccountingSender(event);
