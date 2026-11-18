@@ -113,3 +113,10 @@ Las reglas de automatización se crean por tipo de evento POS, versión y cuenta
 La primera versión solo permite eventos de alta (`created`). Las modificaciones, anulaciones y eliminaciones pasan a revisión porque requieren decidir si corresponde un ajuste o un reverso, no duplicar automáticamente el asiento original. Para generar borradores, el usuario ejecuta expresamente la acción sobre eventos pendientes. Cada borrador conserva el ID único del evento, la versión de regla y la política contable. La generación es idempotente y la creación del asiento, el vínculo del evento y la auditoría se confirman en una sola transacción SQLite.
 
 Cuando la moneda de presentación difiere de la funcional, la regla debe seleccionar el tipo de tasa y debe existir una tasa documentada para la fecha exacta del evento. Si falta la tasa, el período, una cuenta válida o el importe configurado, el evento queda en revisión con el motivo; no se inventan datos. El motor solo crea borradores: no aprueba ni contabiliza. La aprobación y contabilización siguen reservadas al Contador y al flujo de doble control.
+
+
+## Mayor general y estados financieros
+
+El mayor general consulta una cuenta imputable y un rango explícito de fechas. Presenta saldo inicial, movimientos, saldo acumulado y saldo de cierre; el saldo de presentación se muestra solo cuando todos los movimientos tienen conversión documentada. No se completan conversiones históricas ausentes.
+
+Los estados financieros se generan desde asientos contabilizados o reversados y un período contable existente. El estado de situación financiera muestra activos, pasivos y patrimonio acumulados hasta el cierre; el resultado del período se presenta separadamente, sin simular un asiento de cierre. El estado de resultados muestra ingresos y gastos dentro del período. Las cuentas agrupadoras consolidan sus subcuentas sin duplicar los totales. El estado de flujos de efectivo queda pendiente de clasificar formalmente las cuentas y movimientos por actividad operativa, inversión y financiación; no se deduce esa clasificación por el nombre de la cuenta.
