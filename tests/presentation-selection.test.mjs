@@ -33,3 +33,9 @@ test('ticket preview prints the selected presentation name, quantity and present
   assert.match(pos, /const displayQty=Number\(l\.presentationQty\)>0\?Number\(l\.presentationQty\):Number\(l\.qty\|\|0\)/);
   assert.match(pos, /const displayPrice=Number\(l\.presentationPrice\)>0\?Number\(l\.presentationPrice\):Number\(l\.price\|\|0\)/);
 });
+
+test('return prompts identify the sold presentation while keeping returned quantities in base units',()=>{
+  assert.match(pos,/line\.presentationQty\)>0\?Number\(line\.presentationQty\):Number\(line\.qty\|\|0\)/);
+  assert.match(pos,/Vendido '\+fq\(presentationQty\)\+' '\+unit\+' \('/);
+  assert.match(pos,/Renglones y cantidades a devolver en UNIDADES BASE/);
+});
