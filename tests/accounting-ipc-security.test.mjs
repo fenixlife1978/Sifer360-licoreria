@@ -38,8 +38,14 @@ test("los métodos preload reciben el token de sesión explícitamente", () => {
   assert.ok(preload.includes("accountingApproveJournalEntry: (token, entry)"));
 });
 
-test("un cliente LAN no puede leer ni escribir contabilidad en su SQLite local", () => {
-  assert.ok(main.includes("if (networkConfig.role === 'client') throw new Error('Contabilidad en clientes LAN requiere el canal autenticado al servidor central; no se permite usar la SQLite local.')"));
+test("los clientes LAN reenvían contabilidad al servidor y nunca ejecutan el handler en SQLite local", () => {
+  assert.ok(main.includes("if (networkConfig.role === 'client') {"));
+  assert.ok(main.includes("clientApi('/api/accounting/' + encodeURIComponent(channel.slice('accounting:'.length))"));
+  assert.ok(main.includes("url.pathname.startsWith('/api/accounting/') && req.method === 'POST'"));
+  assert.ok(main.includes("const handler = accountingIpcHandlers.get(channel)"));
+  assert.ok(main.includes("hasValidBearerToken(req.headers.authorization, networkConfig.token)"));
+  assert.ok(main.includes("await handler(sender, String(payload.token || ''))"));
+  assert.ok(!main.includes("Contabilidad en clientes LAN requiere el canal autenticado"));
 });
 
 test("las operaciones POS y la sincronización LAN capturan eventos contables junto al estado comercial", () => {
