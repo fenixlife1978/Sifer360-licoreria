@@ -112,3 +112,4 @@ Estas reglas deben leerse antes de cada auditoría o modificación relevante de 
 - SQLite permanece en app.getPath('userData'), fuera de la carpeta de instalación; NSIS/electron-updater no deben eliminarla.
 - Migraciones incrementales, transaccionales, idempotentes y versionadas; prohibido DROP TABLE, DELETE FROM, TRUNCATE, VACUUM o REPLACE INTO en migraciones.
 - Antes/después de cada migración: respaldo restaurable, PRAGMA integrity_check, rollback ante error y pruebas de actualización con datos representativos.
+- Si se detectan rastros de una instalación anterior pero faltan la SQLite principal y su respaldo, el inicio debe bloquearse y pedir recuperación; nunca debe crear una base vacía como sustituto.
