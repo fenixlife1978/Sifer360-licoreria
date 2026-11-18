@@ -121,10 +121,22 @@ async function discoverLanServers(timeoutMs = 2500) {
 }
 let networkConfig = { role: 'standalone', host: '', port: 38760, token: '', deviceId: '' };
 let networkConfigPath;
+let priorUserDataDetected = false;
 let clientOutbox = null;
 const MAX_SYNC_BODY = 8 * 1024 * 1024;
 function readNetworkConfig() {
-  networkConfigPath = path.join(app.getPath('userData'), 'network-mode.json');
+  const userDataDirectory = app.getPath('userData');
+  networkConfigPath = path.join(userDataDirectory, 'network-mode.json');
+  const databaseFile = userDbPath();
+  // Se detecta el estado previo antes de crear network-mode.json en una instalación nueva.
+  // Si una instalación existente perdió tanto la base principal como su .bak, nunca se crea una SQLite vacía.
+  priorUserDataDetected = [
+    networkConfigPath,
+    path.join(userDataDirectory, 'database-mode.json'),
+    databaseFile,
+    databaseFile + '.bak',
+    path.join(userDataDirectory, 'update-backups')
+  ].some(candidate => fs.existsSync(candidate));
   if (fs.existsSync(networkConfigPath)) {
     try {
       const stored = JSON.parse(fs.readFileSync(networkConfigPath, 'utf8'));
@@ -377,7 +389,7 @@ async function initializeDatabase() {
   const SQL = await initSqlJs({ locateFile: (file) => require.resolve('sql.js/dist/' + file) });
   SqlDatabase = SQL.Database;
   const file = userDbPath();
-  const opened = openOrRecoverDatabase({ SQL, file });
+  const opened = openOrRecoverDatabase({ SQL, file, allowCreate: !priorUserDataDetected });
   db = opened.database;
   if (opened.recovered) console.warn('SIFER360 recuperó la base SQLite desde el respaldo automático:', opened.source, opened.corruptFile || '');
   initializeSchema();
