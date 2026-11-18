@@ -945,13 +945,16 @@ function registerNetworkIpc() {
   ipcMain.handle('network:sync-now', async (_e, state) => {
     if (networkConfig.role === 'server') {
       if (!networkServer) throw new Error('El servidor no está iniciado.');
-      let merged;
+      if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('Estado POS inválido para sincronización.');
+      const row = one('SELECT payload FROM app_state WHERE id=1');
+      const previous = row ? JSON.parse(row.payload) : {};
+      const merged = mergeStateRecords(previous, state);
+      const accountingEvents = buildAccountingSourceEvents(previous, merged, { deviceId: networkConfig.deviceId });
       persistMutation(() => {
-        const row = one('SELECT payload FROM app_state WHERE id=1');
-        merged = mergeStateRecords(row ? JSON.parse(row.payload) : null, state);
         run('INSERT INTO app_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP', [JSON.stringify(merged)]);
+        insertAccountingSourceEvents(accountingEvents);
       });
-      return { ok: true, state: merged, role: 'server', updatedAt: new Date().toISOString() };
+      return { ok: true, state: merged, role: 'server', accountingEventsCaptured: accountingEvents.length, updatedAt: new Date().toISOString() };
     }
     if (networkConfig.role !== 'client') return { ok: false, state, role: 'standalone', message: 'Esta caja no está conectada a un servidor.' };
     if (!networkConfig.host || !networkConfig.token || !networkConfig.serverCert) throw new Error('Cliente LAN desconectado. No se usará SQLite local como autoridad; vuelva a emparejar con el servidor.');
