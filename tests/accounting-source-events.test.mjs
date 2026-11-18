@@ -72,3 +72,29 @@ test("captura movimientos reales de caja y ventas suspendidas sin id explícito"
   assert.equal(events.length, 2);
   assert.deepEqual(new Set(events.map(event => event.sourceType)), new Set(["cash_movement", "held_sale"]));
 });
+
+
+test("preserva movimientos de Kardex con IDs locales repetidos y eventId distintos en LAN", () => {
+  const next = { kardex: [
+    { id: 1, eventId: "KDX-terminal-01", cashbox: "01", code: "SKU-1", qty: 1, ts: 1793700000000 },
+    { id: 1, eventId: "KDX-terminal-02", cashbox: "01", code: "SKU-2", qty: 2, ts: 1793700000100 }
+  ] };
+  const events = buildAccountingSourceEvents({}, next, { deviceId: "servidor" });
+  assert.equal(events.length, 2);
+  assert.deepEqual(new Set(events.map(event => event.sourceId)), new Set(["KDX-terminal-01", "KDX-terminal-02"]));
+});
+
+test("captura movimientos del submayor fiscal, retenciones ISLR y operaciones bancarias", () => {
+  const next = {
+    fiscalInventory: { version: 1, balances: {}, movements: [
+      { eventId: "FISC-OPEN-1", sourceId: "OPENING-FISCAL:SKU-1", code: "SKU-1", type: "APERTURA_FISCAL", dir: "IN", qty: 4, timestamp: 1793700000000 }
+    ] },
+    retencionesIslr: [{ id: "ISLR-1", amount: 8, ts: 1793700000000 }],
+    fiscalBankOperations: [{ id: "BANK-1", amount: 25, currency: "USD", ts: 1793700000000 }]
+  };
+  const events = buildAccountingSourceEvents({}, next, { deviceId: "pc-01" });
+  assert.equal(events.length, 3);
+  assert.deepEqual(new Set(events.map(event => event.sourceType)), new Set([
+    "fiscal_inventory_movement", "islr_retention", "bank_operation"
+  ]));
+});
