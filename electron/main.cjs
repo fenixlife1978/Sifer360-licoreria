@@ -1238,7 +1238,7 @@ function registerAccountingIpc() {
             OR (SELECT COUNT(*) FROM accounting_asset_depreciations prior
                 WHERE prior.asset_id=a.id AND prior.depreciation_month<? AND prior.status='posted') <
                ((CAST(substr(?,1,4) AS INTEGER)-CAST(substr(a.depreciation_start_month,1,4) AS INTEGER))*12
-                + CAST(substr(?,6,2) AS INTEGER)-CAST(substr(a.depreciation_start_month,6,2) AS INTEGER))
+                + CAST(substr(?,6,2) AS INTEGER)-CAST(substr(a.depreciation_start_month,6,2) AS INTEGER)))
       `, [periodId,periodId,period.endDate,periodId,periodId,periodId,periodId,periodId]).total || 0) : 0;
       assertAccountingPeriodCanClose({ period, draftCount:drafts, unresolvedEventCount:unresolved, invalidEntryCount:invalidEntries, missingPresentationCount:missingPresentation, pendingAssetDepreciationCount:pendingAssetDepreciations });
       const now = new Date().toISOString();
