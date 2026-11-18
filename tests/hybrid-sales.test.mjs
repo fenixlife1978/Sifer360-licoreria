@@ -188,7 +188,7 @@ function runSalePortion(sale,lines,mode,residual,fiscalRatio){
 }
 
 test('hybrid pack subtotal uses presentation quantity instead of base-unit quantity',()=>{
-  const sale={total:232,pays:[{method:'cash',amount:100.01},{method:'zelle',amount:131.99}],igtf:6.96,change:0.01};
+  const sale={sub:240,total:232,pays:[{method:'cash',amount:100.01},{method:'zelle',amount:131.99}],igtf:6.96,change:0.01};
   const fiscalLine={code:'PACK6',price:120,presentationPrice:120,qty:6,presentationQty:1,net:100,iva:16,taxRate:16};
   const portion=runSalePortion(sale,[fiscalLine],'FISCAL',false,0.5);
   const residual=runSalePortion(sale,[fiscalLine],'HYBRID',true,0.5);
@@ -206,4 +206,17 @@ test('hybrid pack subtotal uses presentation quantity instead of base-unit quant
   assert.equal(portion.pays[1].amount+residual.pays[1].amount,sale.pays[1].amount);
   assert.equal(portion.igtf+residual.igtf,sale.igtf);
   assert.equal(portion.change+residual.change,sale.change);
+});
+
+test('hybrid fractional-unit subtotals conserve parent gross after cent rounding',()=>{
+  const sale={sub:0.05,total:0.05,pays:[{method:'cash',amount:0.05}],igtf:0,change:0};
+  const fiscalLine={code:'LITRO',price:0.05,presentationPrice:0.05,qty:0.3,presentationQty:0.3,net:0.02,iva:0,taxRate:0};
+  const ticketLine={code:'LITRO',price:0.05,presentationPrice:0.05,qty:0.7,presentationQty:0.7,net:0.03,iva:0,taxRate:0};
+  const fiscal=runSalePortion(sale,[fiscalLine],'FISCAL',false,0.3);
+  const ticket=runSalePortion(sale,[ticketLine],'HYBRID',true,0.3);
+  assert.equal(fiscal.sub,0.02);
+  assert.equal(ticket.sub,0.03);
+  assert.equal(fiscal.sub+ticket.sub,sale.sub);
+  assert.equal(fiscal.base+ticket.base,0.05);
+  assert.equal(fiscal.total+ticket.total,sale.total);
 });
