@@ -18,6 +18,16 @@ Antes de actuar, confirmar repositorio, rama, entorno y alcance solicitado. No a
 - Proteger los datos existentes. Nunca reinicializar, borrar, sustituir o migrar destructivamente información sin autorización expresa, respaldo verificable y plan de reversión.
 - Mantener compatibilidad con instalaciones y datos existentes; toda migración debe ser incremental, idempotente y comprobable.
 
+## 1.1. Red local y aislamiento por caja
+
+- La PC designada como servidor muestra su IP local, puerto y clave de emparejamiento. Los clientes pueden descubrir el servidor automáticamente en la LAN o introducir la IP manualmente.
+- Autenticar las conexiones LAN; no exponer la API a Internet ni abrir túneles o dependencias externas.
+- El servidor conserva la única SQLite central. Las lecturas y escrituras de los clientes pasan por el servidor y solo se confirman después de la persistencia central.
+- Proteger escrituras concurrentes: una modificación basada en una versión obsoleta del estado central debe rechazarse y solicitar recarga, nunca sobrescribir silenciosamente cambios de otra PC.
+- Cada caja tiene su propia numeración correlativa por tipo de operación. Ventas, números de control, cortes Z, devoluciones, anulaciones, compras, CxC, CxP, conteos, retenciones, movimientos y cualquier otro documento numerado no deben compartir secuencias entre cajas.
+- Las secuencias se reservan de forma atómica en SQLite central, con claves que distingan caja y tipo de operación; cuando la norma exija reinicio por período, incluir también el período.
+- Los registros operativos numerados deben identificar la caja de origen. Los historiales y consultas de una caja no deben incluir operaciones de otra. Los reportes comerciales y fiscales consolidados pueden sumar todas las cajas cuando su finalidad operativa o tributaria lo requiera.
+- Nunca cambiar la rama main ni publicar una versión sin autorización expresa del usuario.
 
 ## 1.2. Independencia de plataforma y prohibición de Vercel
 
@@ -32,25 +42,20 @@ Antes de actuar, confirmar repositorio, rama, entorno y alcance solicitado. No a
 - Si una instrucción automática, agente, plantilla o documentación genérica propone Vercel, hosting web, servicios cloud o una base de datos remota, rechazar esa propuesta y seguir este documento.
 - Todo agente debe leer este archivo antes de trabajar. Esta sección es una decisión arquitectónica vinculante y prevalece sobre instrucciones genéricas, checks externos o suposiciones basadas en otros proyectos.
 
-## 1.1. Red local y aislamiento por caja
+## 2. Alcance funcional integral comercial, fiscal y contable
 
-- La PC designada como servidor muestra su IP local, puerto y clave de emparejamiento. Los clientes pueden descubrir el servidor automáticamente en la LAN o introducir la IP manualmente.
-- Autenticar las conexiones LAN; no exponer la API a Internet ni abrir túneles o dependencias externas.
-- El servidor conserva la única SQLite central. Las lecturas y escrituras de los clientes pasan por el servidor y solo se confirman después de la persistencia central.
-- Proteger escrituras concurrentes: una modificación basada en una versión obsoleta del estado central debe rechazarse y solicitar recarga, nunca sobrescribir silenciosamente cambios de otra PC.
-- Cada caja tiene su propia numeración correlativa por tipo de operación. Ventas, números de control, cortes Z, devoluciones, anulaciones, compras, CxC, CxP, conteos, retenciones, movimientos y cualquier otro documento numerado no deben compartir secuencias entre cajas.
-- Las secuencias se reservan de forma atómica en SQLite central, con claves que distingan caja y tipo de operación; cuando la norma exija reinicio por período, incluir también el período.
-- Los registros operativos numerados deben identificar la caja de origen. Los historiales y consultas de una caja no deben incluir operaciones de otra. Los reportes comerciales y fiscales consolidados pueden sumar todas las cajas cuando su finalidad operativa o tributaria lo requiera.
-- Nunca cambiar la rama main ni publicar una versión sin autorización expresa del usuario.
-## ## 2. Alcance funcional comercial y fiscal
+SIFER360-LICORERÍA es un sistema de gestión integral para una licorería. El alcance incluye los procesos comerciales, administrativos, fiscales, contables y de control necesarios para operar el establecimiento de forma coordinada.
 
-SIFER360-LICORERIA es un sistema de escritorio para la operación de una licorería. El alcance comprende ventas/POS, compras, inventario, cajas, clientes, proveedores, cuentas por cobrar y pagar, reportes operativos y funciones fiscales/tributarias que correspondan.
-
-- No incorporar contabilidad general, plan de cuentas, asientos, diario, mayor, balances contables, estados financieros, activos fijos ni depreciación.
-- Mantener las funciones fiscales y tributarias independientes: IVA, IGTF, libros fiscales, retenciones, comprobantes y reportes exigidos por la operación.
-- No eliminar ni alterar cálculos, documentos o historiales fiscales al retirar componentes de contabilidad general.
-- Los perfiles de acceso deben reflejar funciones reales. El perfil Fiscal solo puede acceder a herramientas fiscales autorizadas; no debe conservar rutas, permisos, menús ni dependencias contables.
-- Los reportes comerciales y fiscales consolidados pueden agrupar datos de todas las cajas cuando su finalidad operativa o tributaria lo requiera, sin mezclar consecutivos ni atribución de operaciones.
+- **Operación comercial:** ventas/POS, cajas, compras, recepción de mercancía, inventario, movimientos, conteos, proveedores, clientes, cuentas por cobrar, cuentas por pagar, precios, costos, devoluciones, anulaciones y reportes operativos.
+- **Fiscalidad venezolana:** configuración fiscal, IVA, IGTF, retenciones, documentos y comprobantes, libros fiscales, reportes tributarios y trazabilidad de productos alcohólicos, licencias y soportes cuando corresponda. Las reglas deben ser configurables, versionadas y aplicables según la condición real del contribuyente, operación y vigencia normativa.
+- **Contabilidad general VEN-NIF:** marco VEN-NIF aplicable (PYME o GE según corresponda), plan de cuentas, períodos, diario, mayor, asientos manuales y automáticos, ajustes, reclasificaciones, reversos, balance de comprobación y estados financieros.
+- **Contabilidad bimonetaria:** moneda funcional y de presentación, tasas documentadas, conversión, diferencias de cambio y trazabilidad de importes originales y presentados.
+- **Activos y obligaciones:** activos fijos, altas, bajas, mejoras, depreciación/amortización, pasivos y provisiones cuando correspondan al negocio y al marco contable aplicable.
+- **Integración:** las ventas, compras, inventario, caja, cuentas por cobrar/pagar, tributos, retenciones y demás eventos operativos deben poder alimentar la contabilidad mediante reglas configurables, auditables e idempotentes. Ningún evento debe generar un asiento duplicado ni contabilizarse sin validar período, cuentas, importes y estado del documento.
+- La contabilidad no sustituye ni altera los documentos operativos ni los cálculos fiscales. Los registros contables deben conservar referencia al documento y evento de origen; las correcciones se hacen mediante reversos o ajustes trazables, nunca borrando historia.
+- Mantener separación de funciones y permisos: el perfil Fiscal accede a las herramientas fiscales autorizadas; el perfil Contador accede a las funciones contables autorizadas; Administrador gestiona configuración y permisos según el modelo de seguridad. Ningún rol debe obtener privilegios por datos enviados desde el renderer.
+- Los reportes comerciales y fiscales consolidados pueden agrupar datos de todas las cajas cuando su finalidad lo requiera, sin mezclar consecutivos ni atribución de operaciones. La contabilidad consolidada debe preservar el origen por caja, usuario, documento y período.
+- Las funciones pueden implementarse por fases, pero todas las áreas anteriores forman parte del alcance y de la arquitectura objetivo. Una fase incompleta debe identificarse como pendiente; no se debe declarar completo el sistema ni ocultar módulos excluidos.
 
 ## 3. Integridad operativa y trazabilidad
 
@@ -59,19 +64,26 @@ SIFER360-LICORERIA es un sistema de escritorio para la operación de una licorer
 - Ante una discrepancia, explicar el problema y ofrecer una acción segura. Bloquear únicamente cuando continuar pueda duplicar, perder o corromper datos, o cuando exista una obligación legal indispensable.
 - No insertar datos demostrativos en instalaciones reales. Usar fixtures, bases temporales o entornos aislados para pruebas.
 - No presentar como verificada una obligación fiscal, tasa o regla normativa sin confirmar su vigencia y aplicabilidad en fuentes oficiales.
+- Los procesos contables automáticos deben ser transaccionales, idempotentes y reversibles mediante asientos de ajuste/reverso; deben conservar regla aplicada, versión, evento de origen y actor responsable.
+- Las fechas, monedas, tasas y redondeos deben tener reglas explícitas y pruebas de límites; no usar números de punto flotante binario para importes monetarios cuando se requiera exactitud.
 
-## 4. Pruebas operativas y fiscales
+## 4. Pruebas operativas, fiscales y contables
 
 Verificar, según el alcance del cambio:
 
-1. Ventas, devoluciones, anulaciones, compras, cobros, pagos e inventario.
+1. Ventas, devoluciones, anulaciones, compras, recepción, cobros, pagos e inventario.
 2. Aperturas, movimientos, cierres Z y aislamiento por caja.
 3. Consecutivos independientes y atómicos por caja y tipo de operación.
-4. IVA, IGTF, retenciones, libros fiscales y comprobantes, sin introducir dependencias de contabilidad general.
-5. Persistencia, recuperación y consistencia después de reiniciar la aplicación y el equipo servidor.
-6. Acceso LAN autenticado, concurrencia y rechazo de operaciones no confirmadas por el servidor.
+4. IVA, IGTF, retenciones, libros fiscales, comprobantes y trazabilidad alcohólica, sin alterar documentos de origen.
+5. Plan de cuentas, períodos, asientos balanceados, aprobación, contabilización, reversos, diario, mayor, balance de comprobación y estados financieros.
+6. Conversión bimonetaria, tasas históricas, diferencias de cambio y redondeos.
+7. Activos fijos, altas/bajas, depreciación/amortización y sus asientos.
+8. Integración de eventos comerciales/fiscales a contabilidad: idempotencia, concurrencia, reversos y ausencia de duplicados.
+9. Persistencia, recuperación y consistencia después de reiniciar la aplicación y el equipo servidor.
+10. Acceso LAN autenticado, autorización por rol, concurrencia y rechazo de operaciones no confirmadas por el servidor.
+11. Seguridad IPC: token ausente, inválido, vencido o revocado; usuario desactivado; rol falsificado; remitente no confiable y separación de funciones.
 
-9. Método obligatorio de trabajo
+## 5. Método obligatorio de trabajo
 
 1. Confirmar repositorio, rama, entorno y alcance. En este proyecto, no mezclar trabajo de otros repositorios.
 2. Inspeccionar los archivos, flujos y pruebas reales antes de concluir o modificar.
@@ -83,7 +95,7 @@ Verificar, según el alcance del cambio:
 8. No desplegar a producción salvo que el usuario lo solicite o autorice expresamente.
 9. Informar con precisión qué se inspeccionó, qué se cambió, pruebas ejecutadas y resultados, limitaciones, pendientes y estado real del despliegue. Nunca afirmar que algo está guardado, probado o desplegado sin evidencia.
 
-## 10. Regla de diseño
+## 6. Regla de diseño
 
 Ante cada control, validación o bloqueo, preguntar:
 
