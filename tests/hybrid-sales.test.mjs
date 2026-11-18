@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const main=readFileSync(new URL('../public/main.js',import.meta.url),'utf8');
 
-function runHybrid(cart,balances){
+function runHybrid(cart,balances,products={}){
   const start=main.indexOf('function hybridCartPlan(){');
   const end=main.indexOf('\nfunction salePortion',start);
   assert.ok(start>=0&&end>start,'hybridCartPlan helper exists');
@@ -13,6 +13,7 @@ function runHybrid(cart,balances){
     S:{cart,fiscalInventory:{balances}},
     window:{SIFERInventoryLedgers:{ensureFiscalInventory:state=>state.fiscalInventory}},
     lineBaseQty:line=>Number(line.qty||0)*Math.max(1e-8,Number(line.factor)||1),
+    prod:code=>products[code]||{unit:'und'},
     r8:value=>Math.round((Number(value)+Number.EPSILON)*1e8)/1e8,
     r2:value=>Math.round((Number(value)+Number.EPSILON)*100)/100,
     Number,Math
@@ -28,13 +29,27 @@ function runTicketFiscalOut(lines,ticketLines,fiscalLines,balances,physical){
   const context={
     S:{fiscalInventory:{balances}},
     window:{SIFERInventoryLedgers:{ensureFiscalInventory:state=>state.fiscalInventory}},
-    prod:code=>({stock:physical[code]||0}),
+    prod:code=>({stock:physical[code]||0,unit:products[code]&&products[code].unit||'und'}),
     r8:value=>Math.round((Number(value)+Number.EPSILON)*1e8)/1e8,
     Number,Math,Map,Set
   };
   vm.runInNewContext(main.slice(start,end)+';globalThis.run=ticketFiscalOutPlan;',context);
   return context.run(lines,ticketLines,fiscalLines);
 }
+
+
+function runHeldTotal(cart,products){
+  const start=main.indexOf('function heldCartTotal(cart){');
+  const end=main.indexOf('\nfunction recoverDlg()',start);
+  assert.ok(start>=0&&end>start,'heldCartTotal helper exists');
+  const context={prod:code=>products[code],r2:value=>Math.round((Number(value)+Number.EPSILON)*100)/100,prodTaxRate:p=>Number(p.taxRate||16),Number};
+  vm.runInNewContext(main.slice(start,end)+';globalThis.run=heldCartTotal;',context);
+  return context.run(cart);
+}
+test('held-sale total uses selected presentation price, discount, and product tax rate',()=>{
+  const total=runHeldTotal([{code:'PACK',qty:2,factor:6,presentationPrice:12.5,disc:10}],{PACK:{price:2.5,taxRate:8}});
+  assert.equal(total,24.3);
+});
 
 test('checkout offers ticket, fiscal invoice and hybrid printing when both printers are configured',()=>{
   assert.match(main,/option value="TICKET">Ticket no fiscal · Toda la venta/);
@@ -52,6 +67,15 @@ test('hybrid splits a single cart line between supported fiscal quantity and rem
   assert.equal(plan.ticketLines[0].presentationQty,2);
   assert.equal(plan.fiscalLines[0].net+plan.ticketLines[0].net,500);
   assert.equal(plan.fiscalLines[0].iva+plan.ticketLines[0].iva,80);
+});
+
+
+test('hybrid fractional measured units allocate available fiscal quantity without rounding down',()=>{
+  const plan=runHybrid([{code:'LITRO',qty:2,factor:1,unit:'L',net:20,iva:3.2}],{LITRO:{stock:1.5}},{LITRO:{unit:'L'}});
+  assert.equal(plan.fiscalLines[0].qty,1.5);
+  assert.equal(plan.fiscalLines[0].presentationQty,1.5);
+  assert.equal(plan.ticketLines[0].qty,0.5);
+  assert.equal(plan.ticketLines[0].presentationQty,0.5);
 });
 
 test('hybrid never fractures a pack presentation and allocates whole packs only',()=>{
