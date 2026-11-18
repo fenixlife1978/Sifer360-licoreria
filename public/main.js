@@ -870,7 +870,7 @@ function hybridCartPlan(){
   S.cart.forEach((line,index)=>{
     const code=String(line.code),baseQty=lineBaseQty(line),factor=Math.max(1e-8,Number(line.factor)||1),presentationQty=Math.max(0,Number(line.qty)||0);
     const available=Math.max(0,Number(ledger.balances[code]&&ledger.balances[code].stock||0)-Number(used[code]||0));
-    const fiscalPresentationQty=Math.min(presentationQty,Math.floor((available+1e-9)/factor));
+    const fractionalUnit=factor===1&&['L','kg','g','m'].includes(String(prod(code)&&prod(code).unit||'')),fiscalPresentationQty=Math.min(presentationQty,fractionalUnit?Math.max(0,r8(available)):Math.floor((available+1e-9)/factor));
     const fiscalBaseQty=r8(Math.min(baseQty,fiscalPresentationQty*factor)),ticketBaseQty=r8(Math.max(0,baseQty-fiscalBaseQty)),ticketPresentationQty=r8(Math.max(0,presentationQty-fiscalPresentationQty));
     const fiscalRatio=baseQty>0?fiscalBaseQty/baseQty:0;
     const fiscalNet=r2(Number(line.net||0)*fiscalRatio),fiscalIva=r2(Number(line.iva||0)*fiscalRatio);
@@ -1142,14 +1142,15 @@ async function suspend(){
   const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la suspensión; la venta permanece en el estado durable anterior.','bad');return;}
   renderAll();msg('Venta suspendida. Hay '+S.held.length+' en espera.');
 }
+function heldCartTotal(cart){return r2((cart||[]).reduce((sum,line)=>{const p=prod(line.code),factor=Math.max(1e-8,Number(line.factor)||1),price=Number(line.presentationPrice)>0?Number(line.presentationPrice):r2(Number(p&&p.price||0)*factor),gross=r2(price*Number(line.qty||0)),net=r2(gross*(1-Number(line.disc||0)/100)),rate=prodTaxRate(p);return sum+r2(net+r2(net*(rate/100)));},0));}
 function recoverDlg(){
   if(!S.held.length){msg('No hay ventas en espera.');return;}
   const busy=S.cart.length>0;
   const el=h('<div class="form"><div class="gridwrap heldwrap"><table class="grid"><thead><tr><th>Cliente</th><th class="r">Renglones</th><th class="r">Total US$</th><th>Hora</th><th></th></tr></thead><tbody></tbody></table></div>'+(busy?'<p class="hint">Cobre o suspenda la venta actual antes de recuperar otra.</p>':'')+'</div>');
   const tb=$('tbody',el);
   S.held.forEach((hd,i)=>{
-    const sub=r2(hd.cart.reduce((a,l)=>a+r2(r2(prod(l.code).price*l.qty)*(1-l.disc/100)),0));
-    const tr=h('<table><tbody><tr><td>'+esc(hd.client.name)+'</td><td class="r">'+hd.cart.length+'</td><td class="r">'+nf(r2(sub*(1+IVA)))+'</td><td>'+fmtT(new Date(hd.ts))+'</td><td class="c"><button class="btn mini2" '+(busy?'disabled':'')+'>Recuperar</button></td></tr></tbody></table>').querySelector('tr');
+    const sub=heldCartTotal(hd.cart);
+    const tr=h('<table><tbody><tr><td>'+esc(hd.client.name)+'</td><td class="r">'+hd.cart.length+'</td><td class="r">'+nf(sub)+'</td><td>'+fmtT(new Date(hd.ts))+'</td><td class="c"><button class="btn mini2" '+(busy?'disabled':'')+'>Recuperar</button></td></tr></tbody></table>').querySelector('tr');
     $('button',tr).addEventListener('click',async()=>{
       S.cart=hd.cart;S.client=hd.client;S.sel=0;if(!Array.isArray(S.heldDeletedIds))S.heldDeletedIds=[];S.heldDeletedIds.push({id:String(hd.id||('HOLD-LEGACY-'+hd.ts)),cashbox:String(hd.cashbox||currentCaja()),ts:Date.now()});S.held.splice(i,1);
       const persisted=await save();if(!persisted||!persisted.ok){msg('El servidor no confirmó la recuperación; se conservó el estado durable anterior.','bad');return;}
