@@ -2748,7 +2748,7 @@ function inventoryDlg(){
       '</select></td>'+
       '<td class="r"><input class="fld cell r" data-f="stock" value="'+fq(p.stock)+'" inputmode="decimal" aria-label="Existencia de '+esc(p.desc)+'"></td>'+
       '<td class="r"><input class="fld cell r" data-f="min" value="'+fq(p.min)+'" inputmode="decimal" aria-label="Mínimo de '+esc(p.desc)+'"></td>'+
-      '<td class="r"><span title="Costo promedio ponderado calculado por entradas de inventario">'+nf8(p.cost)+'</span></td>'+
+      '<td class="r"><span title="Costo promedio ponderado calculado por entradas de inventario">'+nf(p.cost)+'</span></td>'+
       '<td class="r"><b>'+nf(r2(Math.max(0,p.stock)*Math.max(0,p.cost)))+'</b></td>'+
       '<td class="r"><input class="fld cell r" data-f="price" value="'+nf(p.price)+'" inputmode="decimal" aria-label="Precio de '+esc(p.desc)+'"></td>'+
       '<td class="c" style="white-space:nowrap"><button class="btn mini2" data-edit="'+esc(p.code)+'" title="Editar ficha, costos, presentaciones, proveedores y kit">Ficha</button> <button class="btn mini2" data-lbl="'+esc(p.code)+'" title="Generar hablador / etiqueta SKU">SKU</button> <button class="btn mini2" data-kx="'+esc(p.code)+'">Kardex</button></td>'+
@@ -3021,10 +3021,10 @@ function comprasDlg(initialTab){
             '<td>'+esc(c.supplier.name)+'</td>'+
             '<td>'+esc(c.docType==='FACTURA_FISCAL'?'Fiscal':c.docType==='NOTA_ENTREGA'?'Nota entrega':'No fiscal')+'</td>'+
             '<td>'+esc(c.cond)+'</td>'+
-            '<td class="r">'+nf8(c.total)+'</td>'+
-            '<td class="r">'+nf8(Number(c.retIva||0)+Number(c.retIslr||0))+'</td>'+
-            '<td class="r">'+nf8(paidTotal)+'</td>'+
-            '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA'+(c.voidDoc?' · '+esc(c.voidDoc):''):nf8(pend))+'</td>'+
+            '<td class="r">'+nf(c.total)+'</td>'+
+            '<td class="r">'+nf(Number(c.retIva||0)+Number(c.retIslr||0))+'</td>'+
+            '<td class="r">'+nf(paidTotal)+'</td>'+
+            '<td class="r '+(pend>0&&!c.void?'st-low':'')+'">'+(c.void?'ANULADA'+(c.voidDoc?' · '+esc(c.voidDoc):''):nf(pend))+'</td>'+
             '<td class="c">'+(c.void?'—':'<button class="btn mini2" data-void-comp="'+c.no+'">Anular</button>')+'</td>'+
           '</tr>';
         }).join(''):'<tr class="empty"><td colspan="11">Sin compras registradas.</td></tr>')+'</tbody>'+
@@ -3631,9 +3631,9 @@ function cxpDlg(selId){
         '<td>'+fmtD(x.ts)+'</td>'+
         '<td>'+fmtD(x.dueTs)+'</td>'+
         '<td class="'+stCls+'">'+stTxt+'</td>'+
-        '<td class="r">'+nf8(x.total)+'</td>'+
-        '<td class="r">'+nf8(x.paid)+'</td>'+
-        '<td class="r"><b>'+nf8(bal)+'</b></td>'+
+        '<td class="r">'+nf(x.total)+'</td>'+
+        '<td class="r">'+nf(x.paid)+'</td>'+
+        '<td class="r"><b>'+nf(bal)+'</b></td>'+
         '<td class="r">'+nf(bal*rate)+'</td>'+
       '</tr>';
     }).join(''):'<tr class="empty"><td colspan="10">No hay cuentas por pagar para el filtro seleccionado.</td></tr>';
@@ -3660,7 +3660,7 @@ function cxpDlg(selId){
       statusHtml='<b class="warn">Pago parcial · Resta por pagar: '+usd(remUsd)+' ('+bsf(remUsd*rate)+')</b>';
     }
     sumEl.innerHTML=
-      '<span>Total Pago Mixto: <b>US$ '+nf8(sumUsd)+'</b> ('+bsf(sumUsd*rate)+')</span>'+
+      '<span>Total Pago Mixto: <b>US$ '+nf(sumUsd)+'</b> ('+bsf(sumUsd*rate)+')</span>'+
       '<span style="margin-left:14px">'+statusHtml+'</span>';
   };
 
@@ -3670,7 +3670,7 @@ function cxpDlg(selId){
     const bal=r8(Math.max(0,Number(item.total||0)-Number(item.paid||0))), rate=S.cfg.rate;
     const mOpts='<option value="MIXTO"'+(payMode==='MIXTO'?' selected':'')+'>★ Pago Mixto (Múltiples métodos de pago)</option>'+
       METHODS.map(m=>'<option value="'+esc(m.id)+'"'+(payMode===m.id?' selected':'')+'>'+esc(m.name)+' ('+m.cur+')</option>').join('');
-    const hist=(item.payments||[]).map(p=>'<tr><td>'+fmtDT(p.ts)+'</td><td>'+esc(p.method)+'</td><td class="mono">'+esc(p.ref||'-')+'</td><td class="r">'+nf8(p.amountUsd)+'</td><td class="r">'+nf(p.amountBs)+'</td><td>'+esc(p.note||'')+'</td></tr>').join('')||'<tr><td colspan="6" class="dim">Sin pagos registrados todavía.</td></tr>';
+    const hist=(item.payments||[]).map(p=>'<tr><td>'+fmtDT(p.ts)+'</td><td>'+esc(p.method)+'</td><td class="mono">'+esc(p.ref||'-')+'</td><td class="r">'+nf(p.amountUsd)+'</td><td class="r">'+nf(p.amountBs)+'</td><td>'+esc(p.note||'')+'</td></tr>').join('')||'<tr><td colspan="6" class="dim">Sin pagos registrados todavía.</td></tr>';
 
     let formHtml='';
     if(bal<0.00000001){
@@ -3679,7 +3679,7 @@ function cxpDlg(selId){
       formHtml=
         '<div class="invbar" style="margin-bottom:6px">'+
           '<label>Medio de pago</label><select class="fld" id="pgMethod" style="max-width:235px">'+mOpts+'</select>'+
-          '<label>Monto US$</label><input class="fld r" id="pgUsd" value="'+nf8(bal)+'" style="max-width:92px" inputmode="decimal">'+
+          '<label>Monto US$</label><input class="fld r" id="pgUsd" value="'+nf(bal)+'" style="max-width:92px" inputmode="decimal">'+
           '<label>Equiv. Bs.</label><input class="fld r" id="pgBs" value="'+nf(bal*rate)+'" style="max-width:105px" inputmode="decimal">'+
           '<label>Comprobante</label><input class="fld" id="pgRef" placeholder="Nº transf. / ref." style="max-width:115px">'+
           '<label>Nota</label><input class="fld" id="pgNote" placeholder="Pago a proveedor">'+
@@ -3694,7 +3694,7 @@ function cxpDlg(selId){
         return '<tr>'+
           '<td><b>'+esc(m.name)+'</b></td>'+
           '<td class="c"><span class="sku-tag">'+(isUsd?'US$':'Bs.')+'</span></td>'+
-          '<td class="r" style="width:125px"><input class="fld r cxp-mix-usd" data-m="'+esc(m.id)+'" value="'+(st.usd>0?nf8(st.usd):'')+'" placeholder="0,00" inputmode="decimal"></td>'+
+          '<td class="r" style="width:125px"><input class="fld r cxp-mix-usd" data-m="'+esc(m.id)+'" value="'+(st.usd>0?nf(st.usd):'')+'" placeholder="0,00" inputmode="decimal"></td>'+
           '<td class="r" style="width:135px"><input class="fld r cxp-mix-bs" data-m="'+esc(m.id)+'" value="'+(st.bs>0?nf(st.bs):'')+'" placeholder="0,00" inputmode="decimal"></td>'+
           '<td style="width:155px"><input class="fld mono cxp-mix-ref" data-m="'+esc(m.id)+'" value="'+esc(st.ref||'')+'" placeholder="Nº op. / ref. / recibo"></td>'+
           '<td class="c" style="width:85px"><button class="btn mini2" data-cxp-fill="'+esc(m.id)+'" title="Asignar el saldo restante a este medio de pago">Restante</button></td>'+
@@ -3741,7 +3741,7 @@ function cxpDlg(selId){
     }
     if(e.target.id==='pgBs'){
       const v=pn(e.target.value);
-      const usdInp=$('#pgUsd',el);if(usdInp)usdInp.value=v>0?nf8(r8(v/rate)):'';
+      const usdInp=$('#pgUsd',el);if(usdInp)usdInp.value=v>0?nf(r8(v/rate)):'';
       return;
     }
     if(e.target.classList.contains('cxp-mix-usd')){
