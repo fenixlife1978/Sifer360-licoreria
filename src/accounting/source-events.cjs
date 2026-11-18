@@ -49,14 +49,43 @@ function stableIdentity(record, collection) {
     ? String(record.cashbox || "sin-caja") + ":" + id
     : id;
 }
+function localIsoWithOffset(value) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const pad = (number, size = 2) => String(number).padStart(size, "0");
+  const offset = -parsed.getTimezoneOffset();
+  const sign = offset >= 0 ? "+" : "-";
+  const absoluteOffset = Math.abs(offset);
+  return parsed.getFullYear() + "-" + pad(parsed.getMonth() + 1) + "-" + pad(parsed.getDate()) +
+    "T" + pad(parsed.getHours()) + ":" + pad(parsed.getMinutes()) + ":" + pad(parsed.getSeconds()) +
+    "." + pad(parsed.getMilliseconds(), 3) + sign + pad(Math.floor(absoluteOffset / 60)) + ":" + pad(absoluteOffset % 60);
+}
+
 function eventDate(record, fallback) {
-  if (record && record.ts !== undefined && record.ts !== null && record.ts !== "" && Number.isFinite(Number(record.ts))) {
-    let value = Number(record.ts);
-    if (value > 0 && value < 1e12) value *= 1000;
-    const parsed = new Date(value);
+  // El día del documento manda sobre la hora de captura: una compra registrada
+  // hoy puede corresponder a una factura fechada ayer.
+  for (const key of ["accountingDate", "docDate", "date", "fecha"]) {
+    if (!record || record[key] === undefined || record[key] === null || record[key] === "") continue;
+    const raw = String(record[key]).trim();
+    if (/^\\d{4}-\\d{2}-\\d{2}$/.test(raw)) {
+      const parsed = new Date(raw + "T00:00:00.000Z");
+      if (!Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === raw) return raw + "T00:00:00.000Z";
+    }
+    const parsed = new Date(record[key]);
     if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
   }
-  for (const key of ["timestamp", "occurredAt", "createdAt", "updatedAt", "date", "fecha"]) {
+  if (record && record.occurredAt) {
+    const parsed = new Date(record.occurredAt);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+  for (const key of ["ts", "timestamp"]) {
+    if (!record || record[key] === undefined || record[key] === null || record[key] === "" || !Number.isFinite(Number(record[key]))) continue;
+    let value = Number(record[key]);
+    if (value > 0 && value < 1e12) value *= 1000;
+    const local = localIsoWithOffset(value);
+    if (local) return local;
+  }
+  for (const key of ["createdAt", "updatedAt"]) {
     if (!record || !record[key]) continue;
     const parsed = new Date(record[key]);
     if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();

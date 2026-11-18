@@ -99,3 +99,18 @@ test("captura movimientos del submayor fiscal, retenciones ISLR y operaciones ba
   ]));
   assert.equal(events.find(event => event.sourceType === "fiscal_inventory_movement").occurredAt, new Date(1793700000000).toISOString());
 });
+test("la fecha contable del documento prevalece sobre la hora de captura", () => {
+  const event = buildAccountingSourceEvents({}, {
+    purchases: [{ id: "C-2026-11", docDate: "2026-11-18", ts: Date.parse("2026-11-19T03:30:00.000Z"), total: 250 }]
+  })[0];
+  assert.equal(event.occurredAt, "2026-11-18T00:00:00.000Z");
+});
+
+test("los timestamps de operaciones conservan el día y la hora local del POS", () => {
+  const timestamp = Date.parse("2026-11-19T03:30:00.000Z");
+  const local = new Date(timestamp);
+  const expectedDate = [local.getFullYear(), String(local.getMonth() + 1).padStart(2, "0"), String(local.getDate()).padStart(2, "0")].join("-");
+  const event = buildAccountingSourceEvents({}, { sales: [{ id: "V-LOCAL", cashbox: "01", ts: timestamp, total: 10 }] })[0];
+  assert.equal(event.occurredAt.slice(0, 10), expectedDate);
+  assert.match(event.occurredAt, /(?:Z|[+-]\\d{2}:\\d{2})$/);
+});
