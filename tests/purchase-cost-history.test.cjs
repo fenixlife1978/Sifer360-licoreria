@@ -44,15 +44,15 @@ test('el historial devuelve el costo unitario sin IVA almacenado en el renglón,
 });
 
 test('la captura de compra identifica el último costo neto del proveedor y permite editar el nuevo costo', () => {
-  assert.match(source, /Último costo proveedor \(sin IVA\) US\$/);
-  assert.match(source, /Nuevo costo de compra \(sin IVA\) US\$/);
-  assert.match(source, /data-cpf="cost" aria-label="Nuevo costo unitario de compra sin IVA US\$"/);
+  assert.match(source, /Último precio de este proveedor \(sin IVA\) US\$/);
+  assert.match(source, /Nuevo precio unitario de compra \(sin IVA\) US\$/);
+  assert.match(source, /data-cpf="cost" aria-label="Nuevo precio unitario de compra sin IVA US\$"/);
   assert.match(source, /if\(t\.dataset\.cpf==='cost'\)\{l\.cost=r8\(val\);l\.costEdited=true;\}/);
   assert.match(source, /cost:last===null\?Number\(p\.cost\|\|0\):last,costEdited:false/);
 });
 
 test('el cambio de proveedor actualiza la sugerencia sin pisar costos editados manualmente', () => {
-  assert.match(source, /if\(t\.id==='cpSup'\)\{supIdx=\+t\.value;pLines\.forEach\(line=>\{if\(!line\.costEdited\)/);
+  assert.match(source, /if\(t\.id==='cpSup'\)\{supIdx=\+t\.value;pLines\.forEach\(line=>\{line\.costEdited=false;/);
 });
 
 test('compras fiscales alimentan el libro fiscal; compras no fiscales no lo alimentan', () => {
