@@ -10,6 +10,7 @@ const { ensureServerCertificate, createPinnedAgent, retrievePeerCertificate, ver
 const { applyIncomingEvents } = require('./lan-event-store.cjs');
 const { mergeStateRecords } = require('./lan-state-merge.cjs');
 const { openOrRecoverDatabase } = require('./sqlite-recovery.cjs');
+const { applyAccountingMigration } = require('./accounting-migrations.cjs');
 const { isLanAddress, assertLanHost } = require('./lan-address.cjs');
 const { hasValidBearerToken } = require('./lan-auth.cjs');
 const { allocateCashboxSequence: allocateCashboxSequenceDurable } = require('./cashbox-sequence.cjs');
@@ -341,6 +342,10 @@ async function initializeDatabase() {
   db = opened.database;
   if (opened.recovered) console.warn('SIFER360 recuperó la base SQLite desde el respaldo automático:', opened.source, opened.corruptFile || '');
   initializeSchema();
+  const accountingSchemaPath = path.join(__dirname, '..', 'src', 'accounting', 'schema.sql');
+  if (!fs.existsSync(accountingSchemaPath)) throw new Error('Falta el esquema contable de la instalación; se conserva la base de datos y se detiene el inicio.');
+  const accountingMigration = applyAccountingMigration({ db, schemaSql: fs.readFileSync(accountingSchemaPath, 'utf8'), persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
+  if (accountingMigration.applied) console.info('Migración contable aplicada sin eliminar datos existentes:', accountingMigration.migrationKey);
   const stateRowForSequenceMigration = one('SELECT payload FROM app_state WHERE id=1');
   const sequenceMigrationApplied = migrateCashboxSequenceCategories({ db, state: stateRowForSequenceMigration ? JSON.parse(stateRowForSequenceMigration.payload) : {}, persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
   if (opened.recovered && !sequenceMigrationApplied) persistDb();
