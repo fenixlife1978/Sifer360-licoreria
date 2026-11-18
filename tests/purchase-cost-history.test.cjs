@@ -47,7 +47,7 @@ test('la captura de compra identifica el último costo neto del proveedor y perm
   assert.match(source, /Último precio de este proveedor \(sin IVA\) US\$/);
   assert.match(source, /Nuevo precio unitario de compra \(sin IVA\) US\$/);
   assert.match(source, /data-cpf="cost" aria-label="Nuevo precio unitario de compra sin IVA US\$"/);
-  assert.match(source, /if\(t\.dataset\.cpf==='cost'\)\{l\.cost=r8\(val\);l\.costEdited=true;\}/);
+  assert.match(source, /if\(t\.dataset\.cpf==='cost'\)\{const cost=pnZero\(t\.value\);l\.cost=cost===null\?null:r8\(cost\);l\.costEdited=true;\}/);
   assert.match(source, /cost:last===null\?Number\(p\.cost\|\|0\):last,costEdited:false/);
 });
 
