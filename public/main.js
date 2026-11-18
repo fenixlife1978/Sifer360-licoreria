@@ -7185,7 +7185,16 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label><input type="checkbox" id="accAcceptsPosting" checked> Acepta contabilizaciones</label></div>'+
       '<div class="f"><label><input type="checkbox" id="accAccountActive" checked> Cuenta activa</label></div>'+
       '</div><button class="btn primary" id="btnSaveAccountingAccount" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar cuenta contable</button><div id="accAccountsList" class="hint">Cargando plan de cuentas...</div></section>'+
-      '<section class="cierre"><h3>5. Operaciones recibidas por el motor contable</h3><div id="accSourceSummary" class="hint">Cargando eventos...</div><div id="accSourceEvents" class="hint">Leyendo eventos de origen...</div><p class="hint">Estos eventos son evidencia de operaciones del POS. Permanecen pendientes de revisión y todavía no generan asientos ni modifican saldos contables.</p></section>'+
+      '<section class="cierre"><h3>5. Reglas de contabilización supervisada</h3><p class="hint">Define por tipo de operación qué importe del documento POS se contabiliza y qué cuentas imputables intervienen. La ruta del importe debe coincidir exactamente con un campo real del documento; no se adivinan campos ni monedas. Solo se admiten altas nuevas. Las modificaciones y eliminaciones quedan para ajuste manual.</p><div class="newgrid">'+
+      '<div class="f"><label for="accRuleSource">Operación POS</label><select class="fld" id="accRuleSource"><option value="sale">Venta</option><option value="purchase">Compra</option><option value="receivable">Cuenta por cobrar</option><option value="payable">Cuenta por pagar</option><option value="cash_close">Corte Z</option><option value="cash_opening">Apertura de caja</option><option value="cash_movement">Movimiento de caja</option><option value="inventory_movement">Kardex / inventario</option><option value="inventory_count">Conteo de inventario</option><option value="return">Devolución</option><option value="void">Anulación</option><option value="cashea_operation">Operación CASHEA</option><option value="cashea_settlement">Liquidación CASHEA</option><option value="currency_movement">Movimiento de divisas</option><option value="iva_retention">Retención IVA</option><option value="islr_retention">Retención ISLR</option><option value="bank_operation">Operación bancaria</option><option value="bank_settlement_batch">Lote bancario</option><option value="exchange_rate_update">Actualización de tasa</option><option value="fiscal_inventory_movement">Movimiento inventario fiscal</option><option value="retention">Retención</option></select></div>'+
+      '<div class="f"><label for="accRuleAmountPath">Ruta exacta del importe</label><input class="fld" id="accRuleAmountPath" placeholder="Ej. total o totals.grandTotal"></div>'+
+      '<div class="f"><label for="accRuleCurrencyPath">Ruta de moneda (opcional)</label><input class="fld" id="accRuleCurrencyPath" placeholder="Vacío = moneda funcional"></div>'+
+      '<div class="f"><label for="accRuleDebit">Cuenta Debe</label><select class="fld" id="accRuleDebit"><option value="">Seleccionar cuenta imputable</option></select></div>'+
+      '<div class="f"><label for="accRuleCredit">Cuenta Haber</label><select class="fld" id="accRuleCredit"><option value="">Seleccionar cuenta imputable</option></select></div>'+
+      '<div class="f"><label for="accRuleRateType">Tipo de tasa para presentación</label><select class="fld" id="accRuleRateType"><option value="">No aplica / monedas iguales</option><option value="official">Oficial</option><option value="market">Mercado</option><option value="contractual">Contractual</option><option value="accounting_adjustment">Ajuste contable</option></select></div>'+
+      '<div class="f wide"><label for="accRuleDescription">Descripción del asiento</label><input class="fld" id="accRuleDescription" maxlength="180" placeholder="Ej. Registro de venta POS {sourceId} del {date}"></div>'+
+      '</div><button class="btn primary" id="btnSaveAutomationRule">Guardar nueva versión de regla</button><div id="accAutomationRules" class="hint">Cargando reglas...</div></section>'+
+      '<section class="cierre"><h3>6. Operaciones recibidas por el motor contable</h3><div id="accSourceSummary" class="hint">Cargando eventos...</div><div id="accSourceEvents" class="hint">Leyendo eventos de origen...</div><div class="row"><button class="btn primary" id="btnGenerateAccountingDrafts">Generar borradores de eventos pendientes (máx. 50)</button></div><p class="hint">La generación solo crea borradores, nunca aprueba ni contabiliza. Cada asiento conserva evento, regla y versión; si falta una cuenta, importe, período o tasa documentada, el evento pasa a revisión.</p></section>'+
       '<section class="cierre"><h3>6. Asientos manuales</h3><p class="hint">Crea borradores de ajustes con cuentas activas y contabilizables. El Debe y el Haber deben cuadrar. El creador no puede aprobar su propio asiento; solo el Contador puede aprobar y contabilizar. La integración automática de ventas y compras sigue separada.</p><div class="newgrid">'+
       '<div class="f"><label for="accJournalDate">Fecha del asiento</label><input class="fld" id="accJournalDate" type="date" value="'+isoD(Date.now())+'"></div>'+
       '<div class="f"><label for="accJournalPeriod">Período abierto</label><select class="fld" id="accJournalPeriod"><option value="">Seleccionar período</option></select></div>'+
@@ -7200,7 +7209,7 @@ function seniatSudebanDlg(initialTab){
       '</div><div id="accJournalLines"></div><div class="row" style="gap:8px"><button class="btn" id="btnAddJournalLine">Añadir renglón</button><button class="btn primary" id="btnCreateJournalEntry" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar borrador de asiento</button></div><div id="accJournalEntries" class="hint">Cargando asientos...</div></section>'+
       '<section class="cierre"><h3>7. Historial de tasas de cambio</h3><p class="hint">Tasas utilizadas en asientos, con su fecha, tipo, fuente y referencia documental. Los valores se conservan como fracciones exactas.</p><div id="accExchangeRates" class="hint">Cargando tasas...</div></section>'+
       '<section class="cierre"><h3>8. Balance de comprobación</h3><p class="hint">Solo considera asientos contabilizados y sus reversos. Los borradores y aprobados no afectan este balance.</p><div id="accTrialBalance" class="hint">Calculando balance...</div></section>'+
-      '<div class="hint">Pendiente: mapeo aprobado de operaciones POS, contabilización automática supervisada, saldos de apertura, diario y mayor detallados, reportes financieros y libros fiscales oficiales.</div>'+
+      '<div class="hint">La automatización supervisada solo genera borradores a partir de reglas expresas; no aprueba ni contabiliza. Las reglas son versionadas y las modificaciones/anulaciones permanecen bajo revisión del contador.</div>'+
       '</div>';
   };
   const loadAccountingTab=async()=>{
@@ -7211,7 +7220,7 @@ function seniatSudebanDlg(initialTab){
     const sessionToken=accountingSessionToken();
     if(!sessionToken){msg('La sesión autenticada expiró. Vuelve a iniciar sesión.','bad');return;}
     try{
-      const [settings,profile,periods,accounts,sourceEvents,sourceSummary,journalEntries,exchangeRates,trialBalance]=await Promise.all([
+      const [settings,profile,periods,accounts,sourceEvents,sourceSummary,journalEntries,exchangeRates,trialBalance,automationRules]=await Promise.all([
         window.posDesktop.accountingGetSettings(sessionToken),
         window.posDesktop.accountingGetProfile(sessionToken),
         window.posDesktop.accountingListPeriods(sessionToken),
@@ -7220,7 +7229,8 @@ function seniatSudebanDlg(initialTab){
         window.posDesktop.accountingSourceEventSummary(sessionToken),
         window.posDesktop.accountingListJournalEntries(sessionToken),
         window.posDesktop.accountingListExchangeRates(sessionToken),
-        window.posDesktop.accountingGetTrialBalance(sessionToken)
+        window.posDesktop.accountingGetTrialBalance(sessionToken),
+        window.posDesktop.accountingListAutomationRules(sessionToken)
       ]);
       const set=(id,value)=>{const node=$('#'+id,el);if(node&&value!==null&&value!==undefined)node.value=String(value);};
       const check=(id,value)=>{const node=$('#'+id,el);if(node)node.checked=!!value;};
@@ -7249,6 +7259,11 @@ function seniatSudebanDlg(initialTab){
       renderAccountingJournalLines();
       const list=$('#accPeriodsList',el);
       if(list)list.innerHTML=periods.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Período</th><th>Desde</th><th>Hasta</th><th>Estado</th></tr></thead><tbody>'+periods.map(p=>'<tr><td>'+esc(p.label)+'</td><td>'+esc(p.startDate)+'</td><td>'+esc(p.endDate)+'</td><td>'+esc(p.status==='closed'?'Cerrado':'Abierto')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay períodos contables definidos.';
+      const usableAccounts=accounts.filter(a=>Number(a.active)===1&&Number(a.acceptsPosting)===1&&(a.frameworkScope==='both'||a.frameworkScope===settings?.accountingFramework));
+      const ruleAccountOptions='<option value="">Seleccionar cuenta imputable</option>'+usableAccounts.map(a=>'<option value="'+esc(a.code)+'">'+esc(a.code+' · '+a.name)+'</option>').join('');
+      for(const id of ['accRuleDebit','accRuleCredit']){const node=$('#'+id,el);if(node){const oldValue=node.value;node.innerHTML=ruleAccountOptions;if(oldValue)node.value=oldValue;}}
+      const automationNode=$('#accAutomationRules',el);
+      if(automationNode)automationNode.innerHTML=automationRules.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Operación</th><th>Importe</th><th>Debe</th><th>Haber</th><th>Versión</th><th>Estado</th></tr></thead><tbody>'+automationRules.map(rule=>'<tr><td>'+esc(rule.sourceType)+' / '+esc(rule.eventAction)+'</td><td class="mono">'+esc(rule.amountPath)+'</td><td>'+esc(rule.debitAccountCode)+'</td><td>'+esc(rule.creditAccountCode)+'</td><td>v'+esc(rule.ruleVersion)+'</td><td>'+esc(rule.status==='active'?'Activa':'Retirada')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay reglas. Crea una regla por cada tipo de operación que quieras contabilizar.';
       const accountList=$('#accAccountsList',el);
       if(accountList)accountList.innerHTML=accounts.length?'<div class="hint">'+accounts.length+' cuentas registradas</div><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>Cuenta</th><th>Padre</th><th>Clasificación</th><th>Saldo normal</th><th>Uso</th><th>Estado</th></tr></thead><tbody>'+accounts.map(a=>'<tr><td>'+esc(a.code)+'</td><td>'+esc(a.name)+'</td><td>'+esc(a.parentCode||'—')+'</td><td>'+esc(({asset:'Activo',liability:'Pasivo',equity:'Patrimonio',income:'Ingreso',expense:'Gasto',memorandum:'Orden'})[a.accountType]||a.accountType)+'</td><td>'+esc(a.normalBalance==='debit'?'Debe':'Haber')+'</td><td>'+esc(Number(a.acceptsPosting)?'Contabilizable':'Agrupación')+'</td><td>'+esc(Number(a.active)?'Activa':'Inactiva')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay cuentas. Carga el plan aprobado antes de generar asientos.';
       const canReviewJournals=String((activeUser()||{}).role||'')==='contador';
@@ -7274,7 +7289,7 @@ function seniatSudebanDlg(initialTab){
       const summaryNode=$('#accSourceSummary',el);
       if(summaryNode)summaryNode.textContent='Total: '+sourceSummary.total+' · Pendientes: '+sourceSummary.pending+' · Revisión: '+sourceSummary.needs_review+' · Procesados: '+sourceSummary.processed+' · Rechazados: '+sourceSummary.rejected;
       const eventsNode=$('#accSourceEvents',el);
-      if(eventsNode)eventsNode.innerHTML=sourceEvents.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Origen</th><th>Operación</th><th>Estado</th></tr></thead><tbody>'+sourceEvents.slice(0,40).map(item=>'<tr><td>'+esc(item.occurredAt)+'</td><td>'+esc(item.sourceType)+' / '+esc(item.sourceId)+'</td><td>'+esc(item.payload?.action||item.eventType.split('.')[0])+'</td><td>'+esc(({pending:'Pendiente',processed:'Procesado',needs_review:'Revisión',rejected:'Rechazado'})[item.processingStatus]||item.processingStatus)+(item.processingStatus==='pending'&&['admin','contador'].includes(String((activeUser()||{}).role||''))?' <button class="btn mini" data-source-event-review="'+esc(item.eventId)+'">Marcar revisión</button>':'')+'</td></tr>').join('')+'</tbody></table></div>':'No hay operaciones capturadas todavía.';
+      if(eventsNode)eventsNode.innerHTML=sourceEvents.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Origen</th><th>Operación</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+sourceEvents.slice(0,40).map(item=>'<tr><td>'+esc(item.occurredAt)+'</td><td>'+esc(item.sourceType)+' / '+esc(item.sourceId)+'</td><td>'+esc(item.payload?.action||item.eventType.split('.')[0])+'</td><td>'+esc(({pending:'Pendiente',processed:'Procesado',needs_review:'Revisión',rejected:'Rechazado'})[item.processingStatus]||item.processingStatus)+(item.errorMessage?' · '+esc(item.errorMessage):'')+'</td><td>'+(['pending','needs_review'].includes(item.processingStatus)&&item.payload?.action==='created'&&['admin','contador'].includes(String((activeUser()||{}).role||''))?' <button class="btn mini primary" data-generate-source-draft="'+esc(item.eventId)+'">Crear borrador</button>':'')+(item.processingStatus==='pending'&&['admin','contador'].includes(String((activeUser()||{}).role||''))?' <button class="btn mini" data-source-event-review="'+esc(item.eventId)+'">Marcar revisión</button>':'')+'</td></tr>').join('')+'</tbody></table></div>':'No hay operaciones capturadas todavía.';
     }catch(error){msg('No se pudo leer la configuración contable: '+(error.message||error),'bad');}
   };
   const fmtJournalMinor=(value,decimals)=>{
@@ -7484,6 +7499,31 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnGotoVentas'){activeTab='ventas';$('.tab[data-tab="ventas"]',el)?.click();}
         if(ev.target.id==='btnGotoIgtf'){activeTab='igtf';$('.tab[data-tab="igtf"]',el)?.click();}
         if(ev.target.id==='btnPrinterSetupWizard'){printerSetupWizardDlg();return;}
+        if(ev.target.id==='btnSaveAutomationRule'){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingSaveAutomationRule({...accountingActorInput(),
+              sourceType:$('#accRuleSource',el).value,eventAction:'created',
+              amountPath:$('#accRuleAmountPath',el).value.trim(),currencyPath:$('#accRuleCurrencyPath',el).value.trim(),
+              debitAccountCode:$('#accRuleDebit',el).value,creditAccountCode:$('#accRuleCredit',el).value,
+              descriptionTemplate:$('#accRuleDescription',el).value.trim(),exchangeRateType:$('#accRuleRateType',el).value
+            });
+            msg('Regla '+result.sourceType+' v'+result.ruleVersion+' guardada. La versión anterior quedó conservada.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnGenerateAccountingDrafts'){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingGenerateSourceDrafts({...accountingActorInput(),limit:50});
+            msg('Generación terminada: '+result.generated.length+' borradores · '+result.needsReview.length+' operaciones requieren revisión · '+result.skipped.length+' ya estaban procesadas.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.generateSourceDraft){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingGenerateSourceDrafts({...accountingActorInput(),eventId:ev.target.dataset.generateSourceDraft});
+            msg(result.generated.length?'Borrador contable creado y vinculado al evento.':result.needsReview.length?'El evento pasó a revisión: '+result.needsReview[0].reason:'El evento ya estaba procesado.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
         if(ev.target.dataset.sourceEventReview){
           (async()=>{try{
             const reason=prompt('Indica por qué esta operación requiere revisión contable:');
