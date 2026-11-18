@@ -48,7 +48,8 @@ function assertAccountingPeriodCanClose({ period, draftCount = 0, unresolvedEven
     [draftCount, 'Hay asientos en borrador o pendientes de aprobación.'],
     [unresolvedEventCount, 'Hay operaciones de origen pendientes o que requieren revisión.'],
     [invalidEntryCount, 'Hay asientos contabilizados con renglones incompletos o descuadrados.'],
-    [missingPresentationCount, 'Hay asientos sin importes de moneda de presentación.']
+    [missingPresentationCount, 'Hay asientos sin importes de moneda de presentación.'],
+    [pendingAssetDepreciationCount, 'Hay activos fijos con depreciación pendiente o meses anteriores sin contabilizar.']
   ];
   for (const [value, message] of checks) if (safeCount(value) > 0) throw new Error(message);
   return true;

@@ -1228,7 +1228,19 @@ function registerAccountingIpc() {
       const missingPresentation = settings && settings.functionalCurrency !== settings.presentationCurrency
         ? Number(one("SELECT COUNT(*) AS total FROM journal_entries WHERE period_id=? AND status IN ('posted','reversed') AND (presentation_debit_minor IS NULL OR presentation_credit_minor IS NULL)", [periodId]).total || 0)
         : 0;
-      assertAccountingPeriodCanClose({ period, draftCount:drafts, unresolvedEventCount:unresolved, invalidEntryCount:invalidEntries, missingPresentationCount:missingPresentation });
+      const pendingAssetDepreciations = period ? Number(one(`
+        SELECT COUNT(*) AS total FROM accounting_fixed_assets a
+        LEFT JOIN accounting_asset_depreciations d ON d.asset_id=a.id AND d.depreciation_month=?
+        WHERE a.status='active' AND a.depreciation_start_month<=? AND a.available_for_use_date<=?
+          AND ((CAST(substr(?,1,4) AS INTEGER)-CAST(substr(a.depreciation_start_month,1,4) AS INTEGER))*12
+             + CAST(substr(?,6,2) AS INTEGER)-CAST(substr(a.depreciation_start_month,6,2) AS INTEGER)) < a.useful_life_months
+          AND (d.id IS NULL OR d.status='reversed'
+            OR (SELECT COUNT(*) FROM accounting_asset_depreciations prior
+                WHERE prior.asset_id=a.id AND prior.depreciation_month<? AND prior.status='posted') <
+               ((CAST(substr(?,1,4) AS INTEGER)-CAST(substr(a.depreciation_start_month,1,4) AS INTEGER))*12
+                + CAST(substr(?,6,2) AS INTEGER)-CAST(substr(a.depreciation_start_month,6,2) AS INTEGER))
+      `, [periodId,periodId,period.endDate,periodId,periodId,periodId,periodId,periodId]).total || 0) : 0;
+      assertAccountingPeriodCanClose({ period, draftCount:drafts, unresolvedEventCount:unresolved, invalidEntryCount:invalidEntries, missingPresentationCount:missingPresentation, pendingAssetDepreciationCount:pendingAssetDepreciations });
       const now = new Date().toISOString();
       run("UPDATE accounting_periods SET status='closed',closed_at=?,closed_by=? WHERE id=? AND status='open'", [now,actor.actorId,periodId]);
       if (db.getRowsModified() !== 1) throw new Error('El período cambió de estado antes de confirmar el cierre.');

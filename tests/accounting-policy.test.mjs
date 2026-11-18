@@ -70,3 +70,7 @@ test('revalida dentro de la transacción que el período siga abierto y contenga
   assert.throws(() => assertAccountingPeriodWritable(period, '2026-12-01'), /fuera del período/);
   assert.throws(() => assertAccountingPeriodWritable(null, '2026-11-18'), /no existe/);
 });
+
+test('impide cerrar períodos con depreciación de activos pendiente', () => {
+  assert.throws(() => assertAccountingPeriodCanClose({ period: { id: '2026-11', status: 'open' }, pendingAssetDepreciationCount: 1 }), /activos fijos con depreciación pendiente/);
+});
