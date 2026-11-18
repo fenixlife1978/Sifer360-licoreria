@@ -5,7 +5,8 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const {
   assertAccountingSettingsChange,
-  assertAccountingPeriodChange
+  assertAccountingPeriodChange,
+  assertAccountingPeriodCanClose
 } = require('../electron/accounting-policy.cjs');
 
 const before = {
@@ -45,4 +46,18 @@ test('protege fechas de períodos con asientos y permite corregir solo su etique
   const period = { status: 'open', startDate: '2026-11-01', endDate: '2026-11-30' };
   assert.throws(() => assertAccountingPeriodChange(period, { startDate: '2026-11-02', endDate: '2026-11-30' }, 1), /ya contiene asientos/);
   assert.equal(assertAccountingPeriodChange(period, { startDate: '2026-11-01', endDate: '2026-11-30' }, 1), true);
+});
+
+test('impide cerrar períodos con borradores, eventos sin resolver o asientos inválidos', () => {
+  const period = { id: '2026-11', status: 'open' };
+  assert.throws(() => assertAccountingPeriodCanClose({ period, draftCount: 1 }), /borrador/);
+  assert.throws(() => assertAccountingPeriodCanClose({ period, unresolvedEventCount: 2 }), /pendientes o que requieren revisión/);
+  assert.throws(() => assertAccountingPeriodCanClose({ period, invalidEntryCount: 1 }), /renglones incompletos/);
+  assert.throws(() => assertAccountingPeriodCanClose({ period, missingPresentationCount: 1 }), /moneda de presentación/);
+});
+
+test('solo permite cerrar períodos abiertos y sin pendientes contables', () => {
+  assert.equal(assertAccountingPeriodCanClose({ period: { id: '2026-11', status: 'open' } }), true);
+  assert.throws(() => assertAccountingPeriodCanClose({ period: null }), /no existe/);
+  assert.throws(() => assertAccountingPeriodCanClose({ period: { id: '2026-11', status: 'closed' } }), /ya está cerrado/);
 });

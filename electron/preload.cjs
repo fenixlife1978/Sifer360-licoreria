@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('posDesktop', {
   accountingSaveProfile: profile => ipcRenderer.invoke('accounting:save-profile', profile),
   accountingListPeriods: token => ipcRenderer.invoke('accounting:list-periods', token),
   accountingSavePeriod: period => ipcRenderer.invoke('accounting:save-period', period),
+  accountingClosePeriod: period => ipcRenderer.invoke('accounting:close-period', period),
   accountingListSourceEvents: token => ipcRenderer.invoke('accounting:list-source-events', token),
   accountingSourceEventSummary: token => ipcRenderer.invoke('accounting:source-event-summary', token),
   accountingMarkSourceEventReview: review => ipcRenderer.invoke('accounting:mark-source-event-review', review),

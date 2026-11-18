@@ -18,7 +18,7 @@ const { getCashboxSequenceMinimum } = require('./cashbox-sequence-minimum.cjs');
 const { migrateCashboxSequenceCategories } = require('./cashbox-sequence-migration.cjs');
 const { createPasswordHash, verifyPassword, normalizeLegacyUser, publicUser } = require('./auth-credentials.cjs');
 const { createAccountingSessionGuard } = require('./accounting-auth.cjs');
-const { assertAccountingSettingsChange, assertAccountingPeriodChange } = require('./accounting-policy.cjs');
+const { assertAccountingSettingsChange, assertAccountingPeriodChange, assertAccountingPeriodCanClose } = require('./accounting-policy.cjs');
 const { buildAccountingSourceEvents } = require('../src/accounting/source-events.cjs');
 const FiscalPrinterManager = require('./fiscal-printer-manager.cjs');
 const { createLegacyBackupTaskRetirer } = require('./legacy-backup-task.cjs');
@@ -1187,6 +1187,44 @@ function registerAccountingIpc() {
     } catch (error) { try { db.run('ROLLBACK'); } catch {} throw error; }
     persistAccountingDb(dbSnapshot);
     return one('SELECT id,label,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?', [id]);
+  });
+
+  registerAccountingHandler('accounting:close-period', (event, input = {}) => {
+    assertTrustedAccountingSender(event);
+    const actor = accountingActor(input);
+    if (actor.actorRole !== 'contador') throw new Error('El cierre de períodos está reservado al perfil Contador.');
+    const periodId = String(input.periodId || '').trim();
+    if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(periodId)) throw new Error('Identificador de período inválido.');
+    const snapshot = db.export();
+    db.run('BEGIN IMMEDIATE');
+    try {
+      const period = one('SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?', [periodId]);
+      const drafts = Number(one("SELECT COUNT(*) AS total FROM journal_entries WHERE period_id=? AND status IN ('draft','approved')", [periodId]).total || 0);
+      const unresolved = Number(one("SELECT COUNT(*) AS total FROM accounting_source_events WHERE substr(occurred_at,1,10)>=? AND substr(occurred_at,1,10)<=? AND processing_status IN ('pending','needs_review')", [period?.startDate || '9999-12-31',period?.endDate || '0000-01-01']).total || 0);
+      const invalidEntries = all(`SELECT j.id,j.debit_minor AS debitMinor,j.credit_minor AS creditMinor,
+        COUNT(l.id) AS lineCount,COALESCE(SUM(l.debit_minor),0) AS lineDebit,COALESCE(SUM(l.credit_minor),0) AS lineCredit
+        FROM journal_entries j LEFT JOIN journal_lines l ON l.entry_id=j.id
+        WHERE j.period_id=? AND j.status IN ('posted','reversed') GROUP BY j.id`, [periodId]).filter(row =>
+          Number(row.lineCount) < 2 || Number(row.lineDebit) !== Number(row.debitMinor) ||
+          Number(row.lineCredit) !== Number(row.creditMinor) || Number(row.debitMinor) !== Number(row.creditMinor)
+        ).length;
+      const settings = one('SELECT functional_currency AS functionalCurrency,presentation_currency AS presentationCurrency FROM accounting_settings WHERE id=1');
+      const missingPresentation = settings && settings.functionalCurrency !== settings.presentationCurrency
+        ? Number(one("SELECT COUNT(*) AS total FROM journal_entries WHERE period_id=? AND status IN ('posted','reversed') AND (presentation_debit_minor IS NULL OR presentation_credit_minor IS NULL)", [periodId]).total || 0)
+        : 0;
+      assertAccountingPeriodCanClose({ period, draftCount:drafts, unresolvedEventCount:unresolved, invalidEntryCount:invalidEntries, missingPresentationCount:missingPresentation });
+      const now = new Date().toISOString();
+      run("UPDATE accounting_periods SET status='closed',closed_at=?,closed_by=? WHERE id=? AND status='open'", [now,actor.actorId,periodId]);
+      if (db.getRowsModified() !== 1) throw new Error('El período cambió de estado antes de confirmar el cierre.');
+      run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)',
+        [crypto.randomUUID(),'accounting_period',periodId,'close',actor.actorId,now,JSON.stringify({status:'open'}),JSON.stringify({status:'closed',draftCount:drafts,unresolvedEventCount:unresolved,invalidEntryCount:invalidEntries,missingPresentationCount:missingPresentation})]);
+      db.run('COMMIT');
+      persistAccountingDb(snapshot);
+      return one('SELECT id,label,start_date AS startDate,end_date AS endDate,status,closed_at AS closedAt,closed_by AS closedBy FROM accounting_periods WHERE id=?', [periodId]);
+    } catch (error) {
+      try { db.run('ROLLBACK'); } catch {}
+      throw error;
+    }
   });
 
   registerAccountingHandler('accounting:list-journal-entries', (event, token) => {

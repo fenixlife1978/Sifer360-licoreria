@@ -41,4 +41,17 @@ function assertAccountingPeriodChange(existing, next, journalEntryCount = 0) {
   return true;
 }
 
-module.exports = { assertAccountingSettingsChange, assertAccountingPeriodChange };
+function assertAccountingPeriodCanClose({ period, draftCount = 0, unresolvedEventCount = 0, invalidEntryCount = 0, missingPresentationCount = 0 }) {
+  if (!period) throw new Error('El período contable no existe.');
+  if (period.status !== 'open') throw new Error('El período ya está cerrado.');
+  const checks = [
+    [draftCount, 'Hay asientos en borrador o pendientes de aprobación.'],
+    [unresolvedEventCount, 'Hay operaciones de origen pendientes o que requieren revisión.'],
+    [invalidEntryCount, 'Hay asientos contabilizados con renglones incompletos o descuadrados.'],
+    [missingPresentationCount, 'Hay asientos sin importes de moneda de presentación.']
+  ];
+  for (const [value, message] of checks) if (safeCount(value) > 0) throw new Error(message);
+  return true;
+}
+
+module.exports = { assertAccountingSettingsChange, assertAccountingPeriodChange, assertAccountingPeriodCanClose };

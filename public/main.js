@@ -7264,7 +7264,8 @@ function seniatSudebanDlg(initialTab){
       if(ledgerAccount){const selected=ledgerAccount.value;ledgerAccount.innerHTML='<option value="">Seleccionar cuenta imputable</option>'+accounts.filter(a=>Number(a.acceptsPosting)===1).map(a=>'<option value="'+esc(a.code)+'">'+esc(a.code+' · '+a.name)+'</option>').join('');if(selected)ledgerAccount.value=selected;}
       renderAccountingJournalLines();
       const list=$('#accPeriodsList',el);
-      if(list)list.innerHTML=periods.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Período</th><th>Desde</th><th>Hasta</th><th>Estado</th></tr></thead><tbody>'+periods.map(p=>'<tr><td>'+esc(p.label)+'</td><td>'+esc(p.startDate)+'</td><td>'+esc(p.endDate)+'</td><td>'+esc(p.status==='closed'?'Cerrado':'Abierto')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay períodos contables definidos.';
+      const canClosePeriods=String((activeUser()||{}).role||'')==='contador';
+      if(list)list.innerHTML=periods.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Período</th><th>Desde</th><th>Hasta</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+periods.map(p=>'<tr><td>'+esc(p.label)+'</td><td>'+esc(p.startDate)+'</td><td>'+esc(p.endDate)+'</td><td>'+esc(p.status==='closed'?'Cerrado':'Abierto')+'</td><td>'+(p.status==='open'&&canClosePeriods?'<button class="btn mini" data-close-accounting-period="'+esc(p.id)+'">Cerrar período</button>':'—')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay períodos contables definidos.';
       const usableAccounts=accounts.filter(a=>Number(a.active)===1&&Number(a.acceptsPosting)===1&&(a.frameworkScope==='both'||a.frameworkScope===settings?.accountingFramework));
       const ruleAccountOptions='<option value="">Seleccionar cuenta imputable</option>'+usableAccounts.map(a=>'<option value="'+esc(a.code)+'">'+esc(a.code+' · '+a.name)+'</option>').join('');
       for(const id of ['accRuleDebit','accRuleCredit']){const node=$('#'+id,el);if(node){const oldValue=node.value;node.innerHTML=ruleAccountOptions;if(oldValue)node.value=oldValue;}}
@@ -7653,6 +7654,15 @@ function seniatSudebanDlg(initialTab){
               fiscalMachineSerial:$('#accMachineSerial',el).value
             });
             msg('Perfil fiscal guardado y auditado en SQLite.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.closeAccountingPeriod){
+          (async()=>{try{
+            const periodId=ev.target.dataset.closeAccountingPeriod;
+            if(!confirm('¿Cerrar el período '+periodId+'? No se permitirán nuevos asientos ni modificaciones en ese período.'))return;
+            const result=await window.posDesktop.accountingClosePeriod({...accountingActorInput(),periodId});
+            msg('Período '+result.id+' cerrado y registrado en auditoría.');
+            await loadAccountingTab();
           }catch(error){msg(error.message||String(error),'bad');}})();
         }
         if(ev.target.id==='btnSaveAccountingPeriod'){
