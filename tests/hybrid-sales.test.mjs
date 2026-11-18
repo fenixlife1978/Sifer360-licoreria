@@ -101,6 +101,14 @@ test('fiscal portion and ticket-backed consumption use separate per-line quantit
   assert.match(main,/p\.stock=Math\.max\(0,r2\(p\.stock-baseQty\)\)/);
 });
 
+test('hybrid sale payload aggregates ticket fiscal exits by SKU from per-line allocations',()=>{
+  assert.doesNotMatch(main,/ticketFiscalOutByCode/);
+  assert.match(main,/ticketFiscalOut:Array\.from\(ticketFiscalOutLines\.reduce\(\(byCode,line\)=>byCode\.set\(line\.code,\(byCode\.get\(line\.code\)\|\|0\)\+Number\(line\.qty\|\|0\)\),new Map\(\)\)\.entries\(\)\)/);
+  const lines=[{code:'A',qty:1.25},{code:'A',qty:0.75},{code:'B',qty:2}];
+  const totals=Array.from(lines.reduce((byCode,line)=>byCode.set(line.code,(byCode.get(line.code)||0)+Number(line.qty||0)),new Map()).entries());
+  assert.deepEqual(totals,[['A',2],['B',2]]);
+});
+
 test('hybrid completion offers a separate thermal ticket without repeating the fiscal invoice or sale',()=>{
   assert.match(main,/if\(hybrid&&ticketDocument&&ticketDocument\.lines\.length\)foot\.push/);
   assert.match(main,/showTicket\(ticketDocument\)/);
