@@ -71,3 +71,9 @@ test('recepción rechaza fichas con stock o CPP corruptos antes de mutar inventa
   assert.match(source,/p\.cost===null\|\|p\.cost===undefined\|\|!Number\.isFinite\(Number\(p\.cost\)\)\|\|Number\(p\.cost\)<0/);
   assert.match(source,/Corrija su ficha de inventario antes de recibir la compra/);
 });
+
+test('abono inicial de compra usa la tasa actual del pago y conserva la moneda del medio',()=>{
+  assert.match(source,/const initialPaymentRate=Number\(S\.cfg\.rate\)>0\?Number\(S\.cfg\.rate\):purchaseRate/);
+  assert.match(source,/initialPaymentMethod=METHODS\.find\(m=>m\.name===payMethod\)\|\|\{cur:'VES'\}/);
+  assert.match(source,/cur:initialPaymentMethod\.cur,rate:initialPaymentRate,amountBs:r2\(effPaid\*initialPaymentRate\)/);
+});
