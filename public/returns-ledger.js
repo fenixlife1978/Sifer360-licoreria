@@ -2,6 +2,7 @@
 
 function fail(message){throw new Error(message);}
 function round2(value){return Math.round((Number(value)+Number.EPSILON)*100)/100;}
+function round8(value){return Math.round((Number(value)+Number.EPSILON)*1e8)/1e8;}
 function boxOf(sale){return String(sale&&sale.cashbox||'');}
 function sameSale(note,sale){
   return Number(note.saleNo)===Number(sale.no)&&String(note.cashbox||'')===boxOf(sale);
@@ -66,7 +67,7 @@ function prepareReturn({state,sale,lines,returnStock=true,method='',reference=''
     receivableBefore:receivable?{total:Number(receivable.total||0),paid:Number(receivable.paid||0)}:null
   };
 }
-function applyReturn(state,prepared,{returnNo,refundNo,now=Date.now(),user=''}={}){
+function applyReturn(state,prepared,{returnNo,refundNo,now=Date.now(),user='',inventoryLedger=null}={}){
   if(!prepared||!returnNo)fail('Falta el consecutivo de la nota de crédito.');
   if(!Array.isArray(state.returns))state.returns=[];
   const sale=(state.sales||[]).find(item=>Number(item.no)===prepared.saleNo&&String(item.cashbox||'')===prepared.cashbox);
@@ -110,6 +111,7 @@ function applyReturn(state,prepared,{returnNo,refundNo,now=Date.now(),user=''}={
     item.creditNotes.push({id:note.id,ts:now,amount:prepared.creditApplied,refund:prepared.refund,refundMethod:prepared.method,rate:prepared.rate});
   }
   if(prepared.returnStock){
+    const ticketFiscalByLine=new Map((sale.ticketFiscalOutLines||[]).map(item=>[Number(item.lineIndex),Number(item.qty)||0]));
     for(const line of prepared.lines){
       const product=(state.products||[]).find(item=>String(item.code)===line.code);
       product.stock=round2(Number(product.stock||0)+line.qty);
@@ -120,6 +122,17 @@ function applyReturn(state,prepared,{returnNo,refundNo,now=Date.now(),user=''}={
         party:'Devolución de venta '+prepared.saleNo,qty:line.qty,stockAfter:product.stock,
         cost:line.unitCost,user
       });
+      const original=(sale.lines||[])[line.lineIndex],fiscalOutOriginal=Number(ticketFiscalByLine.get(line.lineIndex)||0);
+      const fiscalRestore=original&&Number(original.qty)>0?round8(fiscalOutOriginal*line.qty/Number(original.qty)):0;
+      if(fiscalRestore>1e-9){
+        if(!inventoryLedger||typeof inventoryLedger.applyFiscalMovement!=='function')
+          fail('La devolución debe restaurar el saldo fiscal de las unidades vendidas por ticket; no está disponible el motor de inventario fiscal.');
+        inventoryLedger.applyFiscalMovement(state,{
+          eventId:'RETURN-TICKET-STOCK:'+note.id+':'+line.lineIndex,
+          type:'REVERSO_SALIDA_TICKET_NO_FISCAL',dir:'IN',code:line.code,qty:fiscalRestore,
+          cost:line.unitCost,document:note.id,sourceId:note.id,timestamp:now,cashbox:prepared.cashbox,user
+        });
+      }
     }
   }
   if(prepared.refund>0&&['efUSD','efBs'].includes(prepared.method)){

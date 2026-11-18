@@ -850,13 +850,60 @@ function init(){
 }
 
 /* ---------- cálculos ---------- */
+function productPresentations(p){
+  const rows=Array.isArray(p&&p.presentations)?p.presentations.filter(x=>x&&Number(x.factor)>0):[];
+  return rows.length?rows:[{name:'Unidad individual',unit:p&&p.unit||'und',factor:1,barcode:p&&p.code||'',price:p&&p.price||0}];
+}
+function presentationForLine(p,l){
+  const rows=productPresentations(p),raw=l&&l.presentationIndex,idx=raw===undefined?0:Number(raw);
+  return rows[Number.isInteger(idx)&&idx>=0?idx:0]||rows[0];
+}
+function lineBaseQty(l){return r8(Number(l&&l.qty||0)*Math.max(1e-8,Number(l&&l.factor)||1));}
 function lineInfo(l){
-  const p=prod(l.code);
-  const gross=r2(p.price*l.qty);
-  const net=r2(gross*(1-l.disc/100));
-  const rate=prodTaxRate(p);
-  const iva=r2(net*(rate/100));
-  return{p,gross,net,rate,iva,total:r2(net+iva)};
+  const p=prod(l.code),pr=presentationForLine(p,l),factor=Math.max(1e-8,Number(l.factor)||Number(pr.factor)||1);
+  const price=Number(l.presentationPrice)>0?Number(l.presentationPrice):(Number(pr.price)>0?Number(pr.price):r2(Number(p.price||0)*factor));
+  const gross=r2(price*l.qty),net=r2(gross*(1-l.disc/100)),rate=prodTaxRate(p),iva=r2(net*(rate/100));
+  return{p,pr,factor,price,basePrice:r8(price/factor),baseQty:lineBaseQty(l),gross,net,rate,iva,total:r2(net+iva)};
+}
+function hybridCartPlan(){
+  const ledger=window.SIFERInventoryLedgers?window.SIFERInventoryLedgers.ensureFiscalInventory(S):{balances:{}},used={},fiscalIndexes=[],ticketIndexes=[];
+  S.cart.forEach((line,index)=>{
+    const code=String(line.code),qty=lineBaseQty(line),available=Math.max(0,Number(ledger.balances[code]&&ledger.balances[code].stock||0)-Number(used[code]||0));
+    if(available+1e-9>=qty){fiscalIndexes.push(index);used[code]=(Number(used[code])||0)+qty;}
+    else ticketIndexes.push(index);
+  });
+  return{fiscalIndexes,ticketIndexes};
+}
+function salePortion(sale,lines,mode,residual,fiscalRatio){
+  let sub=0,base=0,iva=0,baseG16=0,baseR8=0,baseA31=0,baseEx=0;
+  lines.forEach(line=>{
+    sub+=r2(Number(line.price||0)*Number(line.qty||0));base+=Number(line.net)||0;iva+=Number(line.iva)||0;
+    if(Number(line.taxRate)===16)baseG16+=Number(line.net)||0;
+    else if(Number(line.taxRate)===8)baseR8+=Number(line.net)||0;
+    else if(Number(line.taxRate)===31)baseA31+=Number(line.net)||0;
+    else if(Number(line.taxRate)===0)baseEx+=Number(line.net)||0;
+    else baseG16+=Number(line.net)||0;
+  });
+  sub=r2(sub);base=r2(base);iva=r2(iva);
+  const ratio=Number.isFinite(fiscalRatio)?fiscalRatio:(Number(sale.total)>0?r2((base+iva)/sale.total):0);
+  const pays=(sale.pays||[]).map(pay=>({...pay,amount:residual?r2(Number(pay.amount||0)-r2(Number(pay.amount||0)*ratio)):r2(Number(pay.amount||0)*ratio)}));
+  const igtf=residual?r2(Number(sale.igtf||0)-r2(Number(sale.igtf||0)*ratio)):r2(Number(sale.igtf||0)*ratio);
+  const change=residual?r2(Number(sale.change||0)-r2(Number(sale.change||0)*ratio)):r2(Number(sale.change||0)*ratio);
+  return{...sale,lines,sub,disc:r2(sub-base),base,baseG16:r2(baseG16),baseR8:r2(baseR8),baseA31:r2(baseA31),baseEx:r2(baseEx),iva,total:r2(base+iva),igtf,pays,change,documentMode:mode,docType:mode==='HYBRID'?'TICKET-INTERNO':'01-FACTURA'};
+}
+function ticketFiscalOutPlan(lines,ticketLines,fiscalLines){
+  const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S),physical=new Map(),fiscal=new Map(),ticket=new Map(),fiscalUsed=new Map(),result=new Map();
+  (lines||[]).forEach(line=>physical.set(String(line.code),Number(prod(line.code)&&prod(line.code).stock||0)));
+  (fiscalLines||[]).forEach(line=>fiscalUsed.set(String(line.code),(fiscalUsed.get(String(line.code))||0)+Number(line.qty||0)));
+  (ticketLines||[]).forEach(line=>ticket.set(String(line.code),(ticket.get(String(line.code))||0)+Number(line.qty||0)));
+  ticket.forEach((qty,code)=>{
+    const supported=Math.max(0,Number(ledger.balances[code]&&ledger.balances[code].stock||0));
+    const operational=Number(physical.get(code)||0),nonFiscalAvailable=Math.max(0,operational-supported);
+    const fiscalRemaining=Math.max(0,supported-Number(fiscalUsed.get(code)||0));
+    const consume=Math.min(fiscalRemaining,Math.max(0,qty-nonFiscalAvailable));
+    if(consume>1e-9)result.set(code,r8(consume));
+  });
+  return result;
 }
 function totals(){
   let sub=0,base=0,totIva=0,baseG16=0,baseR8=0,baseA31=0,baseEx=0;
@@ -1013,27 +1060,42 @@ function ask(title,text,okLabel,fn){
 }
 
 /* ---------- carrito ---------- */
-function addItem(code,qty){
+function presentationPickDlg(p,qty,selectedIndex){
+  const rows=productPresentations(p);let selected=Number.isInteger(selectedIndex)?selectedIndex:0;
+  const el=h('<div class="form"><p class="hint">Seleccione la presentación que se agregará al carrito. El inventario siempre se controla en unidades base.</p><div class="gridwrap"><table class="grid"><thead><tr><th></th><th>Presentación</th><th>Unidad</th><th class="r">Equiv. base</th><th class="r">Precio US$</th><th class="r">Disponible</th></tr></thead><tbody id="posPresentationRows"></tbody></table></div></div>');
+  const draw=()=>$('#posPresentationRows',el).innerHTML=rows.map((pr,i)=>{
+    const factor=Number(pr.factor)||1,used=S.cart.filter(x=>x.code===p.code).reduce((a,x)=>a+lineBaseQty(x),0),available=Math.max(0,Number(p.stock||0)-used),price=Number(pr.price)>0?Number(pr.price):Number(p.price||0)*factor;
+    return '<tr data-presentation="'+i+'" class="'+(i===selected?'sel':'')+'"><td><input type="radio" name="posPresentation" '+(i===selected?'checked':'')+'></td><td><b>'+esc(pr.name||'Presentación '+(i+1))+'</b>'+(pr.barcode?'<div class="sub">Código: '+esc(pr.barcode)+'</div>':'')+'</td><td>'+esc(pr.unit||p.unit||'und')+'</td><td class="r">'+fq(factor)+'</td><td class="r">'+nf(price)+'</td><td class="r">'+fq(Math.floor((available+1e-9)/factor))+'</td></tr>';
+  }).join('');
+  el.addEventListener('click',e=>{const row=e.target.closest('[data-presentation]');if(row){selected=Number(row.dataset.presentation);draw();}});
+  openWin({title:'Presentación · '+p.desc,w:720,body:el,foot:[{label:'Cancelar'},{label:'Agregar al carrito',primary:true,fn:()=>addItem(p.code,qty,selected)}],onOpen:draw});
+}
+function addItem(code,qty,presentationIndex){
   const p=prod(code);if(!p)return false;
-  const isDec = p.unit==='L'||p.unit==='kg'||p.unit==='g'||p.unit==='m';
+  const presentations=productPresentations(p);
+  if(presentationIndex===undefined&&presentations.length>1){presentationPickDlg(p,qty,0);return true;}
+  const idx=Math.max(0,Math.min(presentations.length-1,Number(presentationIndex)||0)),pr=presentations[idx];
+  const factor=Math.max(1e-8,Number(pr.factor)||1),isDec=factor===1&&['L','kg','g','m'].includes(p.unit);
   qty=isDec?Math.max(0.1,r2(qty)):Math.max(1,Math.round(qty));
-  const ex=S.cart.find(l=>l.code===code),cur=ex?ex.qty:0,left=r2(p.stock-cur);
-  if(qty>left+1e-9){
-    msg(left<=0?'Sin existencia de "'+p.desc+'" ('+p.brand+').':'Existencia insuficiente de "'+p.desc+'": quedan '+fq(left)+'.','bad');
+  const reserved=S.cart.filter(l=>l.code===code).reduce((a,l)=>a+lineBaseQty(l),0),left=Math.max(0,r2(Number(p.stock||0)-reserved)),required=r8(qty*factor);
+  const ex=S.cart.find(l=>l.code===code&&Number(l.presentationIndex||0)===idx);
+  if(required>left+1e-9){
+    msg(left<=0?'Sin existencia de "'+p.desc+'" ('+p.brand+').':'Existencia insuficiente de "'+p.desc+'": quedan '+fq(left)+' unidades base; se requieren '+fq(required)+'.','bad');
     return false;
   }
+  const price=Number(pr.price)>0?Number(pr.price):r2(Number(p.price||0)*factor);
   if(ex){ex.qty=r2(ex.qty+qty);S.sel=S.cart.indexOf(ex);}
-  else{S.cart.push({code,qty,disc:0});S.sel=S.cart.length-1;}
-  renderCart();
-  ensureVisible($('#cartBody tr.sel'),$('#cartWrap'));
-  msg(p.brand+' '+p.desc+' agregado ('+fq(qty)+' '+(p.unit||'und')+').');
+  else{S.cart.push({code,qty,disc:0,presentationIndex:idx,presentationName:pr.name||'Unidad individual',presentationUnit:pr.unit||p.unit||'und',factor,presentationPrice:price});S.sel=S.cart.length-1;}
+  renderCart();ensureVisible($('#cartBody tr.sel'),$('#cartWrap'));
+  msg(p.brand+' '+p.desc+' · '+(pr.name||pr.unit||'unidad')+' agregado ('+fq(qty)+').');
   return true;
 }
 function changeQty(i,d){
   const l=S.cart[i];if(!l)return;
-  const p=prod(l.code),isDec=p.unit==='L'||p.unit==='kg'||p.unit==='g'||p.unit==='m',min=isDec?0.1:1,nq=r2(l.qty+d);
+  const p=prod(l.code),isDec=Number(l.factor||1)===1&&['L','kg','g','m'].includes(p.unit),min=isDec?0.1:1,nq=r2(l.qty+d);
   if(nq<min){msg('La cantidad mínima es '+fq(min)+'. Use Quitar para eliminar el renglón.');return;}
-  if(nq>p.stock+1e-9){msg('Existencia insuficiente: quedan '+fq(p.stock)+'.','bad');return;}
+  const reserved=S.cart.filter((x,index)=>x.code===l.code&&index!==i).reduce((a,x)=>a+lineBaseQty(x),0),available=Math.max(0,Number(p.stock||0)-reserved);
+  if(lineBaseQty({...l,qty:nq})>available+1e-9){msg('Existencia insuficiente: quedan '+fq(available)+' unidades base.','bad');return;}
   l.qty=nq;renderCart();
 }
 function removeSel(){
@@ -2395,8 +2457,252 @@ function searchCatalogDlg(){
 }
 
 /* ---------- inventario ---------- */
+
+function inventoryImportKey(value){
+  return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+function inventoryImportNumber(value,fallback){
+  if(value===null||value===undefined||value==='')return fallback===undefined?0:fallback;
+  if(typeof value==='number')return Number.isFinite(value)?value:(fallback||0);
+  let raw=String(value).trim().replace(/\s/g,'').replace(/[^0-9,.-]/g,'');
+  if(!raw)return fallback===undefined?0:fallback;
+  if(raw.includes(',')&&raw.includes('.')){
+    if(raw.lastIndexOf(',')>raw.lastIndexOf('.'))raw=raw.replace(/\./g,'').replace(',','.');
+    else raw=raw.replace(/,/g,'');
+  }else if(raw.includes(',')){
+    if(/^[1-9]\d{0,2}(,\d{3})+$/.test(raw))raw=raw.replace(/,/g,'');
+    else raw=raw.replace(',','.');
+  }else if(raw.includes('.')&&/^[1-9]\d{0,2}(\.\d{3})+$/.test(raw))raw=raw.replace(/\./g,'');
+  const number=Number(raw);return Number.isFinite(number)?number:NaN;
+}
+function inventoryParseDelimited(text){
+  const sample=String(text||'').split(/\r?\n/).slice(0,5).join('\n');
+  const delimiters=[';',',','\t'];let delimiter=';';
+  const score=delimiters.map(d=>({d,n:(sample.split('\n')[0]||'').split(d).length})).sort((a,b)=>b.n-a.n);
+  delimiter=score[0].d;
+  const rows=[];let row=[],field='',quoted=false;
+  const input=String(text||'').replace(/^\uFEFF/,'');
+  for(let i=0;i<input.length;i++){
+    const ch=input[i],next=input[i+1];
+    if(ch==='"'&&quoted&&next==='"'){field+='"';i++;continue;}
+    if(ch==='"'){quoted=!quoted;continue;}
+    if(ch===delimiter&&!quoted){row.push(field);field='';continue;}
+    if((ch==='\n'||ch==='\r')&&!quoted){
+      if(ch==='\r'&&next==='\n')i++;
+      row.push(field);field='';
+      if(row.some(cell=>String(cell).trim()!==''))rows.push(row);
+      row=[];continue;
+    }
+    field+=ch;
+  }
+  row.push(field);if(row.some(cell=>String(cell).trim()!==''))rows.push(row);
+  if(rows.length<2)return [];
+  const headers=rows.shift().map((v,i)=>String(v||'').trim()||('Columna '+(i+1)));
+  return rows.map(cells=>Object.fromEntries(headers.map((key,i)=>[key,cells[i]===undefined?'':cells[i]])));
+}
+async function inventoryZipEntries(buffer){
+  const bytes=new Uint8Array(buffer),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),read16=o=>view.getUint16(o,true),read32=o=>view.getUint32(o,true);
+  let end=-1;for(let i=bytes.length-22;i>=Math.max(0,bytes.length-65558);i--)if(read32(i)===0x06054b50){end=i;break;}
+  if(end<0)throw new Error('El archivo no contiene una estructura XLSX/ZIP válida.');
+  const count=read16(end+10),central=read32(end+16),files=new Map();let offset=central;
+  for(let i=0;i<count;i++){
+    if(read32(offset)!==0x02014b50)throw new Error('Índice ZIP XLSX inválido.');
+    const method=read16(offset+10),compressedSize=read32(offset+20),nameLen=read16(offset+28),extraLen=read16(offset+30),commentLen=read16(offset+32),localOffset=read32(offset+42);
+    const name=new TextDecoder().decode(bytes.slice(offset+46,offset+46+nameLen));
+    const localNameLen=read16(localOffset+26),localExtraLen=read16(localOffset+28),dataStart=localOffset+30+localNameLen+localExtraLen;
+    const compressed=bytes.slice(dataStart,dataStart+compressedSize);let plain;
+    if(method===0)plain=compressed;
+    else if(method===8){
+      if(typeof DecompressionStream!=='function')throw new Error('Este equipo no admite descompresión XLSX. Guarde el archivo como CSV para importarlo.');
+      const stream=new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      plain=new Uint8Array(await new Response(stream).arrayBuffer());
+    }else{offset+=46+nameLen+extraLen+commentLen;continue;}
+    files.set(name,new TextDecoder().decode(plain));
+    offset+=46+nameLen+extraLen+commentLen;
+  }
+  return files;
+}
+async function inventoryParseXlsx(buffer){
+  const files=await inventoryZipEntries(buffer),parseXml=name=>{const value=files.get(name);if(!value) return null;const doc=new DOMParser().parseFromString(value,'application/xml');if(doc.querySelector('parsererror'))throw new Error('XML XLSX inválido: '+name);return doc;};
+  const workbook=parseXml('xl/workbook.xml'),rels=parseXml('xl/_rels/workbook.xml.rels');if(!workbook||!rels)throw new Error('El XLSX no contiene libro/relaciones válidas.');
+  const sheet=workbook.getElementsByTagName('sheet')[0];if(!sheet)throw new Error('El XLSX no contiene hojas.');
+  const relId=sheet.getAttribute('r:id')||sheet.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');
+  const relation=Array.from(rels.getElementsByTagName('Relationship')).find(x=>x.getAttribute('Id')===relId);
+  let target=relation&&relation.getAttribute('Target')||'worksheets/sheet1.xml';
+  const sheetPath=target.startsWith('/')?target.slice(1):(target.startsWith('xl/')?target:'xl/'+target.replace(/^\.\//,''));
+  const sheetDoc=parseXml(sheetPath);if(!sheetDoc)throw new Error('No se encontró la primera hoja del XLSX.');
+  const sharedDoc=parseXml('xl/sharedStrings.xml'),shared=sharedDoc?Array.from(sharedDoc.getElementsByTagName('si')).map(si=>Array.from(si.getElementsByTagName('t')).map(t=>t.textContent||'').join('')):[];
+  const columnIndex=ref=>{const letters=String(ref||'').replace(/[0-9]/g,'');let n=0;for(const ch of letters)n=n*26+ch.charCodeAt(0)-64;return Math.max(0,n-1);};
+  const rows=Array.from(sheetDoc.getElementsByTagName('row')).map(row=>{
+    const cells=[];Array.from(row.getElementsByTagName('c')).forEach(cell=>{
+      const idx=columnIndex(cell.getAttribute('r')),type=cell.getAttribute('t'),v=cell.getElementsByTagName('v')[0],inline=cell.getElementsByTagName('is')[0];
+      let value=v?v.textContent||'':inline?Array.from(inline.getElementsByTagName('t')).map(t=>t.textContent||'').join(''):'';
+      if(type==='s')value=shared[Number(value)]||'';
+      cells[idx]=value;
+    });return cells;
+  }).filter(row=>row.some(v=>v!==undefined&&String(v).trim()!==''));
+  if(rows.length<2)return [];
+  const headers=rows.shift().map((v,i)=>String(v||'').trim()||('Columna '+(i+1)));
+  return rows.map(cells=>Object.fromEntries(headers.map((key,i)=>[key,cells[i]===undefined?'':cells[i]])));
+}
+function inventoryIsProductRecord(row){
+  if(!row||typeof row!=='object'||Array.isArray(row))return false;
+  const keys=Object.keys(row).map(inventoryImportKey);
+  const hasDescription=keys.some(k=>['desc','descripcion','description','nombre','producto','product','name'].includes(k));
+  const hasIdentifier=keys.some(k=>['code','codigo','sku','ean','barcode','codigobarras','referencia','id'].includes(k));
+  return hasDescription&&hasIdentifier;
+}
+function inventoryExtractProductRows(root){
+  if(Array.isArray(root))return root.filter(inventoryIsProductRecord);
+  if(inventoryIsProductRecord(root))return [root];
+  const recognized=new Set(['products','product','productos','inventario','inventory','articulos','catalogo','catalog','maestroproductos','inventariomaestro']);
+  const containers=[root,root&&root.data,root&&root.data&&root.data.collections,root&&root.state,root&&root.state&&root.state.collections,root&&root.backup,root&&root.backup&&root.backup.collections,root&&root.database,root&&root.db,root&&root.collections,root&&root.payload];
+  const candidates=[];
+  containers.forEach(container=>{
+    if(!container||typeof container!=='object'||Array.isArray(container))return;
+    Object.keys(container).forEach(key=>{
+      if(!recognized.has(inventoryImportKey(key)))return;
+      const value=container[key],rows=Array.isArray(value)?value:(value&&typeof value==='object'?Object.values(value):[]);
+      const filtered=rows.filter(inventoryIsProductRecord);
+      if(filtered.length)candidates.push(filtered);
+    });
+  });
+  candidates.sort((a,b)=>b.length-a.length);
+  return candidates[0]||[];
+}
+function inventoryImportFields(){
+  return [
+    {id:'code',label:'Código interno / EAN',aliases:['codigo','code','codigoproducto','productcode','referencia','id']},
+    {id:'sku',label:'SKU',aliases:['sku','codigosku','stockkeepingunit']},
+    {id:'barcode',label:'Código de barras',aliases:['barcode','ean','ean13','codigobarras','codigodebarras']},
+    {id:'desc',label:'Descripción',aliases:['descripcion','description','nombre','producto','product','name']},
+    {id:'brand',label:'Marca',aliases:['marca','brand','fabricante']},
+    {id:'dept',label:'Departamento',aliases:['departamento','depto','dept','department']},
+    {id:'cat',label:'Categoría',aliases:['categoria','category','familia']},
+    {id:'subcat',label:'Subcategoría',aliases:['subcategoria','subcat','subcategory','subfamilia']},
+    {id:'unit',label:'Unidad base',aliases:['unidad','unidadmedida','um','unit','medida']},
+    {id:'stock',label:'Existencia',aliases:['existencia','stock','cantidad','cantidadactual','qty','quantity','existenciaactual']},
+    {id:'min',label:'Stock mínimo',aliases:['minimo','stockminimo','stockmin','min','minstock']},
+    {id:'cost',label:'Costo unitario',aliases:['costo','cost','costounitario','cpp','costopromedio']},
+    {id:'price',label:'Precio de venta',aliases:['precio','price','precioventa','pvp','preciodetalle']},
+    {id:'taxRate',label:'Alícuota IVA %',aliases:['iva','alicuota','taxrate','tasaiva','porcentajeiva']}
+  ];
+}
+function inventoryImportGuess(headers,field){
+  const aliases=field.aliases.map(inventoryImportKey),normalized=headers.map(inventoryImportKey);
+  let idx=normalized.findIndex(h=>aliases.includes(h));
+  if(idx<0)idx=normalized.findIndex(h=>aliases.some(a=>a.length>3&&(h.includes(a)||a.includes(h))));
+  return idx>=0?headers[idx]:'';
+}
+function inventoryImportProduct(row,mapping,index,usedCodes,usedSkus){
+  const value=id=>{const key=mapping[id];return key&&row[key]!==undefined?row[key]:row[id]!==undefined?row[id]:'';};
+  const desc=String(value('desc')||'').trim();if(!desc)return{error:'Falta descripción.'};
+  let code=String(value('code')||value('barcode')||value('sku')||'').trim();
+  if(!code){let n=index+1;do{code='IMP'+String(n++).padStart(7,'0');}while(usedCodes.has(code));}
+  const sku=String(value('sku')||code).trim();
+  if(usedCodes.has(code)||usedSkus.has(sku))return{duplicate:true,code,sku};
+  const stock=inventoryImportNumber(value('stock'),0),min=inventoryImportNumber(value('min'),0),cost=inventoryImportNumber(value('cost'),0),price=inventoryImportNumber(value('price'),0);
+  if(![stock,min,cost,price].every(Number.isFinite)||stock<0||min<0||cost<0||price<0)return{error:'Existencia, mínimo, costo o precio inválido.'};
+  const unit=String(value('unit')||'und').trim()||'und',rawTax=value('taxRate'),taxRate=inventoryImportNumber(rawTax!==''&&rawTax!==null?rawTax:(row.tax&&row.tax.rate!==undefined?row.tax.rate:((row.tax&&row.tax.type)||row.taxType)==='E'?0:((row.tax&&row.tax.type)||row.taxType)==='R'?8:((row.tax&&row.tax.type)||row.taxType)==='A'?31:16),16);
+  if(!Number.isFinite(taxRate)||![0,8,16,31].includes(taxRate))return{error:'Alícuota IVA inválida; use 0, 8, 16 o 31 %.'};
+  const taxType=taxRate===0?'E':taxRate===8?'R':taxRate===31?'A':'G';
+  const tax=row.tax&&typeof row.tax==='object'?{...row.tax,type:taxType,rate:taxRate,igtf:row.tax.igtf!==false,percRate:inventoryImportNumber(row.tax.percRate,0),codeSeniat:String(row.tax.codeSeniat|| (taxType==='E'?'EXENTO-0':taxType==='R'?'RED-08':taxType==='A'?'ADIC-31':'GRAV-16'))}:{type:taxType,rate:taxRate,igtf:true,percRate:0,codeSeniat:taxType==='E'?'EXENTO-0':taxType==='R'?'RED-08':taxType==='A'?'ADIC-31':'GRAV-16'};
+  let presentations=Array.isArray(row.presentations)?row.presentations:null;
+  if(!presentations&&typeof row.presentations==='string'){try{const parsed=JSON.parse(row.presentations);if(Array.isArray(parsed))presentations=parsed;}catch{}}
+  presentations=(presentations||[{name:'Unidad individual',unit,factor:1,barcode:String(value('barcode')||code),price}]).map((p,i)=>({name:String(p.name||'Presentación '+(i+1)),unit:String(p.unit||unit),factor:inventoryImportNumber(p.factor,1),barcode:String(p.barcode||''),price:inventoryImportNumber(p.price,price)})).filter(p=>Number.isFinite(p.factor)&&p.factor>0&&Number.isFinite(p.price)&&p.price>=0);
+  if(!presentations.length)presentations=[{name:'Unidad individual',unit,factor:1,barcode:String(value('barcode')||code),price}];
+  const product={
+    code,sku,desc,brand:String(value('brand')||'').trim(),dept:String(value('dept')||'General').trim(),cat:String(value('cat')||'General').trim(),subcat:String(value('subcat')||'General').trim(),
+    loc:String(row.loc||row.location||''),unit,stock,min,cost,freight:inventoryImportNumber(row.freight,0),price,photo:String(row.photo||''),
+    pricing:row.pricing&&typeof row.pricing==='object'?row.pricing:{motor:'cost',mode:'auto',bcvRate:S.cfg.rate,parallelRate:r2(S.cfg.rate*1.22),markupCost:40,markupSale:28.57,gaps:[{name:'Detal / Mostrador',gapPct:0,markupCost:40,price},{name:'Bar / Restaurante',gapPct:6,markupCost:31.6,price:r2(price*.94)},{name:'Mayorista',gapPct:12,markupCost:23.2,price:r2(price*.88)},{name:'Distribuidor',gapPct:18,markupCost:14.8,price:r2(price*.82)}]},
+    presentations,tax,assocSuppliers:Array.isArray(row.assocSuppliers)?row.assocSuppliers:[],isKit:!!row.isKit,kitItems:Array.isArray(row.kitItems)?row.kitItems:[],volumeMl:row.volumeMl||'',alcoholPct:row.alcoholPct||''
+  };
+  usedCodes.add(code);usedSkus.add(sku);return{product};
+}
+async function inventoryImportDlg(){
+  if(!['admin','contador'].includes((activeUser()||{}).role)){msg('La carga del inventario maestro requiere autorización de administrador o contador.','bad');return;}
+  const fields=inventoryImportFields();let records=[],headers=[],mapping={},fileName='',sourceType='',busy=false;
+  const el=h('<div class="form" style="gap:10px"><div class="hint">Importador universal: detecta productos aunque el archivo contenga otras colecciones. Solo se importarán productos al inventario operativo; clientes, proveedores, ventas, compras y movimientos históricos se ignoran. No se crea saldo fiscal durante la importación.</div><div class="row" style="flex-wrap:wrap"><button class="btn primary" id="imChoose">Seleccionar CSV, Excel o JSON</button><input id="imFile" type="file" accept=".csv,.json,.xlsx" hidden><span id="imFileName" class="hint">Ningún archivo seleccionado.</span></div><div id="imMappings" class="newgrid"></div><div id="imPreview" class="hint">Seleccione un archivo para detectar productos y configurar el mapeo.</div></div>');
+  const input=$('#imFile',el),mappingBox=$('#imMappings',el),preview=$('#imPreview',el);
+  const getPlan=()=>{
+    const usedCodes=new Set((S.products||[]).map(p=>String(p.code))),usedSkus=new Set((S.products||[]).map(p=>String(p.sku||'')));
+    const products=[],duplicates=[],errors=[];
+    records.forEach((row,index)=>{
+      const result=inventoryImportProduct(row,mapping,index,usedCodes,usedSkus);
+      if(result.product)products.push(result.product);
+      else if(result.duplicate)duplicates.push(result);
+      else errors.push({row:index+2,error:result.error});
+    });
+    return{products,duplicates,errors};
+  };
+  const draw=()=>{
+    mappingBox.innerHTML=fields.map(field=>{
+      const options=['<option value="">— No importar —</option>'].concat(headers.map(header=>'<option value="'+esc(header)+'" '+(mapping[field.id]===header?'selected':'')+'>'+esc(header)+'</option>')).join('');
+      return '<div class="f"><label for="imMap_'+field.id+'">'+esc(field.label)+'</label><select class="fld" id="imMap_'+field.id+'" data-im-map="'+field.id+'">'+options+'</select></div>';
+    }).join('');
+    if(!records.length){preview.textContent='No se detectaron registros de productos.';return;}
+    const plan=getPlan(),sample=plan.products.slice(0,8);
+    preview.innerHTML='<div class="kpis"><div class="kpi"><span>Filas detectadas</span><b>'+records.length+'</b></div><div class="kpi"><span>Nuevos productos válidos</span><b>'+plan.products.length+'</b></div><div class="kpi"><span>Duplicados omitidos</span><b>'+plan.duplicates.length+'</b></div><div class="kpi"><span>Filas con error</span><b>'+plan.errors.length+'</b></div></div><div class="hint">Vista previa de '+sample.length+' de '+plan.products.length+' productos. Los duplicados por código o SKU no se sobrescriben.</div><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>SKU</th><th>Descripción</th><th class="r">Existencia</th><th class="r">Costo US$</th><th class="r">Precio US$</th><th>Unidad</th></tr></thead><tbody>'+sample.map(p=>'<tr><td class="mono">'+esc(p.code)+'</td><td class="mono">'+esc(p.sku)+'</td><td>'+esc(p.desc)+'</td><td class="r">'+fq(p.stock)+'</td><td class="r">'+nf(p.cost)+'</td><td class="r">'+nf(p.price)+'</td><td>'+esc(p.unit)+'</td></tr>').join('')+'</tbody></table></div>'+(plan.errors.length?'<p class="hint" style="color:var(--bad)">Primer error: fila '+plan.errors[0].row+' — '+esc(plan.errors[0].error)+'</p>':'')+(plan.duplicates.length?'<p class="hint">Primer duplicado omitido: '+esc(plan.duplicates[0].code)+' / '+esc(plan.duplicates[0].sku)+'</p>':'');
+  };
+  $('#imChoose',el).addEventListener('click',()=>input.click());
+  input.addEventListener('change',async()=>{
+    const file=input.files&&input.files[0];if(!file)return;
+    if(file.size>50*1024*1024){preview.textContent='El archivo supera el límite de 50 MB.';return;}
+    busy=true;fileName=file.name;$('#imFileName',el).textContent=fileName;preview.textContent='Leyendo y detectando colecciones…';
+    try{
+      const ext=file.name.split('.').pop().toLowerCase();let rows=[];
+      if(ext==='csv'){sourceType='CSV';rows=inventoryParseDelimited(await file.text());}
+      else if(ext==='json'){sourceType='JSON';const parsed=JSON.parse(await file.text());rows=inventoryExtractProductRows(parsed);}
+      else if(ext==='xlsx'){sourceType='XLSX';rows=await inventoryParseXlsx(await file.arrayBuffer());}
+      else throw new Error('Formato no admitido. Use CSV, XLSX o JSON.');
+      if(!Array.isArray(rows)||!rows.length)throw new Error('No se detectó una colección de productos válida en el archivo.');
+      records=rows;headers=Array.from(new Set(rows.flatMap(row=>Object.keys(row||{}))));mapping={};
+      fields.forEach(field=>{mapping[field.id]=inventoryImportGuess(headers,field);});
+      busy=false;draw();
+    }catch(error){records=[];headers=[];mapping={};busy=false;mappingBox.innerHTML='';preview.textContent='No se pudo leer el archivo: '+(error.message||error);}
+  });
+  mappingBox.addEventListener('change',e=>{const id=e.target.dataset.imMap;if(id){mapping[id]=e.target.value;const current=el.querySelector('#imMappings');if(current)drawPreviewOnly();}});
+  const drawPreviewOnly=()=>{const plan=getPlan(),sample=plan.products.slice(0,8);preview.innerHTML='<div class="kpis"><div class="kpi"><span>Filas detectadas</span><b>'+records.length+'</b></div><div class="kpi"><span>Nuevos productos válidos</span><b>'+plan.products.length+'</b></div><div class="kpi"><span>Duplicados omitidos</span><b>'+plan.duplicates.length+'</b></div><div class="kpi"><span>Filas con error</span><b>'+plan.errors.length+'</b></div></div><div class="hint">Vista previa de '+sample.length+' de '+plan.products.length+' productos.</div><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>SKU</th><th>Descripción</th><th class="r">Existencia</th><th class="r">Costo US$</th><th class="r">Precio US$</th><th>Unidad</th></tr></thead><tbody>'+sample.map(p=>'<tr><td>'+esc(p.code)+'</td><td>'+esc(p.sku)+'</td><td>'+esc(p.desc)+'</td><td class="r">'+fq(p.stock)+'</td><td class="r">'+nf(p.cost)+'</td><td class="r">'+nf(p.price)+'</td><td>'+esc(p.unit)+'</td></tr>').join('')+'</tbody></table></div>'+(plan.errors.length?'<p class="hint" style="color:var(--bad)">Primer error: fila '+plan.errors[0].row+' — '+esc(plan.errors[0].error)+'</p>':'');};
+  openWin({title:'Cargar inventario maestro · CSV / Excel / JSON',w:980,body:el,foot:[{label:'Cancelar'},{label:'Importar al inventario operativo',primary:true,fn:async()=>{
+    if(busy||!records.length){msg('Seleccione un archivo válido antes de importar.','bad');return false;}
+    const plan=getPlan();if(!plan.products.length){msg('No hay productos nuevos válidos para importar.','bad');return false;}
+    if(!confirm('Se agregarán '+plan.products.length+' productos al inventario operativo. Se omitirán '+plan.duplicates.length+' duplicados y '+plan.errors.length+' filas con error. No se alterará el libro fiscal. ¿Continuar?'))return false;
+    const rollback=JSON.parse(JSON.stringify(S)),batch='IMPORT-'+currentCaja().replace(/\W/g,'')+'-'+Date.now(),ts=Date.now();
+    try{
+      plan.products.forEach(product=>{S.products.push(product);if(Number(product.stock)>0)addKardex({ts,code:product.code,type:'APERTURA_IMPORTACION',dir:'IN',doc:batch,party:'Carga inicial de inventario maestro · '+fileName,qty:product.stock,stockAfter:product.stock,cost:product.cost,user:currentCajero()});});
+      const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollback);msg('SQLite no confirmó la importación. Se restauró el inventario anterior.','bad');return false;}
+      closeWin();msg('Inventario maestro importado: '+plan.products.length+' productos y '+fq(plan.products.reduce((n,p)=>n+p.stock,0))+' unidades operativas. El inventario fiscal no fue modificado.','ok');renderCatalog();inventoryDlg();return false;
+    }catch(error){restoreStateSnapshotIfNeeded(null,rollback);msg('No se pudo importar el inventario: '+error.message,'bad');return false;}
+  }}]});
+}
+function fiscalOpeningDlg(){
+  if(!['admin','contador'].includes((activeUser()||{}).role)){msg('La inicialización fiscal requiere autorización de administrador o contador.','bad');return;}
+  const ledger=window.SIFERInventoryLedgers.ensureFiscalInventory(S);
+  const products=(S.products||[]).filter(p=>Number(p.stock)>0).slice().sort((a,b)=>String(a.desc).localeCompare(String(b.desc),'es'));
+  const el=h('<div class="form" style="gap:10px"><div class="hint">Marque los productos con respaldo documental verificable. La cantidad inicial fiscal se copiará desde el inventario operativo al libro fiscal, sin sumar ni restar una sola unidad al stock maestro. Indique referencia exacta del documento de compra para cada artículo.</div><div class="f"><label for="foDate">Fecha de respaldo / apertura</label><input class="fld" id="foDate" type="date" value="'+isoD(Date.now())+'"></div><div class="gridwrap tallwrap"><table class="grid" style="min-width:1050px"><thead><tr><th></th><th>SKU / Código</th><th>Producto</th><th class="r">Stock operativo</th><th class="r">Fiscal actual</th><th class="r">Disponible para validar</th><th class="r">Cantidad respaldada</th><th>Factura / referencia</th></tr></thead><tbody id="foRows"></tbody></table></div><div class="hint" id="foSummary"></div></div>');
+  $('#foRows',el).innerHTML=products.map(p=>{
+    const fiscal=window.SIFERInventoryLedgers.fiscalBalance(S,p.code),available=Math.max(0,Number(p.stock)-fiscal);
+    return '<tr data-fo-code="'+esc(p.code)+'"><td><input type="checkbox" data-fo-check></td><td class="mono">'+esc(p.sku||p.code)+'<div class="sub">'+esc(p.code)+'</div></td><td>'+esc(p.desc)+'<div class="sub">'+esc(p.brand||'')+'</div></td><td class="r">'+fq(p.stock)+'</td><td class="r">'+fq(fiscal)+'</td><td class="r">'+fq(available)+'</td><td class="r"><input class="fld cell r" data-fo-qty value="'+fq(available)+'" inputmode="decimal" disabled></td><td><input class="fld cell" data-fo-doc placeholder="Nº de factura / soporte" disabled></td></tr>';
+  }).join('')||'<tr class="empty"><td colspan="8">No hay existencias operativas para inicializar.</td></tr>';
+  el.addEventListener('change',e=>{
+    if(e.target.matches('[data-fo-check]')){const row=e.target.closest('tr'),enabled=e.target.checked;row.querySelector('[data-fo-qty]').disabled=!enabled;row.querySelector('[data-fo-doc]').disabled=!enabled;}
+  });
+  openWin({title:'Auditoría e inicialización del inventario fiscal',w:1080,body:el,foot:[{label:'Cancelar'},{label:'Validar e inicializar inventario fiscal',primary:true,fn:async()=>{
+    const date=$('#foDate',el).value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){msg('Indique una fecha válida para el respaldo documental.','bad');return false;}
+    const selected=Array.from(el.querySelectorAll('tr[data-fo-code]')).filter(row=>row.querySelector('[data-fo-check]').checked).map(row=>({code:row.dataset.foCode,qty:inventoryImportNumber(row.querySelector('[data-fo-qty]').value,0),document:row.querySelector('[data-fo-doc]').value.trim()}));
+    if(!selected.length){msg('Seleccione al menos un producto con respaldo fiscal.','bad');return false;}
+    for(const item of selected){const p=prod(item.code),fiscal=window.SIFERInventoryLedgers.fiscalBalance(S,item.code),available=Math.max(0,Number(p&&p.stock||0)-fiscal);if(!p||!Number.isFinite(item.qty)||item.qty<=0||item.qty>available+1e-9||!item.document){msg('Revise '+(p&&p.desc||item.code)+': la cantidad debe ser mayor que cero, no superar el disponible y tener referencia documental.','bad');return false;}}
+    const rollback=JSON.parse(JSON.stringify(S)),batch='FISCAL-OPEN-'+currentCaja().replace(/\W/g,'')+'-'+Date.now(),ts=Date.parse(date+'T12:00:00')||Date.now();
+    try{
+      selected.forEach(item=>{const p=prod(item.code);window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:batch+':'+item.code,type:'APERTURA_FISCAL_INICIAL',dir:'IN',code:item.code,qty:item.qty,cost:p.cost,document:item.document,sourceId:batch,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});});
+      const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollback);msg('SQLite no confirmó la inicialización fiscal. Se restauró el libro fiscal anterior y el inventario operativo no cambió.','bad');return false;}
+      const units=r8(selected.reduce((n,x)=>n+x.qty,0));closeWin();renderCatalog();msg('Inicialización fiscal confirmada: '+selected.length+' productos y '+fq(units)+' unidades respaldadas. El inventario operativo permaneció intacto.','ok');inventoryDlg();return false;
+    }catch(error){restoreStateSnapshotIfNeeded(null,rollback);msg('No se pudo inicializar el inventario fiscal: '+error.message,'bad');return false;}
+  }}]});
+}
+
 function inventoryDlg(){
-  const el=h('<div class="form"><div class="invbar"><label for="invQ">Buscar</label><input class="fld" id="invQ" placeholder="SKU, código, marca, depto, categoría o descripción" autocomplete="off"><label class="chk"><input type="checkbox" id="invLow"> Solo bajo mínimo</label><button class="btn" id="btnNewProd">+ Nuevo en Blanco</button><button class="btn mini2" id="btnGoConteo">Conteo físico masivo…</button><button class="btn mini2" id="btnGoLabels">Habladores / Etiquetas SKU</button></div><div class="dim" id="invSum"></div><div class="gridwrap tallwrap"><table class="grid" style="min-width:1040px"><thead><tr><th>SKU / Código</th><th>Descripción / Marca</th><th>Depto. / Categoría / Subcat.</th><th>Pas.</th><th class="c" style="width:68px">U.M.</th><th class="c" style="width:90px">I.V.A.</th><th class="r">Existencia</th><th class="r">Mín.</th><th class="r">CPP unit. US$</th><th class="r">Valor inventario US$</th><th class="r">Precio US$</th><th class="c">Acciones</th></tr></thead><tbody id="invBody"></tbody></table></div></div>');
+  const el=h('<div class="form"><div class="invbar"><label for="invQ">Buscar</label><input class="fld" id="invQ" placeholder="SKU, código, marca, depto, categoría o descripción" autocomplete="off"><label class="chk"><input type="checkbox" id="invLow"> Solo bajo mínimo</label><button class="btn" id="btnNewProd">+ Nuevo en Blanco</button><button class="btn mini2" id="btnImportMaster">Cargar inventario maestro</button><button class="btn mini2" id="btnFiscalOpening">Auditoría fiscal inicial</button><button class="btn mini2" id="btnGoConteo">Conteo físico masivo…</button><button class="btn mini2" id="btnGoLabels">Habladores / Etiquetas SKU</button></div><div class="dim" id="invSum"></div><div class="gridwrap tallwrap"><table class="grid" style="min-width:1040px"><thead><tr><th>SKU / Código</th><th>Descripción / Marca</th><th>Depto. / Categoría / Subcat.</th><th>Pas.</th><th class="c" style="width:68px">U.M.</th><th class="c" style="width:90px">I.V.A.</th><th class="r">Existencia</th><th class="r">Mín.</th><th class="r">CPP unit. US$</th><th class="r">Valor inventario US$</th><th class="r">Precio US$</th><th class="c">Acciones</th></tr></thead><tbody id="invBody"></tbody></table></div></div>');
   const rows=()=>{
     const q=$('#invQ',el).value,low=$('#invLow',el).checked;
     return searchProducts(q,'Todas').filter(p=>!low||p.stock<=p.min);
@@ -2478,6 +2784,8 @@ function inventoryDlg(){
   });
   el.addEventListener('click',e=>{
     if(e.target.id==='btnNewProd'){productFormDlg(null,'gen');return;}
+    if(e.target.id==='btnImportMaster'){inventoryImportDlg();return;}
+    if(e.target.id==='btnFiscalOpening'){fiscalOpeningDlg();return;}
     if(e.target.id==='btnGoConteo'){conteoDlg();return;}
     if(e.target.id==='btnGoLabels'){labelGeneratorDlg();return;}
     const ed=e.target.closest('[data-edit]');if(ed){productFormDlg(ed.dataset.edit,'gen');return;}
@@ -4658,7 +4966,7 @@ function payDlg(draft){
       '<label class="chk"><input type="checkbox" id="payCreditChk"> Enviar saldo pendiente a <b>Cuentas por Cobrar (CxC)</b></label>'+
       '<span id="payCreditDaysWrap" class="row" style="margin-left:auto" hidden><label for="payCreditDays">Plazo crédito (días):</label><input class="fld r" id="payCreditDays" value="15" style="width:64px" inputmode="numeric"></span>'+
     '</div>'+
-    ''+(S.cfg.printMode==='DUAL_PRINTER'?'<div class="invbar" style="background:var(--alt);padding:7px 8px;border:1px solid var(--lo);margin:7px 0"><label for="payDocumentMode"><b>Documento de esta venta</b></label><select class="fld" id="payDocumentMode"><option value="TICKET">Ticket / Nota de venta · No fiscal</option><option value="FISCAL" '+((S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[currentCaja()]&&S.cfg.fiscalPrinters[currentCaja()].enabled)?'':'disabled')+'>Factura fiscal · SENIAT</option></select><p class="hint">Elija el documento antes de confirmar el cobro. La factura fiscal solo se emite por la máquina fiscal configurada para esta caja.</p></div>':'')+'<div class="gridwrap paywrap"><table class="grid"><thead><tr><th>Forma de pago</th><th class="c">Moneda</th><th class="r">Monto recibido</th><th></th><th>Aprobación CASHEA</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div><p class="hint">Solo CASHEA exige un token o aprobación real verificable. Los demás medios de pago no requieren referencia para confirmar la venta. Los pagos en divisas (efectivo US$ y Zelle) generan IGTF de 3 %; valide la aplicación fiscal según la operación real.</p></div>');
+    ''+(S.cfg.printMode==='DUAL_PRINTER'?'<div class="invbar" style="background:var(--alt);padding:7px 8px;border:1px solid var(--lo);margin:7px 0"><label for="payDocumentMode"><b>Forma de impresión de esta venta</b></label><select class="fld" id="payDocumentMode"><option value="TICKET">Ticket no fiscal · Toda la venta</option><option value="FISCAL" '+((S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[currentCaja()]&&S.cfg.fiscalPrinters[currentCaja()].enabled)?'':'disabled')+'>Factura fiscal · Toda la venta</option><option value="HYBRID" '+((S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[currentCaja()]&&S.cfg.fiscalPrinters[currentCaja()].enabled)?'':'disabled')+'>Impresión híbrida · Factura fiscal + ticket no fiscal</option></select><p class="hint">En modo híbrido, el POS asigna a la factura fiscal únicamente renglones cuya cantidad completa tenga respaldo fiscal suficiente; los demás renglones se imprimen en el ticket complementario. Ambos documentos quedan vinculados a una sola venta y un solo cobro.</p></div>':'')+'<div class="gridwrap paywrap"><table class="grid"><thead><tr><th>Forma de pago</th><th class="c">Moneda</th><th class="r">Monto recibido</th><th></th><th>Aprobación CASHEA</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div><p class="hint">Solo CASHEA exige un token o aprobación real verificable. Los demás medios de pago no requieren referencia para confirmar la venta. Los pagos en divisas (efectivo US$ y Zelle) generan IGTF de 3 %; valide la aplicación fiscal según la operación real.</p></div>');
   const amts=()=>{const o={};METHODS.forEach(m=>{o[m.id]=pn($('#pm-'+m.id,el).value);});return o;};
   const refs=()=>{const o={};METHODS.forEach(m=>{const inp=$('#pref-'+m.id,el);o[m.id]=inp?inp.value.trim():'';});return o;};
   let last=null;
@@ -4731,18 +5039,22 @@ function showSaleCompletion(sale){
   const change=r2(Math.max(0,Number(sale.change)||0));
   const rate=Number(sale.rate||S.cfg.rate)||1;
   const hasChange=change>=0.01;
-  const internalTicket=sale.documentMode==='INTERNAL_THERMAL'||sale.documentMode==='NO_PRINTER'||sale.docType==='TICKET-INTERNO';
+  const hybrid=sale.documentMode==='HYBRID',ticketDocument=sale.ticketDocument||null;
+  const internalTicket=sale.documentMode==='INTERNAL_THERMAL'||sale.documentMode==='NO_PRINTER'||sale.documentMode==='HYBRID'||sale.docType==='TICKET-INTERNO';
   const noPrinter=sale.documentMode==='NO_PRINTER';
+  const ticketStatus=ticketDocument&&ticketDocument.printStatus;
+  const completionNote=hybrid?'Venta híbrida vinculada. '+(sale.fiscal?'Factura fiscal emitida Nº '+esc(sale.fiscal.documentNumber)+'. ':'')+(ticketDocument?(ticketStatus==='sent'?'Ticket no fiscal enviado a la impresora térmica.':ticketStatus==='uncertain'?'La impresora no confirmó el ticket; consulte el equipo antes de reimprimir.':'Ticket no fiscal complementario pendiente de impresión.'):'No hubo renglones para ticket complementario.')+' El cobro se registró una sola vez.':(internalTicket?'El Ticket de Venta '+esc(pad(sale.no))+' quedó registrado en SQLite. No es válido como factura fiscal.':'La factura '+esc(pad(sale.no))+' fue registrada correctamente.')+' No hay vuelto pendiente.';
   const body=h('<div class="sale-completion">'+
     '<div class="sale-completion-icon '+(hasChange?'change':'success')+'">'+(hasChange?'↩':'✓')+'</div>'+
     '<div class="sale-completion-label">'+(hasChange?'VUELTO A ENTREGAR':'VENTA FINALIZADA')+'</div>'+
-    (hasChange?'<div class="sale-completion-amount">'+esc(usd(change))+'</div><div class="sale-completion-equivalent">Equivalente: <b>'+esc(bsf(r2(change*rate)))+'</b></div><p class="sale-completion-note">Entregue el vuelto en efectivo según la moneda acordada con el cliente. Si el excedente provino de un pago electrónico, gestione la devolución por ese mismo medio.</p>':'<p class="sale-completion-note">'+(internalTicket?'El Ticket de Venta '+esc(pad(sale.no))+' quedó registrado en SQLite. No es válido como factura fiscal.':'La factura '+esc(pad(sale.no))+' fue registrada correctamente.')+' No hay vuelto pendiente.</p>')+
-    (internalTicket?'<div class="sale-completion-ticket">TICKET DE VENTA · NO VÁLIDO COMO FACTURA FISCAL <b>'+esc(pad(sale.no))+'</b>':'<div class="sale-completion-ticket">Factura POS <b>'+esc(pad(sale.no))+'</b>')+(sale.fiscal?' · Documento fiscal <b>'+esc(sale.fiscal.documentNumber)+'</b> · Serial <b>'+esc(sale.fiscal.serial)+'</b>':'')+' · Total <b>'+esc(usd(r2(sale.total+sale.igtf)))+'</b></div>'+
+    (hasChange?'<div class="sale-completion-amount">'+esc(usd(change))+'</div><div class="sale-completion-equivalent">Equivalente: <b>'+esc(bsf(r2(change*rate)))+'</b></div><p class="sale-completion-note">Entregue el vuelto en efectivo según la moneda acordada con el cliente. Si el excedente provino de un pago electrónico, gestione la devolución por ese mismo medio.</p>':'<p class="sale-completion-note">'+completionNote+'</p>')+
+    (hybrid?'<div class="sale-completion-ticket">VENTA HÍBRIDA · <b>'+esc(pad(sale.no))+'</b>':'<div class="sale-completion-ticket">'+(internalTicket?'TICKET DE VENTA · NO VÁLIDO COMO FACTURA FISCAL':'Factura POS')+' <b>'+esc(pad(sale.no))+'</b>')+(sale.fiscal?' · Documento fiscal <b>'+esc(sale.fiscal.documentNumber)+'</b> · Serial <b>'+esc(sale.fiscal.serial)+'</b>':'')+' · Total <b>'+esc(usd(r2(sale.total+sale.igtf)))+'</b></div>'+
     '</div>');
-  openWin({title:hasChange?'Vuelto de la venta':'Venta finalizada',w:390,body,foot:[
-    {label:noPrinter?'Ver comprobante interno':(internalTicket?'Ver / imprimir ticket interno':'Ver / imprimir ticket'),primary:true,fn:()=>{closeWin();showTicket(sale);return false;}},
-    {label:'Cerrar'}
-  ],onOpen:()=>{const node=$('.sale-completion',body);if(node)node.setAttribute('tabindex','-1');}});
+  const foot=[];
+  if(hybrid&&ticketDocument&&ticketDocument.lines.length)foot.push({label:'Ver / imprimir ticket complementario',primary:true,fn:()=>{closeWin();showTicket(ticketDocument);return false;}});
+  else if(!hybrid)foot.push({label:noPrinter?'Ver comprobante interno':(internalTicket?'Ver / imprimir ticket interno':'Ver / imprimir ticket'),primary:true,fn:()=>{closeWin();showTicket(sale);return false;}});
+  foot.push({label:'Cerrar'});
+  openWin({title:hasChange?'Vuelto de la venta':'Venta finalizada',w:390,body,foot,onOpen:()=>{const node=$('.sale-completion',body);if(node)node.setAttribute('tabindex','-1');}});
 }
 
 async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
@@ -4750,6 +5062,10 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   const printMode=S.cfg.printMode||'LEGACY';
   if(printMode==='NOT_CONFIGURED'){msg('Complete el asistente de impresoras antes de registrar ventas. Puede elegir impresora fiscal, ticket interno o trabajar sin impresora.','bad');return;}
   const dualMode=printMode==='DUAL_PRINTER';
+  const hybridMode=dualMode&&documentChoice==='HYBRID';
+  const hybridPlan=hybridMode?hybridCartPlan():null;
+  const hybridHasFiscal=!!(hybridPlan&&hybridPlan.fiscalIndexes.length),hybridHasTicket=!!(hybridPlan&&hybridPlan.ticketIndexes.length);
+  if(hybridMode&&hybridHasFiscal&&hybridHasTicket&&(Number(amts.cashea)||0)>0){msg('La impresión híbrida con Cashea requiere una distribución de financiación por documento que aún no está habilitada. Elija ticket o factura completa, o procese dos ventas separadas.','bad');return;}
   let fiscalNetworkInfo={role:'unknown',running:false,deviceId:''};
   if((dualMode||printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL'))&&window.posDesktop&&typeof window.posDesktop.networkStatus==='function'){
     try{fiscalNetworkInfo=await window.posDesktop.networkStatus()||fiscalNetworkInfo;}catch{}
@@ -4757,11 +5073,12 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   if(dualMode&&(!fiscalNetworkInfo.deviceId||!['standalone','server','client'].includes(fiscalNetworkInfo.role))){msg('No se pudo identificar esta estación en la red. No se registró la venta ni se envió ningún documento. Verifique la conexión LAN.','bad');return;}
   const thermalProfile=getThermalPrinterProfile(currentCaja(),fiscalNetworkInfo.deviceId,fiscalNetworkInfo.role==='standalone');
   const configuredFiscalProfile=S.cfg.fiscalPrinters&&S.cfg.fiscalPrinters[currentCaja()]||null;
-  if(dualMode&&!['TICKET','FISCAL'].includes(documentChoice)){msg('Seleccione si desea emitir un ticket no fiscal o una factura fiscal.','bad');return;}
-  if(dualMode&&documentChoice==='TICKET'&&(!thermalProfile||thermalProfile.enabled!==true||!thermalProfile.printerName)){msg('La impresora térmica no fiscal no está configurada para esta caja. Configure el dispositivo antes de cobrar.','bad');return;}
-  if(dualMode&&documentChoice==='FISCAL'&&(!configuredFiscalProfile||configuredFiscalProfile.enabled!==true)){msg('La impresora fiscal no está configurada para esta caja. Configure el dispositivo antes de emitir una factura.','bad');return;}
-  const internalTicketMode=dualMode?documentChoice==='TICKET':(printMode==='INTERNAL_THERMAL'||printMode==='NO_PRINTER');
-  const fiscalMode=dualMode?documentChoice==='FISCAL':(printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL'));
+  if(dualMode&&!['TICKET','FISCAL','HYBRID'].includes(documentChoice)){msg('Seleccione ticket no fiscal, factura fiscal o impresión híbrida.','bad');return;}
+  const printTicketMode=dualMode?(documentChoice==='TICKET'||(hybridMode&&hybridHasTicket)):(printMode==='INTERNAL_THERMAL'||printMode==='NO_PRINTER');
+  const fiscalMode=dualMode?(documentChoice==='FISCAL'||(hybridMode&&hybridHasFiscal)):(printMode==='FISCAL_PRINTER'||(printMode==='LEGACY'&&S.cfg.fiscalTipo==='MAQUINA_FISCAL'));
+  if(printTicketMode&&dualMode&&(!thermalProfile||thermalProfile.enabled!==true||!thermalProfile.printerName)){msg('La impresora térmica no fiscal no está configurada para esta caja. Configure el dispositivo antes de cobrar.','bad');return;}
+  if(fiscalMode&&dualMode&&(!configuredFiscalProfile||configuredFiscalProfile.enabled!==true)){msg('La impresora fiscal no está configurada para esta caja. Configure el dispositivo antes de emitir una factura.','bad');return;}
+  const internalTicketMode=dualMode?(documentChoice==='TICKET'||(hybridMode&&!hybridHasFiscal)):(printMode==='INTERNAL_THERMAL'||printMode==='NO_PRINTER');
   if(fiscalMode&&(!fiscalNetworkInfo.deviceId||!['standalone','server','client'].includes(fiscalNetworkInfo.role))){msg('No se pudo verificar el rol y la identidad de esta estación. La emisión fiscal queda bloqueada para evitar ejecutar la impresora local por error. Verifique la conexión LAN.','bad');return;}
   const fiscalProfile=fiscalMode?configuredFiscalProfile:null;
   const useSharedFiscal=fiscalMode&&(fiscalNetworkInfo.role==='client'||fiscalNetworkInfo.role==='server');
@@ -4786,8 +5103,13 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       code:l.code,
       desc:i.p.brand+' '+i.p.desc,
       unit:i.p.unit||'und',
-      qty:l.qty,
-      price:i.p.price,
+      qty:lineBaseQty(l),
+      presentationQty:l.qty,
+      presentationFactor:i.factor,
+      presentationName:l.presentationName||i.pr.name||'Unidad individual',
+      presentationUnit:l.presentationUnit||i.pr.unit||i.p.unit||'und',
+      presentationPrice:i.price,
+      price:i.basePrice,
       unitCost:i.p.cost,
       disc:l.disc,
       taxRate:i.rate,
@@ -4804,14 +5126,23 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     amount:r2(amts[m.id]),
     ref:(refs&&refs[m.id])||''
   }));
+  const fiscalLineIndexes=hybridMode?new Set(hybridPlan.fiscalIndexes):(fiscalMode?new Set(lines.map((_,i)=>i)):new Set());
+  const fiscalSaleLines=lines.filter((_,i)=>fiscalLineIndexes.has(i));
+  const ticketSaleLines=hybridMode?lines.filter((_,i)=>hybridPlan.ticketIndexes.includes(i)):(internalTicketMode?lines:[]);
+  const physicalRequired=new Map();
+  lines.forEach(line=>physicalRequired.set(String(line.code),(physicalRequired.get(String(line.code))||0)+Number(line.qty)));
+  const physicalShort=Array.from(physicalRequired.entries()).find(([code,qty])=>{const p=prod(code);return !p||Number(p.stock)+1e-9<qty;});
+  if(physicalShort){const p=prod(physicalShort[0]);msg('Venta bloqueada: inventario físico insuficiente para '+(p?p.desc:physicalShort[0])+'. Disponible: '+fq(p&&p.stock||0)+', requerido: '+fq(physicalShort[1])+'.','bad');return;}
   if(fiscalMode){
-    const physicalRequired=new Map();
-    lines.forEach(line=>physicalRequired.set(String(line.code),(physicalRequired.get(String(line.code))||0)+Number(line.qty)));
-    const physicalShort=Array.from(physicalRequired.entries()).find(([code,qty])=>{const p=prod(code);return !p||Number(p.stock)+1e-9<qty;});
-    if(physicalShort){const p=prod(physicalShort[0]);msg('Venta fiscal bloqueada: inventario físico insuficiente para '+(p?p.desc:physicalShort[0])+'. Disponible: '+fq(p&&p.stock||0)+', requerido: '+fq(physicalShort[1])+'.','bad');return;}
-    const fiscalCheck=window.SIFERInventoryLedgers&&window.SIFERInventoryLedgers.canApplyFiscalSale(S,lines);
+    const fiscalCheck=window.SIFERInventoryLedgers&&window.SIFERInventoryLedgers.canApplyFiscalSale(S,fiscalSaleLines);
     if(!fiscalCheck||!fiscalCheck.ok){const code=fiscalCheck&&fiscalCheck.code||'artículo';const p=prod(code);msg('Venta fiscal bloqueada: inventario fiscal insuficiente para '+(p?p.desc:code)+'. Disponible: '+fq(fiscalCheck&&fiscalCheck.available||0)+'. Registre/valide la existencia fiscal inicial o la compra fiscal antes de facturar.','bad');return;}
   }
+  const ticketFiscalOutByCode=ticketFiscalOutPlan(lines,ticketSaleLines,fiscalSaleLines),ticketFiscalRemainingByCode=new Map(ticketFiscalOutByCode),ticketFiscalOutLines=[];
+  S.cart.forEach((line,lineIndex)=>{
+    if(fiscalLineIndexes.has(lineIndex))return;
+    const code=String(line.code),out=Math.min(lineBaseQty(line),Number(ticketFiscalRemainingByCode.get(code)||0));
+    if(out>1e-9){ticketFiscalOutLines.push({lineIndex,code,qty:r8(out)});ticketFiscalRemainingByCode.set(code,Math.max(0,Number(ticketFiscalRemainingByCode.get(code)||0)-out));}
+  });
   const creditAmt=(isCred&&st.pending>=0.01)?r2(st.pending):0;
   const casheaAmt=r2(amts.cashea||0);
   let cxcNo=null,casheaNo=null;
@@ -4831,12 +5162,14 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   const ctrlNo=internalTicketMode?'':ctrlPrefix+String(currentCaja()).replace(/\W/g,'').slice(-4)+'-'+pad(ctrlNext,8);
   const sale={
     accountingSourceId:'SALE-'+String(currentCaja()).replace(/\W/g,'')+'-'+pad(invNo),
-    no:invNo,ctrlNo,docType:internalTicketMode?'TICKET-INTERNO':'01-FACTURA',transType:'01-REG',documentMode:internalTicketMode?printMode:(fiscalMode?'FISCAL':'LEGACY'),
+    no:invNo,ctrlNo,docType:hybridMode?'VENTA-HIBRIDA':(internalTicketMode?'TICKET-INTERNO':'01-FACTURA'),transType:'01-REG',documentMode:hybridMode?'HYBRID':(internalTicketMode?printMode:(fiscalMode?'FISCAL':'LEGACY')),
     ts,cashbox:currentCaja(),cashier:currentCajero(),client:Object.assign({},S.client),lines,
     sub:t.sub,disc:t.disc,base:t.base,
     baseG16:t.baseG16,baseR8:t.baseR8,baseA31:t.baseA31,baseEx:t.baseEx,
     iva:t.iva,total:t.total,igtf:st.igtf,rate:S.cfg.rate,pays,
-    change:r2(st.change),credit:creditAmt,void:false
+    change:r2(st.change),credit:creditAmt,void:false,
+    ticketFiscalOut:Array.from(ticketFiscalOutByCode.entries()).map(([code,qty])=>({code,qty})),
+    ticketFiscalOutLines:ticketFiscalOutLines.map(line=>({...line}))
   };
 
   if(casheaAmt>0){
@@ -4882,11 +5215,24 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
   }
 
   
+  let fiscalDocumentSale=sale,ticketDocumentSale=null;
+  if(hybridMode){
+    if(hybridHasFiscal&&hybridHasTicket){
+      const fiscalTotal=r2(fiscalSaleLines.reduce((sum,line)=>sum+Number(line.net||0)+Number(line.iva||0),0));
+      const fiscalRatio=sale.total>0?Math.max(0,Math.min(1,fiscalTotal/sale.total)):0;
+      fiscalDocumentSale=salePortion(sale,fiscalSaleLines,'FISCAL',false,fiscalRatio);
+      ticketDocumentSale=salePortion(sale,ticketSaleLines,'HYBRID',true,fiscalRatio);
+    }else if(hybridHasTicket){
+      ticketDocumentSale={...sale,lines:ticketSaleLines,documentMode:'HYBRID',docType:'TICKET-INTERNO'};
+    }
+    if(ticketDocumentSale){ticketDocumentSale.ticketReference='TKT-'+pad(invNo);ticketDocumentSale.printStatus='pending';sale.ticketDocument=ticketDocumentSale;}
+    if(fiscalDocumentSale!==sale)sale.fiscalDocumentSnapshot=JSON.parse(JSON.stringify(fiscalDocumentSale));
+  }
   let fiscalJob=null;
   if(fiscalMode){
     if(!Array.isArray(S.fiscalPrinterJobs))S.fiscalPrinterJobs=[];
     const idempotencyKey='SIFER360-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+String(invNo)+'-'+String(ts);
-    fiscalJob={id:'FISCAL-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+pad(invNo,8),idempotencyKey,cashbox:currentCaja(),saleNo:invNo,createdAt:ts,status:'pending',fiscalSerial:'',fiscalDocumentNumber:'',lastError:'',printerProvider:fiscalProfile.provider,printerModel:fiscalProfile.model,creditSequence:cxcNo,creditDays:cDays,saleSnapshot:JSON.parse(JSON.stringify(sale))};
+    fiscalJob={id:'FISCAL-'+String(currentCaja()).replace(/[^A-Za-z0-9]/g,'')+'-'+pad(invNo,8),idempotencyKey,cashbox:currentCaja(),saleNo:invNo,createdAt:ts,status:'pending',fiscalSerial:'',fiscalDocumentNumber:'',lastError:'',printerProvider:fiscalProfile.provider,printerModel:fiscalProfile.model,creditSequence:cxcNo,creditDays:cDays,saleSnapshot:JSON.parse(JSON.stringify(sale)),fiscalDocumentSnapshot:JSON.parse(JSON.stringify(fiscalDocumentSale))};
     S.fiscalPrinterJobs.push(fiscalJob);
     const journal=await save();
     if(!journal||!journal.ok){restoreStateSnapshotIfNeeded(journal,rollbackState);msg('SQLite no confirmó la intención de emisión fiscal. La impresora no recibió comandos y la venta no se registró.','bad');return;}
@@ -4901,10 +5247,10 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       company:{name:S.cfg.empresa,rif:S.cfg.rif,address:S.cfg.dir},
       customer:sale.client,
       exchangeRate:Number(sale.rate)||1,
-      lines:sale.lines.map(line=>({code:line.code,description:line.desc,unit:line.unit,quantity:line.qty,unitPriceUsd:line.price,unitPriceVes:r2(line.price*(Number(sale.rate)||1)),discountPercent:line.disc,taxRate:line.taxRate,taxType:line.taxType,netUsd:line.net,netVes:r2(line.net*(Number(sale.rate)||1)),ivaUsd:line.iva,ivaVes:r2(line.iva*(Number(sale.rate)||1))})),
-      totals:{subtotalUsd:sale.sub,subtotalVes:r2(sale.sub*(Number(sale.rate)||1)),discountUsd:sale.disc,discountVes:r2(sale.disc*(Number(sale.rate)||1)),taxableBaseUsd:sale.base,taxableBaseVes:r2(sale.base*(Number(sale.rate)||1)),ivaUsd:sale.iva,ivaVes:r2(sale.iva*(Number(sale.rate)||1)),igtfUsd:sale.igtf,igtfVes:r2(sale.igtf*(Number(sale.rate)||1)),totalUsd:sale.total,totalVes:r2(sale.total*(Number(sale.rate)||1)),amountDueUsd:r2(sale.total+sale.igtf),amountDueVes:r2((sale.total+sale.igtf)*(Number(sale.rate)||1))},
-      payments:sale.pays,
-      changeUsd:sale.change,
+      lines:fiscalDocumentSale.lines.map(line=>({code:line.code,description:line.desc,unit:line.presentationUnit||line.unit,quantity:line.presentationQty||line.qty,unitPriceUsd:line.presentationPrice||line.price,unitPriceVes:r2((line.presentationPrice||line.price)*(Number(sale.rate)||1)),discountPercent:line.disc,taxRate:line.taxRate,taxType:line.taxType,netUsd:line.net,netVes:r2(line.net*(Number(sale.rate)||1)),ivaUsd:line.iva,ivaVes:r2(line.iva*(Number(sale.rate)||1))})),
+      totals:{subtotalUsd:fiscalDocumentSale.sub,subtotalVes:r2(fiscalDocumentSale.sub*(Number(sale.rate)||1)),discountUsd:fiscalDocumentSale.disc,discountVes:r2(fiscalDocumentSale.disc*(Number(sale.rate)||1)),taxableBaseUsd:fiscalDocumentSale.base,taxableBaseVes:r2(fiscalDocumentSale.base*(Number(sale.rate)||1)),ivaUsd:fiscalDocumentSale.iva,ivaVes:r2(fiscalDocumentSale.iva*(Number(sale.rate)||1)),igtfUsd:fiscalDocumentSale.igtf,igtfVes:r2(fiscalDocumentSale.igtf*(Number(sale.rate)||1)),totalUsd:fiscalDocumentSale.total,totalVes:r2(fiscalDocumentSale.total*(Number(sale.rate)||1)),amountDueUsd:r2(fiscalDocumentSale.total+fiscalDocumentSale.igtf),amountDueVes:r2((fiscalDocumentSale.total+fiscalDocumentSale.igtf)*(Number(sale.rate)||1))},
+      payments:fiscalDocumentSale.pays,
+      changeUsd:fiscalDocumentSale.change,
       currency:'VES',
       displayCurrency:'USD'
     };
@@ -4967,13 +5313,19 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     }
   }
 
+const ticketFiscalByLine=new Map(ticketFiscalOutLines.map(line=>[line.lineIndex,line.qty]));
 S.cart.forEach((l,lineIndex)=>{
     const p=prod(l.code);
-    if(fiscalMode)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':'+p.code+':'+lineIndex,type:'VENTA_FISCAL',dir:'OUT',code:p.code,qty:l.qty,cost:p.cost,document:'FAC-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
-    p.stock=Math.max(0,r2(p.stock-l.qty));
+    const baseQty=lineBaseQty(l);
+    if(fiscalLineIndexes.has(lineIndex))window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':'+p.code+':'+lineIndex,type:'VENTA_FISCAL',dir:'OUT',code:p.code,qty:baseQty,cost:p.cost,document:'FAC-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
+    else{
+      const fiscalOut=Number(ticketFiscalByLine.get(lineIndex)||0);
+      if(fiscalOut>1e-9)window.SIFERInventoryLedgers.applyFiscalMovement(S,{eventId:sale.accountingSourceId+':TICKET:'+p.code+':'+lineIndex,type:'SALIDA_TICKET_NO_FISCAL',dir:'OUT',code:p.code,qty:fiscalOut,cost:p.cost,document:'TKT-'+pad(invNo),sourceId:sale.accountingSourceId,timestamp:ts,cashbox:currentCaja(),user:currentCajero()});
+    }
+    p.stock=Math.max(0,r2(p.stock-baseQty));
     addKardex({
       ts,code:p.code,type:'VENTA',dir:'OUT',doc:(internalTicketMode?'TKT-':'FAC-')+pad(invNo),cashbox:currentCaja(),
-      party:S.client.name,qty:l.qty,stockAfter:p.stock,cost:p.cost,user:S.cfg.cajero
+      party:S.client.name,qty:baseQty,stockAfter:p.stock,cost:p.cost,user:currentCajero()
     });
   });
   if(creditAmt>0){
@@ -4991,11 +5343,32 @@ S.cart.forEach((l,lineIndex)=>{
       payments:paidUpfront>0?[{ts,method:'Pago inicial en caja',cur:'USD',amountUsd:paidUpfront,amountBs:r2(paidUpfront*S.cfg.rate),ref:(internalTicketMode?'TKT-':'FAC-')+pad(invNo),note:'Abono en caja al registrar la venta'}]:[]
     });
   }
+  if(sale.ticketDocument&&sale.fiscal)sale.ticketDocument.fiscal=sale.fiscal;
   S.sales.push(sale);S.invoice=Math.max(S.invoice,invNo+1);S.cart=[];S.sel=-1;S.client=S.clients[0];
   const persisted=await save();if(!persisted||!persisted.ok){restoreStateSnapshotIfNeeded(persisted,rollbackState);renderAll();msg(fiscalMode?'La impresora fiscal pudo haber emitido el documento, pero SQLite no confirmó la venta. NO reimprima ni repita el cobro; consulte la máquina y reconcilie la intención fiscal pendiente.':'SQLite no confirmó la venta; se mostró el último estado durable disponible y no se confirmó la factura.','bad');return;}
-  renderAll();
-  msg((internalTicketMode?'Ticket de Venta ':'Factura ')+pad(sale.no)+' procesado por '+usd(r2(sale.total+sale.igtf))+(casheaAmt>0?' (Financiado Cashea: '+usd(casheaAmt)+')':'')+(creditAmt>0?' (Saldo a CxC: '+usd(creditAmt)+')':'')+'.');
-  showSaleCompletion(sale);
+  renderAll();showSaleCompletion(sale);
+  if(hybridMode&&sale.ticketDocument){
+    try{
+      const net=await window.posDesktop.networkStatus(),thermal=getThermalPrinterProfile(sale.cashbox,String(net&&net.deviceId||''),String(net&&net.role||'')==='standalone');
+      if(!thermal||thermal.enabled!==true||!thermal.printerName||typeof window.posDesktop.printerPrintTicket!=='function')throw new Error('No hay una impresora térmica configurada para esta caja.');
+      const columns=thermal.columns||42;
+      sale.ticketDocument.printStatus='uncertain';sale.ticketDocument.printStartedAt=Date.now();
+      const intentSaved=await save();
+      if(!intentSaved||!intentSaved.ok)throw new Error('SQLite no confirmó la intención de impresión; por seguridad el ticket no se envió. Verifique el estado antes de reintentar.');
+      const result=await window.posDesktop.printerPrintTicket(thermal.printerName,ticketText(sale.ticketDocument,columns),{columns});
+      if(result&&result.ok===false)throw new Error(result.message||'La impresora rechazó el ticket.');
+      sale.ticketDocument.printStatus='sent';sale.ticketDocument.printedAt=Date.now();sale.ticketDocument.printMessage=String(result&&result.message||'Enviado a la impresora térmica.');
+      const printSaved=await save();
+      if(!printSaved||!printSaved.ok)msg('La factura fiscal y la venta quedaron guardadas; el ticket se envió, pero SQLite no confirmó el estado de impresión. No repita el cobro.','bad');
+      const note=$('.sale-completion-note');if(note&&!hasChange)note.textContent='Venta híbrida vinculada. Factura fiscal emitida Nº '+(sale.fiscal&&sale.fiscal.documentNumber||'')+'. Ticket no fiscal enviado a la impresora térmica. El cobro se registró una sola vez.';
+    }catch(error){
+      sale.ticketDocument.printStatus='uncertain';sale.ticketDocument.printError=String(error&&error.message||error).slice(0,500);
+      await save();
+      const note=$('.sale-completion-note');if(note&&!hasChange)note.textContent='Venta híbrida vinculada. La impresora no confirmó el ticket; consulte el equipo antes de reimprimir. El cobro se registró una sola vez.';
+      msg('La factura fiscal y la venta quedaron guardadas, pero la impresora térmica no confirmó el ticket complementario. Consulte la impresora antes de reimprimir.','bad');
+    }
+  }
+  msg((hybridMode?'Venta híbrida ':'')+(internalTicketMode?'Ticket de Venta ':'Factura ')+pad(sale.no)+' procesado por '+usd(r2(sale.total+sale.igtf))+(casheaAmt>0?' (Financiado Cashea: '+usd(casheaAmt)+')':'')+(creditAmt>0?' (Saldo a CxC: '+usd(creditAmt)+')':'')+'.');
 }
 
 const TICKET_FONTS=[
@@ -5026,7 +5399,7 @@ function ticketText(s){
   const ctr=t=>{t=cut(t,Wd);return ' '.repeat(Math.max(0,Math.floor((Wd-t.length)/2)))+t;};
   const row=(a,b)=>{a=String(a);b=String(b);if(b.length>=Wd)return cut(b,Wd);const left=cut(a,Math.max(0,Wd-b.length-1));return left+' '.repeat(Math.max(1,Wd-left.length-b.length))+b;};
   const L=[];
-  const internalTicket=s.documentMode==='INTERNAL_THERMAL'||s.documentMode==='NO_PRINTER'||s.docType==='TICKET-INTERNO';
+  const internalTicket=s.documentMode==='INTERNAL_THERMAL'||s.documentMode==='NO_PRINTER'||s.documentMode==='HYBRID'||s.docType==='TICKET-INTERNO';
   if(s.void)L.push(dln,ctr('*** VENTA ANULADA ***'),dln);
   L.push(ctr(cut(S.cfg.empresa.toUpperCase(),Wd)),ctr('RIF: '+S.cfg.rif));
   if(internalTicket)L.push(dln,ctr('TICKET DE VENTA'),ctr('NO VÁLIDO COMO FACTURA FISCAL'),dln);
@@ -5040,10 +5413,12 @@ function ticketText(s){
     ln,row('CANT·U.M. x PRECIO (IVA)','SUBTOTAL US$'),ln
   );
   s.lines.forEach(l=>{
-    const uLabel=(l.unit||'und').toUpperCase();
+    const uLabel=(l.presentationUnit||l.unit||'und').toUpperCase();
+    const displayQty=Number(l.presentationQty)>0?Number(l.presentationQty):Number(l.qty||0);
+    const displayPrice=Number(l.presentationPrice)>0?Number(l.presentationPrice):Number(l.price||0);
     const tTag=l.taxRate===0?'(E 0%)':(l.taxRate===8?'(R 8%)':(l.taxRate===31?'(A 31%)':'(G 16%)'));
     L.push(cut(l.desc,Wd));
-    L.push(row('  '+fq(l.qty)+' '+uLabel+' x '+nf(l.price)+' '+tTag+(l.disc?' (-'+fq(l.disc)+'%)':''),nf(l.net)));
+    L.push(row('  '+fq(displayQty)+' '+uLabel+' x '+nf(displayPrice)+' '+tTag+(l.disc?' (-'+fq(l.disc)+'%)':''),nf(l.net)));
   });
   L.push(ln,row('Subtotal US$',nf(s.sub)));
   if(s.disc)L.push(row('Descuento US$','-'+nf(s.disc)));
@@ -5111,9 +5486,11 @@ function showTicket(s){
   openWin({title:(noPrinter?'Comprobante interno — Nº ':'Ticket de Venta — Nº ')+pad(s.no),w:500,body:el,foot:[
     {label:noPrinter?'Sin impresora configurada':'Imprimir 80mm',left:true,fn:async()=>{
       if(noPrinter){msg('Esta instalación está configurada sin impresora. El comprobante queda guardado en SQLite y puede imprimirse después de configurar un dispositivo.');return false;}
+      if(s.documentMode==='HYBRID'&&s.printStatus==='sent'&&!confirm('Este ticket ya fue enviado a la impresora. Reimprimir puede generar un duplicado físico. ¿Desea continuar?'))return false;
+      if(s.documentMode==='HYBRID'&&s.printStatus==='uncertain'&&!confirm('La impresora no confirmó el envío anterior. Revise primero el papel/salida física. ¿Desea intentar imprimir otra copia?'))return false;
       let stationId='',stationRole='unknown';try{const net=await window.posDesktop.networkStatus();stationId=String(net&&net.deviceId||'');stationRole=String(net&&net.role||'unknown');}catch{}
       const thermal=getThermalPrinterProfile(s.cashbox,stationId,stationRole==='standalone');
-      if(s.documentMode==='DUAL_PRINTER'&&(!stationId||!['standalone','server','client'].includes(stationRole)||!thermal||thermal.enabled!==true||!thermal.printerName||!window.posDesktop||typeof window.posDesktop.printerPrintTicket!=='function')){
+      if((s.documentMode==='DUAL_PRINTER'||s.documentMode==='HYBRID')&&(!stationId||!['standalone','server','client'].includes(stationRole)||!thermal||thermal.enabled!==true||!thermal.printerName||!window.posDesktop||typeof window.posDesktop.printerPrintTicket!=='function')){
         msg('Ticket no enviado: esta estación no tiene una impresora térmica propia configurada para la caja de origen. No se utilizará la impresora predeterminada de Windows para evitar interferir con la fiscal.','bad');
         return false;
       }
@@ -5145,8 +5522,11 @@ async function registerSaleReturn(s,refresh){
   if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin('Autorizar devolución / nota de crédito de la venta '+pad(s.no)))return false;
   const box=String(s.cashbox||'');
   const already=(index)=>window.SIFERReturnsLedger.returnedQuantity(S,s,index);
-  const choices=(s.lines||[]).map((line,index)=>(index+1)+'. '+line.desc+' · SKU '+line.code+' · Vendido '+fq(line.qty)+' · Devuelto '+fq(already(index))+' · Disponible '+fq(Math.max(0,Number(line.qty)-already(index)))+' · '+usd(Number(line.net||0)+Number(line.iva||0))).join('\n');
-  const raw=window.prompt('Renglones y cantidades a devolver (separe con punto y coma; ejemplo 1=1; 2=0.5):\n\n'+choices,'');
+  const choices=(s.lines||[]).map((line,index)=>{
+    const factor=Math.max(1e-8,Number(line.presentationFactor)||1),presentationQty=Number(line.presentationQty)>0?Number(line.presentationQty):Number(line.qty||0)/factor,returnedBase=already(index),availableBase=Math.max(0,Number(line.qty)-returnedBase),unit=String(line.presentationUnit||line.unit||'und');
+    return(index+1)+'. '+line.desc+' · SKU '+line.code+' · Vendido '+fq(presentationQty)+' '+unit+' ('+fq(line.qty)+' '+(line.unit||'und')+' base) · Devuelto '+fq(returnedBase)+' '+(line.unit||'und')+' base · Disponible '+fq(availableBase)+' '+(line.unit||'und')+' base · '+usd(Number(line.net||0)+Number(line.iva||0));
+  }).join('\n');
+  const raw=window.prompt('Renglones y cantidades a devolver en UNIDADES BASE (no en cajas/paquetes). Separe con punto y coma; ejemplo 1=12; 2=0.5:\n\n'+choices,'');
   if(raw===null||!raw.trim())return false;
   const lines=[];
   for(const part of raw.split(';')){
@@ -5177,7 +5557,7 @@ async function registerSaleReturn(s,refresh){
   }catch(error){msg('No se pudo reservar la numeración de la devolución/reembolso: '+error.message,'bad');return false;}
   const rollbackState=JSON.parse(JSON.stringify(S));
   try{
-    const note=window.SIFERReturnsLedger.applyReturn(S,prepared,{returnNo,refundNo,now:Date.now(),user:currentCajero()});
+    const note=window.SIFERReturnsLedger.applyReturn(S,prepared,{returnNo,refundNo,now:Date.now(),user:currentCajero(),inventoryLedger:window.SIFERInventoryLedgers});
     const persisted=await save();
     if(!persisted||!persisted.ok){
       restoreStateSnapshotIfNeeded(persisted,rollbackState);
@@ -5199,7 +5579,7 @@ async function registerSaleReturn(s,refresh){
 /* ---------- ventas del día / cierre ---------- */
 function salesDlg(){
   let selNo=null,armed=0;
-  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>'+(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER'?'Ticket':'Documento')+'</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver ticket</button><button class="btn" id="saReturn">Devolución / NC</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><div class="group" id="saReturns"></div><p class="hint" id="saNote"></p></div>');
+  const el=h('<div class="form"><div class="gridwrap saleswrap"><table class="grid" style="min-width:680px"><thead><tr><th>'+(S.cfg.printMode==='INTERNAL_THERMAL'||S.cfg.printMode==='NO_PRINTER'?'Ticket':'Documento / Ticket')+'</th><th>Hora</th><th>Cliente</th><th class="r">Total US$</th><th class="r">Total Bs.</th><th>Pago</th></tr></thead><tbody id="saBody"></tbody></table></div><div class="row"><button class="btn" id="saView">Ver documento</button><button class="btn" id="saViewHybridTicket">Ver ticket complementario</button><button class="btn" id="saReturn">Devolución / NC</button><button class="btn" id="saVoid">Anular venta</button></div><div class="cierre" id="saCierre"></div><div class="group" id="saReturns"></div><p class="hint" id="saNote"></p></div>');
   const todays=()=>S.sales.filter(s=>sameDay(s.ts)&&s.cashbox===currentCaja()).sort((a,b)=>b.no-a.no);
   const draw=()=>{
     const list=todays();
@@ -5216,22 +5596,27 @@ function salesDlg(){
     $('#saCierre',el).innerHTML='<table class="sumt"><thead><tr><th>Cierre por forma de pago</th><th>Ops.</th><th>Recibido</th></tr></thead><tbody>'+metRows+'</tbody></table><table class="sumt"><thead><tr><th>Totales del día</th><th>US$</th></tr></thead><tbody><tr><td>Ventas válidas</td><td>'+ok.length+'</td></tr><tr><td>Notas de crédito</td><td>'+returnNotes.length+'</td></tr><tr><td>Devoluciones</td><td>−'+nf(returnTotal)+'</td></tr><tr><td>Base imponible neta</td><td>'+nf(r2(sum(s=>s.base)-returnNotes.reduce((a,n)=>a+Number(n.base||0),0)))+'</td></tr><tr><td>IVA neto</td><td>'+nf(r2(sum(s=>s.iva)-returnIva))+'</td></tr><tr><td>IGTF 3 %</td><td>'+nf(sum(s=>s.igtf))+'</td></tr><tr class="tot"><td>Total neto facturado</td><td>'+nf(r2(sum(s=>s.total+s.igtf)-returnTotal))+'</td></tr><tr><td>Total neto en Bs. (a la tasa de cada venta)</td><td>'+nf(r2(sum(s=>(s.total+s.igtf)*s.rate)-returnNotes.reduce((a,n)=>a+Number(n.total||0)*Number(n.rate||S.cfg.rate||1),0)))+'</td></tr></tbody></table>';
     $('#saReturns',el).innerHTML=returnNotes.length?'<b>Notas de crédito / devoluciones del día</b><div class="gridwrap"><table class="grid"><thead><tr><th>Nota</th><th>Factura origen</th><th>Motivo</th><th class="r">Total</th><th class="r">CxC aplicado</th><th class="r">Reembolso</th></tr></thead><tbody>'+returnNotes.slice().sort((a,b)=>Number(b.ts)-Number(a.ts)).map(note=>'<tr><td class="mono">'+esc(note.id)+'</td><td>'+pad(note.saleNo)+'</td><td>'+esc(note.reason||'—')+'</td><td class="r">'+nf(note.total)+'</td><td class="r">'+nf(note.creditApplied)+'</td><td class="r">'+nf(note.refund)+'</td></tr>').join('')+'</tbody></table></div>':'';
     $('#saNote',el).textContent=list.some(s=>s.no<1043)&&!saved?'Las facturas 1038 a 1042 son ejemplos para mostrar el cierre.':'';
-    $('#saView',el).disabled=!selNo;$('#saReturn',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;$('#saVoid',el).disabled=!selNo||!!(S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja())||{}).void;
+    const selectedSale=S.sales.find(s=>s.no===selNo&&s.cashbox===currentCaja());
+    $('#saView',el).disabled=!selNo;
+    $('#saView',el).textContent=selectedSale&&selectedSale.documentMode==='HYBRID'&&selectedSale.fiscal?'Ver factura fiscal':'Ver documento';
+    $('#saViewHybridTicket',el).disabled=!(selectedSale&&selectedSale.documentMode==='HYBRID'&&selectedSale.ticketDocument&&!selectedSale.void);
+    $('#saReturn',el).disabled=!selNo||!!(selectedSale||{}).void;$('#saVoid',el).disabled=!selNo||!!(selectedSale||{}).void;
     $('#saVoid',el).textContent='Anular venta';
   };
   el.addEventListener('click',async e=>{
     const tr=e.target.closest('tr[data-no]');
     if(tr){selNo=+tr.dataset.no;armed=0;draw();return;}
     const s=S.sales.find(x=>x.no===selNo&&x.cashbox===currentCaja());
-    if(e.target.id==='saView'&&s){showTicket(s);}
+    if(e.target.id==='saView'&&s){showTicket(s.documentMode==='HYBRID'&&s.fiscal?fiscalSaleData(s):s.documentMode==='HYBRID'&&s.ticketDocument?s.ticketDocument:s);}
+    if(e.target.id==='saViewHybridTicket'&&s&&s.ticketDocument){showTicket(s.ticketDocument);}
     if(e.target.id==='saReturn'&&s&&!s.void){await registerSaleReturn(s,draw);}
     if(e.target.id==='saVoid'&&s&&!s.void&&s.fiscal){msg('Esta factura ya fue emitida por una máquina fiscal. No se permite anularla solo en el POS. Debe integrarse y ejecutarse la anulación/nota de crédito en la propia máquina.','bad');return;}
     if(e.target.id==='saVoid'&&s&&!s.void){
-      if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin((s.docType==='TICKET-INTERNO'?'Anular ticket ':'Anular factura ')+pad(s.no)))return;
+      if(window.SIFERAccess&&typeof window.SIFERAccess.requestPin==='function'&&!window.SIFERAccess.requestPin((s.docType==='TICKET-INTERNO'||(s.documentMode==='HYBRID'&&!s.fiscal)?'Anular ticket ':'Anular factura ')+pad(s.no)))return;
       // Until a documented refund/reversal workflow exists, never void a sale after
       // money or a third-party financing settlement has been collected.
       const saleCashbox=String(s.cashbox||currentCaja());
-      const saleDocument=(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no);
+      const saleDocument=((s.docType==='TICKET-INTERNO'||(s.documentMode==='HYBRID'&&!s.fiscal))?'TKT-':'FAC-')+pad(s.no);
       const sameSaleClient=x=>{
         const saleRif=String(s.client&&s.client.rif||'').trim();
         const receivableRif=String(x.client&&x.client.rif||'').trim();
@@ -5276,12 +5661,26 @@ function salesDlg(){
           if(p){
             p.stock=r2(p.stock+l.qty);
             addKardex({
-              code:p.code,type:'ANULACIÓN',dir:'IN',doc:(s.docType==='TICKET-INTERNO'?'TKT-':'FAC-')+pad(s.no),
+              code:p.code,type:'ANULACIÓN',dir:'IN',doc:(s.docType==='TICKET-INTERNO'||(s.documentMode==='HYBRID'&&!s.fiscal)?'TKT-':'FAC-')+pad(s.no),
               party:'Reingreso por anulación de venta ('+s.client.name+')',
               qty:l.qty,stockAfter:p.stock,cost:p.cost,user:S.cfg.cajero
             });
           }
         });
+        if(!isFiscalSale(s)&&Array.isArray(s.ticketFiscalOut)&&s.ticketFiscalOut.length){
+          const sourceId=s.accountingSourceId||('SALE-'+pad(s.no));
+          const ticketMovements=window.SIFERInventoryLedgers.ensureFiscalInventory(S).movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='SALIDA_TICKET_NO_FISCAL');
+          const expected=new Map(s.ticketFiscalOut.map(item=>[String(item.code),Number(item.qty)])),recorded=new Map();
+          ticketMovements.forEach(m=>recorded.set(String(m.code),(recorded.get(String(m.code))||0)+Number(m.qty)));
+          const mismatch=Array.from(expected.entries()).find(([code,qty])=>Math.abs(qty-(recorded.get(code)||0))>1e-8)
+            ||Array.from(recorded.entries()).find(([code,qty])=>Math.abs(qty-(expected.get(code)||0))>1e-8);
+          if(mismatch)throw new Error('El libro fiscal no coincide con las salidas de inventario de ticket para '+mismatch[0]+'. Concílielo antes de anular.');
+          ticketMovements.forEach(original=>window.SIFERInventoryLedgers.applyFiscalMovement(S,{
+            eventId:'VOID-TICKET-SALE:'+original.eventId,type:'REVERSO_SALIDA_TICKET_NO_FISCAL',dir:'IN',
+            code:original.code,qty:original.qty,cost:original.cost,document:'TKT-'+pad(s.no),
+            sourceId,timestamp:Date.now(),cashbox:saleCashbox,user:currentCajero()
+          }));
+        }
         if(isFiscalSale(s)){
           const sourceId=s.accountingSourceId||('SALE-'+pad(s.no));
           const fiscalMovements=window.SIFERInventoryLedgers.ensureFiscalInventory(S).movements.filter(m=>String(m.sourceId||'')===sourceId&&m.type==='VENTA_FISCAL');
@@ -6151,7 +6550,7 @@ function printerSetupWizardDlg(){
   const current=S.cfg.printMode||'NOT_CONFIGURED';
   const el=h('<div class="form" style="gap:12px"><div class="hint"><b>Bienvenido a SIFER360-LICORERIA.</b> Seleccione cómo desea trabajar. Puede cambiar esta opción posteriormente desde Parámetros Fiscales. La base de datos y toda la configuración se guardan localmente en SQLite.</div>'+
     '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="FISCAL_PRINTER" '+(current==='FISCAL_PRINTER'?'checked':'')+'> <b>Impresora fiscal homologada</b><p class="hint">Vincular una máquina fiscal por marca, modelo, puerto y adaptador oficial. La emisión fiscal solo se habilitará cuando el protocolo del equipo esté validado.</p></label>'+
-    '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="DUAL_PRINTER" '+(current==='DUAL_PRINTER'?'checked':'')+'> <b>Sistema dual</b><p class="hint">En cada cobro podrá elegir entre ticket no fiscal por impresora térmica genérica o factura fiscal por máquina homologada. Configure ambos dispositivos por separado y por caja.</p></label>'+
+    '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="DUAL_PRINTER" '+(current==='DUAL_PRINTER'?'checked':'')+'> <b>Sistema dual</b><p class="hint">En cada cobro podrá elegir ticket no fiscal para toda la venta, factura fiscal para toda la venta o impresión híbrida (factura fiscal más ticket complementario). Configure ambos dispositivos por separado y por caja.</p></label>'+
     '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="INTERNAL_THERMAL" '+(current==='INTERNAL_THERMAL'?'checked':'')+'> <b>Impresora térmica genérica</b><p class="hint">Imprimir tickets de control interno mediante el diálogo de impresión de Windows. Cada documento indicará: “Ticket de Venta - No válido como factura fiscal”.</p></label>'+
     '<label class="group" style="display:block;cursor:pointer"><input type="radio" name="printerSetupMode" value="NO_PRINTER" '+(current==='NO_PRINTER'||current==='NOT_CONFIGURED'?'checked':'')+'> <b>Instalar sin impresora</b><p class="hint">El POS funcionará normalmente y guardará las ventas en SQLite. No intentará imprimir ni comunicarse con una máquina fiscal. Podrá configurar una impresora más adelante.</p></label>'+
     '<div class="group"><b>Detección de dispositivos</b><p class="hint">En Windows se pueden enumerar los puertos COM. La identificación fiscal automática requiere una respuesta válida del protocolo de cada fabricante; no se confundirá un puerto abierto con una impresora fiscal reconocida.</p><button class="btn" type="button" id="printerWizardDetect">Buscar dispositivos conectados</button><div class="hint" id="printerWizardStatus" role="status" aria-live="polite">La búsqueda no enviará comandos fiscales de emisión ni de cierre.</div></div></div>');
@@ -6174,7 +6573,16 @@ function printerSetupWizardDlg(){
   }}]});
 }
 
-function isFiscalSale(sale){return !!sale&&sale.docType!=='TICKET-INTERNO'&&!['INTERNAL_THERMAL','NO_PRINTER'].includes(sale.documentMode);}
+function isFiscalSale(sale){
+  if(!sale)return false;
+  if(sale.documentMode==='HYBRID')return !!sale.fiscal;
+  return sale.docType!=='TICKET-INTERNO'&&!['INTERNAL_THERMAL','NO_PRINTER'].includes(sale.documentMode);
+}
+function fiscalSaleData(sale){
+  if(!sale||sale.documentMode!=='HYBRID')return sale;
+  const part=sale.fiscalDocumentSnapshot||sale;
+  return Object.assign({},sale,part,{fiscal:sale.fiscal,documentMode:'FISCAL',docType:'01-FACTURA',hybridParentNo:sale.no});
+}
 
 function seniatSudebanDlg(initialTab){
   if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir el módulo Fiscal.','bad');return;}
@@ -6227,14 +6635,15 @@ function seniatSudebanDlg(initialTab){
     return true;
   };
 
-  const getFilteredSales=()=>{
+  const getFilteredAllSales=()=>{
     const q=norm(qText);
     return (S.sales||[]).filter(s=>{
-      if(!isFiscalSale(s)||!filterPeriod(s.ts))return false;
+      if(!filterPeriod(s.ts))return false;
       if(!q)return true;
-      return norm(s.client.name+s.client.rif+pad(s.no)+(s.ctrlNo||'')).indexOf(q)>=0;
+      return norm((s.client&&s.client.name||'')+(s.client&&s.client.rif||'')+pad(s.no)+(s.ctrlNo||'')).indexOf(q)>=0;
     });
   };
+  const getFilteredSales=()=>getFilteredAllSales().filter(isFiscalSale).map(fiscalSaleData);
 
   const getFilteredPurchases=()=>{
     const q=norm(qText);
@@ -6246,14 +6655,15 @@ function seniatSudebanDlg(initialTab){
   };
 
   const drawResumen=()=>{
-    const sales=getFilteredSales();
+    const sales=getFilteredAllSales();
     const okSales=sales.filter(s=>!s.void);
+    const fiscalSales=getFilteredSales().filter(s=>!s.void);
     const purchases=getFilteredPurchases().filter(p=>!p.void);
     const rate=S.cfg.rate;
 
     const totSalesUsd=r2(okSales.reduce((a,s)=>a+s.total+(s.igtf||0),0));
     const totSalesBs=r2(okSales.reduce((a,s)=>a+(s.total+(s.igtf||0))*(s.rate||rate),0));
-    const totDebitoBs=r2(okSales.reduce((a,s)=>a+s.iva*(s.rate||rate),0));
+    const totDebitoBs=r2(fiscalSales.reduce((a,s)=>a+s.iva*(s.rate||rate),0));
     const totCreditoBs=r2(purchases.reduce((a,p)=>a+p.iva*(p.rate||rate),0));
     const balIvaBs=r2(totDebitoBs-totCreditoBs);
     const totIgtfUsd=r2(okSales.reduce((a,s)=>a+(s.igtf||0),0));
@@ -6265,7 +6675,7 @@ function seniatSudebanDlg(initialTab){
     }));
 
     return '<div class="fiscal-grid">'+
-      '<div class="fiscal-card"><span>Total Ventas Facturadas</span><b class="ok">'+usd(totSalesUsd)+'</b><small>'+bsf(totSalesBs)+'</small></div>'+
+      '<div class="fiscal-card"><span>Total Ventas Registradas (Fiscal + Ticket)</span><b class="ok">'+usd(totSalesUsd)+'</b><small>'+bsf(totSalesBs)+'</small></div>'+
       '<div class="fiscal-card"><span>Débito Fiscal IVA (16%)</span><b>'+bsf(totDebitoBs)+'</b><small>Equiv. '+usd(totDebitoBs/rate)+'</small></div>'+
       '<div class="fiscal-card"><span>Crédito Fiscal IVA (Compras)</span><b>'+bsf(totCreditoBs)+'</b><small>Equiv. '+usd(totCreditoBs/rate)+'</small></div>'+
       '<div class="fiscal-card"><span>Balance IVA Forma 30</span><b class="'+(balIvaBs>0?'bad':'ok')+'">'+bsf(Math.abs(balIvaBs))+'</b><small>'+(balIvaBs>0?'A enterar al SENIAT':'Crédito a favor siguiente período')+'</small></div>'+
@@ -6332,7 +6742,7 @@ function seniatSudebanDlg(initialTab){
         '<td class="r">'+(iva31>0?nf(iva31*rate):'0,00')+'</td>'+
         '<td class="r">'+(igtfBs>0?'<span class="fiscal-tag warn">'+nf(igtfBs)+'</span>':'0,00')+'</td>'+
         '<td class="r">'+nf(rate)+'</td>'+
-        '<td class="c"><button class="btn mini2" data-show-sale="'+s.no+'">Ver Ticket</button></td>'+
+        '<td class="c"><button class="btn mini2" data-show-sale="'+s.no+'">Ver factura</button></td>'+
       '</tr>';
     }).join(''):'<tr class="empty"><td colspan="20">No se encontraron ventas para el período seleccionado.</td></tr>';
 
@@ -6421,7 +6831,7 @@ function seniatSudebanDlg(initialTab){
     return '<h3 style="margin:2px 0">Libro de Inventario y Movimientos de Mercancía</h3>'+tabs+content;
   };
   const drawIgtf=()=>{
-    const sales=getFilteredSales().filter(s=>!s.void);
+    const sales=getFilteredAllSales().filter(s=>!s.void);
     const igtfSales=sales.filter(s=>(s.igtf>0)||(s.pays||[]).some(p=>p.cur==='USD'));
     let sumBaseUsd=0, sumBaseBs=0, sumIgtfUsd=0, sumIgtfBs=0;
 
@@ -6482,7 +6892,7 @@ function seniatSudebanDlg(initialTab){
   };
 
   const drawAuditoria=()=>{
-    const sales=getFilteredSales();
+    const sales=getFilteredAllSales();
     const ok=sales.filter(s=>!s.void);
 
     const rowsHtml=sales.length?sales.map(s=>{
@@ -6492,7 +6902,7 @@ function seniatSudebanDlg(initialTab){
       return '<tr class="'+(s.void?'void':'')+'">'+
         '<td class="mono c"><b>'+pad(s.no)+'</b></td>'+
         '<td class="c">'+fmtDT(s.ts)+'</td>'+
-        '<td class="mono c">'+esc(s.ctrlNo||('00-'+pad(s.no,8)))+'</td>'+
+        '<td class="mono c">'+esc(s.ctrlNo||(s.docType==='TICKET-INTERNO'||(s.documentMode==='HYBRID'&&!s.fiscal)?'Ticket interno · sin control fiscal':'—'))+'</td>'+
         '<td><b>'+esc(s.client.name)+'</b> ('+esc(s.client.rif)+')</td>'+
         '<td class="r">'+nf(dueUsd)+'</td>'+
         '<td class="r" style="font-weight:700;color:#1842B8">'+nf(rate)+'</td>'+
@@ -6516,7 +6926,7 @@ function seniatSudebanDlg(initialTab){
   };
 
   const drawSudeban=()=>{
-    const sales=getFilteredSales().filter(s=>!s.void);
+    const sales=getFilteredAllSales().filter(s=>!s.void);
     const byM={punto:0,biopago:0,pmovil:0,transf:0,efBs:0,efUSD:0,zelle:0};
     const countM={punto:0,biopago:0,pmovil:0,transf:0,efBs:0,efUSD:0,zelle:0};
 
@@ -6611,7 +7021,7 @@ function seniatSudebanDlg(initialTab){
     const [anioPeriodo,mesPeriodo]=mesActual.split('-').map(Number);
     const enPeriodoSeniat=ts=>{const d=new Date(ts);return d.getFullYear()===anioPeriodo&&d.getMonth()+1===mesPeriodo;};
     // El IVA se declara por mes calendario. Este cálculo ignora el filtro de búsqueda y las quincenas de otras pestañas.
-    const sales=(S.sales||[]).filter(x=>isFiscalSale(x)&&!x.void&&enPeriodoSeniat(x.ts));
+    const sales=(S.sales||[]).filter(x=>isFiscalSale(x)&&!x.void&&enPeriodoSeniat(x.ts)).map(fiscalSaleData);
     const purchases=(S.purchases||[]).filter(x=>!x.void&&enPeriodoSeniat(x.ts));
     const retenciones=(S.retencionesIva||[]).filter(r=>enPeriodoSeniat(r.ts));
     const debito=r2(sales.reduce((a,x)=>a+(x.iva||0)*(x.rate||S.cfg.rate),0));
@@ -6653,7 +7063,7 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="fRif">RIF de la Empresa</label><input class="fld" id="fRif" value="'+esc(c.rif)+'"></div>'+
       '<div class="f wide"><label for="fDir">Domicilio Fiscal</label><input class="fld" id="fDir" value="'+esc(c.dir)+'"></div>'+
       '<div class="f"><label for="fTipo">Modalidad de Facturación Fiscal</label><select class="fld" id="fTipo"><option value="FORMA_LIBRE" '+(c.fiscalTipo==='FORMA_LIBRE'?'selected':'')+'>Formas Libres por Computador</option><option value="MAQUINA_FISCAL" '+(c.fiscalTipo==='MAQUINA_FISCAL'?'selected':'')+'>Impresora Fiscal Homologada</option><option value="NO_FISCAL_INTERNAL" '+(c.fiscalTipo==='NO_FISCAL_INTERNAL'?'selected':'')+'>Sin emisión fiscal · Ticket interno no fiscal</option></select></div>'+
-      '<div class="f wide"><label for="fPrintMode">Modo de impresión del POS</label><select class="fld" id="fPrintMode"><option value="FISCAL_PRINTER" '+((c.printMode||'LEGACY')==='FISCAL_PRINTER'?'selected':'')+'>Impresora fiscal homologada</option><option value="INTERNAL_THERMAL" '+(c.printMode==='INTERNAL_THERMAL'?'selected':'')+'>Impresora térmica genérica · Ticket interno</option><option value="NO_PRINTER" '+(c.printMode==='NO_PRINTER'?'selected':'')+'>Sin impresora · Solo registro en SQLite</option><option value="DUAL_PRINTER" '+(c.printMode==='DUAL_PRINTER'?'selected':'')+'>Sistema dual · Elegir ticket térmico o factura fiscal en cada cobro</option><option value="LEGACY" '+((c.printMode||'LEGACY')==='LEGACY'?'selected':'')+'>Conservar configuración anterior</option></select><p class="hint">Los modos de ticket interno no emiten documentos fiscales. Cada comprobante llevará la leyenda “Ticket de Venta - No válido como factura fiscal”.</p><button class="btn" type="button" id="btnPrinterSetupWizard">Abrir asistente de instalación de impresoras</button></div>'+
+      '<div class="f wide"><label for="fPrintMode">Modo de impresión del POS</label><select class="fld" id="fPrintMode"><option value="FISCAL_PRINTER" '+((c.printMode||'LEGACY')==='FISCAL_PRINTER'?'selected':'')+'>Impresora fiscal homologada</option><option value="INTERNAL_THERMAL" '+(c.printMode==='INTERNAL_THERMAL'?'selected':'')+'>Impresora térmica genérica · Ticket interno</option><option value="NO_PRINTER" '+(c.printMode==='NO_PRINTER'?'selected':'')+'>Sin impresora · Solo registro en SQLite</option><option value="DUAL_PRINTER" '+(c.printMode==='DUAL_PRINTER'?'selected':'')+'>Sistema dual · Ticket, factura fiscal o impresión híbrida en cada cobro</option><option value="LEGACY" '+((c.printMode||'LEGACY')==='LEGACY'?'selected':'')+'>Conservar configuración anterior</option></select><p class="hint">Los modos de ticket interno no emiten documentos fiscales. Cada comprobante llevará la leyenda “Ticket de Venta - No válido como factura fiscal”.</p><button class="btn" type="button" id="btnPrinterSetupWizard">Abrir asistente de instalación de impresoras</button></div>'+
       '<div class="f wide"><div class="gtitle">Dispositivo fiscal por caja</div><p class="hint">Configure fabricante, modelo, puerto COM y SDK para la caja activa.</p><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" type="button" id="btnThermalPrinterManager">Configurar impresora térmica no fiscal</button><button class="btn" type="button" id="btnFiscalPrinterManager">Configurar impresora fiscal de esta caja</button><button class="btn" type="button" id="btnFiscalNetworkQueue">Ver cola fiscal compartida LAN</button></div></div>'+
       '<div class="f"><label for="fEsp">Calificación Tributaria</label><select class="fld" id="fEsp"><option value="1" '+(c.contribEspecial?'selected':'')+'>Sujeto Pasivo Especial (Agente Retención)</option><option value="0" '+(!c.contribEspecial?'selected':'')+'>Contribuyente Ordinario</option></select></div>'+
       '<div class="f"><label for="fPctRet">Retención ordinaria de referencia</label><select class="fld" id="fPctRet"><option value="75" selected>75 % del IVA (referencia general; verificar excepciones)</option></select></div>'+
@@ -6777,7 +7187,7 @@ function seniatSudebanDlg(initialTab){
     if(showSaleBtn){
       const no=+showSaleBtn.dataset.showSale;
       const s=(S.sales||[]).find(x=>x.no===no);
-      if(s)showTicket(s);
+      if(s)showTicket(s.documentMode==='HYBRID'?fiscalSaleData(s):s);
       return;
     }
   });
@@ -6825,8 +7235,8 @@ function seniatSudebanDlg(initialTab){
           msg('Vista del libro de inventario exportada a CSV.');
         }
         if(ev.target.id==='btnPrintInv')printFiscalReport('Libro de Inventario — corte actual',drawInventario());
-        if(ev.target.id==='btnExpIgtf')exportIgtfCsv(getFilteredSales());
-        if(ev.target.id==='btnPrintActaBcv')printActaBcv(getFilteredSales());
+        if(ev.target.id==='btnExpIgtf')exportIgtfCsv(getFilteredAllSales());
+        if(ev.target.id==='btnPrintActaBcv')printActaBcv(getFilteredAllSales());
         if(ev.target.id==='btnTxtSeniat')exportSeniatTxt();
         if(ev.target.id==='btnPreviewPagoSeniat'){
           const fechaPeriodo=new Date();
@@ -6834,7 +7244,7 @@ function seniatSudebanDlg(initialTab){
           const [anioFiscal,mesFiscal]=mesPeriodo.split('-').map(Number);
           const enPeriodoFiscal=ts=>{const d=new Date(ts);return d.getFullYear()===anioFiscal&&d.getMonth()+1===mesFiscal;};
           // Totales mensuales sin depender del filtro de búsqueda ni de la vista quincenal de otras pestañas.
-          const sales=(S.sales||[]).filter(x=>isFiscalSale(x)&&!x.void&&enPeriodoFiscal(x.ts));
+          const sales=(S.sales||[]).filter(x=>isFiscalSale(x)&&!x.void&&enPeriodoFiscal(x.ts)).map(fiscalSaleData);
           const purchases=(S.purchases||[]).filter(x=>!x.void&&enPeriodoFiscal(x.ts));
           const retenciones=(S.retencionesIva||[]).filter(r=>enPeriodoFiscal(r.ts));
           const debito=r2(sales.reduce((a,x)=>a+(x.iva||0)*(x.rate||S.cfg.rate),0));
@@ -7730,15 +8140,15 @@ function renderCart(){
   }else{
     tb.innerHTML=S.cart.map((l,i)=>{
       const x=lineInfo(l),p=x.p;
-      const u=esc(p.unit||'und').toUpperCase();
+      const u=esc(l.presentationUnit||p.unit||'und').toUpperCase();
       const taxCls=prodTaxCls(p);
       return '<tr data-i="'+i+'" class="'+(i===S.sel?'sel':'')+'">'+
         '<td class="c">'+(i+1)+'</td>'+
         '<td class="mono">'+esc(p.code)+'</td>'+
         '<td><div class="desc">'+esc(p.desc)+'</div><div class="sub">'+esc(p.brand)+' · '+(p.sku?esc(p.sku)+' · ':'')+'pasillo '+esc(p.loc)+'</div></td>'+
         '<td class="c"><span class="um-tag">'+u+'</span></td>'+
-        '<td class="c"><span class="qty"><button class="mini" data-act="dec" aria-label="Restar una unidad">&minus;</button><span class="qv">'+fq(l.qty)+' '+(p.unit||'und')+'</span><button class="mini" data-act="inc" aria-label="Sumar una unidad">+</button></span></td>'+
-        '<td class="r">'+nf(p.price)+'</td>'+
+        '<td class="c"><span class="qty"><button class="mini" data-act="dec" aria-label="Restar una presentación">&minus;</button><span class="qv">'+fq(l.qty)+' '+(l.presentationUnit||p.unit||'und')+'</span><button class="mini" data-act="inc" aria-label="Sumar una presentación">+</button></span><div class="sub">'+esc(l.presentationName||'')+'</div></td>'+
+        '<td class="r">'+nf(x.price)+'</td>'+
         '<td class="r">'+(l.disc?fq(l.disc)+' %':'')+'</td>'+
         '<td class="c"><span class="iva-tag '+taxCls+'">'+esc(prodTaxTag(p))+'</span></td>'+
         '<td class="r">'+nf(x.net)+'</td>'+
@@ -7773,7 +8183,7 @@ function renderTotals(){
 function renderCatalog(){}
 function renderDetail(){}
 function renderStatus(){
-  const units=S.cart.reduce((a,l)=>a+l.qty,0);
+  const units=S.cart.reduce((a,l)=>a+lineBaseQty(l),0);
   $('#sbCajero').textContent='Cajero: '+currentCajero()+' · Caja '+currentCaja();
   $('#sbRate').textContent='Tasa: '+nf(S.cfg.rate)+' Bs./US$';
   $('#sbCount').textContent='Renglones: '+S.cart.length+' · Unidades: '+fq(r2(units));
@@ -7820,14 +8230,22 @@ function submitEntry(){
   const entry=$('#entry'),pe=parseEntry(entry.value);
   if(!pe.text){msg('Escriba un código, SKU o una descripción.','bad');return;}
   const qUp=pe.text.toUpperCase();
-  let p=S.products.find(x=>x.code===pe.text||(x.sku&&x.sku.toUpperCase()===qUp)||(x.assocSuppliers||[]).some(s=>s.barcode&&s.barcode.toUpperCase()===qUp));
+  let p=S.products.find(x=>x.code===pe.text||(x.sku&&x.sku.toUpperCase()===qUp));
+  let matchedPresentationIndex;
+  if(!p){
+    for(const candidate of S.products){
+      const idx=productPresentations(candidate).findIndex(pr=>String(pr.barcode||'').trim().toUpperCase()===qUp);
+      if(idx>=0){p=candidate;matchedPresentationIndex=idx;break;}
+    }
+  }
+  if(!p)p=S.products.find(x=>(x.assocSuppliers||[]).some(s=>s.barcode&&s.barcode.toUpperCase()===qUp));
   if(!p){
     const m=searchProducts(pe.text,'Todas');
     if(m.length===1)p=m[0];
     else if(!m.length){msg('No se encontró "'+pe.text+'".','bad');return;}
     else{quickPickDlg(m,pe.qty,pe.text);return;}
   }
-  if(addItem(p.code,pe.qty)){entry.value='';S.query='';navigated=false;}
+  if(addItem(p.code,pe.qty,matchedPresentationIndex)){entry.value='';S.query='';navigated=false;}
 }
 
 /* ---------- eventos ---------- */

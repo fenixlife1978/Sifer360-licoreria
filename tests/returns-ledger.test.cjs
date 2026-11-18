@@ -115,3 +115,24 @@ test('cash Bs refund creates a BS cash movement understood by Corte Z',()=>{
   assert.equal(state.movimientosCaja[0].amount,1160);
   assert.equal(state.movimientosCaja[0].direction,'OUT');
 });
+
+test('ticket return restores only the fiscal-backed quantity that the original ticket consumed',()=>{
+  const {sale,state}=fixture();
+  sale.ticketFiscalOutLines=[{lineIndex:0,code:'SKU-A',qty:1}];
+  const prepared=prepareReturn({state,sale,lines:[{lineIndex:0,qty:1}],returnStock:true,reason:'Devolución de ticket'});
+  const events=[];
+  const inventoryLedger={applyFiscalMovement:(current,event)=>{events.push(event);}};
+  applyReturn(state,prepared,{returnNo:10,now:5000,user:'admin',inventoryLedger});
+  assert.equal(state.products[0].stock,8);
+  assert.equal(events.length,1);
+  assert.equal(events[0].type,'REVERSO_SALIDA_TICKET_NO_FISCAL');
+  assert.equal(events[0].dir,'IN');
+  assert.equal(events[0].qty,0.5);
+});
+
+test('ticket return refuses to restore backed stock without the fiscal inventory engine',()=>{
+  const {sale,state}=fixture();
+  sale.ticketFiscalOutLines=[{lineIndex:0,code:'SKU-A',qty:1}];
+  const prepared=prepareReturn({state,sale,lines:[{lineIndex:0,qty:1}],returnStock:true,reason:'Devolución de ticket'});
+  assert.throws(()=>applyReturn(state,prepared,{returnNo:11}),/motor de inventario fiscal/);
+});

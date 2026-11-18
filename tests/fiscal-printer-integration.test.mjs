@@ -30,7 +30,7 @@ test('la configuración fiscal se guarda por caja dentro del estado SQLite', () 
 });
 
 test('la modalidad máquina fiscal falla de forma segura si no hay adaptador listo', () => {
-  assert.match(main, /const fiscalMode=dualMode\?documentChoice==='FISCAL':\(printMode==='FISCAL_PRINTER'\|\|\(printMode==='LEGACY'&&S\.cfg\.fiscalTipo==='MAQUINA_FISCAL'\)\)/);
+  assert.match(main, /const fiscalMode=dualMode\?\(documentChoice==='FISCAL'\|\|\(hybridMode&&hybridHasFiscal\)\):\(printMode==='FISCAL_PRINTER'\|\|\(printMode==='LEGACY'&&S\.cfg\.fiscalTipo==='MAQUINA_FISCAL'\)\)/);
   assert.match(main, /if\(!diagnostic\.ready\)/);
   assert.match(main, /fiscalPrinterTestBridge\(fiscalProfile\)/);
   assert.match(main, /unresolvedFiscalJobs\.length/);
@@ -74,9 +74,9 @@ test('el asistente ofrece modo fiscal, ticket interno no fiscal y operación sin
 });
 
 test('los tickets internos no reservan número de control fiscal ni generan emisión fiscal', () => {
-  assert.match(main, /const internalTicketMode=dualMode\?documentChoice==='TICKET':\(printMode==='INTERNAL_THERMAL'\|\|printMode==='NO_PRINTER'\)/);
+  assert.match(main, /const internalTicketMode=dualMode\?\(documentChoice==='TICKET'\|\|\(hybridMode&&!hybridHasFiscal\)\):\(printMode==='INTERNAL_THERMAL'\|\|printMode==='NO_PRINTER'\)/);
   assert.match(main, /const ctrlNext=internalTicketMode\?null:await nextCajaSequence\('control',currentCaja\(\)\)/);
-  assert.match(main, /docType:internalTicketMode\?'TICKET-INTERNO':'01-FACTURA'/);
+  assert.match(main, /docType:hybridMode\?'VENTA-HIBRIDA':\(internalTicketMode\?'TICKET-INTERNO':'01-FACTURA'\)/);
   assert.match(main, /concept:\(internalTicketMode\?'Ticket de venta':'Factura de venta'\)/);
 });
 
@@ -101,8 +101,8 @@ test('el asistente inicial se abre después del primer inicio de sesión del adm
 });
 
 test('los tickets internos quedan fuera de libros fiscales y del débito mensual de IVA', () => {
-  assert.match(main, /function isFiscalSale\(sale\)\{return !!sale&&sale\.docType!=='TICKET-INTERNO'&&!\['INTERNAL_THERMAL','NO_PRINTER'\]\.includes\(sale\.documentMode\);\}/);
-  assert.match(main, /if\(!isFiscalSale\(s\)\|\|!filterPeriod\(s\.ts\)\)return false;/);
+  assert.match(main, /function isFiscalSale\(sale\)\{[\s\S]*?if\(sale\.documentMode==='HYBRID'\)return !!sale\.fiscal;[\s\S]*?return sale\.docType!=='TICKET-INTERNO'/);
+  assert.match(main, /const getFilteredSales=\(\)=>getFilteredAllSales\(\)\.filter\(isFiscalSale\)\.map\(fiscalSaleData\)/);
   assert.match(main, /isFiscalSale\(x\)&&!x\.void&&enPeriodoSeniat\(x\.ts\)/);
   assert.match(main, /isFiscalSale\(x\)&&!x\.void&&enPeriodoFiscal\(x\.ts\)/);
 });
