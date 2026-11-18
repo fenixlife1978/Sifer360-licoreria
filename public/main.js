@@ -2909,7 +2909,7 @@ function comprasDlg(initialTab){
         '<span class="hint" style="margin-left:auto">Verifique la alícuota IVA de cada renglón contra la factura del proveedor.</span>'+
       '</div>'+
       '<div class="gridwrap invwrap"><table class="grid" style="min-width:1120px">'+
-        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Último costo proveedor (sin IVA) US$</th><th class="r">CPP actual US$</th><th class="r">Nuevo costo de compra (sin IVA) US$</th><th class="r">CPP resultante US$</th><th class="r">P. Venta US$</th><th class="r">Base US$</th><th>IVA %</th><th>Auto</th><th></th></tr></thead>'+
+        '<thead><tr><th>Código</th><th>Producto</th><th class="r">Stock Act.</th><th class="r">Cantidad Recibida</th><th class="r">Último precio de este proveedor (sin IVA) US$</th><th class="r">CPP actual US$</th><th class="r">Nuevo precio unitario de compra (sin IVA) US$</th><th class="r">CPP resultante US$</th><th class="r">P. Venta US$</th><th class="r">Base US$</th><th>IVA %</th><th>Auto</th><th></th></tr></thead>'+
         '<tbody id="cpBody"></tbody>'+
       '</table></div>'+
       '<div class="cierre" id="cpTotals"></div>';
@@ -2929,7 +2929,7 @@ function comprasDlg(initialTab){
           '<td class="r"><input class="fld cell r" data-cpf="qty" value="'+fq(l.qty)+'" inputmode="decimal"></td>'+
           '<td class="r">'+(getLastPurchaseCost(l.code)==null?'—':nf8(getLastPurchaseCost(l.code)))+'</td>'+
           '<td class="r">'+nf8(p.cost)+'</td>'+
-          '<td class="r"><input class="fld cell r" data-cpf="cost" aria-label="Nuevo costo unitario de compra sin IVA US$" value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
+          '<td class="r"><input class="fld cell r" data-cpf="cost" aria-label="Nuevo precio unitario de compra sin IVA US$" title="Introduzca el precio de compra unitario actual de este proveedor" value="'+nf8(l.cost)+'" inputmode="decimal"></td>'+
           '<td class="r"><b>'+nf8(projectedCost)+'</b></td>'+
           '<td class="r"><input class="fld cell r" data-cpf="price" value="'+nf8(l.price)+'" inputmode="decimal" '+(l.autoPrice?'readonly title="Calculado por el motor de precios"':'')+'></td>'+
           '<td class="r"><b>'+nf8(sub)+'</b></td>'+
@@ -2977,7 +2977,7 @@ function comprasDlg(initialTab){
 
     v.onchange=e=>{
       const t=e.target;
-      if(t.id==='cpSup'){supIdx=+t.value;pLines.forEach(line=>{if(!line.costEdited){const last=getLastPurchaseCost(line.code),product=prod(line.code);line.cost=last===null?Number(product&&product.cost||0):last;}});drawLines();return;}
+      if(t.id==='cpSup'){supIdx=+t.value;pLines.forEach(line=>{line.costEdited=false;const last=getLastPurchaseCost(line.code),product=prod(line.code);line.cost=last===null?Number(product&&product.cost||0):last;});drawLines();return;}
       if(t.id==='cpDocType'){docType=t.value;const docLabel=$('#cpDocLabel',v);if(docLabel)docLabel.textContent=docType==='FACTURA_FISCAL'?'Nº de factura del proveedor *':'Nº de documento del proveedor *';pLines.forEach(line=>{if(docType!=='FACTURA_FISCAL')line.taxRate=0;else if(Number(line.taxRate||0)===0){const product=prod(line.code);line.taxRate=product?prodTaxRate(product):16;}});$('#cpCtrlWrap',v).style.display=docType==='FACTURA_FISCAL'?'':'none';drawLines();return;}
       if(t.id==='cpDate'){refreshPurchaseRate(t.value,v,drawLines);return;}
       if(t.id==='cpRetIslrPct'){retIslrPct=Math.min(100,Math.max(0,pn(t.value)||0));t.value=nf(retIslrPct);drawLines();return;}
