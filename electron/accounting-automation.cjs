@@ -2,7 +2,7 @@
 
 function isSafeAutomationPath(path) {
   return typeof path === 'string' &&
-    /^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,5}$/.test(path) &&
+    /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*){0,5}$/.test(path) &&
     !path.split('.').some(part => ['__proto__','prototype','constructor'].includes(part));
 }
 
