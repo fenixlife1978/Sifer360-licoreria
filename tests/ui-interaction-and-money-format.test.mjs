@@ -22,8 +22,12 @@ test('cashier pending lock is explicitly scoped to cashier startup',()=>{
 });
 
 test('purchase registration retains 8-decimal format while regular views use 2 decimals',()=>{
-  assert.match(main,/data-cpf="cost"[\s\S]*?value="\+'nf8\(l\.cost\)/);
-  assert.match(main,/\(c\.void\?'ANULADA'[\s\S]*?:nf\(pend\)\)/);
-  assert.match(main,/\+'nf\(x\.total\)\+.*nf\(x\.paid\)\+/);
-  assert.match(main,/\+'nf\(bal\)\+/);
+  assert.ok(main.includes('nf8(l.cost)'), 'purchase unit cost keeps nf8');
+  assert.ok(main.includes('nf8(base)'), 'purchase totals preserve 8 decimals');
+  assert.ok(main.includes('nf(x.total)'), 'supplier history uses 2-decimal totals');
+  assert.ok(main.includes('nf(x.paid)'), 'supplier paid amount uses 2 decimals');
+  assert.ok(main.includes('nf(bal)'), 'CxP balances use 2 decimals');
+  assert.ok(main.includes('nf(pend)'), 'supplier pending balances use 2 decimals');
+  assert.ok(!main.includes('nf8(x.total)'), 'supplier totals do not use 8 decimals');
+  assert.ok(!main.includes('nf8(x.paid)'), 'supplier payments do not use 8 decimals');
 });
