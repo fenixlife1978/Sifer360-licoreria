@@ -238,9 +238,15 @@ test('los guardados SQLite locales revierten el cambio en memoria si falla la pe
   assert.match(electron, /persistMutation\(\(\) => run\('DELETE FROM fiscal_documents/);
 });
 
-test('la sincronización iniciada por el servidor también revierte su snapshot si falla la escritura', () => {
-  assert.match(electron, /let merged;\s*\n\s*persistMutation\(\(\) => \{/);
-  assert.match(electron, /merged = mergeStateRecords\(row \? JSON\.parse\(row\.payload\) : null, state\)/);
+test('la sincronización iniciada por el servidor guarda estado y eventos contables en una sola mutación durable', () => {
+  const start = electron.indexOf("ipcMain.handle('network:sync-now'");
+  const end = electron.indexOf("\\n  ipcMain.handle(", start + 1);
+  const handler = electron.slice(start, end < 0 ? electron.length : end);
+  assert.match(handler, /const previous = row \? JSON\.parse\(row\.payload\) : \{\}/);
+  assert.match(handler, /const merged = mergeStateRecords\(previous, state\)/);
+  assert.match(handler, /buildAccountingSourceEvents\(previous, merged/);
+  assert.match(handler, /persistMutation\(\(\) => \{/);
+  assert.match(handler, /insertAccountingSourceEvents\(accountingEvents\)/);
 });
 
 
