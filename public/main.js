@@ -7219,7 +7219,7 @@ function seniatSudebanDlg(initialTab){
       '<div class="f"><label for="accAssetAvailableDate">Disponible para uso</label><input class="fld" id="accAssetAvailableDate" type="date"></div>'+
       '<div class="f"><label for="accAssetDepStartMonth">Mes inicial de depreciación</label><input class="fld" id="accAssetDepStartMonth" type="month"></div>'+
       '<div class="f"><label for="accAssetAcquisitionEntry">Asiento de adquisición contabilizado</label><select class="fld" id="accAssetAcquisitionEntry"><option value="">Seleccionar asiento</option></select></div>'+
-      '<div class="f"><label for="accAssetCost">Costo ('+esc(settings?.functionalCurrency||'moneda funcional')+')</label><input class="fld" id="accAssetCost" inputmode="decimal" placeholder="0,00"></div>'+
+      '<div class="f"><label for="accAssetCost">Costo (moneda funcional)</label><input class="fld" id="accAssetCost" inputmode="decimal" placeholder="0,00"></div>'+
       '<div class="f"><label for="accAssetResidual">Valor residual</label><input class="fld" id="accAssetResidual" inputmode="decimal" placeholder="0,00" value="0"></div>'+
       '<div class="f"><label for="accAssetLifeMonths">Vida útil (meses)</label><input class="fld" id="accAssetLifeMonths" type="number" min="1" max="1200" value="60"></div>'+
       '<div class="f"><label for="accAssetAccount">Cuenta del activo</label><select class="fld" id="accAssetAccount"><option value="">Cuenta imputable de activo</option></select></div>'+

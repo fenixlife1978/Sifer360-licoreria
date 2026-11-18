@@ -1478,7 +1478,7 @@ function registerAccountingIpc() {
     const depreciationStartMonth=String(input.depreciationStartMonth||'');
     const acquisitionEntryId=String(input.acquisitionEntryId||'').trim();
     const usefulLifeMonths=Number(input.usefulLifeMonths);
-    if(!/^[A-Z0-9][A-Z0-9._-]{0,29}$/.test(assetCode)||!name||!isValidIsoDate(acquisitionDate)||!isValidIsoDate(availableForUseDate)||availableForUseDate<acquisitionDate||!/^\\d{4}-(0[1-9]|1[0-2])$/.test(depreciationStartMonth)||depreciationStartMonth<availableForUseDate.slice(0,7)||!Number.isInteger(usefulLifeMonths)||usefulLifeMonths<1||usefulLifeMonths>1200||!acquisitionEntryId)throw new Error('Completa código, nombre, fechas, mes inicial, vida útil y asiento de adquisición válidos.');
+    if(!/^[A-Z0-9][A-Z0-9._-]{0,29}$/.test(assetCode)||!name||!isValidIsoDate(acquisitionDate)||!isValidIsoDate(availableForUseDate)||availableForUseDate<acquisitionDate||!/^\d{4}-(0[1-9]|1[0-2])$/.test(depreciationStartMonth)||depreciationStartMonth<availableForUseDate.slice(0,7)||!Number.isInteger(usefulLifeMonths)||usefulLifeMonths<1||usefulLifeMonths>1200||!acquisitionEntryId)throw new Error('Completa código, nombre, fechas, mes inicial, vida útil y asiento de adquisición válidos.');
     const {decimalToMinorUnits}=await loadAccountingEngine();
     const costMinor=decimalToMinorUnits(String(input.cost||''),Number(settings.monetary_decimals));
     const residualMinor=decimalToMinorUnits(String(input.residual||'0'),Number(settings.monetary_decimals));
@@ -1517,7 +1517,7 @@ function registerAccountingIpc() {
     const actor=accountingActor(input);
     if(actor.actorRole!=='contador')throw new Error('La depreciación de activos fijos está reservada al perfil Contador.');
     const periodId=String(input.periodId||'').trim();
-    if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(periodId))throw new Error('Selecciona un período AAAA-MM válido.');
+    if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodId))throw new Error('Selecciona un período AAAA-MM válido.');
     const period=one('SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE id=?',[periodId]);
     assertAccountingPeriodWritable(period);
     const settings=one('SELECT accounting_framework,functional_currency,presentation_currency,monetary_decimals,policy_version FROM accounting_settings WHERE id=1');
