@@ -11,7 +11,7 @@ const { sqliteDatabaseToJson } = require('../electron/sqlite-json-export.cjs');
 
 test('el respaldo cifrado AES-256-GCM conserva los bytes SQLite', () => {
   const key = crypto.randomBytes(32);
-  const sqlite = Buffer.from('SQLite format 3\\0fixture-data');
+  const sqlite = Buffer.from('SQLite format 3\0fixture-data');
   const encrypted = encryptBackup(sqlite, key);
   assert.notDeepEqual(encrypted, sqlite);
   assert.equal(decryptBackup(encrypted, key).toString(), sqlite.toString());
