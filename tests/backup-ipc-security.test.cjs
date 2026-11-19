@@ -17,16 +17,19 @@ test('todas las operaciones de respaldo exigen una sesión SQLite de administrad
     ['backup:enable-daily', /backup:enable-daily',[\s\S]{0,160}requireAuthSession\(token, true\)/],
     ['backup:disable-daily', /backup:disable-daily',[\s\S]{0,130}requireAuthSession\(token, true\)/],
     ['backup:run-now', /backup:run-now',[\s\S]{0,160}requireAuthSession\(token, true\)/],
-    ['backup:export-recovery-key', /backup:export-recovery-key',[\s\S]{0,130}requireAuthSession\(token, true\)/]
+    ['backup:export-recovery-key', /backup:export-recovery-key',[\s\S]{0,130}requireAuthSession\(token, true\)/],
+    ['backup:list-files', /backup:list-files',[\s\S]{0,160}requireAuthSession\(token, true\)/],
+    ['backup:download-file', /backup:download-file',[\s\S]{0,220}requireAuthSession\(token, true\)/]
   ];
   for (const [name, pattern] of handlers) assert.match(main, pattern, name + ' debe requerir sesión admin');
 });
 
 test('preload transmite el token a todos los métodos de respaldo', () => {
-  for (const method of ['backupStatus', 'backupEnableDaily', 'backupDisableDaily', 'backupRunNow', 'backupExportRecoveryKey']) {
+  for (const method of ['backupStatus', 'backupEnableDaily', 'backupDisableDaily', 'backupRunNow', 'backupExportRecoveryKey', 'backupListFiles']) {
     assert.match(preload, new RegExp(method + ':\\s*token'));
   }
   assert.match(preload, /backupConnectGoogle: \(token, email\)/);
+  assert.match(preload, /backupDownloadFile: \(token, fileId\)/);
 });
 
 test('el inicio de sesión de escritorio autentica contra SQLite y restaura sesiones vigentes', () => {
@@ -45,4 +48,11 @@ test('la tarea programada no se pierde si llega mientras Electron inicializa SQL
   assert.match(main, /pendingScheduledBackup = true/);
   assert.match(main, /if \(pendingScheduledBackup\)/);
   assert.match(main, /runScheduledGoogleDriveBackup\(\)/);
+});
+
+test('la restauración desde una copia descargada requiere confirmación y guarda primero la SQLite actual', () => {
+  assert.match(ui, /window\.confirm\('Vas a reemplazar la base SQLite activa/);
+  assert.match(ui, /posSqliteDriver\.exportSqlite\(\)/);
+  assert.match(ui, /antes-de-restaurar-/);
+  assert.match(ui, /backupDownloadFile\(authToken\(\), fileId\)/);
 });
