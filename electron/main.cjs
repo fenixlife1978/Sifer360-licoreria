@@ -21,6 +21,8 @@ const { createAccountingSessionGuard } = require('./accounting-auth.cjs');
 const { assertAccountingSettingsChange, assertAccountingPeriodChange, assertAccountingPeriodCanClose, assertAccountingPeriodWritable } = require('./accounting-policy.cjs');
 const { buildAccountingSourceEvents } = require('../src/accounting/source-events.cjs');
 const FiscalPrinterManager = require('./fiscal-printer-manager.cjs');
+const { createGoogleDriveBackup } = require('./google-drive-backup.cjs');
+const { sqliteDatabaseToJson } = require('./sqlite-json-export.cjs');
 const { createLegacyBackupTaskRetirer } = require('./legacy-backup-task.cjs');
 const PrinterManager = require('./printer-manager.cjs');
 const { createFiscalNetworkQueue } = require('./fiscal-network-queue.cjs');
@@ -32,6 +34,8 @@ let fiscalNetworkQueueRecovered = false;
 let licensing = null;
 let updateDownloaded = false;
 let updateCheckTimer = null;
+let googleDriveBackup = null;
+let scheduledBackupRunning = false;
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = false;
 autoUpdater.allowPrerelease = false;
@@ -1988,6 +1992,40 @@ function registerIpc() {
     }
     return { ok: true, deleted: true };
   });
+  ipcMain.handle('backup:status', (_event, token) => {
+    requireAuthSession(token, true);
+    if (networkConfig.role === 'client') return { configured:false, enabled:false, oauthReady:false, serverOnly:true };
+    return googleDriveBackup.status();
+  });
+  ipcMain.handle('backup:connect-google', async (_event, token, email) => {
+    requireAuthSession(token, true);
+    if (networkConfig.role === 'client') throw new Error('El respaldo debe configurarse en el equipo servidor que conserva la única SQLite.');
+    return googleDriveBackup.connect(email);
+  });
+  ipcMain.handle('backup:enable-daily', async (_event, token) => {
+    requireAuthSession(token, true);
+    if (networkConfig.role === 'client') throw new Error('El respaldo automático solo puede ejecutarse en el equipo servidor o independiente.');
+    if (networkConfig.role === 'server' && !networkServer) throw new Error('El servidor LAN no está iniciado; no se activó el respaldo.');
+    return googleDriveBackup.enable(process.execPath);
+  });
+  ipcMain.handle('backup:disable-daily', (_event, token) => {
+    requireAuthSession(token, true);
+    if (networkConfig.role === 'client') throw new Error('El respaldo debe administrarse desde el equipo servidor.');
+    return googleDriveBackup.disable();
+  });
+  ipcMain.handle('backup:run-now', async (_event, token) => {
+    requireAuthSession(token, true);
+    if (networkConfig.role === 'client') throw new Error('El respaldo debe ejecutarse desde el equipo que conserva la SQLite central.');
+    if (!db) throw new Error('SQLite no está disponible.');
+    const integrity = databaseIntegrityStatus(db);
+    if (integrity !== 'ok') throw new Error('No se enviará el respaldo: PRAGMA integrity_check no devolvió ok (' + integrity + ').');
+    return googleDriveBackup.runBackup(Buffer.from(db.export()), { manual:true, jsonBytes:sqliteDatabaseToJson(db) });
+  });
+  ipcMain.handle('backup:export-recovery-key', (_event, token) => {
+    requireAuthSession(token, true);
+    if (networkConfig.role === 'client') throw new Error('La clave de recuperación debe exportarse desde el equipo servidor.');
+    return googleDriveBackup.exportRecoveryKey();
+  });
   ipcMain.handle('license:status', () => licensing.status());
   ipcMain.handle('license:refresh', () => licensing.refresh(true));
   ipcMain.handle('license:activate', async (_event, licenseKey) => licensing.activate(licenseKey));
@@ -2189,7 +2227,17 @@ if (!hasSingleInstanceLock) {
 } else {
   app.on('second-instance', (_event, commandLine) => {
     if (commandLine.includes('--sifer-google-drive-backup')) {
-      try { legacyBackupTaskRetirer.remove(); } catch (error) { console.warn('No se pudo retirar la antigua tarea de respaldo:', error.message); }
+      if (scheduledBackupRunning || !db || !googleDriveBackup || networkConfig.role === 'client') return;
+      scheduledBackupRunning = true;
+      const integrity = databaseIntegrityStatus(db);
+      if (integrity === 'ok') {
+        googleDriveBackup.runBackup(Buffer.from(db.export()), { manual:false, jsonBytes:sqliteDatabaseToJson(db) })
+          .catch(error => console.error('SIFER360 respaldo programado:', error.message))
+          .finally(() => { scheduledBackupRunning = false; });
+      } else {
+        console.error('SIFER360 respaldo programado bloqueado: SQLite no superó integrity_check:', integrity);
+        scheduledBackupRunning = false;
+      }
       return;
     }
     const existing = BrowserWindow.getAllWindows()[0];
@@ -2198,12 +2246,16 @@ if (!hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     readNetworkConfig();
     if (networkConfig.role !== 'client') await initializeDatabase();
+    googleDriveBackup = createGoogleDriveBackup({ app, safeStorage, shell, dialog });
+    try { legacyBackupTaskRetirer.remove(); } catch (error) { console.warn('No se pudo retirar la antigua tarea de respaldo:', error.message); }
     if (process.argv.includes('--sifer-google-drive-backup')) {
-      try { legacyBackupTaskRetirer.remove(); } catch (error) { console.warn('No se pudo retirar la antigua tarea de respaldo:', error.message); }
+      if (networkConfig.role === 'client') throw new Error('Los clientes LAN no generan respaldos: la única SQLite está en el servidor.');
+      const integrity = databaseIntegrityStatus(db);
+      if (integrity !== 'ok') throw new Error('SQLite no superó integrity_check; no se enviará ningún respaldo.');
+      await googleDriveBackup.runBackup(Buffer.from(db.export()), { manual:false, jsonBytes:sqliteDatabaseToJson(db) });
       app.quit();
       return;
     }
-    try { legacyBackupTaskRetirer.remove(); } catch (error) { console.warn('No se pudo retirar la antigua tarea de respaldo:', error.message); }
     licensing = createLicensing({ app, safeStorage, shell });
     await licensing.initialize();
     registerIpc();
