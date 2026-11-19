@@ -54,3 +54,19 @@ test("se bloquean instrucciones destructivas antes de tocar la base de datos", a
   assert.equal(db.exec("SELECT COUNT(*) FROM customer_data")[0].values[0][0], 1);
   db.close();
 });
+
+test("la migración de renglones múltiples agrega lines_json sin alterar reglas anteriores", async () => {
+  const SQL = await createSql();
+  const db = new SQL.Database();
+  db.run("CREATE TABLE schema_migrations(migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE TABLE accounting_automation_rules(id TEXT PRIMARY KEY, amount_path TEXT NOT NULL, debit_account_code TEXT NOT NULL, credit_account_code TEXT NOT NULL); INSERT INTO accounting_automation_rules VALUES('R-1','total','1.1.1.01','4.1.1.01');");
+  const schemaSql = fs.readFileSync(new URL("../src/accounting/automation-lines-schema.sql", import.meta.url), "utf8");
+  const first = applyAccountingMigration({ db, schemaSql, migrationKey:'accounting-automation-lines-v1' });
+  assert.equal(first.applied, true);
+  const columns = db.exec("PRAGMA table_info(accounting_automation_rules)")[0].values.map(row => row[1]);
+  assert.ok(columns.includes('lines_json'));
+  assert.equal(db.exec("SELECT id,amount_path,lines_json FROM accounting_automation_rules")[0].values[0][0], 'R-1');
+  assert.equal(db.exec("SELECT lines_json FROM accounting_automation_rules WHERE id='R-1'")[0].values[0][0], '');
+  const second = applyAccountingMigration({ db, schemaSql, migrationKey:'accounting-automation-lines-v1' });
+  assert.equal(second.applied, false);
+  db.close();
+});
