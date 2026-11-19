@@ -41,11 +41,17 @@ test('la exportación JSON contiene todas las tablas y supera integrity_check', 
   const SQL = await initSqlJs();
   const db = new SQL.Database();
   db.run('CREATE TABLE app_state(id INTEGER PRIMARY KEY, payload TEXT)');
+  db.run('CREATE INDEX idx_app_state_payload ON app_state(payload)');
+  db.run('CREATE TABLE binary_data(id INTEGER PRIMARY KEY, contents BLOB)');
   db.run('INSERT INTO app_state(id,payload) VALUES(1,?)', ['{"sales":[1,2]}']);
+  db.run('INSERT INTO binary_data(id,contents) VALUES(1,?)', [new Uint8Array([0,1,2])]);
   const json = JSON.parse(sqliteDatabaseToJson(db, '2026-11-16T20:00:00-04:00').toString('utf8'));
   assert.equal(json.format, 'SIFER360_SQLITE_JSON_BACKUP_V1');
   assert.equal(json.databaseIntegrity, 'ok');
   assert.deepEqual(json.tables.app_state.rows[0], [1, '{"sales":[1,2]}']);
+  assert.deepEqual(json.tables.binary_data.rows[0][1], { type:'base64', value:'AAEC' });
+  assert.ok(json.schema.some(item => item.type === 'table' && item.name === 'app_state' && item.sql.includes('CREATE TABLE')));
+  assert.ok(json.schema.some(item => item.type === 'index' && item.name === 'idx_app_state_payload'));
   db.close();
 });
 
