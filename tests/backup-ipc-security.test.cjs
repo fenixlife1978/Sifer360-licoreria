@@ -40,3 +40,9 @@ test('la gestión de usuarios persiste cambios y bajas en SQLite', () => {
   assert.match(ui, /authSaveUser\(authSession\.authToken,\{username,name,role,cashbox,password:code\}\)/);
   assert.match(ui, /authDeleteUser\(authSession\.authToken,u\)/);
 });
+
+test('la tarea programada no se pierde si llega mientras Electron inicializa SQLite', () => {
+  assert.match(main, /pendingScheduledBackup = true/);
+  assert.match(main, /if \(pendingScheduledBackup\)/);
+  assert.match(main, /runScheduledGoogleDriveBackup\(\)/);
+});
