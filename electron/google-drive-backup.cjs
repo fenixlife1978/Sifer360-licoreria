@@ -46,6 +46,36 @@ function requestJson(url, options = {}) {
   });
 }
 
+function requestBuffer(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const transport = target.protocol === 'http:' ? require('node:http') : require('node:https');
+    const req = transport.request(target, {
+      method: options.method || 'GET',
+      headers: options.headers || {},
+      timeout: options.timeout || 120000
+    }, res => {
+      const chunks = [];
+      res.on('data', chunk => chunks.push(Buffer.from(chunk)));
+      res.on('end', () => {
+        const bytes = Buffer.concat(chunks);
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          let body = {};
+          try { body = JSON.parse(bytes.toString('utf8')); } catch {}
+          const message = body.error_description || body.error?.message || body.error || ('HTTP ' + res.statusCode);
+          reject(new Error('Google Drive respondió ' + res.statusCode + ': ' + message));
+          return;
+        }
+        resolve({ statusCode:res.statusCode, bytes, headers:res.headers });
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('Tiempo de espera agotado al descargar el respaldo de Google Drive.')));
+    req.on('error', reject);
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
+
 function encryptBackup(bytes, key, cryptoImpl = crypto) {
   const iv = cryptoImpl.randomBytes(12);
   const cipher = cryptoImpl.createCipheriv('aes-256-gcm', key, iv);
@@ -122,6 +152,7 @@ function createGoogleDriveBackup(options = {}) {
   const dialog = options.dialog;
   const httpsImpl = options.https;
   const request = options.requestJson || requestJson;
+  const requestBytes = options.requestBuffer || requestBuffer;
   const clientId = String(options.clientId || process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID || bundledClientId || '').trim();
   const directory = pathImpl.join(app.getPath('userData'), 'google-drive-backup');
   const configFile = pathImpl.join(directory, 'config.json');
@@ -289,6 +320,37 @@ function createGoogleDriveBackup(options = {}) {
       body
     });
   }
+  async function listBackups() {
+    const config = readConfig();
+    if (!config.encryptedRefreshToken) throw new Error('Google Drive no está conectado.');
+    const token = await accessToken(config);
+    const folderId = await ensureFolder(token, config);
+    const q = encodeURIComponent("'" + folderId + "' in parents and trashed=false");
+    const found = await driveRequest(DRIVE_API + '/files?q=' + q + '&fields=files(id,name,size,modifiedTime,mimeType)&orderBy=modifiedTime desc&pageSize=100', token);
+    return (found.body.files || [])
+      .filter(file => typeof file.name === 'string' && file.name.endsWith('.sqlite.siferenc'))
+      .map(file => ({ id:file.id, name:file.name, size:Number(file.size)||0, modifiedTime:file.modifiedTime||'' }));
+  }
+  async function downloadBackup(fileId) {
+    const id = String(fileId || '').trim();
+    if (!id || id.length > 256 || !/^[A-Za-z0-9_-]+$/.test(id)) throw new Error('Identificador de respaldo inválido.');
+    const config = readConfig();
+    if (!config.encryptedRefreshToken) throw new Error('Google Drive no está conectado.');
+    const token = await accessToken(config);
+    const folderId = await ensureFolder(token, config);
+    const metadata = await driveRequest(DRIVE_API + '/files/' + encodeURIComponent(id) + '?fields=id,name,parents,mimeType,modifiedTime', token);
+    const file = metadata.body || {};
+    if (!Array.isArray(file.parents) || !file.parents.includes(folderId) || !String(file.name||'').endsWith('.sqlite.siferenc')) {
+      throw new Error('El archivo seleccionado no pertenece a la carpeta privada de respaldos SIFER360 o no es una copia SQLite.');
+    }
+    const downloaded = await requestBytes(DRIVE_API + '/files/' + encodeURIComponent(id) + '?alt=media', { headers:{ Authorization:'Bearer '+token }, timeout:120000 });
+    const bytes = decryptBackup(downloaded.bytes, getBackupKey(config), cryptoImpl);
+    if (bytes.length < 16 || !bytes.subarray(0,16).equals(Buffer.from('SQLite format 3\\0','binary'))) {
+      throw new Error('El contenido descifrado no tiene una cabecera SQLite válida.');
+    }
+    return { name:file.name.replace(/\\.siferenc$/,''), modifiedTime:file.modifiedTime||'', bytes };
+  }
+
   async function backup(snapshotBytes, { manual = false, jsonBytes = null } = {}) {
     const config = readConfig();
     assertBackupAllowed(config, manual);
@@ -376,7 +438,7 @@ function createGoogleDriveBackup(options = {}) {
     if (key.length !== 32) throw new Error('La clave de recuperación no tiene el formato esperado.');
     return decryptBackup(payload, key, cryptoImpl);
   }
-  return { status, connect, enable, disable, runBackup, exportRecoveryKey, verifyBackup, getBackupKey, readConfig };
+  return { status, connect, enable, disable, runBackup, exportRecoveryKey, listBackups, downloadBackup, verifyBackup, getBackupKey, readConfig };
 }
 
 module.exports = { createGoogleDriveBackup, createWindowsBackupScheduler, createDailyTaskXml, encryptBackup, decryptBackup, buildAccountConfig, assertBackupAllowed };
