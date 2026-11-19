@@ -35,6 +35,8 @@ test('v1.1.3 conserva SQLite como autoridad y permite solo respaldos cifrados op
   assert.match(main, /backup:run-now/);
   assert.match(main, /backup:list-files/);
   assert.match(main, /backup:download-file/);
+  assert.match(main, /backup:save-before-restore/);
+  assert.match(main, /backup:import-recovery-key/);
   assert.match(main, /requireAuthSession\(token, true\)/);
   assert.match(main, /networkConfig\.role === 'client'/);
   assert.match(preload, /backupConnectGoogle/);
@@ -46,5 +48,7 @@ test('v1.1.3 conserva SQLite como autoridad y permite solo respaldos cifrados op
   assert.match(renderer, /window\.confirm/);
   assert.match(backup, /AES-256-GCM/);
   assert.match(backup, /code_verifier/);
+  assert.match(backup, /importRecoveryKey/);
+  assert.match(backup, /downloadBackup/);
   assert.match(jsonExport, /sqlite_master/);
 });
