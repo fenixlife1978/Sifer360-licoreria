@@ -888,10 +888,11 @@ function hybridCartPlan(){
   });
   return{fiscalIndexes:Object.keys(fiscalQtyByLine).map(Number),ticketIndexes:Object.keys(ticketQtyByLine).map(Number),fiscalLines,ticketLines,fiscalQtyByLine,ticketQtyByLine};
 }
-function salePortion(sale,lines,mode,residual,fiscalRatio){
+function salePortion(sale,lines,mode,residual,fiscalRatio,fiscalSub){
   let sub=0,base=0,iva=0,baseG16=0,baseR8=0,baseA31=0,baseEx=0;
   lines.forEach(line=>{
-    sub+=r2(Number(line.price||0)*Number(line.qty||0));base+=Number(line.net)||0;iva+=Number(line.iva)||0;
+    const unitPrice=Number(line.presentationPrice||line.price||0),presentationQty=Number(line.presentationQty??line.qty??0);
+    sub+=r2(unitPrice*presentationQty);base+=Number(line.net)||0;iva+=Number(line.iva)||0;
     if(Number(line.taxRate)===16)baseG16+=Number(line.net)||0;
     else if(Number(line.taxRate)===8)baseR8+=Number(line.net)||0;
     else if(Number(line.taxRate)===31)baseA31+=Number(line.net)||0;
@@ -899,6 +900,7 @@ function salePortion(sale,lines,mode,residual,fiscalRatio){
     else baseG16+=Number(line.net)||0;
   });
   sub=r2(sub);base=r2(base);iva=r2(iva);
+  if(residual)sub=r2(Number(sale.sub||0)-Number(fiscalSub||0));
   const ratio=Number.isFinite(fiscalRatio)?fiscalRatio:(Number(sale.total)>0?r2((base+iva)/sale.total):0);
   const pays=(sale.pays||[]).map(pay=>({...pay,amount:residual?r2(Number(pay.amount||0)-r2(Number(pay.amount||0)*ratio)):r2(Number(pay.amount||0)*ratio)}));
   const igtf=residual?r2(Number(sale.igtf||0)-r2(Number(sale.igtf||0)*ratio)):r2(Number(sale.igtf||0)*ratio);
@@ -5203,7 +5205,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     baseG16:t.baseG16,baseR8:t.baseR8,baseA31:t.baseA31,baseEx:t.baseEx,
     iva:t.iva,total:t.total,igtf:st.igtf,rate:S.cfg.rate,pays,
     change:r2(st.change),credit:creditAmt,void:false,
-    ticketFiscalOut:Array.from(ticketFiscalOutByCode.entries()).map(([code,qty])=>({code,qty})),
+    ticketFiscalOut:Array.from(ticketFiscalOutLines.reduce((byCode,line)=>byCode.set(line.code,(byCode.get(line.code)||0)+Number(line.qty||0)),new Map()).entries()).map(([code,qty])=>({code,qty})),
     ticketFiscalOutLines:ticketFiscalOutLines.map(line=>({...line}))
   };
 
@@ -5256,7 +5258,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       const fiscalTotal=r2(fiscalSaleLines.reduce((sum,line)=>sum+Number(line.net||0)+Number(line.iva||0),0));
       const fiscalRatio=sale.total>0?Math.max(0,Math.min(1,fiscalTotal/sale.total)):0;
       fiscalDocumentSale=salePortion(sale,fiscalSaleLines,'FISCAL',false,fiscalRatio);
-      ticketDocumentSale=salePortion(sale,ticketSaleLines,'HYBRID',true,fiscalRatio);
+      ticketDocumentSale=salePortion(sale,ticketSaleLines,'HYBRID',true,fiscalRatio,fiscalDocumentSale.sub);
     }else if(hybridHasTicket){
       ticketDocumentSale={...sale,lines:ticketSaleLines,documentMode:'HYBRID',docType:'TICKET-INTERNO'};
     }
