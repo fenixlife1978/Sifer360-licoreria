@@ -56,6 +56,12 @@ function encryptBackup(bytes, key, cryptoImpl = crypto) {
 function buildAccountConfig(current, email, encryptedRefreshToken, folderId) {
   return { ...current, email, encryptedRefreshToken, folderId, enabled: !!current.enabled };
 }
+function assertBackupAllowed(config, manual = false) {
+  if ((!manual && !config.enabled) || !config.encryptedRefreshToken) {
+    throw new Error(manual ? 'Conecta primero una cuenta Google Drive para realizar el respaldo manual.' : 'El respaldo automático en Google Drive no está activado o la cuenta no está conectada.');
+  }
+  return true;
+}
 
 function decryptBackup(payload, key, cryptoImpl = crypto) {
   const bytes = Buffer.from(payload);
@@ -285,7 +291,7 @@ function createGoogleDriveBackup(options = {}) {
   }
   async function backup(snapshotBytes, { manual = false, jsonBytes = null } = {}) {
     const config = readConfig();
-    if ((!manual && !config.enabled) || !config.encryptedRefreshToken) throw new Error(manual ? 'Conecta primero una cuenta Google Drive para realizar el respaldo manual.' : 'El respaldo automático en Google Drive no está activado o la cuenta no está conectada.');
+    assertBackupAllowed(config, manual);
     if (!snapshotBytes || !Buffer.from(snapshotBytes).length) throw new Error('La instantánea SQLite está vacía; no se enviará ningún archivo.');
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Caracas', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const key = getBackupKey(config);
@@ -373,4 +379,4 @@ function createGoogleDriveBackup(options = {}) {
   return { status, connect, enable, disable, runBackup, exportRecoveryKey, verifyBackup, getBackupKey, readConfig };
 }
 
-module.exports = { createGoogleDriveBackup, createWindowsBackupScheduler, createDailyTaskXml, encryptBackup, decryptBackup, buildAccountConfig };
+module.exports = { createGoogleDriveBackup, createWindowsBackupScheduler, createDailyTaskXml, encryptBackup, decryptBackup, buildAccountConfig, assertBackupAllowed };
