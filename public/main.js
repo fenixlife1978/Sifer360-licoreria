@@ -7391,6 +7391,7 @@ async function databaseSettingsDlg(){
     }
   });
 
+  const authToken = () => sessionStorage.getItem('sifer360_auth_token_v1') || '';
   const gdriveStatus = $('#gdriveStatus', el);
   const gdriveEmail = $('#gdriveEmail', el);
   const showDriveStatus = s => {
@@ -7410,7 +7411,7 @@ async function databaseSettingsDlg(){
   };
   const refreshDriveStatus = async () => {
     if (!isDesktop || !window.posDesktop.backupStatus) { showDriveStatus({}); return; }
-    try { showDriveStatus(await window.posDesktop.backupStatus()); }
+    try { showDriveStatus(await window.posDesktop.backupStatus(authToken())); }
     catch (e) { gdriveStatus.textContent = 'No se pudo consultar Google Drive: ' + e.message; }
   };
   $('#gdriveConnect', el).disabled = !isDesktop;
@@ -7422,25 +7423,25 @@ async function databaseSettingsDlg(){
     const email = gdriveEmail.value.trim();
     if (!email) { gdriveStatus.textContent = 'Escribe el correo de Google que quieres conectar.'; return; }
     gdriveStatus.textContent = 'Validando la nueva cuenta de Google. La cuenta actual seguirá activa si la autorización falla…';
-    try { const previous = await window.posDesktop.backupStatus(); const previousEmail = previous.email || ''; const result = await window.posDesktop.backupConnectGoogle(email); showDriveStatus(result); gdriveStatus.textContent += (previousEmail && previousEmail.toLowerCase() !== email.toLowerCase() ? ' Cuenta cambiada correctamente. Los respaldos anteriores permanecen en la cuenta anterior; los siguientes se guardarán aquí.' : ' Guarda ahora la clave de recuperación antes de activar la programación.'); }
+    try { const previous = await window.posDesktop.backupStatus(); const previousEmail = previous.email || ''; const result = await window.posDesktop.backupConnectGoogle(authToken(), email); showDriveStatus(result); gdriveStatus.textContent += (previousEmail && previousEmail.toLowerCase() !== email.toLowerCase() ? ' Cuenta cambiada correctamente. Los respaldos anteriores permanecen en la cuenta anterior; los siguientes se guardarán aquí.' : ' Guarda ahora la clave de recuperación antes de activar la programación.'); }
     catch (e) { gdriveStatus.textContent = 'No se pudo conectar Google Drive: ' + e.message; }
   });
   $('#gdriveEnable', el).addEventListener('click', async () => {
     gdriveStatus.textContent = 'Programando la tarea diaria de Windows…';
-    try { showDriveStatus(await window.posDesktop.backupEnableDaily()); }
+    try { showDriveStatus(await window.posDesktop.backupEnableDaily(authToken())); }
     catch (e) { gdriveStatus.textContent = 'No se pudo activar el respaldo diario: ' + e.message; }
   });
   $('#gdriveDisable', el).addEventListener('click', async () => {
-    try { showDriveStatus(await window.posDesktop.backupDisableDaily()); }
+    try { showDriveStatus(await window.posDesktop.backupDisableDaily(authToken())); }
     catch (e) { gdriveStatus.textContent = 'No se pudo desactivar: ' + e.message; }
   });
   $('#gdriveNow', el).addEventListener('click', async () => {
     gdriveStatus.textContent = 'Verificando SQLite, cifrando y enviando el respaldo…';
-    try { const result = await window.posDesktop.backupRunNow(); gdriveStatus.textContent = 'Respaldos verificados y cargados: ' + result.fileName + (result.json ? ' y ' + result.json.fileName : '') + ' · SHA-256 SQLite ' + result.sha256; await refreshDriveStatus(); }
+    try { const result = await window.posDesktop.backupRunNow(authToken()); gdriveStatus.textContent = 'Respaldos verificados y cargados: ' + result.fileName + (result.json ? ' y ' + result.json.fileName : '') + ' · SHA-256 SQLite ' + result.sha256; await refreshDriveStatus(); }
     catch (e) { gdriveStatus.textContent = 'No se completó el respaldo: ' + e.message; }
   });
   $('#gdriveRecovery', el).addEventListener('click', async () => {
-    try { const result = await window.posDesktop.backupExportRecoveryKey(); gdriveStatus.textContent = result.saved ? 'Clave de recuperación guardada. Guárdala en un medio seguro separado de esta PC.' : 'No se guardó la clave.'; }
+    try { const result = await window.posDesktop.backupExportRecoveryKey(authToken()); gdriveStatus.textContent = result.saved ? 'Clave de recuperación guardada. Guárdala en un medio seguro separado de esta PC.' : 'No se guardó la clave.'; }
     catch (e) { gdriveStatus.textContent = 'No se pudo guardar la clave: ' + e.message; }
   });
   refreshDriveStatus();
