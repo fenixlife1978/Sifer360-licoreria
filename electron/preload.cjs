@@ -84,5 +84,7 @@ contextBridge.exposeInMainWorld('posDesktop', {
   backupDisableDaily: token => ipcRenderer.invoke('backup:disable-daily', token),
   backupRunNow: token => ipcRenderer.invoke('backup:run-now', token),
   backupExportRecoveryKey: token => ipcRenderer.invoke('backup:export-recovery-key', token),
+  backupListFiles: token => ipcRenderer.invoke('backup:list-files', token),
+  backupDownloadFile: (token, fileId) => ipcRenderer.invoke('backup:download-file', token, fileId),
   licenseOpenPlans: () => ipcRenderer.invoke('license:open-plans')
 });
