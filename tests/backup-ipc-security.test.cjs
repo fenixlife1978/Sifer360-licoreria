@@ -32,11 +32,11 @@ test('preload transmite el token a todos los métodos de respaldo', () => {
 test('el inicio de sesión de escritorio autentica contra SQLite y restaura sesiones vigentes', () => {
   assert.match(access, /authInitializeLegacyUsers\(users\)/);
   assert.match(access, /authLogin\(\{username,password:code\}\)/);
-  assert.match(access, /authVerifySession\(token\)/);
-  assert.match(access, /sifer360_auth_token_v1/);
+  assert.match(access, /authVerifySession\(saved\.authToken\)/);
+  assert.match(access, /authToken:serverAuth&&serverAuth\.token/);
 });
 
 test('la gestión de usuarios persiste cambios y bajas en SQLite', () => {
-  assert.match(ui, /authSaveUser\(authToken,\{username,name,role,cashbox,password:code\}\)/);
-  assert.match(ui, /authDeleteUser\(authToken,u\)/);
+  assert.match(ui, /authSaveUser\(authSession\.authToken,\{username,name,role,cashbox,password:code\}\)/);
+  assert.match(ui, /authDeleteUser\(authSession\.authToken,u\)/);
 });
