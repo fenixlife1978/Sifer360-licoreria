@@ -8945,14 +8945,27 @@ async function databaseSettingsDlg(){
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) return;
-    note.textContent = 'Importando base de datos SQLite…';
+    if (!window.confirm('Vas a reemplazar la base SQLite activa por el archivo seleccionado. Antes se descargará una copia local de la base actual. ¿Deseas continuar?')) {
+      fileInput.value = '';
+      return;
+    }
+    note.textContent = 'Creando copia local previa y validando el archivo seleccionado…';
     try {
+      const currentBytes = posSqliteDriver.exportSqlite();
+      if (!currentBytes || !currentBytes.byteLength) throw new Error('No se pudo generar una copia SQLite de seguridad de la base actual; se canceló la restauración.');
+      const preRestore = new Blob([currentBytes], { type:'application/x-sqlite3' });
+      const backupLink = document.createElement('a');
+      backupLink.href = URL.createObjectURL(preRestore);
+      backupLink.download = 'SIFER360-antes-de-restaurar-' + new Date().toISOString().replace(/[:.]/g,'-') + '.sqlite';
+      backupLink.click();
       const buf = await file.arrayBuffer();
       await posSqliteDriver.importSqlite(buf);
-      note.textContent = 'Base de datos SQLite restaurada correctamente. Recargando…';
+      note.textContent = 'Base SQLite restaurada. Se descargó la copia local previa. Recargando…';
       setTimeout(() => location.reload(), 800);
     } catch (e) {
       note.textContent = 'Error restaurando SQLite: ' + e.message;
+    } finally {
+      fileInput.value = '';
     }
   });
 
