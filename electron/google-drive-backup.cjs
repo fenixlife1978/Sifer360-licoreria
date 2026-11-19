@@ -441,7 +441,7 @@ function createGoogleDriveBackup(options = {}) {
     });
     if (selection.canceled || !selection.filePaths || !selection.filePaths[0]) return { imported:false, canceled:true };
     const raw = fsImpl.readFileSync(selection.filePaths[0], 'utf8');
-    const lines = raw.split(/\\r?\\n/).map(line => line.trim()).filter(Boolean);
+    const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     if (!lines[0] || !lines[0].startsWith('SIFER360-LICORERIA - CLAVE DE RECUPERACIÓN DE RESPALDOS')) {
       throw new Error('El archivo seleccionado no es una clave de recuperación SIFER360 reconocida.');
     }
