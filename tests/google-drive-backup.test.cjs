@@ -1,8 +1,11 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const crypto = require('node:crypto');
-const { encryptBackup, decryptBackup, createDailyTaskXml, buildAccountConfig, assertBackupAllowed } = require('../electron/google-drive-backup.cjs');
+const { encryptBackup, decryptBackup, createDailyTaskXml, buildAccountConfig, assertBackupAllowed, createGoogleDriveBackup } = require('../electron/google-drive-backup.cjs');
 const initSqlJs = require('sql.js');
 const { sqliteDatabaseToJson } = require('../electron/sqlite-json-export.cjs');
 
@@ -100,4 +103,48 @@ test('el respaldo programado exige activación diaria y cuenta conectada', () =>
 
 test('el respaldo manual también exige una cuenta Google conectada', () => {
   assert.throws(() => assertBackupAllowed({ enabled: false, encryptedRefreshToken: '' }, true), /Conecta primero/);
+});
+
+test('lista y descarga copias SQLite de Drive, valida carpeta y descifra antes de entregar el archivo', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sifer360-drive-'));
+  try {
+    const key = Buffer.alloc(32, 7);
+    const safeStorage = {
+      isEncryptionAvailable: () => true,
+      encryptString: value => Buffer.from(String(value), 'utf8'),
+      decryptString: value => Buffer.from(value).toString('utf8')
+    };
+    const protect = value => safeStorage.encryptString(value).toString('base64');
+    fs.mkdirSync(path.join(directory, 'google-drive-backup'), { recursive:true });
+    fs.writeFileSync(path.join(directory, 'google-drive-backup', 'config.json'), JSON.stringify({
+      enabled:false,
+      email:'admin@example.com',
+      folderId:'folder_123',
+      encryptedRefreshToken:protect('refresh-token'),
+      encryptedBackupKey:protect(key.toString('base64'))
+    }));
+    const plain = Buffer.concat([Buffer.from('SQLite format 3\\0','binary'), Buffer.from('test-database')]);
+    const encrypted = encryptBackup(plain, key);
+    const requestJson = async url => {
+      if (String(url).includes('oauth2.googleapis.com')) return { body:{ access_token:'access-token' } };
+      if (String(url).includes('/files/file_123')) return { body:{ id:'file_123', name:'SIFER360-2026-11-19.sqlite.siferenc', parents:['folder_123'], mimeType:'application/octet-stream', modifiedTime:'2026-11-19T20:00:00Z' } };
+      return { body:{ files:[{ id:'file_123', name:'SIFER360-2026-11-19.sqlite.siferenc', size:'128', modifiedTime:'2026-11-19T20:00:00Z' }] } };
+    };
+    const backup = createGoogleDriveBackup({
+      app:{ getPath:() => directory },
+      safeStorage,
+      clientId:'test.apps.googleusercontent.com',
+      requestJson,
+      requestBuffer:async () => ({ bytes:encrypted }),
+      scheduler:{ configure:() => ({}), remove:() => ({}) }
+    });
+    const files = await backup.listBackups();
+    assert.equal(files.length, 1);
+    assert.equal(files[0].id, 'file_123');
+    const downloaded = await backup.downloadBackup('file_123');
+    assert.equal(downloaded.name, 'SIFER360-2026-11-19.sqlite');
+    assert.deepEqual(downloaded.bytes, plain);
+  } finally {
+    fs.rmSync(directory, { recursive:true, force:true });
+  }
 });
