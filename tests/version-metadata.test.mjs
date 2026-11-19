@@ -40,6 +40,7 @@ test('v1.1.3 conserva SQLite como autoridad y permite solo respaldos cifrados op
   assert.match(preload, /backupConnectGoogle/);
   assert.match(preload, /backupDownloadFile/);
   assert.match(preload, /backupSaveBeforeRestore/);
+  assert.match(preload, /backupImportRecoveryKey/);
   assert.match(renderer, /Respaldo cifrado automático en Google Drive/);
   assert.match(renderer, /Descargar y descifrar/);
   assert.match(renderer, /window\.confirm/);
