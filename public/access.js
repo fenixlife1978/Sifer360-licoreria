@@ -154,7 +154,7 @@ function renderLogin(error=''){
       '<div class="sa-login-meta">' +
         '<div class="sa-product-meta">' +
           '<img class="sa-meta-gear" src="./icon.svg" alt="Emblema SIFER360">' +
-          '<div><strong>SIFER360 - Licorería</strong><span>Versión 1.0.3</span></div>' +
+          '<div><strong>SIFER360 - Licorería</strong><span>Versión 1.0.4</span></div>' +
         '</div>' +
         '<div class="sa-date-meta">' +
           '<svg class="sa-meta-cal" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
