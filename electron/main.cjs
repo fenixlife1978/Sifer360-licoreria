@@ -2060,6 +2060,23 @@ function registerIpc() {
     fs.writeFileSync(target.filePath, Buffer.from(item.bytes), { flag:'wx', mode:0o600 });
     return { saved:true, filePath:target.filePath, name:path.basename(target.filePath) };
   });
+  ipcMain.handle('backup:save-before-restore', async (_event, token) => {
+    requireAuthSession(token, true);
+    if (networkConfig.role === 'client') throw new Error('La restauración debe ejecutarse en el equipo servidor que conserva la única SQLite.');
+    if (!db) throw new Error('SQLite no está disponible.');
+    const integrity = databaseIntegrityStatus(db);
+    if (integrity !== 'ok') throw new Error('No se puede crear la copia previa: SQLite no superó integrity_check (' + integrity + ').');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const target = await dialog.showSaveDialog({
+      title:'Guardar copia local antes de restaurar',
+      defaultPath:'SIFER360-pre-restauracion-' + stamp + '.sqlite',
+      buttonLabel:'Guardar copia previa',
+      filters:[{ name:'Base de datos SQLite', extensions:['sqlite','db'] }]
+    });
+    if (target.canceled || !target.filePath) return { saved:false, canceled:true };
+    fs.writeFileSync(target.filePath, Buffer.from(db.export()), { flag:'wx', mode:0o600 });
+    return { saved:true, filePath:target.filePath };
+  });
   ipcMain.handle('backup:export-recovery-key', (_event, token) => {
     requireAuthSession(token, true);
     if (networkConfig.role === 'client') throw new Error('La clave de recuperación debe exportarse desde el equipo servidor.');
