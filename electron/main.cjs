@@ -2036,6 +2036,30 @@ function registerIpc() {
     if (integrity !== 'ok') throw new Error('No se enviará el respaldo: PRAGMA integrity_check no devolvió ok (' + integrity + ').');
     return googleDriveBackup.runBackup(Buffer.from(db.export()), { manual:true, jsonBytes:sqliteDatabaseToJson(db) });
   });
+  ipcMain.handle('backup:list-files', async (_event, token) => {
+    requireAuthSession(token, true);
+    if (networkConfig.role === 'client') throw new Error('Los respaldos se consultan desde el equipo servidor.');
+    return googleDriveBackup.listBackups();
+  });
+  ipcMain.handle('backup:download-file', async (_event, token, fileId) => {
+    requireAuthSession(token, true);
+    if (networkConfig.role === 'client') throw new Error('La descarga de respaldos debe realizarse desde el equipo servidor.');
+    const item = await googleDriveBackup.downloadBackup(fileId);
+    const candidate = new SqlDatabase(Buffer.from(item.bytes));
+    let integrity;
+    try { integrity = databaseIntegrityStatus(candidate); }
+    finally { try { candidate.close(); } catch {} }
+    if (integrity !== 'ok') throw new Error('El respaldo descifrado no superó integrity_check: ' + integrity);
+    const target = await dialog.showSaveDialog({
+      title: 'Guardar copia SQLite descifrada para restauración manual',
+      defaultPath: item.name || 'SIFER360-respaldo.sqlite',
+      buttonLabel: 'Guardar copia',
+      filters: [{ name:'Base de datos SQLite', extensions:['sqlite','db'] }]
+    });
+    if (target.canceled || !target.filePath) return { saved:false, canceled:true };
+    fs.writeFileSync(target.filePath, Buffer.from(item.bytes), { flag:'wx', mode:0o600 });
+    return { saved:true, filePath:target.filePath, name:path.basename(target.filePath) };
+  });
   ipcMain.handle('backup:export-recovery-key', (_event, token) => {
     requireAuthSession(token, true);
     if (networkConfig.role === 'client') throw new Error('La clave de recuperación debe exportarse desde el equipo servidor.');
