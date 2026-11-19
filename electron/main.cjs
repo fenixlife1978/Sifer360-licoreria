@@ -744,25 +744,28 @@ function registerIpc() {
     }
     return { ok: true, deleted: true };
   });
-  ipcMain.handle('backup:status', () => googleDriveBackup.status());
-  ipcMain.handle('backup:connect-google', async (_event, email) => {
+  ipcMain.handle('backup:status', (_event, token) => { requireAuthSession(token, true); return googleDriveBackup.status(); });
+  ipcMain.handle('backup:connect-google', async (_event, token, email) => {
+    requireAuthSession(token, true);
     if (networkConfig.role === 'client') throw new Error('El respaldo debe configurarse en el equipo servidor que conserva la única SQLite.');
     return googleDriveBackup.connect(email);
   });
-  ipcMain.handle('backup:enable-daily', async () => {
+  ipcMain.handle('backup:enable-daily', async (_event, token) => {
+    requireAuthSession(token, true);
     if (networkConfig.role === 'client') throw new Error('El respaldo automático solo puede ejecutarse en el equipo servidor o independiente.');
     if (networkConfig.role === 'server' && !networkServer) throw new Error('El servidor LAN no está iniciado; no se activó el respaldo.');
     return googleDriveBackup.enable(process.execPath);
   });
-  ipcMain.handle('backup:disable-daily', () => googleDriveBackup.disable());
-  ipcMain.handle('backup:run-now', async () => {
+  ipcMain.handle('backup:disable-daily', (_event, token) => { requireAuthSession(token, true); return googleDriveBackup.disable(); });
+  ipcMain.handle('backup:run-now', async (_event, token) => {
+    requireAuthSession(token, true);
     if (networkConfig.role === 'client') throw new Error('El respaldo debe ejecutarse desde el equipo que conserva la SQLite central.');
     if (!db) throw new Error('SQLite no está disponible.');
     const integrity = databaseIntegrityStatus(db);
     if (integrity !== 'ok') throw new Error('No se enviará el respaldo: PRAGMA integrity_check no devolvió ok (' + integrity + ').');
     return googleDriveBackup.runBackup(Buffer.from(db.export()), { manual: true, jsonBytes: sqliteDatabaseToJson(db) });
   });
-  ipcMain.handle('backup:export-recovery-key', () => googleDriveBackup.exportRecoveryKey());
+  ipcMain.handle('backup:export-recovery-key', (_event, token) => { requireAuthSession(token, true); return googleDriveBackup.exportRecoveryKey(); });
   ipcMain.handle('posdb:get-mode', () => ({ mode: 'sqlite', databasePath: networkConfig.role === 'client' ? null : userDbPath(), source: networkConfig.role === 'client' ? 'lan-server' : 'local' }));
   ipcMain.handle('posdb:set-mode', () => ({ mode: 'sqlite', databasePath: networkConfig.role === 'client' ? null : userDbPath(), source: networkConfig.role === 'client' ? 'lan-server' : 'local' }));
   ipcMain.handle('posdb:load-state', async () => {
