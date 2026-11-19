@@ -33,10 +33,15 @@ test('v1.1.3 conserva SQLite como autoridad y permite solo respaldos cifrados op
 
   assert.match(main, /createGoogleDriveBackup/);
   assert.match(main, /backup:run-now/);
+  assert.match(main, /backup:list-files/);
+  assert.match(main, /backup:download-file/);
   assert.match(main, /requireAuthSession\(token, true\)/);
   assert.match(main, /networkConfig\.role === 'client'/);
   assert.match(preload, /backupConnectGoogle/);
+  assert.match(preload, /backupDownloadFile/);
   assert.match(renderer, /Respaldo cifrado automático en Google Drive/);
+  assert.match(renderer, /Descargar y descifrar/);
+  assert.match(renderer, /window\.confirm/);
   assert.match(backup, /AES-256-GCM/);
   assert.match(backup, /code_verifier/);
   assert.match(jsonExport, /sqlite_master/);
