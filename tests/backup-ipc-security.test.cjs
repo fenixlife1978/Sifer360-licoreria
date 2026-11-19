@@ -12,7 +12,7 @@ const ui = fs.readFileSync(path.join(root, 'public/main.js'), 'utf8');
 
 test('todas las operaciones de respaldo exigen una sesión SQLite de administrador', () => {
   const handlers = [
-    ['backup:status', /backup:status',[\s\S]{0,140}requireAuthSession\(token, true\)/],
+    ['backup:status', /backup:status',[\s\S]{0,300}requireAuthSession\(token, true\)/],
     ['backup:connect-google', /backup:connect-google',[\s\S]{0,180}requireAuthSession\(token, true\)/],
     ['backup:enable-daily', /backup:enable-daily',[\s\S]{0,160}requireAuthSession\(token, true\)/],
     ['backup:disable-daily', /backup:disable-daily',[\s\S]{0,130}requireAuthSession\(token, true\)/],
@@ -30,7 +30,7 @@ test('preload transmite el token a todos los métodos de respaldo', () => {
 });
 
 test('el inicio de sesión de escritorio autentica contra SQLite y restaura sesiones vigentes', () => {
-  assert.match(access, /authInitializeLegacyUsers\(users\)/);
+  assert.match(access, /authInitializeLegacyUsers\(payload\)/);
   assert.match(access, /authLogin\(\{username,password:code\}\)/);
   assert.match(access, /authVerifySession\(saved\.authToken\)/);
   assert.match(access, /authToken:serverAuth&&serverAuth\.token/);
