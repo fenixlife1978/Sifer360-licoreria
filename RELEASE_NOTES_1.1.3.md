@@ -6,7 +6,7 @@
 - OAuth Desktop con PKCE y scope mínimo. La función permanece deshabilitada si no se configura un Client ID público válido.
 - Programación diaria a las 8:00 p. m. hora Venezuela desde Windows Task Scheduler.
 - Respaldo manual disponible aunque la programación diaria esté desactivada.
-- Clave de recuperación exportable para descifrar los respaldos en otra instalación.
+- Clave de recuperación exportable e importable en otra instalación; Windows vuelve a protegerla con safeStorage/DPAPI.
 - Listado y descarga de respaldos SQLite desde Drive; la aplicación descifra y valida el archivo antes de guardarlo localmente.
 - Restauración exclusivamente manual: requiere selección del archivo, confirmación explícita y copia local previa de la base activa.
 
