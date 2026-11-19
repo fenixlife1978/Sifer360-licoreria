@@ -345,10 +345,10 @@ function createGoogleDriveBackup(options = {}) {
     }
     const downloaded = await requestBytes(DRIVE_API + '/files/' + encodeURIComponent(id) + '?alt=media', { headers:{ Authorization:'Bearer '+token }, timeout:120000 });
     const bytes = decryptBackup(downloaded.bytes, getBackupKey(config), cryptoImpl);
-    if (bytes.length < 16 || !bytes.subarray(0,16).equals(Buffer.from('SQLite format 3\\0','binary'))) {
+    if (bytes.length < 16 || !bytes.subarray(0,16).equals(Buffer.from('SQLite format 3\0','binary'))) {
       throw new Error('El contenido descifrado no tiene una cabecera SQLite válida.');
     }
-    return { name:file.name.replace(/\\.siferenc$/,''), modifiedTime:file.modifiedTime||'', bytes };
+    return { name:file.name.replace(/\.siferenc$/,''), modifiedTime:file.modifiedTime||'', bytes };
   }
 
   async function backup(snapshotBytes, { manual = false, jsonBytes = null } = {}) {
