@@ -25,6 +25,14 @@ Si SIFER360 ya está abierto, la instancia programada entrega el trabajo a la in
 
 Cada fecha de Venezuela tiene dos archivos dentro de `SIFER360 Respaldos`: `SIFER360-AAAA-MM-DD.sqlite.siferenc` (copia íntegra restaurable) y `SIFER360-AAAA-MM-DD.json.siferenc` (exportación estructurada de todas las tablas). Ambos están cifrados y comparten la clave de recuperación. Un reintento del mismo día reemplaza esa copia diaria, evitando duplicados por reintentos. Los errores se registran localmente; nunca se informa éxito antes de que Google confirme la carga.
 
+## Descarga y restauración manual
+
+- El administrador puede listar copias SQLite de la carpeta privada y descargar una copia descifrada a un archivo local.
+- Antes de guardar, la aplicación valida el encabezado SQLite y ejecuta PRAGMA integrity_check sobre una instancia aislada.
+- Descargar no restaura ni modifica la base activa. Para restaurar, el administrador debe seleccionar manualmente el archivo local en “Restaurar copia” y aceptar la confirmación explícita.
+- Antes de importar, SIFER360 descarga una copia local de la SQLite actual. Si no puede generar esa copia previa, cancela la restauración.
+- Nunca se restaura automáticamente al iniciar la aplicación ni se reemplaza la SQLite solo porque exista una copia más reciente en Drive.
+
 ## Seguridad de acceso y respaldo manual
 
 - La conexión, activación/desactivación, ejecución manual y exportación de la clave requieren una sesión de administrador autenticada por SQLite en el proceso principal de Electron.
