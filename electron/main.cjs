@@ -1887,7 +1887,7 @@ function registerIpc() {
     return session.user;
   }
   ipcMain.handle('auth:initialize-legacy', async (_event, legacyUsers) => {
-    if (networkConfig.role === 'client') throw new Error('La gestión de usuarios debe realizarse en el servidor LAN.');
+    if (networkConfig.role === 'client') return { migrated:false, synchronized:false, count:0, users:[], reason:'auth-managed-by-server' };
     const before = Number(one('SELECT COUNT(*) AS total FROM app_users').total || 0);
     if (before > 0) {
       const existing = all('SELECT username,name,role,cashbox FROM app_users WHERE active=1 ORDER BY username');
