@@ -78,5 +78,11 @@ contextBridge.exposeInMainWorld('posDesktop', {
   accountingApproveJournalEntry: entry => ipcRenderer.invoke('accounting:approve-journal-entry', entry),
   accountingPostJournalEntry: entry => ipcRenderer.invoke('accounting:post-journal-entry', entry),
   accountingCreateReversalDraft: entry => ipcRenderer.invoke('accounting:create-reversal-draft', entry),
+  backupStatus: token => ipcRenderer.invoke('backup:status', token),
+  backupConnectGoogle: (token, email) => ipcRenderer.invoke('backup:connect-google', token, email),
+  backupEnableDaily: token => ipcRenderer.invoke('backup:enable-daily', token),
+  backupDisableDaily: token => ipcRenderer.invoke('backup:disable-daily', token),
+  backupRunNow: token => ipcRenderer.invoke('backup:run-now', token),
+  backupExportRecoveryKey: token => ipcRenderer.invoke('backup:export-recovery-key', token),
   licenseOpenPlans: () => ipcRenderer.invoke('license:open-plans')
 });
