@@ -1,4 +1,4 @@
-name: SIFER360 1.1.2 Local Desktop and SQLite validation
+name: SIFER360 1.1.3 Local Desktop and SQLite validation
 
 on:
   pull_request:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sifer360-112-desktop-validation-${{ github.ref }}
+  group: sifer360-113-desktop-validation-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -27,12 +27,19 @@ jobs:
           package-manager-cache: false
       - name: Install dependencies
         run: npm install --legacy-peer-deps
+      - name: Configure optional Google Drive OAuth Client ID
+        env:
+          SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
+        run: |
+          node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(id && !id.endsWith('.apps.googleusercontent.com')) throw new Error('Invalid Google OAuth Client ID.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId:id}, null, 2)); console.log(id ? 'Google Drive OAuth configured.' : 'Google Drive remains disabled until the optional Client ID is configured.');"
       - name: Run complete automated tests
         run: npm test
       - name: Validate desktop JavaScript syntax
         run: |
           node --check electron/main.cjs
           node --check electron/preload.cjs
+          node --check electron/google-drive-backup.cjs
+          node --check electron/sqlite-json-export.cjs
           node --check electron/legacy-backup-task.cjs
           node --check electron/binary-architecture.cjs
           node --check public/main.js
@@ -58,10 +65,10 @@ jobs:
         run: npm test
       - name: Build Windows installer and portable executable
         run: npm run build:exe
-      - name: Upload SIFER360 1.1.2 Windows artifacts
+      - name: Upload SIFER360 1.1.3 Windows artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: SIFER360-1.1.2-Desktop-SQLite-Windows
+          name: SIFER360-1.1.3-Desktop-SQLite-Windows
           path: dist-exe/*.exe
           if-no-files-found: error
           retention-days: 30
