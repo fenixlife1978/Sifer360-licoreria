@@ -32,7 +32,8 @@ jobs:
       - name: Configurar OAuth Desktop Client ID opcional
         env:
           SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
-        run: node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(id && !id.endsWith('.apps.googleusercontent.com')) throw new Error('Client ID de Google inválido.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId:id}, null, 2)); console.log(id ? 'Google Drive OAuth configurado.' : 'Google Drive queda opcional y desactivado hasta configurar el Client ID.');"
+        run: |
+          node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(id && !id.endsWith('.apps.googleusercontent.com')) throw new Error('Client ID de Google inválido.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId:id}, null, 2)); console.log(id ? 'Google Drive OAuth configurado.' : 'Google Drive queda opcional y desactivado hasta configurar el Client ID.');"
       - name: Ejecutar pruebas de regresión
         run: npm test
       - name: Compilar aplicación web (Vite)
