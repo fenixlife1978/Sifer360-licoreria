@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { encryptBackup, decryptBackup, createDailyTaskXml, buildAccountConfig } = require('../electron/google-drive-backup.cjs');
+const { encryptBackup, decryptBackup, createDailyTaskXml, buildAccountConfig, assertBackupAllowed } = require('../electron/google-drive-backup.cjs');
 const initSqlJs = require('sql.js');
 const { sqliteDatabaseToJson } = require('../electron/sqlite-json-export.cjs');
 
@@ -82,4 +82,16 @@ test('cambiar de cuenta conserva programación desactivada', () => {
   const next = buildAccountConfig({ enabled: false, schedule: null, folderId: 'old' }, 'nueva@gmail.com', 'token', 'new');
   assert.equal(next.enabled, false);
   assert.equal(next.schedule, null);
+});
+test('el respaldo manual funciona aunque la programación diaria esté desactivada', () => {
+  assert.equal(assertBackupAllowed({ enabled: false, encryptedRefreshToken: 'token-cifrado' }, true), true);
+});
+
+test('el respaldo programado exige activación diaria y cuenta conectada', () => {
+  assert.throws(() => assertBackupAllowed({ enabled: false, encryptedRefreshToken: 'token-cifrado' }, false), /no está activado/);
+  assert.throws(() => assertBackupAllowed({ enabled: true, encryptedRefreshToken: '' }, false), /no está activado/);
+});
+
+test('el respaldo manual también exige una cuenta Google conectada', () => {
+  assert.throws(() => assertBackupAllowed({ enabled: false, encryptedRefreshToken: '' }, true), /Conecta primero/);
 });
