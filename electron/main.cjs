@@ -1671,7 +1671,7 @@ function registerAccountingIpc() {
     requireAccountingSession(token, { allowedRoles: ['admin', 'contador'] });
     return all(`SELECT id,source_type AS sourceType,event_action AS eventAction,amount_path AS amountPath,
       currency_path AS currencyPath,debit_account_code AS debitAccountCode,credit_account_code AS creditAccountCode,
-      description_template AS descriptionTemplate,exchange_rate_type AS exchangeRateType,rule_version AS ruleVersion,
+      description_template AS descriptionTemplate,exchange_rate_type AS exchangeRateType,lines_json AS linesJson,rule_version AS ruleVersion,
       status,created_at AS createdAt,created_by AS createdBy
       FROM accounting_automation_rules ORDER BY source_type,event_action,rule_version DESC`);
   });
