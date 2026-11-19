@@ -8951,16 +8951,12 @@ async function databaseSettingsDlg(){
     }
     note.textContent = 'Creando copia local previa y validando el archivo seleccionado…';
     try {
-      const currentBytes = posSqliteDriver.exportSqlite();
-      if (!currentBytes || !currentBytes.byteLength) throw new Error('No se pudo generar una copia SQLite de seguridad de la base actual; se canceló la restauración.');
-      const preRestore = new Blob([currentBytes], { type:'application/x-sqlite3' });
-      const backupLink = document.createElement('a');
-      backupLink.href = URL.createObjectURL(preRestore);
-      backupLink.download = 'SIFER360-antes-de-restaurar-' + new Date().toISOString().replace(/[:.]/g,'-') + '.sqlite';
-      backupLink.click();
+      if (!isDesktop || !window.posDesktop.backupSaveBeforeRestore) throw new Error('La restauración segura requiere la aplicación de escritorio.');
+      const preRestore = await window.posDesktop.backupSaveBeforeRestore(authToken());
+      if (!preRestore.saved) { note.textContent = 'Restauración cancelada: no se guardó la copia local previa.'; return; }
       const buf = await file.arrayBuffer();
       await posSqliteDriver.importSqlite(buf);
-      note.textContent = 'Base SQLite restaurada. Se descargó la copia local previa. Recargando…';
+      note.textContent = 'Base SQLite restaurada. Copia local previa guardada en ' + preRestore.filePath + '. Recargando…';
       setTimeout(() => location.reload(), 800);
     } catch (e) {
       note.textContent = 'Error restaurando SQLite: ' + e.message;
