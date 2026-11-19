@@ -425,6 +425,10 @@ async function initializeDatabase() {
   if (!fs.existsSync(automationSchemaPath)) throw new Error('Falta el esquema de automatización contable; se conserva la base de datos y se detiene el inicio.');
   const automationMigration = applyAccountingMigration({ db, schemaSql: fs.readFileSync(automationSchemaPath, 'utf8'), migrationKey: 'accounting-automation-v1', persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
   if (automationMigration.applied) console.info('Migración de reglas contables aplicada sin eliminar datos existentes:', automationMigration.migrationKey);
+  const automationLinesSchemaPath = path.join(__dirname, '..', 'src', 'accounting', 'automation-lines-schema.sql');
+  if (!fs.existsSync(automationLinesSchemaPath)) throw new Error('Falta la migración de renglones múltiples de automatización contable; se conserva la base de datos y se detiene el inicio.');
+  const automationLinesMigration = applyAccountingMigration({ db, schemaSql: fs.readFileSync(automationLinesSchemaPath, 'utf8'), migrationKey: 'accounting-automation-lines-v1', persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
+  if (automationLinesMigration.applied) console.info('Migración de renglones múltiples contables aplicada sin eliminar datos existentes:', automationLinesMigration.migrationKey);
   const fixedAssetsSchemaPath = path.join(__dirname, '..', 'src', 'accounting', 'fixed-assets-schema.sql');
   if (!fs.existsSync(fixedAssetsSchemaPath)) throw new Error('Falta el esquema de activos fijos; se conserva la base de datos y se detiene el inicio.');
   const fixedAssetsMigration = applyAccountingMigration({ db, schemaSql: fs.readFileSync(fixedAssetsSchemaPath, 'utf8'), migrationKey: 'accounting-fixed-assets-v1', persist: () => persistDb(), restore: snapshot => restoreDatabaseSnapshot(snapshot) });
