@@ -1993,8 +1993,8 @@ function registerIpc() {
     return { ok: true, deleted: true };
   });
   ipcMain.handle('backup:status', (_event, token) => {
-    requireAuthSession(token, true);
     if (networkConfig.role === 'client') return { configured:false, enabled:false, oauthReady:false, serverOnly:true };
+    requireAuthSession(token, true);
     return googleDriveBackup.status();
   });
   ipcMain.handle('backup:connect-google', async (_event, token, email) => {
