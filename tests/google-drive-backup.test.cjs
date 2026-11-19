@@ -123,7 +123,7 @@ test('lista y descarga copias SQLite de Drive, valida carpeta y descifra antes d
       encryptedRefreshToken:protect('refresh-token'),
       encryptedBackupKey:protect(key.toString('base64'))
     }));
-    const plain = Buffer.concat([Buffer.from('SQLite format 3\\0','binary'), Buffer.from('test-database')]);
+    const plain = Buffer.concat([Buffer.from('SQLite format 3\0','binary'), Buffer.from('test-database')]);
     const encrypted = encryptBackup(plain, key);
     const requestJson = async url => {
       if (String(url).includes('oauth2.googleapis.com')) return { body:{ access_token:'access-token' } };
