@@ -1680,43 +1680,49 @@ function registerAccountingIpc() {
     const actor = accountingActor(input);
     const sourceType = String(input.sourceType || '').trim();
     const eventAction = String(input.eventAction || 'created');
-    const amountPath = String(input.amountPath || '').trim();
-    const currencyPath = String(input.currencyPath || '').trim();
-    const debitAccountCode = String(input.debitAccountCode || '').trim();
-    const creditAccountCode = String(input.creditAccountCode || '').trim();
     const descriptionTemplate = String(input.descriptionTemplate || '').trim().slice(0, 180);
     const exchangeRateType = String(input.exchangeRateType || '').trim();
+    const currencyPath = String(input.currencyPath || '').trim();
+    const { isSafeAutomationPath, normalizeAutomationLines } = require('./accounting-automation.cjs');
     const allowedSources = new Set(['sale','purchase','receivable','payable','cash_close','cash_opening','cash_movement','inventory_movement','held_sale','inventory_count','return','void','cashea_operation','cashea_settlement','currency_movement','iva_retention','islr_retention','bank_operation','bank_settlement_batch','exchange_rate_update','fiscal_inventory_movement','retention']);
-    const safePath = value => !value || isSafeAutomationPath(value);
     if (!allowedSources.has(sourceType)) throw new Error('Tipo de operación contable no reconocido.');
     if (eventAction !== 'created') throw new Error('Por seguridad, la generación automática inicial solo admite altas. Las modificaciones y eliminaciones requieren revisión y ajuste manual.');
-    if (!safePath(amountPath) || !amountPath) throw new Error('Indica una ruta de importe válida, por ejemplo total o totals.grandTotal.');
-    if (!safePath(currencyPath)) throw new Error('La ruta de moneda no es válida.');
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(debitAccountCode) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(creditAccountCode) || debitAccountCode === creditAccountCode) throw new Error('Selecciona dos cuentas imputables distintas.');
+    const advanced = input.lines !== undefined && input.lines !== null;
+    const normalizedLines = advanced ? normalizeAutomationLines(input.lines) : null;
+    const amountPath = advanced ? '__multi__' : String(input.amountPath || '').trim();
+    const debitAccountCode = advanced ? normalizedLines.find(line => line.side === 'debit').accountCode : String(input.debitAccountCode || '').trim();
+    const creditAccountCode = advanced ? normalizedLines.find(line => line.side === 'credit').accountCode : String(input.creditAccountCode || '').trim();
+    if (!advanced && (!isSafeAutomationPath(amountPath) || !amountPath)) throw new Error('Indica una ruta de importe válida, por ejemplo total o totals.grandTotal.');
+    if (currencyPath && !isSafeAutomationPath(currencyPath)) throw new Error('La ruta de moneda no es válida.');
+    if (!advanced && (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(debitAccountCode) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(creditAccountCode) || debitAccountCode === creditAccountCode)) throw new Error('Selecciona dos cuentas imputables distintas.');
     if (!descriptionTemplate) throw new Error('La descripción del asiento es obligatoria.');
     if (exchangeRateType && !['official','market','contractual','accounting_adjustment'].includes(exchangeRateType)) throw new Error('Tipo de tasa bimonetaria no válido.');
     const settings = one('SELECT accounting_framework,presentation_currency,functional_currency FROM accounting_settings WHERE id=1');
     if (!settings || !settings.accounting_framework) throw new Error('Configura primero el marco VEN-NIF y las monedas.');
-    for (const code of [debitAccountCode, creditAccountCode]) {
+    const accountCodes = [...new Set(advanced ? normalizedLines.map(line => line.accountCode) : [debitAccountCode,creditAccountCode])];
+    for (const code of accountCodes) {
       const account = one('SELECT active,accepts_posting,framework_scope FROM chart_of_accounts WHERE code=?', [code]);
-      if (!account || Number(account.active)!==1 || Number(account.accepts_posting)!==1 || (account.framework_scope!=='both' && account.framework_scope!==settings.accounting_framework)) throw new Error('La cuenta '+code+' no está habilitada para contabilizaciones en el marco configurado.');
+      if (!account || Number(account.active)!==1 || Number(account.accepts_posting)!==1 || (account.framework_scope!=='both' && account.framework_scope!==settings.accounting_framework)) {
+        throw new Error('La cuenta '+code+' no está habilitada para contabilizaciones en el marco configurado.');
+      }
     }
     const current = one("SELECT MAX(rule_version) AS version FROM accounting_automation_rules WHERE source_type=? AND event_action=?", [sourceType,eventAction]);
     const version = Number(current && current.version || 0) + 1;
     const id = crypto.randomUUID(), now = new Date().toISOString();
+    const linesJson = advanced ? JSON.stringify(normalizedLines) : '';
     const snapshot = db.export();
     db.run('BEGIN IMMEDIATE');
     try {
       run("UPDATE accounting_automation_rules SET status='retired' WHERE source_type=? AND event_action=? AND status='active'", [sourceType,eventAction]);
-      run(`INSERT INTO accounting_automation_rules(id,source_type,event_action,amount_path,currency_path,debit_account_code,credit_account_code,description_template,exchange_rate_type,rule_version,status,created_at,created_by)
-        VALUES(?,?,?,?,?,?,?,?,?,?, 'active',?,?)`,
-        [id,sourceType,eventAction,amountPath,currencyPath,debitAccountCode,creditAccountCode,descriptionTemplate,exchangeRateType||null,version,now,actor.actorId]);
+      run(`INSERT INTO accounting_automation_rules(id,source_type,event_action,amount_path,currency_path,debit_account_code,credit_account_code,description_template,exchange_rate_type,rule_version,status,created_at,created_by,lines_json)
+        VALUES(?,?,?,?,?,?,?,?,?,?, 'active',?,?,?)`,
+        [id,sourceType,eventAction,amountPath,currencyPath,debitAccountCode,creditAccountCode,descriptionTemplate,exchangeRateType||null,version,now,actor.actorId,linesJson]);
       run('INSERT INTO accounting_audit_log(id,entity_type,entity_id,action,actor_id,occurred_at,after_json) VALUES(?,?,?,?,?,?,?)',
-        [crypto.randomUUID(),'accounting_automation_rule',id,'create_version',actor.actorId,now,JSON.stringify({sourceType,eventAction,amountPath,currencyPath,debitAccountCode,creditAccountCode,descriptionTemplate,exchangeRateType,version})]);
+        [crypto.randomUUID(),'accounting_automation_rule',id,'create_version',actor.actorId,now,JSON.stringify({sourceType,eventAction,amountPath,currencyPath,debitAccountCode,creditAccountCode,descriptionTemplate,exchangeRateType,version,lines:normalizedLines})]);
       db.run('COMMIT');
     } catch(error) { try { db.run('ROLLBACK'); } catch {} throw error; }
     persistAccountingDb(snapshot);
-    return one('SELECT id,source_type AS sourceType,event_action AS eventAction,amount_path AS amountPath,currency_path AS currencyPath,debit_account_code AS debitAccountCode,credit_account_code AS creditAccountCode,description_template AS descriptionTemplate,exchange_rate_type AS exchangeRateType,rule_version AS ruleVersion,status FROM accounting_automation_rules WHERE id=?',[id]);
+    return one('SELECT id,source_type AS sourceType,event_action AS eventAction,amount_path AS amountPath,currency_path AS currencyPath,debit_account_code AS debitAccountCode,credit_account_code AS creditAccountCode,description_template AS descriptionTemplate,exchange_rate_type AS exchangeRateType,lines_json AS linesJson,rule_version AS ruleVersion,status FROM accounting_automation_rules WHERE id=?',[id]);
   });
   registerAccountingHandler('accounting:generate-source-drafts', async (event, input = {}) => {
     assertTrustedAccountingSender(event);
