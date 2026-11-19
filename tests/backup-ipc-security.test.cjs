@@ -23,9 +23,10 @@ test('todas las operaciones de respaldo exigen una sesión SQLite de administrad
 });
 
 test('preload transmite el token a todos los métodos de respaldo', () => {
-  for (const method of ['backupStatus', 'backupConnectGoogle', 'backupEnableDaily', 'backupDisableDaily', 'backupRunNow', 'backupExportRecoveryKey']) {
+  for (const method of ['backupStatus', 'backupEnableDaily', 'backupDisableDaily', 'backupRunNow', 'backupExportRecoveryKey']) {
     assert.match(preload, new RegExp(method + ':\\s*token'));
   }
+  assert.match(preload, /backupConnectGoogle:\\s*\\(token,\\s*email\\)/);
 });
 
 test('el inicio de sesión de escritorio autentica contra SQLite y restaura sesiones vigentes', () => {
