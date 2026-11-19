@@ -154,7 +154,7 @@ test('importa una clave de recuperación externa y la protege en el almacén loc
   try {
     const key = Buffer.alloc(32, 9);
     const keyFile = path.join(directory, 'recovery.txt');
-    fs.writeFileSync(keyFile, 'SIFER360-LICORERIA - CLAVE DE RECUPERACIÓN DE RESPALDOS\\nGuarde este archivo fuera del equipo.\\n\\n' + key.toString('base64') + '\\n');
+    fs.writeFileSync(keyFile, 'SIFER360-LICORERIA - CLAVE DE RECUPERACIÓN DE RESPALDOS\nGuarde este archivo fuera del equipo.\n\n' + key.toString('base64') + '\n');
     const safeStorage = {
       isEncryptionAvailable: () => true,
       encryptString: value => Buffer.from(String(value), 'utf8'),
