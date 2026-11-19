@@ -181,12 +181,24 @@ function renderLogin(error=''){
     e.preventDefault();
     const username=$('#sa-user').value.trim(),code=$('#sa-code').value;let cashbox=$('#sa-cashbox').value;
     const users=initUsers();
-    const u=users.find(x=>x.username===username&&x.code===code);
+    let u=null, auth=null;
+    try {
+      if(window.posDesktop){
+        await window.posDesktop.authInitializeLegacyUsers(users);
+        auth=await window.posDesktop.authLogin({username,password:code});
+        u=auth&&auth.user?auth.user:null;
+      } else {
+        u=users.find(x=>x.username===username&&x.code===code)||null;
+      }
+    } catch {
+      u=null;
+    }
     if(!u){
       $('#sa-error').textContent='Usuario o contraseña incorrectos.';
       $('#sa-code').focus();
       return;
     }
+    if(auth&&auth.token)sessionStorage.setItem('sifer360_auth_token_v1',auth.token);
     if($('#sa-remember').checked)localStorage.setItem('sifer360_remember_user',username);
     else localStorage.removeItem('sifer360_remember_user');
     if(u.role==='cajero'){
@@ -256,13 +268,19 @@ function waitForPosReady(timeoutMs=30000){
  });
 }
 function renderDashboard(u){if(u.role==='admin'){document.body.classList.remove('sa-locked');const access=$('#sifer-access');if(access)access.remove();applyPermissions(u);if(window.SIFERDashboard)window.SIFERDashboard.show();window.dispatchEvent(new CustomEvent('sifer:authenticated',{detail:{role:u.role}}));return;}if(u.role==='contador'){document.body.classList.remove('sa-locked');const access=$('#sifer-access');if(access)access.remove();applyPermissions(u);if(window.SIFERAccountantDashboard)window.SIFERAccountantDashboard.show();return;}const r=roles[u.role];const c=$('#sa-content');c.innerHTML='<div class="sa-top"><div class="sa-user"><div class="sa-avatar">'+esc(u.name.slice(0,1).toUpperCase())+'</div><div><div class="sa-role">'+esc(r.label)+'</div><b>'+esc(u.name)+'</b><div class="sa-muted">Sesión iniciada · '+esc(u.cashbox)+'</div></div></div><button class="sa-btn secondary" id="sa-logout" style="width:auto;margin:0">Salir</button></div><div class="sa-eyebrow">ESPACIO DE TRABAJO</div><h2 style="margin:10px 0 8px">¿Qué necesitas hacer?</h2><p class="sa-muted" style="margin-bottom:22px">Módulos disponibles según tu perfil de acceso.</p><div class="sa-dashgrid">'+r.modules.map((m,i)=>'<button class="sa-module" data-module="'+esc(m[1])+'"><div class="sa-icon">'+m[0]+'</div><b>'+esc(m[1])+'</b><span>'+esc(m[2])+'</span></button>').join('')+'</div><div class="sa-small">Las operaciones críticas deben solicitar autorización PIN. La autorización debe validarse en el servidor para producción.</div>';$('#sa-logout').onclick=logout;applyPermissions(u);c.querySelectorAll('[data-module]').forEach(b=>b.onclick=()=>{const m=b.dataset.module;if(m==='Dashboard')return;if(m==='Red y sincronización'){renderNetwork(u);return;}document.body.classList.remove('sa-locked');$('#sifer-access').remove();const map={'Contabilidad general':'contabilidad','Punto de venta':'nueva','Ventas':'ventas','Compras':'compras','Compras y proveedores':'compras','Inventario':'inventario','Cajas':'cortez','Mi caja':'cortez','Reportes':'ventas','Libros fiscales':'seniat','Retenciones IVA':'seniat','Conciliación':'seniat','Exportar reportes':'seniat','Configuración':'basedatos','Consultar precios':'buscar','Dashboard':null};const id=map[m];if(id){document.body.classList.remove('sa-locked');$('#sifer-access').remove();const target=$('#toolbar [data-tb="'+id+'"]');if(target)target.click();else alert('El módulo aún no está conectado en esta pantalla: '+m)}else{applyPermissions(u);document.body.classList.remove('sa-locked');$('#sifer-access').remove();if(m==='Punto de venta'){const entry=$('#entry');if(entry)entry.focus()}}})}
-function logout(){const current=(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION)||'null')}catch{return null}})();sessionStorage.removeItem(SESSION);sessionStorage.removeItem('sifer360_active_box');sessionStorage.removeItem('sifer360_active_opening');if(current&&current.username){const box=(()=>{try{return JSON.parse(localStorage.getItem('sifer360_active_box')||'null')}catch{return null}})();if(box&&box.username===current.username)localStorage.removeItem('sifer360_active_box');}const old=$('#sifer-access');if(old)old.remove();shell()}
+function logout(){const current=(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION)||'null')}catch{return null}})();const authToken=sessionStorage.getItem('sifer360_auth_token_v1')||'';if(window.posDesktop&&authToken)window.posDesktop.authLogout(authToken).catch(()=>{});sessionStorage.removeItem('sifer360_auth_token_v1');sessionStorage.removeItem(SESSION);sessionStorage.removeItem('sifer360_active_box');sessionStorage.removeItem('sifer360_active_opening');if(current&&current.username){const box=(()=>{try{return JSON.parse(localStorage.getItem('sifer360_active_box')||'null')}catch{return null}})();if(box&&box.username===current.username)localStorage.removeItem('sifer360_active_box');}const old=$('#sifer-access');if(old)old.remove();shell()}
 document.addEventListener('DOMContentLoaded',async()=>{
   const users=initUsers();
   const saved=(()=>{try{return JSON.parse(sessionStorage.getItem(SESSION)||'null')}catch{return null}})();
-  const user=saved&&users.find(x=>x.username===saved.username&&x.role===saved.role);
+  let user=null;
+  if(window.posDesktop){
+    const token=sessionStorage.getItem('sifer360_auth_token_v1')||'';
+    if(token){try{const verified=await window.posDesktop.authVerifySession(token);if(verified&&verified.valid)user=verified.user;}catch{}}
+  }else{
+    user=saved&&users.find(x=>x.username===saved.username&&x.role===saved.role);
+  }
   if(user){
-    const restored=Object.assign({},saved,{name:user.name,role:user.role,cashbox:user.role==='cajero'?user.cashbox:(saved.cashbox||user.cashbox||'—')});
+    const restored=Object.assign({},saved||{},user,{name:user.name,role:user.role,cashbox:user.role==='cajero'?user.cashbox:((saved&&saved.cashbox)||user.cashbox||'—')});
     sessionStorage.setItem(SESSION,JSON.stringify(restored));
     shell();
     const content=$('#sa-content');
