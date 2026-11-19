@@ -83,6 +83,7 @@ contextBridge.exposeInMainWorld('posDesktop', {
   backupEnableDaily: token => ipcRenderer.invoke('backup:enable-daily', token),
   backupDisableDaily: token => ipcRenderer.invoke('backup:disable-daily', token),
   backupRunNow: token => ipcRenderer.invoke('backup:run-now', token),
+  backupImportRecoveryKey: token => ipcRenderer.invoke('backup:import-recovery-key', token),
   backupExportRecoveryKey: token => ipcRenderer.invoke('backup:export-recovery-key', token),
   backupListFiles: token => ipcRenderer.invoke('backup:list-files', token),
   backupDownloadFile: (token, fileId) => ipcRenderer.invoke('backup:download-file', token, fileId),
