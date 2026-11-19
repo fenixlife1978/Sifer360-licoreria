@@ -288,6 +288,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
     try{await waitForPosReady();renderDashboard(restored);}
     catch(err){if(content)content.innerHTML='<div class="sa-card"><h2>No se pudo iniciar el POS</h2><p class="sa-error">'+esc(err.message)+'</p><p class="sa-muted">No se ha registrado ninguna operación. Recarga la aplicación para reintentar.</p></div>';}
   }else{
+    sessionStorage.removeItem('sifer360_auth_token_v1');
     sessionStorage.removeItem(SESSION);
     shell();
   }
