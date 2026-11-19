@@ -2077,6 +2077,11 @@ function registerIpc() {
     fs.writeFileSync(target.filePath, Buffer.from(db.export()), { flag:'wx', mode:0o600 });
     return { saved:true, filePath:target.filePath };
   });
+  ipcMain.handle('backup:import-recovery-key', (_event, token) => {
+    requireAuthSession(token, true);
+    if (networkConfig.role === 'client') throw new Error('La clave de recuperación debe importarse desde el equipo servidor.');
+    return googleDriveBackup.importRecoveryKey();
+  });
   ipcMain.handle('backup:export-recovery-key', (_event, token) => {
     requireAuthSession(token, true);
     if (networkConfig.role === 'client') throw new Error('La clave de recuperación debe exportarse desde el equipo servidor.');
