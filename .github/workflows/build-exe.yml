@@ -36,7 +36,7 @@ jobs:
         env:
           SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
         run: |
-          node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(!id || !id.endsWith('.apps.googleusercontent.com')) throw new Error('Falta SIFER360_GOOGLE_OAUTH_CLIENT_ID o no tiene formato de Client ID de Google.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId:id}, null, 2)); console.log('Google OAuth Client ID configurado (valor oculto).')"
+          node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(id && !id.endsWith('.apps.googleusercontent.com')) throw new Error('SIFER360_GOOGLE_OAUTH_CLIENT_ID no tiene formato de Client ID de Google.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId:id}, null, 2)); console.log(id ? 'Google OAuth Client ID configurado (valor oculto).' : 'Google Drive queda desactivado: falta configurar el Client ID opcional. El POS y el instalador continúan compilándose.');"
 
       - name: Ejecutar pruebas de regresión
         run: npm test
