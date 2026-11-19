@@ -8906,7 +8906,7 @@ async function databaseSettingsDlg(){
       '<div class="hint" style="margin:0">SQLite continúa siendo la única base operativa. Solo el equipo independiente o servidor LAN puede generar copias. El archivo se cifra localmente antes de subirlo a una carpeta privada de tu Google Drive.</div>' +
       '<div class="f"><label for="gdriveEmail">Correo de la cuenta Google Drive</label><input class="fld" id="gdriveEmail" type="email" autocomplete="email" placeholder="tu-correo@gmail.com" style="width:100%"></div>' +
       '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn" id="gdriveConnect" type="button">Conectar Google Drive</button><button class="btn" id="gdriveEnable" type="button">Activar respaldo diario 8:00 p. m.</button><button class="btn" id="gdriveDisable" type="button">Desactivar</button></div>' +
-      '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn primary" id="gdriveNow" type="button">Realizar respaldo ahora</button><button class="btn" id="gdriveRecovery" type="button">Guardar clave de recuperación</button></div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn primary" id="gdriveNow" type="button">Realizar respaldo ahora</button><button class="btn" id="gdriveRecovery" type="button">Guardar clave de recuperación</button><button class="btn" id="gdriveImportRecovery" type="button">Importar clave de recuperación</button></div>' +
       '<div class="row" style="flex-wrap:wrap;gap:8px"><select id="gdriveBackupList" class="fld" style="flex:1;min-width:220px"><option value="">Selecciona un respaldo SQLite</option></select><button class="btn" id="gdriveRefresh" type="button">Actualizar lista</button><button class="btn" id="gdriveDownload" type="button">Descargar y descifrar</button></div>' +
       '<div class="hint" style="margin:0">La descarga se valida y guarda como archivo SQLite local. Para restaurar, selecciónalo después en “Restaurar copia”; la aplicación pedirá confirmación y guardará una copia local previa. Nunca se reemplaza SQLite automáticamente.</div>' +
       '<div id="gdriveStatus" class="hint" role="status" aria-live="polite" style="margin:0;min-height:28px">Consultando configuración de Google Drive…</div>' +
@@ -8985,7 +8985,7 @@ async function databaseSettingsDlg(){
   const gdriveEmail = $('#gdriveEmail', el);
   const showDriveStatus = s => {
     if (!isDesktop) { gdriveStatus.textContent = 'Esta función requiere la aplicación de escritorio Windows.'; return; }
-    if (s.serverOnly) { gdriveStatus.textContent = 'El respaldo se administra desde la PC servidor que conserva la única SQLite.'; ['gdriveConnect','gdriveEnable','gdriveDisable','gdriveNow','gdriveRecovery','gdriveRefresh','gdriveDownload'].forEach(id => { $('#'+id, el).disabled = true; }); return; }
+    if (s.serverOnly) { gdriveStatus.textContent = 'El respaldo se administra desde la PC servidor que conserva la única SQLite.'; ['gdriveConnect','gdriveEnable','gdriveDisable','gdriveNow','gdriveRecovery','gdriveRefresh','gdriveDownload','gdriveImportRecovery'].forEach(id => { $('#'+id, el).disabled = true; }); return; }
     $('#gdriveConnect', el).disabled = !s.oauthReady;
     $('#gdriveEnable', el).disabled = !s.configured || !s.oauthReady;
     $('#gdriveNow', el).disabled = !s.configured || !s.oauthReady;
@@ -9011,6 +9011,7 @@ async function databaseSettingsDlg(){
   $('#gdriveDisable', el).disabled = !isDesktop;
   $('#gdriveNow', el).disabled = !isDesktop;
   $('#gdriveRecovery', el).disabled = !isDesktop;
+  $('#gdriveImportRecovery', el).disabled = !isDesktop;
   $('#gdriveRefresh', el).disabled = !isDesktop;
   $('#gdriveDownload', el).disabled = !isDesktop;
   $('#gdriveConnect', el).addEventListener('click', async () => {
@@ -9067,6 +9068,12 @@ async function databaseSettingsDlg(){
       const result = await window.posDesktop.backupDownloadFile(authToken(), fileId);
       gdriveStatus.textContent = result.saved ? 'Copia descifrada y validada guardada en: ' + result.filePath + '. Para restaurarla, selecciónala manualmente en “Restaurar copia”.' : 'Descarga cancelada; la base local no fue modificada.';
     } catch (error) { gdriveStatus.textContent = 'No se pudo descargar el respaldo: ' + error.message; }
+  });
+  $('#gdriveImportRecovery', el).addEventListener('click', async () => {
+    try {
+      const result = await window.posDesktop.backupImportRecoveryKey(authToken());
+      gdriveStatus.textContent = result.imported ? 'Clave de recuperación importada y protegida por Windows en esta instalación.' : 'Importación de clave cancelada; no se cambió la configuración.';
+    } catch (error) { gdriveStatus.textContent = 'No se pudo importar la clave de recuperación: ' + error.message; }
   });
   refreshDriveStatus();
 
