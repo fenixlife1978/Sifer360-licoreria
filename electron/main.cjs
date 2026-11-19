@@ -1738,7 +1738,7 @@ function registerAccountingIpc() {
     if (requestedId && !pending.length) throw new Error('El evento no existe o ya fue procesado.');
     const { createJournalEntry, decimalToMinorUnits } = await loadAccountingEngine();
     const { buildBimonetaryLines } = await import('../src/accounting/bimonetary.mjs');
-    const { extractAutomationValue, isSafeAutomationPath } = require('./accounting-automation.cjs');
+    const { extractAutomationValue, buildAutomationJournalLines } = require('./accounting-automation.cjs');
     const results = { generated: [], needsReview: [], skipped: [] };
     for (const sourceEvent of pending) {
       try {
@@ -1764,20 +1764,40 @@ function registerAccountingIpc() {
         const rule = one("SELECT * FROM accounting_automation_rules WHERE source_type=? AND event_action='created' AND status='active' ORDER BY rule_version DESC LIMIT 1", [sourceEvent.source_type]);
         if (!rule) throw new Error('No existe una regla activa para esta operación. Configura la asignación de cuentas e importe.');
         const record = payload.record;
-        const rawAmount = extractAutomationValue(record, rule.amount_path);
-        if (rawAmount === undefined || rawAmount === null || String(rawAmount).trim() === '') throw new Error('La ruta de importe configurada no existe en el documento de origen.');
-        const amountMinor = decimalToMinorUnits(String(rawAmount), Number(settings.monetary_decimals));
-        if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new Error('El importe de origen debe ser mayor que cero.');
+        let lines, amountMinor;
+        if (rule.lines_json) {
+          let configuredLines;
+          try { configuredLines = JSON.parse(rule.lines_json); } catch { throw new Error('La configuración de renglones múltiples no es un JSON válido.'); }
+          lines = buildAutomationJournalLines({
+            lines:configuredLines,
+            record,
+            monetaryDecimals:Number(settings.monetary_decimals),
+            decimalToMinorUnits,
+            fallbackDescription:rule.description_template.slice(0,180)
+          });
+          amountMinor = lines.reduce((sum,line) => sum + line.debitMinor, 0);
+        } else {
+          const rawAmount = extractAutomationValue(record, rule.amount_path);
+          if (rawAmount === undefined || rawAmount === null || String(rawAmount).trim() === '') throw new Error('La ruta de importe configurada no existe en el documento de origen.');
+          amountMinor = decimalToMinorUnits(String(rawAmount), Number(settings.monetary_decimals));
+          if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new Error('El importe de origen debe ser mayor que cero.');
+          lines = [
+            {accountCode:rule.debit_account_code,debitMinor:amountMinor,creditMinor:0,description:rule.description_template.slice(0,180)},
+            {accountCode:rule.credit_account_code,debitMinor:0,creditMinor:amountMinor,description:rule.description_template.slice(0,180)}
+          ];
+        }
+        for (const line of lines) {
+          const account = one('SELECT active,accepts_posting,framework_scope FROM chart_of_accounts WHERE code=?', [line.accountCode]);
+          if (!account || Number(account.active)!==1 || Number(account.accepts_posting)!==1 || (account.framework_scope!=='both' && account.framework_scope!==settings.accounting_framework)) {
+            throw new Error('La cuenta '+line.accountCode+' ya no está habilitada para contabilizaciones en el marco configurado.');
+          }
+        }
         const currency = rule.currency_path ? String(extractAutomationValue(record, rule.currency_path) || '').trim().toUpperCase() : settings.functional_currency;
         if (currency !== settings.functional_currency) throw new Error('La moneda del documento ('+currency+') no coincide con la moneda funcional. Requiere conversión y revisión explícita.');
         const entryDate = String(sourceEvent.occurred_at || '').slice(0,10);
         if (!isValidIsoDate(entryDate)) throw new Error('El evento no tiene una fecha contable válida.');
         const period = one("SELECT id,start_date AS startDate,end_date AS endDate,status FROM accounting_periods WHERE start_date<=? AND end_date>=? ORDER BY start_date LIMIT 1", [entryDate,entryDate]);
         if (!period || period.status !== 'open') throw new Error('No existe un período contable abierto para la fecha del evento.');
-        const lines = [
-          {accountCode:rule.debit_account_code,debitMinor:amountMinor,creditMinor:0,description:rule.description_template.slice(0,180)},
-          {accountCode:rule.credit_account_code,debitMinor:0,creditMinor:amountMinor,description:rule.description_template.slice(0,180)}
-        ];
         const presentationCurrency = settings.presentation_currency;
         let rate = {rateNumerator:1,rateDenominator:1}, rateId=null, rateType=null, rateSource=null;
         if (settings.functional_currency !== presentationCurrency) {
