@@ -7,7 +7,7 @@
 - Solo el equipo independiente o servidor LAN que conserva la SQLite central puede generar respaldos. Los clientes LAN no suben copias.
 - No se envía el archivo SQLite en claro. Se crea una instantánea coherente desde sql.js, se valida con `PRAGMA integrity_check` y se cifra con AES-256-GCM antes de transmitirla.
 - Se usa OAuth de escritorio con PKCE y el scope mínimo `drive.file` más lectura del correo autorizado. Los tokens de renovación y la clave de cifrado local se protegen con Electron `safeStorage` (Windows DPAPI).
-- El usuario debe exportar y conservar fuera del PC la clave de recuperación desde el botón correspondiente. La clave es necesaria para descifrar copias en otro equipo; perderla impide recuperar el contenido cifrado.
+- El administrador puede exportar la clave de recuperación y conservarla fuera del PC. En una instalación nueva puede importar ese archivo; la clave se vuelve a proteger con safeStorage/DPAPI local. Sin esa clave no se puede descifrar el contenido cifrado.
 
 ## Configuración obligatoria de Google OAuth
 
