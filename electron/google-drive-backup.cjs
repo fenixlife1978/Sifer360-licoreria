@@ -433,12 +433,46 @@ function createGoogleDriveBackup(options = {}) {
     writeConfig(config);
     return { saved: true, filePath: result.filePath };
   }
+  async function importRecoveryKey() {
+    const selection = await dialog.showOpenDialog({
+      title:'Importar clave de recuperación SIFER360',
+      properties:['openFile'],
+      filters:[{ name:'Clave de recuperación SIFER360', extensions:['txt'] }]
+    });
+    if (selection.canceled || !selection.filePaths || !selection.filePaths[0]) return { imported:false, canceled:true };
+    const raw = fsImpl.readFileSync(selection.filePaths[0], 'utf8');
+    const lines = raw.split(/\\r?\\n/).map(line => line.trim()).filter(Boolean);
+    if (!lines[0] || !lines[0].startsWith('SIFER360-LICORERIA - CLAVE DE RECUPERACIÓN DE RESPALDOS')) {
+      throw new Error('El archivo seleccionado no es una clave de recuperación SIFER360 reconocida.');
+    }
+    const encoded = lines[lines.length - 1];
+    const key = Buffer.from(encoded, 'base64');
+    if (key.length !== 32 || key.toString('base64') !== encoded) throw new Error('La clave de recuperación no tiene un formato válido.');
+    const config = readConfig();
+    if (config.encryptedBackupKey) {
+      const confirmation = await dialog.showMessageBox({
+        type:'warning',
+        title:'Reemplazar clave de recuperación',
+        message:'Esta instalación ya tiene una clave local. ¿Deseas reemplazarla por la clave importada?',
+        detail:'La clave nueva debe corresponder a los respaldos que deseas recuperar. Una clave incorrecta hará que los archivos anteriores no puedan descifrarse.',
+        buttons:['Cancelar','Importar y reemplazar'],
+        defaultId:0,
+        cancelId:0,
+        noLink:true
+      });
+      if (confirmation.response !== 1) return { imported:false, canceled:true };
+    }
+    config.encryptedBackupKey = protect(key.toString('base64'));
+    config.recoveryKeyExported = true;
+    writeConfig(config);
+    return { imported:true, filePath:selection.filePaths[0] };
+  }
   function verifyBackup(payload, recoveryKey) {
     const key = recoveryKey ? Buffer.from(String(recoveryKey).trim(), 'base64') : getBackupKey(readConfig());
     if (key.length !== 32) throw new Error('La clave de recuperación no tiene el formato esperado.');
     return decryptBackup(payload, key, cryptoImpl);
   }
-  return { status, connect, enable, disable, runBackup, exportRecoveryKey, listBackups, downloadBackup, verifyBackup, getBackupKey, readConfig };
+  return { status, connect, enable, disable, runBackup, exportRecoveryKey, importRecoveryKey, listBackups, downloadBackup, verifyBackup, getBackupKey, readConfig };
 }
 
 module.exports = { createGoogleDriveBackup, createWindowsBackupScheduler, createDailyTaskXml, encryptBackup, decryptBackup, buildAccountConfig, assertBackupAllowed };
