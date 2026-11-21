@@ -7,7 +7,7 @@
 - Solo el equipo independiente o servidor LAN que conserva la SQLite central puede generar respaldos. Los clientes LAN no suben copias.
 - No se envía el archivo SQLite en claro. Se crea una instantánea coherente desde sql.js, se valida con `PRAGMA integrity_check` y se cifra con AES-256-GCM antes de transmitirla.
 - Se usa OAuth de escritorio con PKCE y el scope mínimo `drive.file` más lectura del correo autorizado. Los tokens de renovación y la clave de cifrado local se protegen con Electron `safeStorage` (Windows DPAPI).
-- El usuario debe exportar y conservar fuera del PC la clave de recuperación desde el botón correspondiente. La clave es necesaria para descifrar copias en otro equipo; perderla impide recuperar el contenido cifrado.
+- El administrador puede exportar la clave de recuperación y conservarla fuera del PC. En una instalación nueva puede importar ese archivo; la clave se vuelve a proteger con safeStorage/DPAPI local. Sin esa clave no se puede descifrar el contenido cifrado.
 
 ## Configuración obligatoria de Google OAuth
 
@@ -24,6 +24,21 @@ Windows Task Scheduler ejecuta el binario de SIFER360 con `--sifer-google-drive-
 Si SIFER360 ya está abierto, la instancia programada entrega el trabajo a la instancia existente mediante el mecanismo de instancia única. Si está cerrado, se inicia en modo oculto, carga la SQLite, valida, respalda y se cierra sin abrir la ventana POS.
 
 Cada fecha de Venezuela tiene dos archivos dentro de `SIFER360 Respaldos`: `SIFER360-AAAA-MM-DD.sqlite.siferenc` (copia íntegra restaurable) y `SIFER360-AAAA-MM-DD.json.siferenc` (exportación estructurada de todas las tablas). Ambos están cifrados y comparten la clave de recuperación. Un reintento del mismo día reemplaza esa copia diaria, evitando duplicados por reintentos. Los errores se registran localmente; nunca se informa éxito antes de que Google confirme la carga.
+
+## Descarga y restauración manual
+
+- El administrador puede listar copias SQLite de la carpeta privada y descargar una copia descifrada a un archivo local.
+- Antes de guardar, la aplicación valida el encabezado SQLite y ejecuta PRAGMA integrity_check sobre una instancia aislada.
+- Descargar no restaura ni modifica la base activa. Para restaurar, el administrador debe seleccionar manualmente el archivo local en “Restaurar copia” y aceptar la confirmación explícita.
+- Antes de importar, SIFER360 descarga una copia local de la SQLite actual. Si no puede generar esa copia previa, cancela la restauración.
+- Nunca se restaura automáticamente al iniciar la aplicación ni se reemplaza la SQLite solo porque exista una copia más reciente en Drive.
+
+## Seguridad de acceso y respaldo manual
+
+- La conexión, activación/desactivación, ejecución manual y exportación de la clave requieren una sesión de administrador autenticada por SQLite en el proceso principal de Electron.
+- Los equipos cliente LAN no pueden generar ni administrar respaldos; deben realizarse desde el equipo servidor que conserva la única SQLite.
+- El respaldo manual puede ejecutarse aunque la programación diaria esté desactivada. Conectar una cuenta Google sigue siendo obligatorio.
+- Si la aplicación ya está abierta cuando se dispara la tarea de Windows, la instancia existente procesa el respaldo; si aún está inicializando, conserva la solicitud hasta que SQLite esté disponible.
 
 ## Activación desde SIFER360
 

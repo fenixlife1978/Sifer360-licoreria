@@ -821,21 +821,21 @@ function load(){
     if(S.cfg.agenteRetIva===undefined)S.cfg.agenteRetIva=S.cfg.retencionHabilitadaConfirmada;
     if(S.cfg.agenteRetIslr===undefined)S.cfg.agenteRetIslr=S.cfg.retIslrHabilitada;
     if(!S.cfg.provEspecial)S.cfg.provEspecial='';
-    if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='00-';
-    if(!S.cfg.ctrlNext)S.cfg.ctrlNext=1;
-    if(!S.cfg.ctrlRangoDesde)S.cfg.ctrlRangoDesde='00-00000001';
-    if(!S.cfg.ctrlRangoHasta)S.cfg.ctrlRangoHasta='00-00050000';
+    if(!S.cfg.ctrlPrefix)S.cfg.ctrlPrefix='';
+    if(!Number.isSafeInteger(Number(S.cfg.ctrlNext))||Number(S.cfg.ctrlNext)<1)S.cfg.ctrlNext=0;
+    if(!S.cfg.ctrlRangoDesde)S.cfg.ctrlRangoDesde='';
+    if(!S.cfg.ctrlRangoHasta)S.cfg.ctrlRangoHasta='';
     if(!S.cfg.imprentaRif)S.cfg.imprentaRif='';
     if(!S.cfg.imprentaAut)S.cfg.imprentaAut='';
     if(!S.cfg.serialFiscal)S.cfg.serialFiscal='';
     (S.sales||[]).forEach(s=>{
-      if(!s.ctrlNo)s.ctrlNo=(S.cfg.ctrlPrefix||'00-')+pad(s.no,8);
-      if(!s.docType)s.docType='01-FACTURA';
-      if(!s.transType)s.transType=s.void?'03-ANUL':'01-REG';
+      if(!s.ctrlNo)s.ctrlNo='';
+      if(!s.docType)s.docType='NO_CLASIFICADO';
+      if(!s.transType)s.transType=s.void?'03-ANUL':'NO_CLASIFICADO';
       if(s.baseG16===undefined)s.baseG16=s.base||0;
     });
     (S.purchases||[]).forEach(p=>{
-      if(!p.ctrlProv)p.ctrlProv='00-'+pad(p.no+4400,8);
+      if(!p.ctrlProv||p.ctrlProv==='00-'+pad(p.no+4400,8))p.ctrlProv='';
     });
     S.invoice=d.invoice||S.invoice;
     S.purchaseSeq=d.purchaseSeq||S.purchaseSeq;
@@ -888,10 +888,11 @@ function hybridCartPlan(){
   });
   return{fiscalIndexes:Object.keys(fiscalQtyByLine).map(Number),ticketIndexes:Object.keys(ticketQtyByLine).map(Number),fiscalLines,ticketLines,fiscalQtyByLine,ticketQtyByLine};
 }
-function salePortion(sale,lines,mode,residual,fiscalRatio){
+function salePortion(sale,lines,mode,residual,fiscalRatio,fiscalSub){
   let sub=0,base=0,iva=0,baseG16=0,baseR8=0,baseA31=0,baseEx=0;
   lines.forEach(line=>{
-    sub+=r2(Number(line.price||0)*Number(line.qty||0));base+=Number(line.net)||0;iva+=Number(line.iva)||0;
+    const unitPrice=Number(line.presentationPrice||line.price||0),presentationQty=Number(line.presentationQty??line.qty??0);
+    sub+=r2(unitPrice*presentationQty);base+=Number(line.net)||0;iva+=Number(line.iva)||0;
     if(Number(line.taxRate)===16)baseG16+=Number(line.net)||0;
     else if(Number(line.taxRate)===8)baseR8+=Number(line.net)||0;
     else if(Number(line.taxRate)===31)baseA31+=Number(line.net)||0;
@@ -899,6 +900,7 @@ function salePortion(sale,lines,mode,residual,fiscalRatio){
     else baseG16+=Number(line.net)||0;
   });
   sub=r2(sub);base=r2(base);iva=r2(iva);
+  if(residual)sub=r2(Number(sale.sub||0)-Number(fiscalSub||0));
   const ratio=Number.isFinite(fiscalRatio)?fiscalRatio:(Number(sale.total)>0?r2((base+iva)/sale.total):0);
   const pays=(sale.pays||[]).map(pay=>({...pay,amount:residual?r2(Number(pay.amount||0)-r2(Number(pay.amount||0)*ratio)):r2(Number(pay.amount||0)*ratio)}));
   const igtf=residual?r2(Number(sale.igtf||0)-r2(Number(sale.igtf||0)*ratio)):r2(Number(sale.igtf||0)*ratio);
@@ -5203,7 +5205,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
     baseG16:t.baseG16,baseR8:t.baseR8,baseA31:t.baseA31,baseEx:t.baseEx,
     iva:t.iva,total:t.total,igtf:st.igtf,rate:S.cfg.rate,pays,
     change:r2(st.change),credit:creditAmt,void:false,
-    ticketFiscalOut:Array.from(ticketFiscalOutByCode.entries()).map(([code,qty])=>({code,qty})),
+    ticketFiscalOut:Array.from(ticketFiscalOutLines.reduce((byCode,line)=>byCode.set(line.code,(byCode.get(line.code)||0)+Number(line.qty||0)),new Map()).entries()).map(([code,qty])=>({code,qty})),
     ticketFiscalOutLines:ticketFiscalOutLines.map(line=>({...line}))
   };
 
@@ -5256,7 +5258,7 @@ async function finalize(st,amts,isCred,cDays,refs,payEl,documentChoice){
       const fiscalTotal=r2(fiscalSaleLines.reduce((sum,line)=>sum+Number(line.net||0)+Number(line.iva||0),0));
       const fiscalRatio=sale.total>0?Math.max(0,Math.min(1,fiscalTotal/sale.total)):0;
       fiscalDocumentSale=salePortion(sale,fiscalSaleLines,'FISCAL',false,fiscalRatio);
-      ticketDocumentSale=salePortion(sale,ticketSaleLines,'HYBRID',true,fiscalRatio);
+      ticketDocumentSale=salePortion(sale,ticketSaleLines,'HYBRID',true,fiscalRatio,fiscalDocumentSale.sub);
     }else if(hybridHasTicket){
       ticketDocumentSale={...sale,lines:ticketSaleLines,documentMode:'HYBRID',docType:'TICKET-INTERNO'};
     }
@@ -5772,12 +5774,12 @@ function printFiscalReport(title,html){
       '<div style="text-align:right">'+
         '<div style="font-weight:700;font-size:14px;color:#1842B8">'+esc(title)+'</div>'+
         '<div style="font-size:11px;color:#555">Fecha de Emisión: '+fmtDT(Date.now())+'</div>'+
-        '<div style="font-size:11px;color:#555">Control Fiscal: '+esc(S.cfg.ctrlPrefix||'00-')+' &middot; Rango Aut. Imprenta</div>'+
+        '<div style="font-size:11px;color:#92400E">Numeración fiscal: no configurada ni validada en esta instalación. Este reporte es auxiliar.</div>'+
       '</div>'+
     '</div>'+
     html+
     '<div style="margin-top:24px;border-top:1px dashed #888;padding-top:10px;display:flex;justify-content:space-between;font-size:10.5px;color:#555">'+
-      '<div>Documento generado por SIFER 360 &middot; Sistema Administrativo y de Control Fiscal</div>'+
+      '<div>Documento auxiliar generado por SIFER 360 &middot; No sustituye factura emitida por medio autorizado</div>'+
       '<div>Firma Contador / Administrador: _____________________________</div>'+
     '</div>'+
   '</div>';
@@ -6060,7 +6062,7 @@ function printVoucherLoteSudeban(l){
     '</div>'+
     '<div style="display:flex;justify-content:space-between;font-size:11px;color:#555"><span>Equiv. Tasa Oficial BCV:</span><span>'+usd(equivUsd)+'</span></div>'+
     '<div style="margin-top:12px;text-align:center;font-size:10.5px;color:#333;border-top:1px dashed #666;padding-top:8px">'+
-      'ESTADO: <b>'+esc(l.estado)+'</b> CON REGISTROS POS<br>CONCILIACIÓN FÍSICA Y ELECTRÓNICA CONFORME<br>CONSERVACIÓN LEGAL 10 AÑOS (SUDEBAN)'+
+      'ESTADO: <b>'+esc(l.estado)+'</b> CON REGISTROS POS<br>CONCILIACIÓN FÍSICA Y ELECTRÓNICA PENDIENTE DE VALIDACIÓN<br>CONSERVAR SEGÚN EL PLAZO LEGAL APLICABLE'+
     '</div>'+
   '</div>';
   printFiscalReport('Voucher de Cierre de Lote — '+l.refLote,html);
@@ -6625,8 +6627,8 @@ function seniatSudebanDlg(initialTab){
   const el=h('<div class="form" style="gap:10px">'+
     '<div class="semaforo-bar">'+
       '<div class="semaforo-dot"></div>'+
-      '<div class="semaforo-text"><b>CONTROL FISCAL & SUDEBAN CONFORME</b> &middot; Tasa Oficial BCV en vigencia ('+nf(S.cfg.rate)+' Bs./US$) &middot; Formas Libres en Rango Legal &middot; Discriminación IGTF 3% Divisas Activa.</div>'+
-      '<span class="fiscal-seal">SENIAT &middot; SUDEBAN OK</span>'+
+      '<div class="semaforo-text"><b>CONTROL FISCAL & SUDEBAN: REVISIÓN PENDIENTE</b> &middot; La documentación, autorizaciones y conciliaciones deben verificarse para esta instalación.</div>'+
+      '<span class="fiscal-seal">PENDIENTE DE VALIDACIÓN</span>'+
     '</div>'+
     '<div class="tabs" id="snTabs">'+
       '<button class="tab '+(activeTab==='resumen'?'active':'')+'" data-tab="resumen">Panel de Control Fiscal</button>'+
@@ -6640,6 +6642,7 @@ function seniatSudebanDlg(initialTab){
       '<button class="tab '+(activeTab==='retenciones'?'active':'')+'" data-tab="retenciones">Retenciones IVA & TXT</button>'+
       '<button class="tab '+(activeTab==='pagoSeniat'?'active':'')+'" data-tab="pagoSeniat">Preparar Pago SENIAT</button>'+
       '<button class="tab '+(activeTab==='config'?'active':'')+'" data-tab="config">Parámetros Fiscales</button>'+
+      '<button class="tab '+(activeTab==='contabilidad'?'active':'')+'" data-tab="contabilidad">Contabilidad VEN-NIF</button>'+
     '</div>'+
     '<div class="invbar" id="snFilterBar" style="background:var(--panel-2);padding:6px 10px;border:1px solid var(--line);border-radius:6px">'+
       '<label for="snPeriod"><b>Período Fiscal:</b></label>'+
@@ -7114,6 +7117,237 @@ function seniatSudebanDlg(initialTab){
     '</div><p class="hint">Los números de control asignados son correlativos y consecutivos conforme a la Providencia SENIAT 0071 sobre emisión de facturas y otros documentos.</p>';
   };
 
+  let accountingJournalLines=Array.from({length:4},()=>({accountCode:'',description:'',debit:'',credit:''}));
+  const collectAccountingJournalLines=()=>{
+    const rows=$('.acc-journal-row',el);
+    if(!rows.length)return accountingJournalLines;
+    return rows.map(row=>({
+      accountCode:$('[data-journal-account]',row)?.value||'',
+      description:$('[data-journal-description]',row)?.value||'',
+      debit:$('[data-journal-debit]',row)?.value||'0',
+      credit:$('[data-journal-credit]',row)?.value||'0'
+    }));
+  };
+  const renderAccountingJournalLines=()=>{
+    const node=$('#accJournalLines',el);
+    if(!node)return;
+    node.innerHTML=accountingJournalLines.map((line,index)=>'<div class="newgrid acc-journal-row" data-line-index="'+index+'">'+
+      '<div class="f"><label>Cuenta</label><input class="fld mono" data-journal-account value="'+esc(line.accountCode)+'" placeholder="Código contable"></div>'+
+      '<div class="f wide"><label>Concepto del renglón</label><input class="fld" data-journal-description value="'+esc(line.description)+'" placeholder="Descripción"></div>'+
+      '<div class="f"><label>Debe ('+esc($('#accJournalCurrency',el)?.textContent||'moneda')+')</label><input class="fld r" data-journal-debit inputmode="decimal" value="'+esc(line.debit)+'" placeholder="0,00"></div>'+
+      '<div class="f"><label>Haber</label><input class="fld r" data-journal-credit inputmode="decimal" value="'+esc(line.credit)+'" placeholder="0,00"></div>'+
+      '<div class="f"><button type="button" class="btn mini" data-remove-journal-line="'+index+'" '+(accountingJournalLines.length<=2?'disabled':'')+'>Quitar renglón</button></div>'+
+      '</div>').join('');
+  };
+  const drawAccountingTab=()=>{
+    const user=activeUser()||{};
+    const canEdit=['admin','contador'].includes(String(user.role||''));
+    return '<div class="form" style="gap:14px">'+
+      '<div class="hint"><b>Configuración contable en SQLite local o servidor LAN.</b> No se selecciona automáticamente la moneda funcional ni el marco contable. La elección debe documentarla y aprobarla el contador. Esta pantalla no activa todavía asientos automáticos del POS.</div>'+
+      (!window.posDesktop?'<div class="hint bad">Esta configuración solo está disponible en la aplicación de escritorio SQLite.</div>':'')+
+      (!canEdit?'<div class="hint bad">Acceso de solo lectura: requiere perfil Administrador o Contador.</div>':'')+
+      '<section class="cierre"><h3>1. Política contable</h3><div class="newgrid">'+
+      '<div class="f"><label for="accFramework">Marco VEN-NIF</label><select class="fld" id="accFramework"><option value="">Seleccionar con el contador</option><option value="VEN_NIF_PYME">VEN-NIF PYME</option><option value="VEN_NIF_GE">VEN-NIF GE</option></select></div>'+
+      '<div class="f"><label for="accFunctionalCurrency">Moneda funcional (ISO 4217)</label><input class="fld" id="accFunctionalCurrency" maxlength="3" placeholder="Ej. VES / USD"></div>'+
+      '<div class="f"><label for="accPresentationCurrency">Moneda de presentación</label><input class="fld" id="accPresentationCurrency" maxlength="3" placeholder="Ej. VES / USD"></div>'+
+      '<div class="f"><label for="accDecimals">Decimales monetarios</label><select class="fld" id="accDecimals"><option>2</option><option>0</option><option>3</option><option>4</option><option>6</option></select></div>'+
+      '<div class="f"><label for="accAutomation">Automatización</label><select class="fld" id="accAutomation"><option value="supervised">Supervisada: borradores para aprobación</option><option value="suggest_only">Solo sugerencias</option></select></div>'+
+      '<div class="f wide"><label for="accPolicyVersion">Versión de política aprobada</label><input class="fld" id="accPolicyVersion" placeholder="Referencia aprobada por el contador"></div>'+
+      '</div><button class="btn primary" id="btnSaveAccountingSettings" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar política contable</button></section>'+
+      '<section class="cierre"><h3>2. Perfil de la entidad y fiscal</h3><div class="newgrid">'+
+      '<div class="f"><label for="accRif">RIF</label><input class="fld" id="accRif" placeholder="J-12345678-9" value="'+esc(S.cfg.rif||'')+'"></div>'+
+      '<div class="f wide"><label for="accLegalName">Razón social según RIF</label><input class="fld" id="accLegalName" value="'+esc(S.cfg.empresa||'')+'"></div>'+
+      '<div class="f"><label for="accTaxClass">Clasificación tributaria</label><select class="fld" id="accTaxClass"><option value="unknown">Por verificar</option><option value="ordinary">Ordinario</option><option value="formal">Formal</option><option value="special">Sujeto pasivo especial</option></select></div>'+
+      '<div class="f"><label><input type="checkbox" id="accSpecial"> Designación especial confirmada</label></div>'+
+      '<div class="f"><label for="accSpecialRef">Referencia de notificación</label><input class="fld" id="accSpecialRef"></div>'+
+      '<div class="f"><label for="accSpecialDate">Fecha de notificación</label><input class="fld" id="accSpecialDate" type="date"></div>'+
+      '<div class="f"><label><input type="checkbox" id="accWithholding"> Agente de retención IVA confirmado</label></div>'+
+      '<div class="f"><label><input type="checkbox" id="accPerception"> Agente de percepción IVA confirmado</label></div>'+
+      '<div class="f"><label for="accActivity">Actividad licorera</label><select class="fld" id="accActivity"><option value="unknown">Por determinar</option><option value="retail">Comercio minorista</option><option value="wholesale">Mayorista</option><option value="importer">Importador</option><option value="manufacturer">Fabricante</option><option value="producer">Productor</option><option value="mixed">Actividad mixta</option></select></div>'+
+      '<div class="f"><label for="accEmission">Medio de emisión</label><select class="fld" id="accEmission"><option value="internal_only">Solo documento interno / no autorizado</option><option value="official_portal">Portal oficial</option><option value="authorized_provider">Proveedor tecnológico autorizado</option><option value="fiscal_machine">Máquina fiscal autorizada</option><option value="contingency">Contingencia autorizada</option></select></div>'+
+      '<div class="f"><label for="accAlcoholLicense">Licencia de expendio de alcohol</label><input class="fld" id="accAlcoholLicense"></div>'+
+      '<div class="f"><label for="accMunicipalLicense">Licencia / patente municipal</label><input class="fld" id="accMunicipalLicense"></div>'+
+      '<div class="f"><label for="accProviderRif">RIF proveedor autorizado</label><input class="fld" id="accProviderRif"></div>'+
+      '<div class="f"><label for="accProviderAuth">Autorización proveedor</label><input class="fld" id="accProviderAuth"></div>'+
+      '<div class="f"><label for="accMachineSerial">Serial máquina fiscal</label><input class="fld" id="accMachineSerial"></div>'+
+      '</div><p class="hint">No marques una designación tributaria o medio de emisión sin su documento de respaldo. Seleccionar una modalidad no autoriza al POS a emitir facturas fiscales.</p><button class="btn primary" id="btnSaveFiscalProfile" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar perfil fiscal</button></section>'+
+      '<section class="cierre"><h3>3. Períodos contables</h3><div class="newgrid">'+
+      '<div class="f"><label for="accPeriodId">Identificador AAAA-MM</label><input class="fld" id="accPeriodId" placeholder="2026-11"></div>'+
+      '<div class="f"><label for="accPeriodLabel">Nombre</label><input class="fld" id="accPeriodLabel" placeholder="Noviembre 2026"></div>'+
+      '<div class="f"><label for="accPeriodStart">Desde</label><input class="fld" id="accPeriodStart" type="date"></div>'+
+      '<div class="f"><label for="accPeriodEnd">Hasta</label><input class="fld" id="accPeriodEnd" type="date"></div>'+
+      '</div><button class="btn" id="btnSaveAccountingPeriod" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Crear / actualizar período abierto</button><div id="accPeriodsList" class="hint">Cargando períodos...</div></section>'+
+      '<section class="cierre"><h3>4. Plan de cuentas VEN-NIF</h3><p class="hint">No se carga un catálogo universal automáticamente. Registra el plan aprobado por el contador para el marco configurado. Los códigos se mantienen estables y no se pueden eliminar si tienen trazabilidad.</p><div class="newgrid">'+
+      '<div class="f"><label for="accAccountCode">Código</label><input class="fld" id="accAccountCode" maxlength="30" placeholder="1.1.01"></div>'+
+      '<div class="f wide"><label for="accAccountName">Nombre de la cuenta</label><input class="fld" id="accAccountName" maxlength="150" placeholder="Caja principal"></div>'+
+      '<div class="f"><label for="accAccountType">Clasificación</label><select class="fld" id="accAccountType"><option value="">Seleccionar</option><option value="asset">Activo</option><option value="liability">Pasivo</option><option value="equity">Patrimonio</option><option value="income">Ingreso</option><option value="expense">Gasto</option><option value="memorandum">Orden / memorando</option></select></div>'+
+      '<div class="f"><label for="accNormalBalance">Saldo normal</label><select class="fld" id="accNormalBalance"><option value="">Seleccionar</option><option value="debit">Debe</option><option value="credit">Haber</option></select></div>'+
+      '<div class="f"><label for="accParentCode">Cuenta padre (opcional)</label><input class="fld" id="accParentCode" maxlength="30" placeholder="1.1"></div>'+
+      '<div class="f"><label for="accFrameworkScope">Aplicabilidad</label><select class="fld" id="accFrameworkScope"><option value="both">Ambos marcos</option><option value="VEN_NIF_PYME">Solo PYME</option><option value="VEN_NIF_GE">Solo GE</option></select></div>'+
+      '<div class="f"><label><input type="checkbox" id="accAcceptsPosting" checked> Acepta contabilizaciones</label></div>'+
+      '<div class="f"><label><input type="checkbox" id="accAccountActive" checked> Cuenta activa</label></div>'+
+      '</div><button class="btn primary" id="btnSaveAccountingAccount" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar cuenta contable</button><div id="accAccountsList" class="hint">Cargando plan de cuentas...</div></section>'+
+      '<section class="cierre"><h3>5. Reglas de contabilización supervisada</h3><p class="hint">Define por tipo de operación qué importe del documento POS se contabiliza y qué cuentas imputables intervienen. La ruta del importe debe coincidir exactamente con un campo real del documento; no se adivinan campos ni monedas. Solo se admiten altas nuevas. Las modificaciones y eliminaciones quedan para ajuste manual.</p><div class="newgrid">'+
+      '<div class="f"><label for="accRuleSource">Operación POS</label><select class="fld" id="accRuleSource"><option value="sale">Venta</option><option value="purchase">Compra</option><option value="receivable">Cuenta por cobrar</option><option value="payable">Cuenta por pagar</option><option value="cash_close">Corte Z</option><option value="cash_opening">Apertura de caja</option><option value="cash_movement">Movimiento de caja</option><option value="inventory_movement">Kardex / inventario</option><option value="inventory_count">Conteo de inventario</option><option value="return">Devolución</option><option value="void">Anulación</option><option value="cashea_operation">Operación CASHEA</option><option value="cashea_settlement">Liquidación CASHEA</option><option value="currency_movement">Movimiento de divisas</option><option value="iva_retention">Retención IVA</option><option value="islr_retention">Retención ISLR</option><option value="bank_operation">Operación bancaria</option><option value="bank_settlement_batch">Lote bancario</option><option value="exchange_rate_update">Actualización de tasa</option><option value="fiscal_inventory_movement">Movimiento inventario fiscal</option><option value="retention">Retención</option></select></div>'+
+      '<div class="f"><label for="accRuleAmountPath">Ruta exacta del importe</label><input class="fld" id="accRuleAmountPath" placeholder="Ej. total o totals.grandTotal"></div>'+
+      '<div class="f"><label for="accRuleCurrencyPath">Ruta de moneda (opcional)</label><input class="fld" id="accRuleCurrencyPath" placeholder="Vacío = moneda funcional"></div>'+
+      '<div class="f wide"><label for="accRuleLinesJson">Renglones avanzados (JSON, opcional)</label><textarea class="fld" id="accRuleLinesJson" rows="6" placeholder=\'[{"side":"debit","accountCode":"1.1.1.01","amountPath":"netAmount"},{"side":"debit","accountCode":"1.1.2.05","amountPath":"withholding"},{"side":"credit","accountCode":"4.1.1.01","amountPath":"subtotal"},{"side":"credit","accountCode":"2.1.3.01","amountPath":"tax"}]\'></textarea><p class="hint">Use side debit/credit, accountCode y amountPath del documento fuente. amountMode puede ser decimal, minor o residual (solo un residual y siempre al final). Cada ruta debe existir; si falta un importe o el asiento no cuadra, el evento pasa a revisión.</p></div>'+
+      '<div class="f"><label for="accRuleDebit">Cuenta Debe (regla simple)</label><select class="fld" id="accRuleDebit"><option value="">Seleccionar cuenta imputable</option></select></div>'+
+      '<div class="f"><label for="accRuleCredit">Cuenta Haber</label><select class="fld" id="accRuleCredit"><option value="">Seleccionar cuenta imputable</option></select></div>'+
+      '<div class="f"><label for="accRuleRateType">Tipo de tasa para presentación</label><select class="fld" id="accRuleRateType"><option value="">No aplica / monedas iguales</option><option value="official">Oficial</option><option value="market">Mercado</option><option value="contractual">Contractual</option><option value="accounting_adjustment">Ajuste contable</option></select></div>'+
+      '<div class="f wide"><label for="accRuleDescription">Descripción del asiento</label><input class="fld" id="accRuleDescription" maxlength="180" placeholder="Ej. Registro de venta POS {sourceId} del {date}"></div>'+
+      '</div><button class="btn primary" id="btnSaveAutomationRule">Guardar nueva versión de regla</button><div id="accAutomationRules" class="hint">Cargando reglas...</div></section>'+
+      '<section class="cierre"><h3>6. Operaciones recibidas por el motor contable</h3><div id="accSourceSummary" class="hint">Cargando eventos...</div><div id="accSourceEvents" class="hint">Leyendo eventos de origen...</div><div class="row"><button class="btn primary" id="btnGenerateAccountingDrafts">Generar borradores de eventos pendientes (máx. 50)</button></div><p class="hint">La generación solo crea borradores, nunca aprueba ni contabiliza. Cada asiento conserva evento, regla y versión; si falta una cuenta, importe, período o tasa documentada, el evento pasa a revisión.</p></section>'+
+      '<section class="cierre"><h3>6. Asientos manuales</h3><p class="hint">Crea borradores de ajustes con cuentas activas y contabilizables. El Debe y el Haber deben cuadrar. El creador no puede aprobar su propio asiento; solo el Contador puede aprobar y contabilizar. La integración automática de ventas y compras sigue separada.</p><div class="newgrid">'+
+      '<div class="f"><label for="accJournalDate">Fecha del asiento</label><input class="fld" id="accJournalDate" type="date" value="'+isoD(Date.now())+'"></div>'+
+      '<div class="f"><label for="accJournalPeriod">Período abierto</label><select class="fld" id="accJournalPeriod"><option value="">Seleccionar período</option></select></div>'+
+      '<div class="f"><label>Moneda funcional</label><b id="accJournalCurrency" class="hint">No configurada</b></div>'+
+      '<div class="f"><label>Moneda de presentación</label><b id="accJournalPresentationCurrency" class="hint">No configurada</b></div>'+
+      '<div class="f"><label for="accJournalExchangeRate">Tasa (presentación por 1 funcional)</label><input class="fld r" id="accJournalExchangeRate" inputmode="decimal" placeholder="Ej. 0,001143"></div>'+
+      '<div class="f"><label for="accJournalExchangeRateType">Tipo de tasa</label><select class="fld" id="accJournalExchangeRateType"><option value="official">Oficial</option><option value="market">Mercado</option><option value="contractual">Contractual</option><option value="accounting_adjustment">Ajuste contable</option></select></div>'+
+      '<div class="f"><label for="accJournalExchangeRateSource">Fuente de la tasa</label><input class="fld" id="accJournalExchangeRateSource" maxlength="120" placeholder="Ej. BCV"></div>'+
+      '<div class="f"><label for="accJournalExchangeRateReference">Referencia / soporte</label><input class="fld" id="accJournalExchangeRateReference" maxlength="180" placeholder="Publicación, fecha o documento"></div>'+
+      '<div class="f wide"><label for="accJournalDescription">Descripción / fundamento</label><input class="fld" id="accJournalDescription" maxlength="500" placeholder="Ajuste contable y soporte"></div>'+
+      '<p class="hint wide">La tasa se expresa en moneda de presentación por cada unidad funcional. Si la tasa publicada está expresada al revés, registra su inversa. Debe corresponder a la fecha y política aplicable; el sistema no inventa ni descarga tasas automáticamente. La tasa y su fuente quedan congeladas en el asiento.</p>'+
+      '</div><div id="accJournalLines"></div><div class="row" style="gap:8px"><button class="btn" id="btnAddJournalLine">Añadir renglón</button><button class="btn primary" id="btnCreateJournalEntry" '+(!canEdit||!window.posDesktop?'disabled':'')+'>Guardar borrador de asiento</button></div><div id="accJournalEntries" class="hint">Cargando asientos...</div></section>'+
+      '<section class="cierre"><h3>7. Historial de tasas de cambio</h3><p class="hint">Tasas utilizadas en asientos, con su fecha, tipo, fuente y referencia documental. Los valores se conservan como fracciones exactas.</p><div id="accExchangeRates" class="hint">Cargando tasas...</div></section>'+
+      '<section class="cierre"><h3>8. Balance de comprobación</h3><p class="hint">Solo considera asientos contabilizados y sus reversos. Los borradores y aprobados no afectan este balance.</p><div id="accTrialBalance" class="hint">Calculando balance...</div></section>'+
+      '<section class="cierre"><h3>9. Libro mayor por cuenta</h3><div class="newgrid"><div class="f"><label for="accLedgerAccount">Cuenta</label><select class="fld" id="accLedgerAccount"><option value="">Seleccionar cuenta imputable</option></select></div><div class="f"><label for="accLedgerStart">Desde</label><input class="fld" id="accLedgerStart" type="date"></div><div class="f"><label for="accLedgerEnd">Hasta</label><input class="fld" id="accLedgerEnd" type="date"></div></div><button class="btn" id="btnLoadGeneralLedger">Consultar mayor</button><div id="accGeneralLedger" class="hint">Selecciona cuenta y fechas para consultar el mayor.</div></section>'+
+      '<section class="cierre"><h3>10. Estados financieros del período</h3><div class="newgrid"><div class="f"><label for="accStatementsPeriod">Período contable</label><select class="fld" id="accStatementsPeriod"><option value="">Seleccionar período</option></select></div></div><button class="btn primary" id="btnLoadFinancialStatements">Generar estados financieros</button><div id="accFinancialStatements" class="hint">Selecciona un período para generar situación financiera y resultados.</div><p class="hint">El resultado del período se presenta por separado; no se simula un cierre contra patrimonio. Los flujos de efectivo requieren clasificar las cuentas y movimientos antes de emitir ese estado.</p></section>'+
+      '<section class="cierre"><h3>11. Activos fijos y depreciación</h3><p class="hint">Los activos del auxiliar heredado permanecen conservados en el snapshot SQLite; no se importan automáticamente sin vincular su adquisición y conciliar su moneda. El auxiliar solo se crea contra un asiento de adquisición ya contabilizado. La depreciación mensual genera borradores en SQLite; no se contabiliza automáticamente. El mes inicial se define expresamente y los períodos anteriores deben estar contabilizados.</p>'+
+      '<div class="newgrid">'+
+      '<div class="f"><label for="accAssetCode">Código del activo</label><input class="fld" id="accAssetCode" maxlength="30" placeholder="AF-00001"></div>'+
+      '<div class="f"><label for="accAssetName">Descripción del activo</label><input class="fld" id="accAssetName" maxlength="150" placeholder="Equipo, vehículo, mobiliario..."></div>'+
+      '<div class="f"><label for="accAssetAcquisitionDate">Fecha de adquisición</label><input class="fld" id="accAssetAcquisitionDate" type="date"></div>'+
+      '<div class="f"><label for="accAssetAvailableDate">Disponible para uso</label><input class="fld" id="accAssetAvailableDate" type="date"></div>'+
+      '<div class="f"><label for="accAssetDepStartMonth">Mes inicial de depreciación</label><input class="fld" id="accAssetDepStartMonth" type="month"></div>'+
+      '<div class="f"><label for="accAssetAcquisitionEntry">Asiento de adquisición contabilizado</label><select class="fld" id="accAssetAcquisitionEntry"><option value="">Seleccionar asiento</option></select></div>'+
+      '<div class="f"><label for="accAssetCost">Costo (moneda funcional)</label><input class="fld" id="accAssetCost" inputmode="decimal" placeholder="0,00"></div>'+
+      '<div class="f"><label for="accAssetResidual">Valor residual</label><input class="fld" id="accAssetResidual" inputmode="decimal" placeholder="0,00" value="0"></div>'+
+      '<div class="f"><label for="accAssetLifeMonths">Vida útil (meses)</label><input class="fld" id="accAssetLifeMonths" type="number" min="1" max="1200" value="60"></div>'+
+      '<div class="f"><label for="accAssetAccount">Cuenta del activo</label><select class="fld" id="accAssetAccount"><option value="">Cuenta imputable de activo</option></select></div>'+
+      '<div class="f"><label for="accAssetAccumAccount">Depreciación acumulada</label><select class="fld" id="accAssetAccumAccount"><option value="">Cuenta correctora (Haber)</option></select></div>'+
+      '<div class="f"><label for="accAssetExpenseAccount">Gasto de depreciación</label><select class="fld" id="accAssetExpenseAccount"><option value="">Cuenta de gasto</option></select></div>'+
+      '</div><button class="btn primary" id="btnCreateFixedAsset">Registrar activo vinculado al asiento</button>'+
+      '<div class="newgrid" style="margin-top:12px"><div class="f"><label for="accAssetDepPeriod">Período abierto a depreciar</label><select class="fld" id="accAssetDepPeriod"><option value="">Seleccionar período</option></select></div><div class="f"><label for="accAssetRateType">Tipo de tasa de presentación</label><select class="fld" id="accAssetRateType"><option value="official">Oficial</option><option value="market">Mercado</option><option value="contractual">Contractual</option><option value="accounting_adjustment">Ajuste contable</option></select></div></div>'+
+      '<button class="btn" id="btnGenerateAssetDepreciation">Generar borradores de depreciación</button><div id="accFixedAssets" class="hint">Cargando activos fijos...</div></section>'+
+      '<div class="hint">La automatización supervisada solo genera borradores a partir de reglas expresas; no aprueba ni contabiliza. Las reglas son versionadas y las modificaciones/anulaciones permanecen bajo revisión del contador.</div>'+
+      '</div>';
+  };
+  const loadAccountingTab=async()=>{
+    const content=$('#snContent',el);
+    if(!content||activeTab!=='contabilidad')return;
+    if(!window.posDesktop)return;
+    renderAccountingJournalLines();
+    const sessionToken=accountingSessionToken();
+    if(!sessionToken){msg('La sesión autenticada expiró. Vuelve a iniciar sesión.','bad');return;}
+    try{
+      const [settings,profile,periods,accounts,sourceEvents,sourceSummary,journalEntries,exchangeRates,trialBalance,automationRules,fixedAssets,assetAcquisitionEntries]=await Promise.all([
+        window.posDesktop.accountingGetSettings(sessionToken),
+        window.posDesktop.accountingGetProfile(sessionToken),
+        window.posDesktop.accountingListPeriods(sessionToken),
+        window.posDesktop.accountingListAccounts(sessionToken),
+        window.posDesktop.accountingListSourceEvents(sessionToken),
+        window.posDesktop.accountingSourceEventSummary(sessionToken),
+        window.posDesktop.accountingListJournalEntries(sessionToken),
+        window.posDesktop.accountingListExchangeRates(sessionToken),
+        window.posDesktop.accountingGetTrialBalance(sessionToken),
+        window.posDesktop.accountingListAutomationRules(sessionToken),
+        window.posDesktop.accountingListFixedAssets(sessionToken),
+        window.posDesktop.accountingListAssetAcquisitionEntries(sessionToken)
+      ]);
+      const set=(id,value)=>{const node=$('#'+id,el);if(node&&value!==null&&value!==undefined)node.value=String(value);};
+      const check=(id,value)=>{const node=$('#'+id,el);if(node)node.checked=!!value;};
+      if(settings){
+        set('accFramework',settings.accountingFramework);set('accFunctionalCurrency',settings.functionalCurrency);
+        set('accPresentationCurrency',settings.presentationCurrency);set('accDecimals',settings.monetaryDecimals);
+        set('accAutomation',settings.automationMode);set('accPolicyVersion',settings.policyVersion);
+      }
+      if(profile){
+        set('accRif',profile.rif);set('accLegalName',profile.legal_name);set('accTaxClass',profile.taxpayer_classification);
+        check('accSpecial',profile.special_subject_confirmed);set('accSpecialRef',profile.special_notice_reference);
+        set('accSpecialDate',profile.special_notice_date);check('accWithholding',profile.iva_withholding_agent_confirmed);
+        check('accPerception',profile.iva_perception_agent_confirmed);set('accActivity',profile.business_activity_scope);
+        set('accEmission',profile.invoice_emission_mode);set('accAlcoholLicense',profile.alcohol_license_reference);
+        set('accMunicipalLicense',profile.municipal_license_reference);set('accProviderRif',profile.provider_rif);
+        set('accProviderAuth',profile.provider_authorization_reference);set('accMachineSerial',profile.fiscal_machine_serial);
+      }
+      const journalCurrency=$('#accJournalCurrency',el);
+      if(journalCurrency)journalCurrency.textContent=settings?.functionalCurrency||'No configurada';
+      const journalPresentationCurrency=$('#accJournalPresentationCurrency',el);
+      if(journalPresentationCurrency)journalPresentationCurrency.textContent=settings?.presentationCurrency||'No configurada';
+      const exchangeRateLabel=$('#accJournalExchangeRate',el);
+      if(exchangeRateLabel)exchangeRateLabel.placeholder=settings?.functionalCurrency===settings?.presentationCurrency?'1 (monedas iguales)':'Tasa '+(settings?.presentationCurrency||'')+' por 1 '+(settings?.functionalCurrency||'');
+      const periodSelect=$('#accJournalPeriod',el);
+      if(periodSelect)periodSelect.innerHTML='<option value="">Seleccionar período abierto</option>'+periods.filter(p=>p.status==='open').map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+' ('+esc(p.startDate)+' a '+esc(p.endDate)+')</option>').join('');
+      const statementsPeriod=$('#accStatementsPeriod',el);
+      if(statementsPeriod){const selected=statementsPeriod.value;statementsPeriod.innerHTML='<option value="">Seleccionar período</option>'+periods.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+' ('+esc(p.startDate)+' a '+esc(p.endDate)+')</option>').join('');if(selected)statementsPeriod.value=selected;}
+      const assetPeriods=$('#accAssetDepPeriod',el);
+      if(assetPeriods){const selected=assetPeriods.value;assetPeriods.innerHTML='<option value="">Seleccionar período abierto</option>'+periods.filter(p=>p.status==='open').map(p=>'<option value="'+esc(p.id)+'">'+esc(p.label)+'</option>').join('');if(selected)assetPeriods.value=selected;}
+      const acquisitionSelect=$('#accAssetAcquisitionEntry',el);
+      if(acquisitionSelect){const selected=acquisitionSelect.value;acquisitionSelect.innerHTML='<option value="">Seleccionar asiento contabilizado</option>'+assetAcquisitionEntries.map(e=>'<option value="'+esc(e.id)+'">'+esc(e.entryDate+' · '+e.id.slice(0,8)+' · '+e.description)+'</option>').join('');if(selected)acquisitionSelect.value=selected;}
+      const assetSelects=[
+        ['accAssetAccount',accounts.filter(a=>a.accountType==='asset'&&a.normalBalance==='debit')],
+        ['accAssetAccumAccount',accounts.filter(a=>a.accountType==='asset'&&a.normalBalance==='credit')],
+        ['accAssetExpenseAccount',accounts.filter(a=>a.accountType==='expense'&&a.normalBalance==='debit')]
+      ];
+      for(const [id,rows] of assetSelects){const node=$('#'+id,el);if(node){const selected=node.value;node.innerHTML='<option value="">Seleccionar cuenta imputable</option>'+rows.filter(a=>Number(a.active)===1&&Number(a.acceptsPosting)===1&&(a.frameworkScope==='both'||a.frameworkScope===settings?.accountingFramework)).map(a=>'<option value="'+esc(a.code)+'">'+esc(a.code+' · '+a.name)+'</option>').join('');if(selected)node.value=selected;}}
+      const assetNode=$('#accFixedAssets',el);
+      if(assetNode)assetNode.innerHTML=fixedAssets.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Activo</th><th>Costo</th><th>Depreciación contabilizada</th><th>Borradores</th><th>Valor neto en libros</th><th>Vida útil</th></tr></thead><tbody>'+fixedAssets.map(a=>'<tr><td>'+esc(a.assetCode)+' · '+esc(a.name)+'</td><td class="r">'+esc(fmtJournalMinor(a.costMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(a.accumulatedMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(a.draftMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(a.netBookValueMinor,settings?.monetaryDecimals??2))+'</td><td>'+esc(a.usefulLifeMonths)+' meses</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay activos fijos registrados.';
+      const ledgerAccount=$('#accLedgerAccount',el);
+      if(ledgerAccount){const selected=ledgerAccount.value;ledgerAccount.innerHTML='<option value="">Seleccionar cuenta imputable</option>'+accounts.filter(a=>Number(a.acceptsPosting)===1).map(a=>'<option value="'+esc(a.code)+'">'+esc(a.code+' · '+a.name)+'</option>').join('');if(selected)ledgerAccount.value=selected;}
+      renderAccountingJournalLines();
+      const list=$('#accPeriodsList',el);
+      const canClosePeriods=String((activeUser()||{}).role||'')==='contador';
+      if(list)list.innerHTML=periods.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Período</th><th>Desde</th><th>Hasta</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+periods.map(p=>'<tr><td>'+esc(p.label)+'</td><td>'+esc(p.startDate)+'</td><td>'+esc(p.endDate)+'</td><td>'+esc(p.status==='closed'?'Cerrado':'Abierto')+'</td><td>'+(p.status==='open'&&canClosePeriods?'<button class="btn mini" data-close-accounting-period="'+esc(p.id)+'">Cerrar período</button>':'—')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay períodos contables definidos.';
+      const usableAccounts=accounts.filter(a=>Number(a.active)===1&&Number(a.acceptsPosting)===1&&(a.frameworkScope==='both'||a.frameworkScope===settings?.accountingFramework));
+      const ruleAccountOptions='<option value="">Seleccionar cuenta imputable</option>'+usableAccounts.map(a=>'<option value="'+esc(a.code)+'">'+esc(a.code+' · '+a.name)+'</option>').join('');
+      for(const id of ['accRuleDebit','accRuleCredit']){const node=$('#'+id,el);if(node){const oldValue=node.value;node.innerHTML=ruleAccountOptions;if(oldValue)node.value=oldValue;}}
+      const automationNode=$('#accAutomationRules',el);
+      if(automationNode)automationNode.innerHTML=automationRules.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Operación</th><th>Importe / renglones</th><th>Debe</th><th>Haber</th><th>Versión</th><th>Estado</th></tr></thead><tbody>'+automationRules.map(rule=>{let count=0;try{count=JSON.parse(rule.linesJson||'[]').length;}catch{}return '<tr><td>'+esc(rule.sourceType)+' / '+esc(rule.eventAction)+'</td><td class="mono">'+esc(count?count+' renglones':rule.amountPath)+'</td><td>'+esc(rule.debitAccountCode)+'</td><td>'+esc(rule.creditAccountCode)+'</td><td>v'+esc(rule.ruleVersion)+'</td><td>'+esc(rule.status==='active'?'Activa':'Retirada')+'</td></tr>';}).join('')+'</tbody></table></div>':'Todavía no hay reglas. Crea una regla por cada tipo de operación que quieras contabilizar.';
+      const accountList=$('#accAccountsList',el);
+      if(accountList)accountList.innerHTML=accounts.length?'<div class="hint">'+accounts.length+' cuentas registradas</div><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>Cuenta</th><th>Padre</th><th>Clasificación</th><th>Saldo normal</th><th>Uso</th><th>Estado</th></tr></thead><tbody>'+accounts.map(a=>'<tr><td>'+esc(a.code)+'</td><td>'+esc(a.name)+'</td><td>'+esc(a.parentCode||'—')+'</td><td>'+esc(({asset:'Activo',liability:'Pasivo',equity:'Patrimonio',income:'Ingreso',expense:'Gasto',memorandum:'Orden'})[a.accountType]||a.accountType)+'</td><td>'+esc(a.normalBalance==='debit'?'Debe':'Haber')+'</td><td>'+esc(Number(a.acceptsPosting)?'Contabilizable':'Agrupación')+'</td><td>'+esc(Number(a.active)?'Activa':'Inactiva')+'</td></tr>').join('')+'</tbody></table></div>':'Todavía no hay cuentas. Carga el plan aprobado antes de generar asientos.';
+      const canReviewJournals=String((activeUser()||{}).role||'')==='contador';
+      const journalNode=$('#accJournalEntries',el);
+      const journalStatus={draft:'Borrador',approved:'Aprobado',posted:'Contabilizado',reversed:'Reversado'};
+      if(journalNode)journalNode.innerHTML=journalEntries.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Asiento</th><th>Descripción</th><th>Período</th><th>Debe ('+esc(settings?.functionalCurrency||'')+')</th><th>Haber ('+esc(settings?.functionalCurrency||'')+')</th><th>Debe ('+esc(settings?.presentationCurrency||'')+')</th><th>Haber ('+esc(settings?.presentationCurrency||'')+')</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>'+journalEntries.map(entry=>{
+        const actions=[];
+        if(canReviewJournals&&entry.status==='draft')actions.push('<button class="btn mini" data-approve-journal="'+esc(entry.id)+'">Aprobar</button>');
+        if(canReviewJournals&&entry.status==='approved')actions.push('<button class="btn mini primary" data-post-journal="'+esc(entry.id)+'">Contabilizar</button>');
+        if(canReviewJournals&&entry.status==='posted')actions.push('<button class="btn mini" data-reverse-journal="'+esc(entry.id)+'">Reversar</button>');
+        return '<tr><td>'+esc(entry.entryDate)+'</td><td class="mono">'+esc(entry.id.slice(0,8))+'</td><td>'+esc(entry.description)+'</td><td>'+esc(entry.periodId)+'</td><td class="r">'+esc(fmtJournalMinor(entry.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(entry.creditMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(entry.presentationDebitMinor==null?'—':fmtJournalMinor(entry.presentationDebitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(entry.presentationCreditMinor==null?'—':fmtJournalMinor(entry.presentationCreditMinor,settings?.monetaryDecimals??2))+'</td><td>'+esc(journalStatus[entry.status]||entry.status)+'</td><td>'+actions.join(' ')+'</td></tr>';
+      }).join('')+'</tbody></table></div>':'Todavía no hay asientos manuales.';
+      const exchangeRateNode=$('#accExchangeRates',el);
+      if(exchangeRateNode)exchangeRateNode.innerHTML=exchangeRates.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Par</th><th>Tasa</th><th>Tipo</th><th>Fuente</th><th>Referencia</th></tr></thead><tbody>'+exchangeRates.map(rate=>'<tr><td>'+esc(rate.rateDate)+'</td><td class="mono">'+esc(rate.fromCurrency)+' / '+esc(rate.toCurrency)+'</td><td class="r">'+esc(rate.rate)+'</td><td>'+esc(({official:'Oficial',market:'Mercado',contractual:'Contractual',accounting_adjustment:'Ajuste contable'})[rate.rateType]||rate.rateType)+'</td><td>'+esc(rate.sourceName)+'</td><td>'+esc(rate.sourceReference)+'</td></tr>').join('')+'</tbody></table></div>':'No hay tasas de cambio registradas todavía.';
+      const trialNode=$('#accTrialBalance',el);
+      if(trialNode){
+        const totalDebit=trialBalance.reduce((sum,row)=>sum+Number(row.debitMinor||0),0);
+        const totalCredit=trialBalance.reduce((sum,row)=>sum+Number(row.creditMinor||0),0);
+        const totalPresentationDebit=trialBalance.reduce((sum,row)=>sum+Number(row.presentationDebitMinor||0),0);
+        const totalPresentationCredit=trialBalance.reduce((sum,row)=>sum+Number(row.presentationCreditMinor||0),0);
+        trialNode.innerHTML=trialBalance.length?((Number(trialBalance[0]?.unconvertedEntryCount||0)>0?'<p class="hint bad">Atención: '+esc(trialBalance[0].unconvertedEntryCount)+' asiento(s) histórico(s) no tienen conversión bimonetaria guardada. No se inventaron tasas ni importes de presentación; deben revisarse antes de emitir reportes en ambas monedas.</p>':'')+'<div class="gridwrap"><table class="grid"><thead><tr><th>Cuenta</th><th>Nombre</th><th>Debe ('+esc(settings?.functionalCurrency||'')+')</th><th>Haber ('+esc(settings?.functionalCurrency||'')+')</th><th>Debe ('+esc(settings?.presentationCurrency||'')+')</th><th>Haber ('+esc(settings?.presentationCurrency||'')+')</th></tr></thead><tbody>'+trialBalance.map(row=>'<tr><td class="mono">'+esc(row.code)+'</td><td>'+esc(row.name)+'</td><td class="r">'+esc(fmtJournalMinor(row.debitMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.creditMinor,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.presentationDebitMinor??0,settings?.monetaryDecimals??2))+'</td><td class="r">'+esc(fmtJournalMinor(row.presentationCreditMinor??0,settings?.monetaryDecimals??2))+'</td></tr>').join('')+'<tr><th colspan="2">Totales</th><th class="r">'+esc(fmtJournalMinor(totalDebit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(totalCredit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(totalPresentationDebit,settings?.monetaryDecimals??2))+'</th><th class="r">'+esc(fmtJournalMinor(totalPresentationCredit,settings?.monetaryDecimals??2))+'</th></tr></tbody></table></div><p class="hint">'+(totalDebit===totalCredit?'Balance funcional cuadrado.':'Diferencia funcional: '+esc(fmtJournalMinor(Math.abs(totalDebit-totalCredit),settings?.monetaryDecimals??2)))+' · '+(totalPresentationDebit===totalPresentationCredit?'Balance de presentación cuadrado.':'Diferencia de presentación: '+esc(fmtJournalMinor(Math.abs(totalPresentationDebit-totalPresentationCredit),settings?.monetaryDecimals??2)))+'</p>'):'No hay cuentas en el plan contable.';
+      }
+      const summaryNode=$('#accSourceSummary',el);
+      if(summaryNode)summaryNode.textContent='Total: '+sourceSummary.total+' · Pendientes: '+sourceSummary.pending+' · Revisión: '+sourceSummary.needs_review+' · Procesados: '+sourceSummary.processed+' · Rechazados: '+sourceSummary.rejected;
+      const eventsNode=$('#accSourceEvents',el);
+      if(eventsNode)eventsNode.innerHTML=sourceEvents.length?'<div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Origen</th><th>Operación</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+sourceEvents.slice(0,40).map(item=>'<tr><td>'+esc(item.occurredAt)+'</td><td>'+esc(item.sourceType)+' / '+esc(item.sourceId)+'</td><td>'+esc(item.payload?.action||item.eventType.split('.')[0])+'</td><td>'+esc(({pending:'Pendiente',processed:'Procesado',needs_review:'Revisión',rejected:'Rechazado'})[item.processingStatus]||item.processingStatus)+(item.errorMessage?' · '+esc(item.errorMessage):'')+'</td><td>'+(['pending','needs_review'].includes(item.processingStatus)&&item.payload?.action==='created'&&['admin','contador'].includes(String((activeUser()||{}).role||''))?' <button class="btn mini primary" data-generate-source-draft="'+esc(item.eventId)+'">Crear borrador</button>':'')+(item.processingStatus==='pending'&&['admin','contador'].includes(String((activeUser()||{}).role||''))?' <button class="btn mini" data-source-event-review="'+esc(item.eventId)+'">Marcar revisión</button>':'')+'</td></tr>').join('')+'</tbody></table></div>':'No hay operaciones capturadas todavía.';
+    }catch(error){msg('No se pudo leer la configuración contable: '+(error.message||error),'bad');}
+  };
+  const fmtJournalMinor=(value,decimals)=>{
+    const places=Math.max(0,Math.min(6,Number(decimals)||0));
+    return new Intl.NumberFormat('es-VE',{minimumFractionDigits:places,maximumFractionDigits:places}).format(Number(value||0)/(10**places));
+  };
+  const accountingSessionToken=()=>String((activeUser()||{}).authToken||'');
+  const accountingActorInput=()=>{
+    const user=activeUser()||{};
+    if(!['admin','contador'].includes(String(user.role||'')))throw new Error('Solo Administrador o Contador puede modificar esta configuración.');
+    const token=accountingSessionToken();
+    if(!token)throw new Error('La sesión autenticada no está disponible. Cierra sesión y vuelve a ingresar.');
+    return {token};
+  };
+
+
+
   const drawBankOps=()=>{const xs=(S.fiscalBankOperations||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));return '<h3>Registro auxiliar de operaciones bancarias sin nuevo documento fiscal</h3><p class="hint">Registro de control solicitado por el usuario/contador. Estas operaciones no se incorporan al Libro de Ventas ni al Libro de Compras, no generan IVA/IGTF automáticamente y no sustituyen facturas, comprobantes o soportes fiscales. Cada fila conserva su referencia interna de control.</p><div class="gridwrap"><table class="grid" style="min-width:850px"><thead><tr><th>Fecha</th><th>Referencia</th><th>Descripción</th><th>Cuenta banco</th><th>Contrapartida</th><th>Moneda</th><th class="r">Monto original</th><th class="r">Equiv. USD</th><th>Motivo / tratamiento</th></tr></thead><tbody>'+xs.map(x=>'<tr><td>'+esc(x.date||'—')+'</td><td>'+esc(x.reference||'—')+'</td><td>'+esc(x.description||'—')+'</td><td>'+esc(x.accountCode||'—')+'</td><td>'+esc(x.counterpartAccount||'—')+'</td><td>'+esc(x.currency||'—')+'</td><td class="r">'+nf(x.amount||0)+'</td><td class="r">'+nf(x.amountUsd||0)+'</td><td>'+esc((x.fiscalTreatment==='LIQUIDACION_SIN_NUEVO_DOCUMENTO'?'LIQUIDACIÓN AGREGADA · Sin nueva factura · ':'NO GRAVABLE · ')+(x.fiscalReason||'Requiere soporte')+(x.fiscalReference?' · Soporte: '+x.fiscalReference:''))+'</td></tr>').join('')+'</tbody></table></div>'+(xs.length?'':'<p class="hint">Todavía no hay operaciones bancarias auxiliares. Aquí aparecerán operaciones no gravables y liquidaciones agregadas, con sus referencias internas de control.</p>');};
 
   const renderTabContent=()=>{
@@ -7130,7 +7364,10 @@ function seniatSudebanDlg(initialTab){
     else if(activeTab==='retenciones')content.innerHTML=drawRetenciones();
     else if(activeTab==='pagoSeniat')content.innerHTML=drawPagoSeniat();
     else if(activeTab==='config')content.innerHTML=drawConfig();
+    else if(activeTab==='contabilidad')content.innerHTML=drawAccountingTab();
+    const filter=$('#snFilterBar',el);if(filter)filter.style.display=activeTab==='contabilidad'?'none':'';
     updateFoot();
+    if(activeTab==='contabilidad')loadAccountingTab();
   };
 
   const updateFoot=()=>{
@@ -7157,6 +7394,8 @@ function seniatSudebanDlg(initialTab){
       footL.innerHTML='<span class="hint">Borrador informativo; la planilla oficial se obtiene en el SENIAT.</span>';
     }else if(activeTab==='config'){
       footL.innerHTML='<button class="btn mini2 primary" id="btnSaveF">Guardar Parámetros Fiscales</button>';
+    }else if(activeTab==='contabilidad'){
+      footL.innerHTML='<span class="hint">SQLite local o servidor LAN · Cambios auditados · Contabilización supervisada</span>';
     }else{
       footL.innerHTML='<button class="btn mini2" id="btnGotoVentas">Ver Libro de Ventas</button><button class="btn mini2" id="btnGotoIgtf">Ver IGTF 3%</button>';
     }
@@ -7301,6 +7540,191 @@ function seniatSudebanDlg(initialTab){
         if(ev.target.id==='btnGotoVentas'){activeTab='ventas';$('.tab[data-tab="ventas"]',el)?.click();}
         if(ev.target.id==='btnGotoIgtf'){activeTab='igtf';$('.tab[data-tab="igtf"]',el)?.click();}
         if(ev.target.id==='btnPrinterSetupWizard'){printerSetupWizardDlg();return;}
+        if(ev.target.id==='btnLoadGeneralLedger'){
+          (async()=>{try{
+            const accountCode=$('#accLedgerAccount',el).value,startDate=$('#accLedgerStart',el).value,endDate=$('#accLedgerEnd',el).value;
+            const result=await window.posDesktop.accountingGetGeneralLedger({...accountingActorInput(),accountCode,startDate,endDate});
+            const node=$('#accGeneralLedger',el),decimals=Number($('#accDecimals',el).value||2);
+            node.innerHTML='<p><b>'+esc(result.account.code+' · '+result.account.name)+'</b> · Apertura: '+esc(fmtJournalMinor(result.openingBalanceMinor,decimals))+' · Cierre: '+esc(fmtJournalMinor(result.closingBalanceMinor,decimals))+'</p><div class="gridwrap"><table class="grid"><thead><tr><th>Fecha</th><th>Asiento</th><th>Descripción</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead><tbody>'+result.rows.map(row=>'<tr><td>'+esc(row.entryDate)+'</td><td class="mono">'+esc(row.entryId.slice(0,8))+'</td><td>'+esc(row.lineDescription||row.entryDescription)+'</td><td class="r">'+esc(fmtJournalMinor(row.debitMinor,decimals))+'</td><td class="r">'+esc(fmtJournalMinor(row.creditMinor,decimals))+'</td><td class="r">'+esc(fmtJournalMinor(row.runningBalanceMinor,decimals))+'</td></tr>').join('')+'</tbody></table></div>'+(result.presentationComplete?'':'<p class="hint bad">Hay asientos históricos sin conversión de presentación; el mayor funcional sí está disponible.</p>');
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnLoadFinancialStatements'){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingGetFinancialStatements({...accountingActorInput(),periodId:$('#accStatementsPeriod',el).value});
+            const node=$('#accFinancialStatements',el),decimals=Number($('#accDecimals',el).value||2);
+            const section=(title,rows)=>'<h4>'+title+'</h4><div class="gridwrap"><table class="grid"><thead><tr><th>Código</th><th>Cuenta</th><th>Saldo</th></tr></thead><tbody>'+rows.map(row=>'<tr><td class="mono">'+esc(row.code)+'</td><td>'+esc(row.name)+'</td><td class="r">'+esc(fmtJournalMinor(row.balanceMinor,decimals))+'</td></tr>').join('')+'</tbody></table></div>';
+            const bs=result.balanceSheet,inc=result.incomeStatement;
+            node.innerHTML='<p><b>Estado de situación financiera</b> · '+esc(result.period.startDate)+' a '+esc(result.period.endDate)+'</p>'+section('Activos',bs.assets)+section('Pasivos',bs.liabilities)+section('Patrimonio',bs.equity)+
+              '<p>Total activos: <b>'+esc(fmtJournalMinor(bs.totalAssetsMinor,decimals))+'</b> · Pasivos: <b>'+esc(fmtJournalMinor(bs.totalLiabilitiesMinor,decimals))+'</b> · Patrimonio: <b>'+esc(fmtJournalMinor(bs.totalEquityMinor,decimals))+'</b></p>'+
+              '<p>Resultados anteriores sin cierre: <b>'+esc(fmtJournalMinor(bs.priorUnclosedResultMinor,decimals))+'</b> · Resultado del período: <b>'+esc(fmtJournalMinor(bs.periodResultMinor,decimals))+'</b> · Resultado acumulado no cerrado: <b>'+esc(fmtJournalMinor(bs.unclosedAccumulatedResultMinor,decimals))+'</b></p>'+
+              '<p>Diferencia: <b>'+esc(fmtJournalMinor(bs.differenceMinor,decimals))+'</b> '+(bs.differenceMinor===0?'· Cuadra incluyendo el resultado del período.':'· Requiere revisión de saldos y asientos.')+'</p>'+
+              '<h4>Estado de resultados</h4>'+section('Ingresos',inc.income)+section('Gastos',inc.expenses)+'<p>Resultado neto: <b>'+esc(fmtJournalMinor(inc.periodResultMinor,decimals))+'</b></p>';
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnCreateFixedAsset'){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingCreateFixedAsset({...accountingActorInput(),assetCode:$('#accAssetCode',el).value.trim(),name:$('#accAssetName',el).value.trim(),acquisitionDate:$('#accAssetAcquisitionDate',el).value,availableForUseDate:$('#accAssetAvailableDate',el).value,depreciationStartMonth:$('#accAssetDepStartMonth',el).value,acquisitionEntryId:$('#accAssetAcquisitionEntry',el).value,cost:$('#accAssetCost',el).value,residual:$('#accAssetResidual',el).value,usefulLifeMonths:$('#accAssetLifeMonths',el).value,assetAccountCode:$('#accAssetAccount',el).value,accumulatedDepreciationAccountCode:$('#accAssetAccumAccount',el).value,depreciationExpenseAccountCode:$('#accAssetExpenseAccount',el).value});
+            msg('Activo '+result.assetCode+' registrado y vinculado al asiento de adquisición.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnGenerateAssetDepreciation'){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingGenerateAssetDepreciationDrafts({...accountingActorInput(),periodId:$('#accAssetDepPeriod',el).value,exchangeRateType:$('#accAssetRateType',el).value});
+            msg('Depreciación: '+result.generated.length+' borradores · '+result.needsReview.length+' requieren revisión · '+result.skipped.length+' omitidos.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveAutomationRule'){
+          (async()=>{try{
+            const rawLines=$('#accRuleLinesJson',el).value.trim();
+            let configuredLines;
+            if(rawLines){try{configuredLines=JSON.parse(rawLines);if(!Array.isArray(configuredLines))throw new Error('El JSON debe ser una lista de renglones.');}catch(error){throw new Error('Renglones avanzados: '+error.message);}}
+            const result=await window.posDesktop.accountingSaveAutomationRule({...accountingActorInput(),
+              sourceType:$('#accRuleSource',el).value,eventAction:'created',
+              amountPath:rawLines?'':$('#accRuleAmountPath',el).value.trim(),currencyPath:$('#accRuleCurrencyPath',el).value.trim(),
+              debitAccountCode:$('#accRuleDebit',el).value,creditAccountCode:$('#accRuleCredit',el).value,
+              lines:configuredLines,
+              descriptionTemplate:$('#accRuleDescription',el).value.trim(),exchangeRateType:$('#accRuleRateType',el).value
+            });
+            msg('Regla '+result.sourceType+' v'+result.ruleVersion+' guardada. La versión anterior quedó conservada.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnGenerateAccountingDrafts'){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingGenerateSourceDrafts({...accountingActorInput(),limit:50});
+            msg('Generación terminada: '+result.generated.length+' borradores · '+result.needsReview.length+' operaciones requieren revisión · '+result.skipped.length+' ya estaban procesadas.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.generateSourceDraft){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingGenerateSourceDrafts({...accountingActorInput(),eventId:ev.target.dataset.generateSourceDraft});
+            msg(result.generated.length?'Borrador contable creado y vinculado al evento.':result.needsReview.length?'El evento pasó a revisión: '+result.needsReview[0].reason:'El evento ya estaba procesado.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.sourceEventReview){
+          (async()=>{try{
+            const reason=prompt('Indica por qué esta operación requiere revisión contable:');
+            if(reason===null)return;
+            await window.posDesktop.accountingMarkSourceEventReview({...accountingActorInput(),eventId:ev.target.dataset.sourceEventReview,reason});
+            msg('Evento marcado para revisión. Se registró el responsable y el motivo en la auditoría.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnAddJournalLine'){
+          accountingJournalLines=collectAccountingJournalLines();
+          accountingJournalLines.push({accountCode:'',description:'',debit:'',credit:''});
+          renderAccountingJournalLines();
+        }
+        if(ev.target.dataset.removeJournalLine!==undefined){
+          accountingJournalLines=collectAccountingJournalLines();
+          const removeIndex=Number(ev.target.dataset.removeJournalLine);
+          if(accountingJournalLines.length>2&&Number.isInteger(removeIndex))accountingJournalLines.splice(removeIndex,1);
+          renderAccountingJournalLines();
+        }
+        if(ev.target.id==='btnCreateJournalEntry'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            const lines=collectAccountingJournalLines();
+            const result=await window.posDesktop.accountingCreateJournalEntry({...actor,
+              entryDate:$('#accJournalDate',el).value,periodId:$('#accJournalPeriod',el).value,
+              description:$('#accJournalDescription',el).value,lines,
+              exchangeRate:$('#accJournalExchangeRate',el).value,
+              exchangeRateType:$('#accJournalExchangeRateType',el).value,
+              exchangeRateSourceName:$('#accJournalExchangeRateSource',el).value,
+              exchangeRateSourceReference:$('#accJournalExchangeRateReference',el).value
+            });
+            msg('Borrador de asiento '+result.id.slice(0,8)+' guardado. Aún no afecta el balance.');
+            accountingJournalLines=Array.from({length:4},()=>({accountCode:'',description:'',debit:'',credit:''}));
+            $('#accJournalDescription',el).value='';
+            renderAccountingJournalLines();
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.approveJournal){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingApproveJournalEntry({...accountingActorInput(),entryId:ev.target.dataset.approveJournal});
+            msg('Asiento '+result.id.slice(0,8)+' aprobado. Falta contabilizarlo.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.postJournal){
+          (async()=>{try{
+            const result=await window.posDesktop.accountingPostJournalEntry({...accountingActorInput(),entryId:ev.target.dataset.postJournal});
+            msg('Asiento '+result.id.slice(0,8)+' contabilizado.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.reverseJournal){
+          (async()=>{try{
+            const reason=prompt('Indica el motivo y soporte del reverso:');
+            if(reason===null)return;
+            const result=await window.posDesktop.accountingCreateReversalDraft({...accountingActorInput(),
+              entryId:ev.target.dataset.reverseJournal,reason,
+              reversalDate:$('#accJournalDate',el).value,reversalPeriodId:$('#accJournalPeriod',el).value
+            });
+            msg('Borrador de reverso '+result.id.slice(0,8)+' creado. Debe aprobarse y contabilizarse por separado.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveAccountingAccount'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            const result=await window.posDesktop.accountingSaveAccount({...actor,
+              code:$('#accAccountCode',el).value,name:$('#accAccountName',el).value,
+              accountType:$('#accAccountType',el).value,normalBalance:$('#accNormalBalance',el).value,
+              parentCode:$('#accParentCode',el).value,frameworkScope:$('#accFrameworkScope',el).value,
+              acceptsPosting:$('#accAcceptsPosting',el).checked,active:$('#accAccountActive',el).checked
+            });
+            msg('Cuenta '+result.code+' guardada y auditada.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveAccountingSettings'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            await window.posDesktop.accountingSaveSettings({...actor,
+              accountingFramework:$('#accFramework',el).value,functionalCurrency:$('#accFunctionalCurrency',el).value,
+              presentationCurrency:$('#accPresentationCurrency',el).value,monetaryDecimals:Number($('#accDecimals',el).value),
+              automationMode:$('#accAutomation',el).value,policyVersion:$('#accPolicyVersion',el).value.trim()
+            });
+            msg('Política contable guardada y auditada en SQLite.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveFiscalProfile'){
+          (async()=>{try{
+            const actor=accountingActorInput();
+            await window.posDesktop.accountingSaveProfile({...actor,
+              rif:$('#accRif',el).value,legalName:$('#accLegalName',el).value,
+              taxpayerClassification:$('#accTaxClass',el).value,specialSubjectConfirmed:$('#accSpecial',el).checked,
+              specialNoticeReference:$('#accSpecialRef',el).value,specialNoticeDate:$('#accSpecialDate',el).value,
+              ivaWithholdingAgentConfirmed:$('#accWithholding',el).checked,ivaPerceptionAgentConfirmed:$('#accPerception',el).checked,
+              businessActivityScope:$('#accActivity',el).value,invoiceEmissionMode:$('#accEmission',el).value,
+              alcoholLicenseReference:$('#accAlcoholLicense',el).value,municipalLicenseReference:$('#accMunicipalLicense',el).value,
+              providerRif:$('#accProviderRif',el).value,providerAuthorizationReference:$('#accProviderAuth',el).value,
+              fiscalMachineSerial:$('#accMachineSerial',el).value
+            });
+            msg('Perfil fiscal guardado y auditado en SQLite.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.dataset.closeAccountingPeriod){
+          (async()=>{try{
+            const periodId=ev.target.dataset.closeAccountingPeriod;
+            if(!confirm('¿Cerrar el período '+periodId+'? No se permitirán nuevos asientos ni modificaciones en ese período.'))return;
+            const result=await window.posDesktop.accountingClosePeriod({...accountingActorInput(),periodId});
+            msg('Período '+result.id+' cerrado y registrado en auditoría.');
+            await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+        if(ev.target.id==='btnSaveAccountingPeriod'){
+          (async()=>{try{
+            const actor=accountingActorInput(),startDate=$('#accPeriodStart',el).value,endDate=$('#accPeriodEnd',el).value;
+            const result=await window.posDesktop.accountingSavePeriod({...actor,id:$('#accPeriodId',el).value,label:$('#accPeriodLabel',el).value,startDate,endDate});
+            msg('Período '+result.id+' guardado como abierto.');await loadAccountingTab();
+          }catch(error){msg(error.message||String(error),'bad');}})();
+        }
+
         if(ev.target.id==='btnSaveF'){
           const legalName=$('#fEmp',el).value.trim(),taxId=$('#fRif',el).value.trim(),address=$('#fDir',el).value.trim(),email=$('#fEmail',el).value.trim();
           if(!legalName||!taxId||!address||!email){msg('Parámetros fiscales incompletos: razón social, RIF, domicilio fiscal y correo son obligatorios para completar el perfil.','bad');return;}
@@ -7585,12 +8009,9 @@ window.SIFERAccountingBridge={getState:()=>S,save:()=>save(),setAccounting:async
 
 /* ---------- menús y barra de herramientas ---------- */
 const focusEntry=()=>$('#entry').focus();
-async function openAccountingModule(){
+function openAccountingModule(){
  if(!['admin','contador'].includes(activeUser().role)){msg('Tu perfil no tiene autorización para abrir Contabilidad.','bad');return;}
- const app=window.SIFERAccountingApp;
- if(!app||typeof app.open!=='function'){msg('Contabilidad VEN-NIF no está disponible: no se cargó el módulo.','bad');return;}
- try{await app.open();}
- catch(e){msg('No se pudo abrir Contabilidad: '+(e&&e.message?e.message:String(e)),'bad');}
+ seniatSudebanDlg('contabilidad');
 }
 const MENUS={
  'Archivo':[['Dashboard','',showDashboardScreen],['Abrir caja (POS)','',openCashboxDlg],['Nueva venta','F2',newSale],['Suspender venta','F5',suspend],['Recuperar venta','F6',recoverDlg],'-',['Ventas del día y cierre…','F9',salesDlg],'-',['Gestión de usuarios','',usersManagementDlg],['Gestión de cajas','',cashboxesManagementDlg],['Cerrar sesión','',()=>window.SIFERAccess&&window.SIFERAccess.logout()],'-',['Restablecer datos de ejemplo…','',resetAll]],
@@ -8485,22 +8906,16 @@ async function databaseSettingsDlg(){
       '</div>' +
       '<div id="dbMsg" class="hint" style="margin-top:10px;min-height:18px"></div>' +
     '</div>' +
-    '<div style="background:#131C2E;border:1px solid #1E293B;border-radius:8px;padding:12px">' +
-      '<b style="color:#F8FAFC;font-size:13px;display:block;margin-bottom:8px">Copias de Seguridad y Restauración de SQLite</b>' +
-      '<div class="row" style="flex-wrap:wrap;gap:8px">' +
-        '<button class="btn primary" id="dbExportSqlite" type="button" style="display:inline-flex;align-items:center;gap:6px">' +
-          '<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
-          'Descargar copia (.sqlite)' +
-        '</button>' +
-        '<button class="btn" id="dbImportSqliteBtn" type="button" style="display:inline-flex;align-items:center;gap:6px">' +
-          '<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' +
-          'Restaurar copia (.sqlite)' +
-        '</button>' +
-        '<input type="file" id="dbImportSqliteFile" accept=".sqlite,.db" hidden>' +
-        '<button class="btn" id="dbExportJson" type="button" title="Respaldo completo de datos en formato JSON">Respaldo JSON</button>' +
-        '<button class="btn" id="dbResetAll" type="button" style="color:#F87171;border-color:#7F1D1D" title="Vaciar datos operativos locales">Reiniciar base</button>' +
-      '</div>' +
-      '<div id="dbMsg" class="hint" style="margin-top:10px;min-height:18px"></div>' +
+    '<div style="background:#131C2E;border:1px solid #7C5B16;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:9px">' +
+      '<div style="display:flex;align-items:center;gap:8px"><b style="color:#FDE68A;font-size:13px">Respaldo cifrado automático en Google Drive</b><span style="background:#713F12;color:#FDE68A;padding:2px 7px;border-radius:4px;font-size:10px">OPCIONAL</span></div>' +
+      '<div class="hint" style="margin:0">SQLite continúa siendo la única base operativa. Solo el equipo independiente o servidor LAN puede generar copias. El archivo se cifra localmente antes de subirlo a una carpeta privada de tu Google Drive.</div>' +
+      '<div class="f"><label for="gdriveEmail">Correo de la cuenta Google Drive</label><input class="fld" id="gdriveEmail" type="email" autocomplete="email" placeholder="tu-correo@gmail.com" style="width:100%"></div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn" id="gdriveConnect" type="button">Conectar Google Drive</button><button class="btn" id="gdriveEnable" type="button">Activar respaldo diario 8:00 p. m.</button><button class="btn" id="gdriveDisable" type="button">Desactivar</button></div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn primary" id="gdriveNow" type="button">Realizar respaldo ahora</button><button class="btn" id="gdriveRecovery" type="button">Guardar clave de recuperación</button><button class="btn" id="gdriveImportRecovery" type="button">Importar clave de recuperación</button></div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:8px"><select id="gdriveBackupList" class="fld" style="flex:1;min-width:220px"><option value="">Selecciona un respaldo SQLite</option></select><button class="btn" id="gdriveRefresh" type="button">Actualizar lista</button><button class="btn" id="gdriveDownload" type="button">Descargar y descifrar</button></div>' +
+      '<div class="hint" style="margin:0">La descarga se valida y guarda como archivo SQLite local. Para restaurar, selecciónalo después en “Restaurar copia”; la aplicación pedirá confirmación y guardará una copia local previa. Nunca se reemplaza SQLite automáticamente.</div>' +
+      '<div id="gdriveStatus" class="hint" role="status" aria-live="polite" style="margin:0;min-height:28px">Consultando configuración de Google Drive…</div>' +
+      '<div class="hint" style="margin:0;color:#FDE68A">Importante: conserva la clave de recuperación fuera de este equipo. Sin ella no podrás descifrar los respaldos si cambias de PC o Windows. Puedes cambiar de cuenta Google cuando quieras; los respaldos anteriores permanecerán en la cuenta antigua y los nuevos irán a la cuenta nueva.</div>' +
     '</div>' +
   '</div>');
 
@@ -8535,14 +8950,23 @@ async function databaseSettingsDlg(){
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) return;
-    note.textContent = 'Importando base de datos SQLite…';
+    if (!window.confirm('Vas a reemplazar la base SQLite activa por el archivo seleccionado. Antes se descargará una copia local de la base actual. ¿Deseas continuar?')) {
+      fileInput.value = '';
+      return;
+    }
+    note.textContent = 'Creando copia local previa y validando el archivo seleccionado…';
     try {
+      if (!isDesktop || !window.posDesktop.backupSaveBeforeRestore) throw new Error('La restauración segura requiere la aplicación de escritorio.');
+      const preRestore = await window.posDesktop.backupSaveBeforeRestore(authToken());
+      if (!preRestore.saved) { note.textContent = 'Restauración cancelada: no se guardó la copia local previa.'; return; }
       const buf = await file.arrayBuffer();
       await posSqliteDriver.importSqlite(buf);
-      note.textContent = 'Base de datos SQLite restaurada correctamente. Recargando…';
+      note.textContent = 'Base SQLite restaurada. Copia local previa guardada en ' + preRestore.filePath + '. Recargando…';
       setTimeout(() => location.reload(), 800);
     } catch (e) {
       note.textContent = 'Error restaurando SQLite: ' + e.message;
+    } finally {
+      fileInput.value = '';
     }
   });
 
@@ -8560,6 +8984,103 @@ async function databaseSettingsDlg(){
   });
 
 
+
+  const authToken = () => { try { return JSON.parse(sessionStorage.getItem('sifer360_session_v1') || 'null')?.authToken || ''; } catch { return ''; } };
+  const gdriveStatus = $('#gdriveStatus', el);
+  const gdriveEmail = $('#gdriveEmail', el);
+  const showDriveStatus = s => {
+    if (!isDesktop) { gdriveStatus.textContent = 'Esta función requiere la aplicación de escritorio Windows.'; return; }
+    if (s.serverOnly) { gdriveStatus.textContent = 'El respaldo se administra desde la PC servidor que conserva la única SQLite.'; ['gdriveConnect','gdriveEnable','gdriveDisable','gdriveNow','gdriveRecovery','gdriveRefresh','gdriveDownload','gdriveImportRecovery'].forEach(id => { $('#'+id, el).disabled = true; }); return; }
+    $('#gdriveConnect', el).disabled = !s.oauthReady;
+    $('#gdriveEnable', el).disabled = !s.configured || !s.oauthReady;
+    $('#gdriveNow', el).disabled = !s.configured || !s.oauthReady;
+    $('#gdriveRefresh', el).disabled = !s.configured || !s.oauthReady;
+    $('#gdriveDownload', el).disabled = !s.configured || !s.oauthReady;
+    if (s.email) gdriveEmail.value = s.email;
+    $('#gdriveConnect', el).textContent = s.configured ? 'Cambiar cuenta de Google' : 'Conectar Google Drive';
+    const history = (s.history || []).map(x => (x.ok ? '✓ ' : '✕ ') + (x.at || '')).join(' · ');
+    gdriveStatus.textContent = (s.configured ? 'Cuenta conectada: ' + s.email : 'Google Drive no conectado.') +
+      (s.enabled ? ' · Respaldo diario activo: 8:00 p. m. hora Venezuela.' : ' · Programación desactivada.') +
+      (s.lastBackupAt ? ' · Último intento: ' + s.lastBackupAt + ' (' + (s.lastBackupStatus || 'sin estado') + ')' : '') +
+      (s.lastBackupError ? ' · Error: ' + s.lastBackupError : '') +
+      (history ? ' · Historial: ' + history : '') +
+      (!s.oauthReady ? ' · Falta registrar/configurar el OAuth Client ID de SIFER360 en Google Cloud; la conexión se habilitará al incorporar esa credencial pública.' : '');
+  };
+  const refreshDriveStatus = async () => {
+    if (!isDesktop || !window.posDesktop.backupStatus) { showDriveStatus({}); return; }
+    try { showDriveStatus(await window.posDesktop.backupStatus(authToken())); }
+    catch (e) { gdriveStatus.textContent = 'No se pudo consultar Google Drive: ' + e.message; }
+  };
+  $('#gdriveConnect', el).disabled = !isDesktop;
+  $('#gdriveEnable', el).disabled = !isDesktop;
+  $('#gdriveDisable', el).disabled = !isDesktop;
+  $('#gdriveNow', el).disabled = !isDesktop;
+  $('#gdriveRecovery', el).disabled = !isDesktop;
+  $('#gdriveImportRecovery', el).disabled = !isDesktop;
+  $('#gdriveRefresh', el).disabled = !isDesktop;
+  $('#gdriveDownload', el).disabled = !isDesktop;
+  $('#gdriveConnect', el).addEventListener('click', async () => {
+    const email = gdriveEmail.value.trim();
+    if (!email) { gdriveStatus.textContent = 'Escribe el correo de Google que quieres conectar.'; return; }
+    gdriveStatus.textContent = 'Validando la nueva cuenta de Google. La cuenta actual seguirá activa si la autorización falla…';
+    try { const previous = await window.posDesktop.backupStatus(authToken()); const previousEmail = previous.email || ''; const result = await window.posDesktop.backupConnectGoogle(authToken(), email); showDriveStatus(result); gdriveStatus.textContent += (previousEmail && previousEmail.toLowerCase() !== email.toLowerCase() ? ' Cuenta cambiada correctamente. Los respaldos anteriores permanecen en la cuenta anterior; los siguientes se guardarán aquí.' : ' Guarda ahora la clave de recuperación antes de activar la programación.'); }
+    catch (e) { gdriveStatus.textContent = 'No se pudo conectar Google Drive: ' + e.message; }
+  });
+  $('#gdriveEnable', el).addEventListener('click', async () => {
+    gdriveStatus.textContent = 'Programando la tarea diaria de Windows…';
+    try { showDriveStatus(await window.posDesktop.backupEnableDaily(authToken())); }
+    catch (e) { gdriveStatus.textContent = 'No se pudo activar el respaldo diario: ' + e.message; }
+  });
+  $('#gdriveDisable', el).addEventListener('click', async () => {
+    try { showDriveStatus(await window.posDesktop.backupDisableDaily(authToken())); }
+    catch (e) { gdriveStatus.textContent = 'No se pudo desactivar: ' + e.message; }
+  });
+  $('#gdriveNow', el).addEventListener('click', async () => {
+    gdriveStatus.textContent = 'Verificando SQLite, cifrando y enviando el respaldo…';
+    try { const result = await window.posDesktop.backupRunNow(authToken()); gdriveStatus.textContent = 'Respaldos verificados y cargados: ' + result.fileName + (result.json ? ' y ' + result.json.fileName : '') + ' · SHA-256 SQLite ' + result.sha256; await refreshDriveStatus(); }
+    catch (e) { gdriveStatus.textContent = 'No se completó el respaldo: ' + e.message; }
+  });
+  $('#gdriveRecovery', el).addEventListener('click', async () => {
+    try { const result = await window.posDesktop.backupExportRecoveryKey(authToken()); gdriveStatus.textContent = result.saved ? 'Clave de recuperación guardada. Guárdala en un medio seguro separado de esta PC.' : 'No se guardó la clave.'; }
+    catch (e) { gdriveStatus.textContent = 'No se pudo guardar la clave: ' + e.message; }
+  });
+  const gdriveBackupList = $('#gdriveBackupList', el);
+  const refreshDriveFiles = async () => {
+    gdriveStatus.textContent = 'Consultando respaldos disponibles en Google Drive…';
+    try {
+      const files = await window.posDesktop.backupListFiles(authToken());
+      gdriveBackupList.innerHTML = '';
+      if (!files.length) {
+        const option = document.createElement('option'); option.value = ''; option.textContent = 'No hay respaldos SQLite disponibles'; gdriveBackupList.appendChild(option);
+        gdriveStatus.textContent = 'No se encontraron copias SQLite en la carpeta privada de SIFER360.';
+        return;
+      }
+      for (const file of files) {
+        const option = document.createElement('option');
+        option.value = file.id;
+        option.textContent = file.name + (file.modifiedTime ? ' — ' + new Date(file.modifiedTime).toLocaleString() : '');
+        gdriveBackupList.appendChild(option);
+      }
+      gdriveStatus.textContent = 'Se encontraron ' + files.length + ' respaldos SQLite. Selecciona uno para descargarlo y descifrarlo.';
+    } catch (error) { gdriveStatus.textContent = 'No se pudo consultar la lista de respaldos: ' + error.message; }
+  };
+  $('#gdriveRefresh', el).addEventListener('click', refreshDriveFiles);
+  $('#gdriveDownload', el).addEventListener('click', async () => {
+    const fileId = gdriveBackupList.value;
+    if (!fileId) { gdriveStatus.textContent = 'Selecciona primero un respaldo SQLite.'; return; }
+    gdriveStatus.textContent = 'Descargando, descifrando y validando la integridad SQLite…';
+    try {
+      const result = await window.posDesktop.backupDownloadFile(authToken(), fileId);
+      gdriveStatus.textContent = result.saved ? 'Copia descifrada y validada guardada en: ' + result.filePath + '. Para restaurarla, selecciónala manualmente en “Restaurar copia”.' : 'Descarga cancelada; la base local no fue modificada.';
+    } catch (error) { gdriveStatus.textContent = 'No se pudo descargar el respaldo: ' + error.message; }
+  });
+  $('#gdriveImportRecovery', el).addEventListener('click', async () => {
+    try {
+      const result = await window.posDesktop.backupImportRecoveryKey(authToken());
+      gdriveStatus.textContent = result.imported ? 'Clave de recuperación importada y protegida por Windows en esta instalación.' : 'Importación de clave cancelada; no se cambió la configuración.';
+    } catch (error) { gdriveStatus.textContent = 'No se pudo importar la clave de recuperación: ' + error.message; }
+  });
+  refreshDriveStatus();
 
   $('#dbResetAll', el).addEventListener('click', () => {
     resetAll();

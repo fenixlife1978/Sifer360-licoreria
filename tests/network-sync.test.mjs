@@ -233,14 +233,20 @@ test('los guardados SQLite locales revierten el cambio en memoria si falla la pe
   assert.match(electron, /function persistMutation\(mutate\)/);
   assert.match(electron, /const snapshot = db\.export\(\)/);
   assert.match(electron, /restoreDatabaseSnapshot\(snapshot\)/);
-  assert.match(electron, /persistMutation\(\(\) => run\('INSERT INTO app_state/);
+  assert.match(electron, /persistMutation\(\(\) => \{[\s\S]*?INSERT INTO app_state/);
   assert.match(electron, /persistMutation\(\(\) => run\('INSERT OR REPLACE INTO fiscal_documents/);
   assert.match(electron, /persistMutation\(\(\) => run\('DELETE FROM fiscal_documents/);
 });
 
-test('la sincronización iniciada por el servidor también revierte su snapshot si falla la escritura', () => {
-  assert.match(electron, /let merged;\s*\n\s*persistMutation\(\(\) => \{/);
-  assert.match(electron, /merged = mergeStateRecords\(row \? JSON\.parse\(row\.payload\) : null, state\)/);
+test('la sincronización iniciada por el servidor guarda estado y eventos contables en una sola mutación durable', () => {
+  const start = electron.indexOf("ipcMain.handle('network:sync-now'");
+  const end = electron.indexOf("\\n  ipcMain.handle(", start + 1);
+  const handler = electron.slice(start, end < 0 ? electron.length : end);
+  assert.match(handler, /const previous = row \? JSON\.parse\(row\.payload\) : \{\}/);
+  assert.match(handler, /const merged = mergeStateRecords\(previous, state\)/);
+  assert.match(handler, /buildAccountingSourceEvents\(previous, merged/);
+  assert.match(handler, /persistMutation\(\(\) => \{/);
+  assert.match(handler, /insertAccountingSourceEvents\(accountingEvents\)/);
 });
 
 
@@ -397,9 +403,12 @@ test('SQLite y su respaldo se vacían a disco antes del reemplazo atómico', () 
   assert.match(electron, /fs\.renameSync\(temporary, target\)/);
 });
 
-test('la inicialización recupera una copia SQLite si falta o está dañada la principal', () => {
+test('la inicialización recupera SQLite sin crear una base vacía si ya existían datos', () => {
   assert.match(electron, /require\('\.\/sqlite-recovery\.cjs'\)/);
-  assert.match(electron, /openOrRecoverDatabase\(\{ SQL, file \}\)/);
+  assert.match(electron, /openOrRecoverDatabase\(\{ SQL, file, allowCreate: !priorUserDataDetected \}\)/);
+  assert.match(electron, /let priorUserDataDetected = false/);
+  assert.match(sqliteRecovery, /La base SQLite principal está dañada/);
+  assert.match(sqliteRecovery, /No se creará una base vacía/);
 });
 
 test('una base recuperada persiste también el esquema actualizado antes de aceptar operaciones', () => {

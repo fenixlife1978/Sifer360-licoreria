@@ -66,7 +66,9 @@ test('el módulo contable se carga después del POS y tiene acceso desde menú y
 
 test('los accesos a Contabilidad VEN-NIF no fallan silenciosamente si el módulo no carga', () => {
   assert.match(pos, /function openAccountingModule\(\)/);
-  assert.match(pos, /Contabilidad VEN-NIF no está disponible/);
+  assert.match(pos, /seniatSudebanDlg\('contabilidad'\)/);
+  assert.match(pos, /accountingSessionToken/);
+  assert.match(pos, /accountingGetSettings\(sessionToken\)/);
   assert.match(pos, /'Contabilidad':\[\['Contabilidad general VEN-NIF…','',openAccountingModule\]\]/);
   assert.match(pos, /\['contabilidad','Contabilidad','',openAccountingModule\]/);
   assert.match(accounting, /window\.SIFERAccountingApp=\{open\}/);
@@ -106,29 +108,14 @@ test('activos fijos usan cuentas de depreciación acumulada existentes', () => {
   assert.match(accounting, /asset\.monthsDepreciated=count/);
 });
 
-test('la depreciación mensual se ejecuta automáticamente y recupera períodos completos pendientes', () => {
-  assert.match(accounting, /async function runAutomaticDepreciation\(\)/);
-  assert.match(accounting, /networkStatus\(\)/);
-  assert.match(accounting, /network&&network\.role==='client'\)return/);
-  assert.match(accounting, /automaticDepreciationNeedsSave=true/);
-  assert.match(accounting, /automaticDepreciationNeedsSave=false/);
-  assert.match(accounting, /sqlite\+localStorage/);
-  assert.match(accounting, /sqlite-file/);
-  assert.match(accounting, /server-sqlite/);
-  assert.match(accounting, /function startAutomaticDepreciation\(\)/);
-  assert.match(accounting, /setInterval\(runAutomaticDepreciation,60000\)/);
-  assert.match(accounting, /window\.addEventListener\('sifer:ready',startAutomaticDepreciation/);
-  assert.match(accounting, /const persisted=await save\(\)/);
-  assert.match(accounting, /function lastCompletedMonth\(/);
-  assert.match(accounting, /const recorded=new Set\(periodEntries\.map\(e=>String\(e\.depreciationPeriod\)\)\)/);
-  assert.match(accounting, /if\(!recorded\.has\(cursor\)\)periods\.push\(cursor\)/);
-  assert.match(accounting, /asset\.monthsDepreciated=count/);
-  assert.match(accounting, /assetId:asset\.id,depreciationPeriod:month/);
-  assert.match(accounting, /availableForUseDate\|\|asset\.acquisitionDate/);
-  assert.doesNotMatch(accounting, /prompt\('Indique el período hasta el cual desea depreciar/);
-  assert.doesNotMatch(accounting, /data-depreciate=/);
+test('el auxiliar contable heredado no contabiliza depreciaciones automáticamente ni desplaza al mayor SQLite', () => {
+  assert.doesNotMatch(accounting, /window\.addEventListener\('sifer:ready',startAutomaticDepreciation/);
+  assert.doesNotMatch(accounting, /setInterval\(runAutomaticDepreciation,60000\)/);
+  assert.match(accounting, /Este módulo contable heredado se conserva como histórico/);
+  assert.match(pos, /btnGenerateAssetDepreciation/);
+  assert.match(pos, /accountingGenerateAssetDepreciationDrafts/);
+  assert.match(pos, /Generar borradores de depreciación/);
 });
-
 test('la creación de bancos admite saldo inicial y genera un asiento de apertura cuadrado y trazable', () => {
   assert.match(accounting, /id="bkOpeningAmount"/);
   assert.match(accounting, /id="bkOpeningDate"/);

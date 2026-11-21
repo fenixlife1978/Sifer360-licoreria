@@ -1,7 +1,7 @@
 # Ventas híbridas, inventario dual y presentaciones del POS
 
 ## Estado de implementación
-Rama de trabajo de la evolución 1.1.0. Ya están integrados el selector de presentaciones, los tres modos de impresión, la primera venta híbrida, el importador universal CSV/XLSX/JSON y la auditoría de apertura fiscal inicial. Todo sigue en validación automatizada y revisión de integridad. No se modifica `main`, no se publica Release ni instalador.
+Integración de ventas híbridas y presentaciones para SIFER360 1.1.3. Ya están integrados el selector de presentaciones, los tres modos de impresión, la primera venta híbrida, el importador universal CSV/XLSX/JSON y la auditoría de apertura fiscal inicial. La división fiscal por cantidad y renglón conserva importes de presentación, pagos e IVA a precisión monetaria. Continúa la validación automatizada; no se publica Release ni instalador hasta cerrar todas las verificaciones.
 
 ## Principios obligatorios
 - SQLite local del servidor LAN sigue siendo la única fuente de verdad.

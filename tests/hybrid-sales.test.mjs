@@ -100,6 +100,18 @@ test('thermal ticket consumes non-fiscal stock first and only then fiscal-backed
   assert.equal(out.get(0),2);
 });
 
+test('ticket fiscal exits preserve line identity when the same SKU is repeated',()=>{
+  const out=runTicketFiscalOut(
+    [{code:'A',qty:4},{code:'A',qty:4}],
+    [{code:'A',qty:3,lineIndex:0},{code:'A',qty:3,lineIndex:1}],
+    [{code:'A',qty:2}],
+    {A:{stock:5}},
+    {A:10}
+  );
+  assert.equal(out.has(0),false);
+  assert.equal(out.get(1),1);
+});
+
 test('fiscal printer payload contains only the fiscal portion and uses the selected presentation details',()=>{
   assert.match(main,/lines:fiscalDocumentSale\.lines\.map\(line=>/);
   assert.match(main,/unit:line\.presentationUnit\|\|line\.unit,quantity:line\.presentationQty\|\|line\.qty/);
@@ -107,7 +119,7 @@ test('fiscal printer payload contains only the fiscal portion and uses the selec
 });
 
 test('hybrid documents share one sale identity and allocate tax, payments and change without duplicating amounts',()=>{
-  assert.match(main,/function salePortion\(sale,lines,mode,residual,fiscalRatio\)/);
+  assert.match(main,/function salePortion\(sale,lines,mode,residual,fiscalRatio,fiscalSub\)/);
   assert.match(main,/residual\?r2\(Number\(pay\.amount\|\|0\)-r2\(Number\(pay\.amount\|\|0\)\*ratio\)\)/);
   assert.match(main,/residual\?r2\(Number\(sale\.igtf\|\|0\)-r2\(Number\(sale\.igtf\|\|0\)\*ratio\)\)/);
   assert.match(main,/ticketDocumentSale\.ticketReference='TKT-'/);
@@ -123,6 +135,14 @@ test('fiscal portion and ticket-backed consumption use separate per-line quantit
   assert.match(main,/fiscalQty=hybridMode\?Number\(hybridPlan.fiscalQtyByLine\[lineIndex\]\|\|0\)/);
   assert.match(main,/type:'SALIDA_TICKET_NO_FISCAL',dir:'OUT'/);
   assert.match(main,/p\.stock=Math\.max\(0,r2\(p\.stock-baseQty\)\)/);
+});
+
+test('hybrid sale payload aggregates ticket fiscal exits by SKU from per-line allocations',()=>{
+  assert.doesNotMatch(main,/ticketFiscalOutByCode/);
+  assert.match(main,/ticketFiscalOut:Array\.from\(ticketFiscalOutLines\.reduce\(\(byCode,line\)=>byCode\.set\(line\.code,\(byCode\.get\(line\.code\)\|\|0\)\+Number\(line\.qty\|\|0\)\),new Map\(\)\)\.entries\(\)\)/);
+  const lines=[{code:'A',qty:1.25},{code:'A',qty:0.75},{code:'B',qty:2}];
+  const totals=Array.from(lines.reduce((byCode,line)=>byCode.set(line.code,(byCode.get(line.code)||0)+Number(line.qty||0)),new Map()).entries());
+  assert.deepEqual(totals,[['A',2],['B',2]]);
 });
 
 test('hybrid completion offers a separate thermal ticket without repeating the fiscal invoice or sale',()=>{
@@ -146,4 +166,47 @@ test('hybrid fiscal portions feed only fiscal books while tickets remain in comm
 test('reprinting an already sent or uncertain hybrid ticket requires explicit duplicate confirmation',()=>{
   assert.match(main,/s\.documentMode==='HYBRID'&&s\.printStatus==='sent'&&!confirm\(/);
   assert.match(main,/s\.documentMode==='HYBRID'&&s\.printStatus==='uncertain'&&!confirm\(/);
+});
+
+function runSalePortion(sale,lines,mode,residual,fiscalRatio,fiscalSub){
+  const start=main.indexOf('function salePortion(');
+  const end=main.indexOf('\nfunction ticketFiscalOutPlan',start);
+  assert.ok(start>=0&&end>start,'salePortion helper exists');
+  const context={r2:value=>Math.round((Number(value)+Number.EPSILON)*100)/100,Number,Math};
+  vm.runInNewContext(main.slice(start,end)+';globalThis.run=salePortion;',context);
+  return context.run(sale,lines,mode,residual,fiscalRatio,fiscalSub);
+}
+
+test('hybrid pack subtotal uses presentation quantity instead of base-unit quantity',()=>{
+  const sale={sub:240,total:232,pays:[{method:'cash',amount:100.01},{method:'zelle',amount:131.99}],igtf:6.96,change:0.01};
+  const fiscalLine={code:'PACK6',price:120,presentationPrice:120,qty:6,presentationQty:1,net:100,iva:16,taxRate:16};
+  const portion=runSalePortion(sale,[fiscalLine],'FISCAL',false,0.5);
+  const residual=runSalePortion(sale,[fiscalLine],'HYBRID',true,0.5,portion.sub);
+  assert.equal(portion.sub,120);
+  assert.equal(portion.disc,20);
+  assert.equal(portion.base,100);
+  assert.equal(portion.iva,16);
+  assert.equal(portion.total,116);
+  assert.equal(residual.sub,120);
+  assert.equal(residual.disc,20);
+  assert.equal(residual.total,116);
+  assert.deepEqual(Array.from(portion.pays,p=>p.amount),[50.01,66]);
+  assert.deepEqual(Array.from(residual.pays,p=>p.amount),[50,65.99]);
+  assert.equal(Math.round((portion.pays[0].amount+residual.pays[0].amount+Number.EPSILON)*100)/100,sale.pays[0].amount);
+  assert.equal(Math.round((portion.pays[1].amount+residual.pays[1].amount+Number.EPSILON)*100)/100,sale.pays[1].amount);
+  assert.equal(portion.igtf+residual.igtf,sale.igtf);
+  assert.equal(portion.change+residual.change,sale.change);
+});
+
+test('hybrid fractional-unit subtotals conserve parent gross after cent rounding',()=>{
+  const sale={sub:0.05,total:0.05,pays:[{method:'cash',amount:0.05}],igtf:0,change:0};
+  const fiscalLine={code:'LITRO',price:0.05,presentationPrice:0.05,qty:0.3,presentationQty:0.3,net:0.02,iva:0,taxRate:0};
+  const ticketLine={code:'LITRO',price:0.05,presentationPrice:0.05,qty:0.7,presentationQty:0.7,net:0.03,iva:0,taxRate:0};
+  const fiscal=runSalePortion(sale,[fiscalLine],'FISCAL',false,0.3);
+  const ticket=runSalePortion(sale,[ticketLine],'HYBRID',true,0.3,fiscal.sub);
+  assert.equal(fiscal.sub,0.02);
+  assert.equal(ticket.sub,0.03);
+  assert.equal(fiscal.sub+ticket.sub,sale.sub);
+  assert.equal(fiscal.base+ticket.base,0.05);
+  assert.equal(fiscal.total+ticket.total,sale.total);
 });

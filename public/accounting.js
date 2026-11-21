@@ -361,15 +361,8 @@ async function runAutomaticDepreciation(){
  }catch(error){console.error('No se pudo completar la depreciación automática:',error);}
  finally{automaticDepreciationBusy=false;}
 }
-function startAutomaticDepreciation(){
- if(automaticDepreciationTimer)clearInterval(automaticDepreciationTimer);
- runAutomaticDepreciation();
- automaticDepreciationTimer=setInterval(runAutomaticDepreciation,60000);
- document.removeEventListener('visibilitychange',runAutomaticDepreciation);
- document.addEventListener('visibilitychange',()=>{if(!document.hidden)runAutomaticDepreciation();});
- window.removeEventListener('focus',runAutomaticDepreciation);
- window.addEventListener('focus',runAutomaticDepreciation);
-}
+function startAutomaticDepreciation(){return false;}
+
 
 function exportStatement(){
  const date=$('#acStatementDate',dialog)?.value||today(),entries=validEntries().filter(e=>e.date<=date),rows=allMovementAccounts().map(a=>({a,t:totalsFor(entries,a.code)}));
@@ -380,6 +373,8 @@ function exportStatement(){
 function close(){if(dialog){dialog.remove();dialog=null;}}
 function isOpen(){return !!dialog&&dialog.isConnected;}
 async function open(){
+ alert('Este módulo contable heredado se conserva como histórico. Utilice Contabilidad VEN-NIF del POS: los nuevos asientos y depreciaciones se gestionan en el mayor SQLite con aprobación del Contador.');
+ return false;
  if(!bridge()){alert('El módulo contable no pudo conectarse con la base de datos del POS.');return false;}
  // El acceso contable es independiente de la impresora fiscal.
  // La emisión de documentos fiscales mantiene su propia validación de hardware.
@@ -408,7 +403,7 @@ async function open(){
   return true;
  }).catch(e=>{alert('No se pudo iniciar Contabilidad: '+e.message);throw e;});
 }
-window.addEventListener('sifer:ready',startAutomaticDepreciation,{once:true});
+// Depreciación heredada desactivada: el nuevo mayor SQLite solo genera borradores supervisados.
 window.SIFERAccountingApp={open};
 window.SIFERAccountingApp.close=close;
 window.SIFERAccountingApp.isOpen=isOpen;

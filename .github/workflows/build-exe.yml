@@ -6,7 +6,7 @@ concurrency:
 
 on:
   push:
-    branches: [ main, master, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-sdk-architecture-validation, feature/dual-printer-manager, integration/crm-licensing-telemetry-1.0.5 ]
+    branches: [ main, master, integration/sqlite-lan-stage-1, integration/sqlite-lan-stage-2-hardening, feature/fiscal-sdk-architecture-validation, feature/dual-printer-manager, integration/crm-licensing-telemetry-1.0.5, integration/ven-nif-security-lan ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, master, integration/sqlite-lan-stage-1, release/v1.0.0 ]
@@ -29,6 +29,11 @@ jobs:
           package-manager-cache: false
       - name: Instalar dependencias
         run: npm install --legacy-peer-deps
+      - name: Configurar OAuth Desktop Client ID opcional
+        env:
+          SIFER360_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.SIFER360_GOOGLE_OAUTH_CLIENT_ID }}
+        run: |
+          node -e "const id=String(process.env.SIFER360_GOOGLE_OAUTH_CLIENT_ID||'').trim(); if(id && !id.endsWith('.apps.googleusercontent.com')) throw new Error('Client ID de Google inválido.'); require('fs').writeFileSync('electron/google-drive-oauth.json', JSON.stringify({clientId:id}, null, 2)); console.log(id ? 'Google Drive OAuth configurado.' : 'Google Drive queda opcional y desactivado hasta configurar el Client ID.');"
       - name: Ejecutar pruebas de regresión
         run: npm test
       - name: Compilar aplicación web (Vite)
@@ -40,7 +45,7 @@ jobs:
       - name: Guardar ejecutable como artefacto privado de CI
         uses: actions/upload-artifact@v5
         with:
-          name: SIFER360-1.1.2-Windows-Installer-and-Portable
+          name: SIFER360-1.1.3-Windows-Installer-and-Portable
           path: dist-exe/*.exe
           if-no-files-found: error
           retention-days: 30
