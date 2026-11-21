@@ -136,3 +136,43 @@ Estas reglas deben leerse antes de cada auditoría o modificación relevante de 
 - Migraciones incrementales, transaccionales, idempotentes y versionadas; prohibido DROP TABLE, DELETE FROM, TRUNCATE, VACUUM o REPLACE INTO en migraciones.
 - Antes/después de cada migración: respaldo restaurable, PRAGMA integrity_check, rollback ante error y pruebas de actualización con datos representativos.
 - Si se detectan rastros de una instalación anterior pero faltan la SQLite principal y su respaldo, el inicio debe bloquearse y pedir recuperación; nunca debe crear una base vacía como sustituto.
+
+## 7. Hoja de ruta obligatoria: integración operativa, contable y fiscal de extremo a extremo
+
+Ruta oficial: seguir cada etapa en orden, cerrarla y verificarla antes de avanzar. No desviarse a tareas secundarias ni declarar terminado por módulos, captura de eventos, documentación o pruebas aisladas.
+
+### Orden fijo
+1. **Motor central automático:** eventos persistidos → reglas versionadas, validación de cuentas/importes/moneda, asientos balanceados, documento origen, idempotencia, transacciones y reintentos seguros. Respetar borradores y autorización; no autoaprobar.
+2. **Ventas POS:** ingresos, IVA/tributos, descuentos, medios de pago, caja/banco o CxC, inventario y costo de venta. Resolver ventas mixtas, monedas, presentaciones y pagos parciales.
+3. **Compras:** recepción, inventario/gastos, costo, proveedor/CxP, IVA acreditable según corresponda, retenciones, pagos, caja/banco y soportes. Evitar duplicar factura y recepción.
+4. **Inventario:** ajustes, conteos, mermas, diferencias, entradas/salidas, devoluciones, transferencias y costo; contrapartida, origen, motivo y auditoría.
+5. **Caja y bancos:** apertura/cierre, arqueos, ingresos/egresos, retiros, depósitos, transferencias, diferencias, liquidaciones y conciliación; caja/cajero y secuencias aisladas.
+6. **CxC/CxP:** facturas, abonos, cobros, pagos, anticipos, notas de crédito, vencimientos, aplicaciones y saldos, sin duplicar ventas/compras ni caja/bancos.
+7. **Devoluciones/anulaciones/reversos:** reversos vinculados y ajustes compensatorios trazables; preservar originales, asientos y correlativos. Nunca borrar operaciones contabilizadas.
+8. **Fiscal completo:** cálculos tributarios versionados conectados a operaciones/documentos: bases, exenciones, tasas, IVA, IGTF y tributos aplicables, retenciones, notas crédito/débito, libros/reportes, correlativos, validaciones y conciliación fiscal-contable. Integrar impresoras/servicios autorizados; no confundir impresión normal con fiscal válida. Documentar hardware/SDK/credenciales/autorizaciones y pruebas reales pendientes.
+9. **Conciliación y pruebas E2E:** operación → inventario → caja/banco → auxiliares → evento → asiento → mayor/balances → documento/libro fiscal. Probar importes, saldos, monedas/tasas, impuestos, pagos mixtos/parciales, duplicados, LAN/concurrencia, desconexión, reversos, recuperación y cierres. Ejecutar pruebas, tipos, build y revisión diff; corregir y repetir.
+10. **Integración/release:** rama autorizada; revisar diff/seguridad; PR hacia `release/v1.0.0`; verificar checks y pruebas; integrar solo validado, cerrar PR y documentar. Release solo tras coherencia verificable; no modificar `main` fuera del flujo de autorización.
+
+### Requisitos no negociables
+- Una operación se registra una sola vez y produce efectos necesarios sin reingreso manual.
+- SQLite local es fuente operativa; LAN: SQLite servidor es autoridad. Cache/outbox no son autoridad contable.
+- Asientos equilibrados, cuentas válidas, fecha, moneda/tasa, documento origen y trazabilidad.
+- Reintentos/sincronización no duplican documentos, movimientos ni asientos.
+- Errores explícitos y recuperables; no confirmar operación si efectos obligatorios fallan. Usar transacción o compensación consistente.
+- Corregir con reversos/ajustes; conservar historia.
+- Borradores/revisión/autoridad contable según política; automatización no sustituye juicio profesional.
+- Fiscal sin simular cumplimiento, autorización o certificación.
+- No cambiar orden ni reemplazar objetivo por mejoras visuales/refactorizaciones ajenas salvo bloqueo técnico/seguridad/dependencia directa; documentar y retomar.
+
+### Registro de avance
+Actualizar por etapa al cierre con estado, commit/PR, pruebas, defectos corregidos y bloqueos externos. No marcar completada con código parcial o pruebas faltantes.
+- 1 Motor automático: **PENDIENTE**
+- 2 Ventas POS: **PENDIENTE**
+- 3 Compras: **PENDIENTE**
+- 4 Inventario: **PENDIENTE**
+- 5 Caja/bancos: **PENDIENTE**
+- 6 CxC/CxP: **PENDIENTE**
+- 7 Devoluciones/anulaciones/reversos: **PENDIENTE**
+- 8 Fiscal: **PENDIENTE**
+- 9 Conciliación/pruebas E2E: **PENDIENTE**
+- 10 Integración/release: **PENDIENTE**
